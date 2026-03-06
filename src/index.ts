@@ -7,17 +7,19 @@
  *   steer_subagent       — LLM-callable: send a steering message to a running agent
  *
  * Commands:
- *   /agent <type> <prompt>  — User-invocable agent spawning
- *   /agents                 — List all agents with status
+ *   /agents                 — Interactive agent management menu
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import { existsSync, mkdirSync, unlinkSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { AgentManager } from "./agent-manager.js";
-import { steerAgent, getAgentConversation } from "./agent-runner.js";
+import { steerAgent, getAgentConversation, getDefaultMaxTurns, setDefaultMaxTurns, getGraceTurns, setGraceTurns } from "./agent-runner.js";
 import { SUBAGENT_TYPES, type SubagentType, type ThinkingLevel, type CustomAgentConfig } from "./types.js";
-import { getConfig, getAvailableTypes, getCustomAgentNames, getCustomAgentConfig, isValidType, registerCustomAgents } from "./agent-types.js";
+import { getAvailableTypes, getCustomAgentNames, getCustomAgentConfig, isValidType, registerCustomAgents, BUILTIN_TOOL_NAMES } from "./agent-types.js";
 import { loadCustomAgents } from "./custom-agents.js";
 import {
   AgentWidget,
@@ -717,139 +719,418 @@ Guidelines:
     },
   });
 
-  // ---- /agent command ----
+  // ---- /agents interactive menu ----
 
-  pi.registerCommand("agent", {
-    description: "Spawn a sub-agent: /agent <type> <prompt>",
-    handler: async (args, ctx) => {
-      const trimmed = args?.trim() ?? "";
+  const projectAgentsDir = () => join(process.cwd(), ".pi", "agents");
+  const personalAgentsDir = () => join(homedir(), ".pi", "agent", "agents");
 
-      if (!trimmed) {
-        const lines = [
-          "Usage: /agent <type> <prompt>",
-          "",
-          "Agent types:",
-          ...getAvailableTypes().map(
-            (t) => `  ${t.padEnd(20)} ${getConfig(t).description}`,
-          ),
-          "",
-          "Examples:",
-          "  /agent Explore Find all TypeScript files that handle authentication",
-          "  /agent Plan Design a caching layer for the API",
-          "  /agent general-purpose Refactor the auth module to use JWT",
-        ];
-        ctx.ui.notify(lines.join("\n"), "info");
-        return;
+  /** Find the file path of a custom agent by name (project first, then global). */
+  function findAgentFile(name: string): { path: string; location: "project" | "personal" } | undefined {
+    const projectPath = join(projectAgentsDir(), `${name}.md`);
+    if (existsSync(projectPath)) return { path: projectPath, location: "project" };
+    const personalPath = join(personalAgentsDir(), `${name}.md`);
+    if (existsSync(personalPath)) return { path: personalPath, location: "personal" };
+    return undefined;
+  }
+
+  /** Model label for display: built-in types have known defaults, custom agents show their config. */
+  const BUILTIN_MODEL_LABELS: Record<string, string> = {
+    "general-purpose": "inherit",
+    "Explore": "haiku",
+    "Plan": "inherit",
+    "statusline-setup": "inherit",
+    "claude-code-guide": "inherit",
+  };
+
+  function getModelLabel(type: string): string {
+    const builtin = BUILTIN_MODEL_LABELS[type];
+    if (builtin) return builtin;
+    const custom = getCustomAgentConfig(type);
+    if (custom?.model) {
+      // Show short form: "anthropic/claude-haiku-4-5-20251001" → "haiku"
+      const id = custom.model.toLowerCase();
+      if (id.includes("haiku")) return "haiku";
+      if (id.includes("sonnet")) return "sonnet";
+      if (id.includes("opus")) return "opus";
+      return custom.model;
+    }
+    return "inherit";
+  }
+
+  async function showAgentsMenu(ctx: ExtensionCommandContext) {
+    reloadCustomAgents();
+    const customNames = getCustomAgentNames();
+
+    // Build select options
+    const options: string[] = [];
+
+    // Running agents entry (only if there are active agents)
+    const agents = manager.listAgents();
+    if (agents.length > 0) {
+      const running = agents.filter(a => a.status === "running" || a.status === "queued").length;
+      const done = agents.filter(a => a.status === "completed" || a.status === "steered").length;
+      options.push(`Running agents (${agents.length}) — ${running} running, ${done} done`);
+    }
+
+    // Custom agents submenu (only if there are custom agents)
+    if (customNames.length > 0) {
+      options.push(`Custom agents (${customNames.length})`);
+    }
+
+    // Actions
+    options.push("Create new agent");
+    options.push("Settings");
+
+    // Show built-in types below the select as informational text (like Claude does)
+    const maxBuiltin = Math.max(...SUBAGENT_TYPES.map(t => t.length));
+    const builtinLines = SUBAGENT_TYPES.map(t => {
+      const model = BUILTIN_MODEL_LABELS[t] ?? "inherit";
+      return `  ${t.padEnd(maxBuiltin)} · ${model}`;
+    });
+
+    const noAgentsMsg = customNames.length === 0 && agents.length === 0
+      ? "No agents found. Create specialized subagents that can be delegated to.\n\n" +
+        "Each subagent has its own context window, custom system prompt, and specific tools.\n\n" +
+        "Try creating: Code Reviewer, Security Auditor, Test Writer, or Documentation Writer.\n\n"
+      : "";
+
+    ctx.ui.notify(
+      `${noAgentsMsg}Built-in (always available):\n${builtinLines.join("\n")}`,
+      "info",
+    );
+
+    const choice = await ctx.ui.select("Agents", options);
+    if (!choice) return;
+
+    if (choice.startsWith("Running agents (")) {
+      await showRunningAgents(ctx);
+      await showAgentsMenu(ctx);
+    } else if (choice.startsWith("Custom agents (")) {
+      await showCustomAgentsList(ctx);
+      await showAgentsMenu(ctx);
+    } else if (choice === "Create new agent") {
+      await showCreateWizard(ctx);
+    } else if (choice === "Settings") {
+      await showSettings(ctx);
+      await showAgentsMenu(ctx);
+    }
+  }
+
+  async function showCustomAgentsList(ctx: ExtensionCommandContext) {
+    const customNames = getCustomAgentNames();
+    if (customNames.length === 0) {
+      ctx.ui.notify("No custom agents.", "info");
+      return;
+    }
+
+    // Compute max width of "name · model" for alignment
+    const entries = customNames.map(name => {
+      const cfg = getCustomAgentConfig(name);
+      const model = getModelLabel(name);
+      const prefix = `${name} · ${model}`;
+      return { prefix, desc: cfg?.description ?? name };
+    });
+    const maxPrefix = Math.max(...entries.map(e => e.prefix.length));
+
+    const options = entries.map(({ prefix, desc }) =>
+      `${prefix.padEnd(maxPrefix)} — ${desc}`,
+    );
+
+    const choice = await ctx.ui.select("Custom agents", options);
+    if (!choice) return;
+
+    const agentName = choice.split(" · ")[0];
+    if (getCustomAgentConfig(agentName)) {
+      await showAgentDetail(ctx, agentName);
+    }
+  }
+
+  async function showRunningAgents(ctx: ExtensionCommandContext) {
+    const agents = manager.listAgents();
+    if (agents.length === 0) {
+      ctx.ui.notify("No agents.", "info");
+      return;
+    }
+
+    // Show as a selectable list for potential future actions
+    const options = agents.map(a => {
+      const dn = getDisplayName(a.type);
+      const dur = formatDuration(a.startedAt, a.completedAt);
+      return `${dn} (${a.description}) · ${a.toolUses} tools · ${a.status} · ${dur}`;
+    });
+
+    await ctx.ui.select("Running agents", options);
+  }
+
+  async function showAgentDetail(ctx: ExtensionCommandContext, name: string) {
+    const file = findAgentFile(name);
+    if (!file) {
+      ctx.ui.notify(`Agent file not found for "${name}".`, "warning");
+      return;
+    }
+
+    const choice = await ctx.ui.select(name, ["Edit", "Delete", "Back"]);
+    if (!choice || choice === "Back") return;
+
+    if (choice === "Edit") {
+      const content = readFileSync(file.path, "utf-8");
+      const edited = await ctx.ui.editor(`Edit ${name}`, content);
+      if (edited !== undefined && edited !== content) {
+        const { writeFileSync } = await import("node:fs");
+        writeFileSync(file.path, edited, "utf-8");
+        reloadCustomAgents();
+        ctx.ui.notify(`Updated ${file.path}`, "info");
       }
-
-      // Parse: first word is type, rest is prompt
-      const spaceIdx = trimmed.indexOf(" ");
-      if (spaceIdx === -1) {
-        ctx.ui.notify(
-          `Missing prompt. Usage: /agent <type> <prompt>\nTypes: ${getAvailableTypes().join(", ")}`,
-          "warning",
-        );
-        return;
+    } else if (choice === "Delete") {
+      const confirmed = await ctx.ui.confirm("Delete agent", `Delete ${name} from ${file.location} (${file.path})?`);
+      if (confirmed) {
+        unlinkSync(file.path);
+        reloadCustomAgents();
+        ctx.ui.notify(`Deleted ${file.path}`, "info");
       }
+    }
+  }
 
-      const typeName = trimmed.slice(0, spaceIdx);
-      const prompt = trimmed.slice(spaceIdx + 1).trim();
+  async function showCreateWizard(ctx: ExtensionCommandContext) {
+    const location = await ctx.ui.select("Choose location", [
+      "Project (.pi/agents/)",
+      "Personal (~/.pi/agent/agents/)",
+    ]);
+    if (!location) return;
 
-      if (!isValidType(typeName)) {
-        ctx.ui.notify(
-          `Unknown agent type: "${typeName}"\nValid types: ${getAvailableTypes().join(", ")}`,
-          "warning",
-        );
-        return;
+    const targetDir = location.startsWith("Project") ? projectAgentsDir() : personalAgentsDir();
+
+    const method = await ctx.ui.select("Creation method", [
+      "Generate with Claude (recommended)",
+      "Manual configuration",
+    ]);
+    if (!method) return;
+
+    if (method.startsWith("Generate")) {
+      await showGenerateWizard(ctx, targetDir);
+    } else {
+      await showManualWizard(ctx, targetDir);
+    }
+  }
+
+  async function showGenerateWizard(ctx: ExtensionCommandContext, targetDir: string) {
+    const description = await ctx.ui.input("Describe what this agent should do");
+    if (!description) return;
+
+    const name = await ctx.ui.input("Agent name (filename, no spaces)");
+    if (!name) return;
+
+    // Validate name
+    if (isValidType(name) && !getCustomAgentConfig(name)) {
+      ctx.ui.notify(`"${name}" conflicts with a built-in agent type.`, "warning");
+      return;
+    }
+
+    if (!mkdirSync(targetDir, { recursive: true }) && !existsSync(targetDir)) {
+      mkdirSync(targetDir, { recursive: true });
+    }
+
+    const targetPath = join(targetDir, `${name}.md`);
+    if (existsSync(targetPath)) {
+      const overwrite = await ctx.ui.confirm("Overwrite", `${targetPath} already exists. Overwrite?`);
+      if (!overwrite) return;
+    }
+
+    ctx.ui.notify("Generating agent definition...", "info");
+
+    const generatePrompt = `Create a custom pi sub-agent definition file based on this description: "${description}"
+
+Write a markdown file to: ${targetPath}
+
+The file format is a markdown file with YAML frontmatter and a system prompt body:
+
+\`\`\`markdown
+---
+description: <one-line description shown in UI>
+tools: <comma-separated built-in tools: read, bash, edit, write, grep, find, ls. Use "none" for no tools. Omit for all tools>
+model: <optional model as "provider/modelId", e.g. "anthropic/claude-haiku-4-5-20251001". Omit to inherit parent model>
+thinking: <optional thinking level: off, minimal, low, medium, high, xhigh. Omit to inherit>
+max_turns: <optional max agentic turns, default 50. Omit for default>
+prompt_mode: <"replace" (body IS the full system prompt) or "append" (body is appended to default prompt). Default: replace>
+extensions: <true (inherit all MCP/extension tools), false (none), or comma-separated names. Default: true>
+skills: <true (inherit all), false (none). Default: true>
+inherit_context: <true to fork parent conversation into agent so it sees chat history. Default: false>
+run_in_background: <true to run in background by default. Default: false>
+isolated: <true for no extension/MCP tools, only built-in tools. Default: false>
+---
+
+<system prompt body — instructions for the agent>
+\`\`\`
+
+Guidelines for choosing settings:
+- For read-only tasks (review, analysis): tools: read, bash, grep, find, ls
+- For code modification tasks: include edit, write
+- Use prompt_mode: append if the agent should keep the default system prompt and add specialization on top
+- Use prompt_mode: replace for fully custom agents with their own personality/instructions
+- Set inherit_context: true if the agent needs to know what was discussed in the parent conversation
+- Set isolated: true if the agent should NOT have access to MCP servers or other extensions
+- Only include frontmatter fields that differ from defaults — omit fields where the default is fine
+
+Write the file using the write tool. Only write the file, nothing else.`;
+
+    const record = await manager.spawnAndWait(pi, ctx, "general-purpose", generatePrompt, {
+      description: `Generate ${name} agent`,
+      maxTurns: 5,
+    });
+
+    if (record.status === "error") {
+      ctx.ui.notify(`Generation failed: ${record.error}`, "warning");
+      return;
+    }
+
+    reloadCustomAgents();
+
+    if (existsSync(targetPath)) {
+      ctx.ui.notify(`Created ${targetPath}`, "info");
+    } else {
+      ctx.ui.notify("Agent generation completed but file was not created. Check the agent output.", "warning");
+    }
+  }
+
+  async function showManualWizard(ctx: ExtensionCommandContext, targetDir: string) {
+    // 1. Name
+    const name = await ctx.ui.input("Agent name (filename, no spaces)");
+    if (!name) return;
+
+    if (isValidType(name) && !getCustomAgentConfig(name)) {
+      ctx.ui.notify(`"${name}" conflicts with a built-in agent type.`, "warning");
+      return;
+    }
+
+    // 2. Description
+    const description = await ctx.ui.input("Description (one line)");
+    if (!description) return;
+
+    // 3. Tools
+    const toolChoice = await ctx.ui.select("Tools", ["all", "none", "read-only (read, bash, grep, find, ls)", "custom..."]);
+    if (!toolChoice) return;
+
+    let tools: string;
+    if (toolChoice === "all") {
+      tools = BUILTIN_TOOL_NAMES.join(", ");
+    } else if (toolChoice === "none") {
+      tools = "none";
+    } else if (toolChoice.startsWith("read-only")) {
+      tools = "read, bash, grep, find, ls";
+    } else {
+      const customTools = await ctx.ui.input("Tools (comma-separated)", BUILTIN_TOOL_NAMES.join(", "));
+      if (!customTools) return;
+      tools = customTools;
+    }
+
+    // 4. Model
+    const modelChoice = await ctx.ui.select("Model", [
+      "inherit (parent model)",
+      "haiku",
+      "sonnet",
+      "opus",
+      "custom...",
+    ]);
+    if (!modelChoice) return;
+
+    let modelLine = "";
+    if (modelChoice === "haiku") modelLine = "\nmodel: anthropic/claude-haiku-4-5-20251001";
+    else if (modelChoice === "sonnet") modelLine = "\nmodel: anthropic/claude-sonnet-4-6";
+    else if (modelChoice === "opus") modelLine = "\nmodel: anthropic/claude-opus-4-6";
+    else if (modelChoice === "custom...") {
+      const customModel = await ctx.ui.input("Model (provider/modelId)");
+      if (customModel) modelLine = `\nmodel: ${customModel}`;
+    }
+
+    // 5. Thinking
+    const thinkingChoice = await ctx.ui.select("Thinking level", [
+      "inherit",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ]);
+    if (!thinkingChoice) return;
+
+    let thinkingLine = "";
+    if (thinkingChoice !== "inherit") thinkingLine = `\nthinking: ${thinkingChoice}`;
+
+    // 6. System prompt
+    const systemPrompt = await ctx.ui.editor("System prompt", "");
+    if (systemPrompt === undefined) return;
+
+    // Build the file
+    const content = `---
+description: ${description}
+tools: ${tools}${modelLine}${thinkingLine}
+prompt_mode: replace
+---
+
+${systemPrompt}
+`;
+
+    mkdirSync(targetDir, { recursive: true });
+    const targetPath = join(targetDir, `${name}.md`);
+
+    if (existsSync(targetPath)) {
+      const overwrite = await ctx.ui.confirm("Overwrite", `${targetPath} already exists. Overwrite?`);
+      if (!overwrite) return;
+    }
+
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(targetPath, content, "utf-8");
+    reloadCustomAgents();
+    ctx.ui.notify(`Created ${targetPath}`, "info");
+  }
+
+  async function showSettings(ctx: ExtensionCommandContext) {
+    const choice = await ctx.ui.select("Settings", [
+      `Max concurrency (current: ${manager.getMaxConcurrent()})`,
+      `Default max turns (current: ${getDefaultMaxTurns()})`,
+      `Grace turns (current: ${getGraceTurns()})`,
+    ]);
+    if (!choice) return;
+
+    if (choice.startsWith("Max concurrency")) {
+      const val = await ctx.ui.input("Max concurrent background agents", String(manager.getMaxConcurrent()));
+      if (val) {
+        const n = parseInt(val, 10);
+        if (n >= 1) {
+          manager.setMaxConcurrent(n);
+          ctx.ui.notify(`Max concurrency set to ${n}`, "info");
+        } else {
+          ctx.ui.notify("Must be a positive integer.", "warning");
+        }
       }
-
-      if (!prompt) {
-        ctx.ui.notify("Missing prompt.", "warning");
-        return;
+    } else if (choice.startsWith("Default max turns")) {
+      const val = await ctx.ui.input("Default max turns before wrap-up", String(getDefaultMaxTurns()));
+      if (val) {
+        const n = parseInt(val, 10);
+        if (n >= 1) {
+          setDefaultMaxTurns(n);
+          ctx.ui.notify(`Default max turns set to ${n}`, "info");
+        } else {
+          ctx.ui.notify("Must be a positive integer.", "warning");
+        }
       }
-
-      const displayName = getDisplayName(typeName);
-      ctx.ui.notify(`Spawning ${displayName} agent...`, "info");
-
-      const customConfig = getCustomAgentConfig(typeName);
-      const { systemPromptOverride, systemPromptAppend } = resolveCustomPrompt(customConfig);
-
-      const record = await manager.spawnAndWait(pi, ctx, typeName, prompt, {
-        description: prompt.slice(0, 40),
-        thinkingLevel: customConfig?.thinking,
-        systemPromptOverride,
-        systemPromptAppend,
-      });
-
-      if (record.status === "error") {
-        ctx.ui.notify(`Agent failed: ${record.error}`, "warning");
-        return;
+    } else if (choice.startsWith("Grace turns")) {
+      const val = await ctx.ui.input("Grace turns after wrap-up steer", String(getGraceTurns()));
+      if (val) {
+        const n = parseInt(val, 10);
+        if (n >= 1) {
+          setGraceTurns(n);
+          ctx.ui.notify(`Grace turns set to ${n}`, "info");
+        } else {
+          ctx.ui.notify("Must be a positive integer.", "warning");
+        }
       }
-
-      const duration = formatDuration(record.startedAt, record.completedAt);
-      const statusNote = getStatusNote(record.status);
-
-      // Send the result as a message so it appears in the conversation
-      pi.sendMessage(
-        {
-          customType: "agent-result",
-          content: [
-            {
-              type: "text",
-              text:
-                `**${displayName}** agent completed in ${duration} (${record.toolUses} tool uses)${statusNote}\n\n` +
-                (record.result ?? "No output."),
-            },
-          ],
-          display: true,
-        },
-        { triggerTurn: false },
-      );
-    },
-  });
-
-  // ---- /agents command ----
+    }
+  }
 
   pi.registerCommand("agents", {
-    description: "List all agents with status",
-    handler: async (_args, ctx) => {
-      const agents = manager.listAgents();
-
-      if (agents.length === 0) {
-        ctx.ui.notify("No agents have been spawned yet.", "info");
-        return;
-      }
-
-      const lines: string[] = [];
-      const counts: Record<string, number> = {};
-      for (const a of agents) counts[a.status] = (counts[a.status] ?? 0) + 1;
-
-      lines.push(
-        `${agents.length} agent(s): ${counts.running ?? 0} running, ${(counts.completed ?? 0) + (counts.steered ?? 0)} completed, ${counts.stopped ?? 0} stopped, ${counts.aborted ?? 0} aborted, ${counts.error ?? 0} errored`,
-      );
-      lines.push("");
-
-      for (let i = 0; i < agents.length; i++) {
-        const a = agents[i];
-        const connector = i === agents.length - 1 ? "└─" : "├─";
-        const displayName = getDisplayName(a.type);
-        const duration = formatDuration(a.startedAt, a.completedAt);
-
-        lines.push(
-          `${connector} ${displayName} (${a.description}) · ${a.toolUses} tool uses · ${a.status} · ${duration}`,
-        );
-
-        if (a.status === "error" && a.error) {
-          const indent = i === agents.length - 1 ? "   " : "│  ";
-          lines.push(`${indent} ⎿  Error: ${a.error.slice(0, 100)}`);
-        }
-        if (a.session) {
-          const indent = i === agents.length - 1 ? "   " : "│  ";
-          lines.push(`${indent} ⎿  ID: ${a.id} (resumable)`);
-        }
-      }
-
-      ctx.ui.notify(lines.join("\n"), "info");
-    },
+    description: "Manage agents",
+    handler: async (_args, ctx) => { await showAgentsMenu(ctx); },
   });
 }

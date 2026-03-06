@@ -23,10 +23,20 @@ import type { SubagentType, ThinkingLevel } from "./types.js";
 const EXCLUDED_TOOL_NAMES = ["Agent", "get_subagent_result", "steer_subagent"];
 
 /** Default max turns to prevent subagents from looping indefinitely. */
-const DEFAULT_MAX_TURNS = 50;
+let defaultMaxTurns = 50;
+
+/** Get the default max turns value. */
+export function getDefaultMaxTurns(): number { return defaultMaxTurns; }
+/** Set the default max turns value (minimum 1). */
+export function setDefaultMaxTurns(n: number): void { defaultMaxTurns = Math.max(1, n); }
 
 /** Additional turns allowed after the soft limit steer message. */
-const GRACE_TURNS = 5;
+let graceTurns = 5;
+
+/** Get the grace turns value. */
+export function getGraceTurns(): number { return graceTurns; }
+/** Set the grace turns value (minimum 1). */
+export function setGraceTurns(n: number): void { graceTurns = Math.max(1, n); }
 
 /** Haiku model IDs to try for Explore agents (in preference order). */
 const HAIKU_MODEL_IDS = [
@@ -215,7 +225,7 @@ export async function runAgent(
 
   // Track turns for graceful max_turns enforcement
   let turnCount = 0;
-  const maxTurns = options.maxTurns ?? customConfig?.maxTurns ?? DEFAULT_MAX_TURNS;
+  const maxTurns = options.maxTurns ?? customConfig?.maxTurns ?? defaultMaxTurns;
   let softLimitReached = false;
   let aborted = false;
 
@@ -226,7 +236,7 @@ export async function runAgent(
       if (!softLimitReached && turnCount >= maxTurns) {
         softLimitReached = true;
         session.steer("You have reached your turn limit. Wrap up immediately — provide your final answer now.");
-      } else if (softLimitReached && turnCount >= maxTurns + GRACE_TURNS) {
+      } else if (softLimitReached && turnCount >= maxTurns + graceTurns) {
         aborted = true;
         session.abort();
       }

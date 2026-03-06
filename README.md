@@ -186,14 +186,26 @@ Send a steering message to a running agent. The message interrupts after the cur
 
 | Command | Description |
 |---------|-------------|
-| `/agent <type> <prompt>` | Spawn a sub-agent interactively |
-| `/agents` | List all agents with status tree |
+| `/agents` | Interactive agent management menu |
+
+The `/agents` command opens an interactive menu:
 
 ```
-/agent Explore Find all TypeScript files that handle authentication
-/agent Plan Design a caching layer for the API
-/agent auditor Review the payment processing module
+Running agents (2) — 1 running, 1 done     ← only shown when agents exist
+Custom agents (3)                           ← submenu: edit or delete agents
+Create new agent                            ← manual wizard or AI-generated
+Settings                                    ← max concurrency, max turns, grace turns
+
+Built-in (always available):
+  general-purpose · inherit
+  Explore         · haiku
+  Plan            · inherit
+  ...
 ```
+
+- **Custom agents submenu** — select an agent to edit (opens editor) or delete
+- **Create new agent** — choose project/personal location, then manual wizard (step-by-step prompts for name, tools, model, thinking, system prompt) or AI-generated (describe what the agent should do and a sub-agent writes the `.md` file)
+- **Settings** — configure max concurrency, default max turns, and grace turns at runtime
 
 ## Graceful Max Turns
 
