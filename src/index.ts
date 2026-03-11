@@ -230,6 +230,21 @@ export default function (pi: ExtensionAPI) {
     widget.update();
   });
 
+  // Expose manager via Symbol.for() global registry for cross-package access.
+  // Standard Node.js pattern for cross-package singletons (used by OpenTelemetry, etc.).
+  const MANAGER_KEY = Symbol.for("pi-subagents:manager");
+  (globalThis as any)[MANAGER_KEY] = {
+    waitForAll: () => manager.waitForAll(),
+    hasRunning: () => manager.hasRunning(),
+  };
+
+  // Wait for all subagents on shutdown, then dispose the manager
+  pi.on("session_shutdown", async () => {
+    delete (globalThis as any)[MANAGER_KEY];
+    await manager.waitForAll();
+    manager.dispose();
+  });
+
   // Live widget: show running agents above editor
   const widget = new AgentWidget(manager, agentActivity);
 

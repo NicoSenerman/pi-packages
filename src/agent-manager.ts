@@ -271,6 +271,28 @@ export class AgentManager {
     }
   }
 
+  /** Whether any agents are still running or queued. */
+  hasRunning(): boolean {
+    return [...this.agents.values()].some(
+      r => r.status === "running" || r.status === "queued",
+    );
+  }
+
+  /** Wait for all running and queued agents to complete (including queued ones). */
+  async waitForAll(): Promise<void> {
+    // Loop because drainQueue respects the concurrency limit — as running
+    // agents finish they start queued ones, which need awaiting too.
+    while (true) {
+      this.drainQueue();
+      const pending = [...this.agents.values()]
+        .filter(r => r.status === "running" || r.status === "queued")
+        .map(r => r.promise)
+        .filter(Boolean);
+      if (pending.length === 0) break;
+      await Promise.allSettled(pending);
+    }
+  }
+
   dispose() {
     clearInterval(this.cleanupInterval);
     // Clear queue
