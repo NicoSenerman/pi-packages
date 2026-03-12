@@ -204,8 +204,44 @@ export default function (pi: ExtensionAPI) {
     30_000,
   );
 
+  /** Helper: build event data for lifecycle events from an AgentRecord. */
+  function buildEventData(record: AgentRecord) {
+    const durationMs = record.completedAt ? record.completedAt - record.startedAt : Date.now() - record.startedAt;
+    let tokens: { input: number; output: number; total: number } | undefined;
+    try {
+      if (record.session) {
+        const stats = record.session.getSessionStats();
+        tokens = {
+          input: stats.tokens?.input ?? 0,
+          output: stats.tokens?.output ?? 0,
+          total: stats.tokens?.total ?? 0,
+        };
+      }
+    } catch { /* session stats unavailable */ }
+    return {
+      id: record.id,
+      type: record.type,
+      description: record.description,
+      result: record.result,
+      error: record.error,
+      status: record.status,
+      toolUses: record.toolUses,
+      durationMs,
+      tokens,
+    };
+  }
+
   // Background completion: route through group join or send individual nudge
   const manager = new AgentManager((record) => {
+    // Emit lifecycle event based on terminal status
+    const isError = record.status === "error" || record.status === "stopped" || record.status === "aborted";
+    const eventData = buildEventData(record);
+    if (isError) {
+      pi.events.emit("subagents:failed", eventData);
+    } else {
+      pi.events.emit("subagents:completed", eventData);
+    }
+
     // Skip notification if result was already consumed via get_subagent_result
     if (record.resultConsumed) {
       agentActivity.delete(record.id);
@@ -228,6 +264,13 @@ export default function (pi: ExtensionAPI) {
     // 'held' → do nothing, group will fire later
     // 'delivered' → group callback already fired
     widget.update();
+  }, undefined, (record) => {
+    // Emit started event when agent transitions to running (including from queue)
+    pi.events.emit("subagents:started", {
+      id: record.id,
+      type: record.type,
+      description: record.description,
+    });
   });
 
   // Expose manager via Symbol.for() global registry for cross-package access.
@@ -236,6 +279,9 @@ export default function (pi: ExtensionAPI) {
   (globalThis as any)[MANAGER_KEY] = {
     waitForAll: () => manager.waitForAll(),
     hasRunning: () => manager.hasRunning(),
+    spawn: (piRef: any, ctx: any, type: string, prompt: string, options: any) =>
+      manager.spawn(piRef, ctx, type, prompt, options),
+    getRecord: (id: string) => manager.getRecord(id),
   };
 
   // Wait for all subagents on shutdown, then dispose the manager
@@ -618,6 +664,15 @@ Guidelines:
         agentActivity.set(id, bgState);
         widget.ensureTimer();
         widget.update();
+
+        // Emit created event
+        pi.events.emit("subagents:created", {
+          id,
+          type: subagentType,
+          description: params.description,
+          isBackground: true,
+        });
+
         const isQueued = record?.status === "queued";
         return textResult(
           `Agent ${isQueued ? "queued" : "started"} in background.\n` +
@@ -817,6 +872,7 @@ Guidelines:
 
       try {
         await steerAgent(record.session, params.message);
+        pi.events.emit("subagents:steered", { id: record.id, message: params.message });
         return textResult(`Steering message sent to agent ${record.id}. The agent will process it after its current tool execution.`);
       } catch (err) {
         return textResult(`Failed to steer agent: ${err instanceof Error ? err.message : String(err)}`);

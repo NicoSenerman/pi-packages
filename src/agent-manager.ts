@@ -14,6 +14,7 @@ import { runAgent, resumeAgent, type ToolActivity } from "./agent-runner.js";
 import type { SubagentType, AgentRecord, ThinkingLevel } from "./types.js";
 
 export type OnAgentComplete = (record: AgentRecord) => void;
+export type OnAgentStart = (record: AgentRecord) => void;
 
 /** Default max concurrent background agents. */
 const DEFAULT_MAX_CONCURRENT = 4;
@@ -46,6 +47,7 @@ export class AgentManager {
   private agents = new Map<string, AgentRecord>();
   private cleanupInterval: ReturnType<typeof setInterval>;
   private onComplete?: OnAgentComplete;
+  private onStart?: OnAgentStart;
   private maxConcurrent: number;
 
   /** Queue of background agents waiting to start. */
@@ -53,8 +55,9 @@ export class AgentManager {
   /** Number of currently running background agents. */
   private runningBackground = 0;
 
-  constructor(onComplete?: OnAgentComplete, maxConcurrent = DEFAULT_MAX_CONCURRENT) {
+  constructor(onComplete?: OnAgentComplete, maxConcurrent = DEFAULT_MAX_CONCURRENT, onStart?: OnAgentStart) {
     this.onComplete = onComplete;
+    this.onStart = onStart;
     this.maxConcurrent = maxConcurrent;
     // Cleanup completed agents after 10 minutes (but keep sessions for resume)
     this.cleanupInterval = setInterval(() => this.cleanup(), 60_000);
@@ -112,6 +115,7 @@ export class AgentManager {
     record.status = "running";
     record.startedAt = Date.now();
     if (options.isBackground) this.runningBackground++;
+    this.onStart?.(record);
 
     const promise = runAgent(ctx, type, prompt, {
       pi,

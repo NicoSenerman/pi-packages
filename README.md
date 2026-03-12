@@ -23,6 +23,7 @@ https://github.com/user-attachments/assets/8685261b-9338-4fea-8dfe-1c590d5df543
 - **Case-insensitive agent types** — `"explore"`, `"Explore"`, `"EXPLORE"` all work. Unknown types fall back to general-purpose with a note
 - **Fuzzy model selection** — specify models by name (`"haiku"`, `"sonnet"`) instead of full IDs, with automatic filtering to only available/configured models
 - **Context inheritance** — optionally fork the parent conversation into a sub-agent so it knows what's been discussed
+- **Event bus** — lifecycle events (`subagents:created`, `started`, `completed`, `failed`, `steered`) emitted via `pi.events`, enabling other extensions to react to sub-agent activity
 
 ## Install
 
@@ -250,6 +251,18 @@ When background agents complete, they notify the main agent. The **join mode** c
 **Configuration:**
 - Per-call: `Agent({ ..., join_mode: "async" })` overrides for that agent
 - Global default: `/agents` → Settings → Join mode
+
+## Events
+
+Agent lifecycle events are emitted via `pi.events.emit()` so other extensions can react:
+
+| Event | When | Key fields |
+|-------|------|------------|
+| `subagents:created` | Background agent registered | `id`, `type`, `description`, `isBackground` |
+| `subagents:started` | Agent transitions to running (including queued→running) | `id`, `type`, `description` |
+| `subagents:completed` | Agent finished successfully | `id`, `type`, `durationMs`, `tokens`, `toolUses`, `result` |
+| `subagents:failed` | Agent errored, stopped, or aborted | same as completed + `error`, `status` |
+| `subagents:steered` | Steering message sent | `id`, `message` |
 
 ## Architecture
 
