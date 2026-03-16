@@ -341,6 +341,31 @@ export class AgentManager {
     );
   }
 
+  /** Abort all running and queued agents immediately. */
+  abortAll(): number {
+    let count = 0;
+    // Clear queued agents first
+    for (const queued of this.queue) {
+      const record = this.agents.get(queued.id);
+      if (record) {
+        record.status = "stopped";
+        record.completedAt = Date.now();
+        count++;
+      }
+    }
+    this.queue = [];
+    // Abort running agents
+    for (const record of this.agents.values()) {
+      if (record.status === "running") {
+        record.abortController?.abort();
+        record.status = "stopped";
+        record.completedAt = Date.now();
+        count++;
+      }
+    }
+    return count;
+  }
+
   /** Wait for all running and queued agents to complete (including queued ones). */
   async waitForAll(): Promise<void> {
     // Loop because drainQueue respects the concurrency limit — as running

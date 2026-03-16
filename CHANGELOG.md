@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.6] - 2026-03-16
+
+### Fixed
+- **Graceful shutdown aborts agents instead of blocking** — `session_shutdown` now calls `abortAll()` instead of `waitForAll()`, so the process exits immediately instead of hanging until all background agents complete. Agent results are undeliverable after shutdown anyway.
+
+### Added
+- `abortAll()` method on `AgentManager` — stops all queued and running agents at once, returning the count of affected agents.
+
 ## [0.4.5] - 2026-03-16
 
 ### Changed
@@ -266,6 +274,7 @@ Initial release.
 - **Thinking level** — per-agent extended thinking control
 - **`/agent` and `/agents` commands**
 
+[0.4.6]: https://github.com/tintinweb/pi-subagents/compare/v0.4.5...v0.4.6
 [0.4.5]: https://github.com/tintinweb/pi-subagents/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/tintinweb/pi-subagents/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/tintinweb/pi-subagents/compare/v0.4.2...v0.4.3

@@ -288,10 +288,11 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", () => { manager.clearCompleted(); });
   pi.on("session_switch", () => { manager.clearCompleted(); });
 
-  // Wait for all subagents on shutdown, then dispose the manager
+  // On shutdown, abort all agents immediately and clean up.
+  // If the session is going down, there's nothing left to consume agent results.
   pi.on("session_shutdown", async () => {
     delete (globalThis as any)[MANAGER_KEY];
-    await manager.waitForAll();
+    manager.abortAll();
     manager.dispose();
   });
 
