@@ -171,6 +171,12 @@ export class AgentManager {
         record.session = session;
         record.completedAt ??= Date.now();
 
+        // Final flush of streaming output file
+        if (record.outputCleanup) {
+          try { record.outputCleanup(); } catch { /* ignore */ }
+          record.outputCleanup = undefined;
+        }
+
         // Clean up worktree if used
         if (record.worktree) {
           const wtResult = cleanupWorktree(ctx.cwd, record.worktree, options.description);
@@ -195,6 +201,12 @@ export class AgentManager {
         }
         record.error = err instanceof Error ? err.message : String(err);
         record.completedAt ??= Date.now();
+
+        // Final flush of streaming output file on error
+        if (record.outputCleanup) {
+          try { record.outputCleanup(); } catch { /* ignore */ }
+          record.outputCleanup = undefined;
+        }
 
         // Best-effort worktree cleanup on error
         if (record.worktree) {

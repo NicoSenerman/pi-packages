@@ -27,6 +27,7 @@ https://github.com/user-attachments/assets/8685261b-9338-4fea-8dfe-1c590d5df543
 - **Git worktree isolation** — run agents in isolated repo copies; changes auto-committed to branches on completion
 - **Skill preloading** — inject named skill files from `.pi/skills/` into agent system prompts
 - **Tool denylist** — block specific tools via `disallowed_tools` frontmatter
+- **Styled completion notifications** — background agent results render as themed, compact notification boxes (icon, stats, result preview) instead of raw XML. Expandable to show full output. Group completions render each agent individually
 - **Event bus** — lifecycle events (`subagents:created`, `started`, `completed`, `failed`, `steered`) emitted via `pi.events`, enabling other extensions to react to sub-agent activity
 
 ## Install
@@ -81,6 +82,17 @@ Individual agent results render Claude Code-style in the conversation:
 | **Aborted** | `✗ 55 tool uses · 102.3k token` / `⎿ Aborted (max turns exceeded)` |
 
 Completed results can be expanded (ctrl+o in pi) to show the full agent output inline.
+
+Background agent completion notifications render as styled boxes:
+
+```
+✓ Find auth files completed
+  3 tool uses · 12.4k token · 4.1s
+  ⎿  Found 5 files related to authentication...
+  transcript: .pi/output/agent-abc123.jsonl
+```
+
+Group completions render each agent as a separate block. The LLM receives structured `<task-notification>` XML for parsing, while the user sees the themed visual.
 
 ## Default Agent Types
 
@@ -346,6 +358,7 @@ src/
   custom-agents.ts    # Load user-defined agents from .pi/agents/*.md
   memory.ts           # Persistent agent memory (resolve, read, build prompt blocks)
   skill-loader.ts     # Preload skill files from .pi/skills/
+  output-file.ts      # Streaming output file transcripts for agent sessions
   worktree.ts         # Git worktree isolation (create, cleanup, prune)
   prompts.ts          # Config-driven system prompt builder
   context.ts          # Parent conversation context for inherit_context

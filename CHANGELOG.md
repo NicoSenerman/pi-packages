@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.7] - 2026-03-17
+
+### Added
+- **Custom notification renderer** — background agent completion notifications now render as styled, themed boxes instead of raw XML. Uses `pi.registerMessageRenderer()` with the `"subagent-notification"` custom message type. The LLM continues to receive `<task-notification>` XML via `content`; only the user-facing display changes.
+- **Group notification rendering** — group completions render each agent as its own styled block (icon, description, stats, result preview) instead of showing only the first agent.
+- **Output file streaming for background agents** — background agents now get the same output file transcript as foreground agents, with `onSessionCreated` wiring and proper cleanup on completion/error.
+- `NotificationDetails` type in `types.ts` — structured details for the notification renderer, with optional `others` array for group notifications.
+- `buildNotificationDetails()` helper — extracts renderer-facing details from an `AgentRecord`.
+
+### Changed
+- **Notification delivery** — `sendIndividualNudge` and group notification now use `pi.sendMessage()` (custom message) instead of `pi.sendUserMessage()` (plain text), enabling renderer-controlled display.
+- **Steered status rendering** — steered agents show "completed (steered)" in the notification box instead of plain "completed".
+
+### Fixed
+- **Output file cleanup on completion** — `agent-manager.ts` now calls `record.outputCleanup()` in both the success and error paths of agent completion, ensuring the streaming subscription is flushed and released.
+
 ## [0.4.6] - 2026-03-16
 
 ### Fixed
@@ -274,6 +290,7 @@ Initial release.
 - **Thinking level** — per-agent extended thinking control
 - **`/agent` and `/agents` commands**
 
+[0.4.7]: https://github.com/tintinweb/pi-subagents/compare/v0.4.6...v0.4.7
 [0.4.6]: https://github.com/tintinweb/pi-subagents/compare/v0.4.5...v0.4.6
 [0.4.5]: https://github.com/tintinweb/pi-subagents/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/tintinweb/pi-subagents/compare/v0.4.3...v0.4.4

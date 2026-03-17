@@ -79,6 +79,27 @@ export interface AgentRecord {
   worktree?: { path: string; branch: string };
   /** Worktree cleanup result after agent completion. */
   worktreeResult?: { hasChanges: boolean; branch?: string };
+  /** The tool_use_id from the original Agent tool call. */
+  toolCallId?: string;
+  /** Path to the streaming output transcript file. */
+  outputFile?: string;
+  /** Cleanup function for the output file stream subscription. */
+  outputCleanup?: () => void;
+}
+
+/** Details attached to custom notification messages for visual rendering. */
+export interface NotificationDetails {
+  id: string;
+  description: string;
+  status: string;
+  toolUses: number;
+  totalTokens: number;
+  durationMs: number;
+  outputFile?: string;
+  error?: string;
+  resultPreview: string;
+  /** Additional agents in a group notification. */
+  others?: NotificationDetails[];
 }
 
 export interface EnvInfo {
