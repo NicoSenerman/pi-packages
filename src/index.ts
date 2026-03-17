@@ -18,11 +18,12 @@ import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { AgentManager } from "./agent-manager.js";
 import { steerAgent, getAgentConversation, getDefaultMaxTurns, setDefaultMaxTurns, getGraceTurns, setGraceTurns } from "./agent-runner.js";
-import { DEFAULT_AGENT_NAMES, type SubagentType, type ThinkingLevel, type AgentConfig, type JoinMode, type AgentRecord } from "./types.js";
+import { DEFAULT_AGENT_NAMES, type SubagentType, type ThinkingLevel, type AgentConfig, type JoinMode, type AgentRecord, type NotificationDetails } from "./types.js";
 import { GroupJoinManager } from "./group-join.js";
 import { getAvailableTypes, getAllTypes, getDefaultAgentNames, getUserAgentNames, getAgentConfig, resolveType, registerAgents, BUILTIN_TOOL_NAMES } from "./agent-types.js";
 import { loadCustomAgents } from "./custom-agents.js";
 import { resolveModel, type ModelRegistry } from "./model-resolver.js";
+import { createOutputFilePath, writeInitialEntry, streamToOutputFile } from "./output-file.js";
 import {
   AgentWidget,
   SPINNER,
@@ -103,6 +104,42 @@ function getStatusNote(status: string): string {
   }
 }
 
+/** Escape XML special characters to prevent injection in structured notifications. */
+function escapeXml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/** Format a structured task notification matching Claude Code's <task-notification> XML. */
+function formatTaskNotification(record: AgentRecord, resultMaxLen: number): string {
+  const status = getStatusLabel(record.status, record.error);
+  const durationMs = record.completedAt ? record.completedAt - record.startedAt : 0;
+  let totalTokens = 0;
+  try {
+    if (record.session) {
+      const stats = record.session.getSessionStats();
+      totalTokens = stats.tokens?.total ?? 0;
+    }
+  } catch { /* session stats unavailable */ }
+
+  const resultPreview = record.result
+    ? record.result.length > resultMaxLen
+      ? record.result.slice(0, resultMaxLen) + "\n...(truncated, use get_subagent_result for full output)"
+      : record.result
+    : "No output.";
+
+  return [
+    `<task-notification>`,
+    `<task-id>${record.id}</task-id>`,
+    record.toolCallId ? `<tool-use-id>${escapeXml(record.toolCallId)}</tool-use-id>` : null,
+    record.outputFile ? `<output-file>${escapeXml(record.outputFile)}</output-file>` : null,
+    `<status>${escapeXml(status)}</status>`,
+    `<summary>Agent "${escapeXml(record.description)}" ${record.status}</summary>`,
+    `<result>${escapeXml(resultPreview)}</result>`,
+    `<usage><total_tokens>${totalTokens}</total_tokens><tool_uses>${record.toolUses}</tool_uses><duration_ms>${durationMs}</duration_ms></usage>`,
+    `</task-notification>`,
+  ].filter(Boolean).join('\n');
+}
+
 /** Build AgentDetails from a base + record-specific fields. */
 function buildDetails(
   base: Pick<AgentDetails, "displayName" | "description" | "subagentType" | "modelName" | "tags">,
@@ -121,7 +158,79 @@ function buildDetails(
   };
 }
 
+/** Build notification details for the custom message renderer. */
+function buildNotificationDetails(record: AgentRecord, resultMaxLen: number): NotificationDetails {
+  let totalTokens = 0;
+  try {
+    if (record.session) totalTokens = record.session.getSessionStats().tokens?.total ?? 0;
+  } catch {}
+
+  return {
+    id: record.id,
+    description: record.description,
+    status: record.status,
+    toolUses: record.toolUses,
+    totalTokens,
+    durationMs: record.completedAt ? record.completedAt - record.startedAt : 0,
+    outputFile: record.outputFile,
+    error: record.error,
+    resultPreview: record.result
+      ? record.result.length > resultMaxLen
+        ? record.result.slice(0, resultMaxLen) + "…"
+        : record.result
+      : "No output.",
+  };
+}
+
 export default function (pi: ExtensionAPI) {
+  // ---- Register custom notification renderer ----
+  pi.registerMessageRenderer<NotificationDetails>(
+    "subagent-notification",
+    (message, { expanded }, theme) => {
+      const d = message.details;
+      if (!d) return undefined;
+
+      function renderOne(d: NotificationDetails): string {
+        const isError = d.status === "error" || d.status === "stopped" || d.status === "aborted";
+        const icon = isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
+        const statusText = isError ? d.status
+          : d.status === "steered" ? "completed (steered)"
+          : "completed";
+
+        // Line 1: icon + agent description + status
+        let line = `${icon} ${theme.bold(d.description)} ${theme.fg("dim", statusText)}`;
+
+        // Line 2: stats
+        const parts: string[] = [];
+        if (d.toolUses > 0) parts.push(`${d.toolUses} tool use${d.toolUses === 1 ? "" : "s"}`);
+        if (d.totalTokens > 0) parts.push(formatTokens(d.totalTokens));
+        if (d.durationMs > 0) parts.push(formatMs(d.durationMs));
+        if (parts.length) {
+          line += "\n  " + parts.map(p => theme.fg("dim", p)).join(" " + theme.fg("dim", "·") + " ");
+        }
+
+        // Line 3: result preview (collapsed) or full (expanded)
+        if (expanded) {
+          const lines = d.resultPreview.split("\n").slice(0, 30);
+          for (const l of lines) line += "\n" + theme.fg("dim", `  ${l}`);
+        } else {
+          const preview = d.resultPreview.split("\n")[0]?.slice(0, 80) ?? "";
+          line += "\n  " + theme.fg("dim", `⎿  ${preview}`);
+        }
+
+        // Line 4: output file link (if present)
+        if (d.outputFile) {
+          line += "\n  " + theme.fg("muted", `transcript: ${d.outputFile}`);
+        }
+
+        return line;
+      }
+
+      const all = [d, ...(d.others ?? [])];
+      return new Text(all.map(renderOne).join("\n"), 0, 0);
+    }
+  );
+
   /** Reload agents from .pi/agents/*.md and merge with defaults (called on init and each Agent invocation). */
   const reloadCustomAgents = () => {
     const userAgents = loadCustomAgents(process.cwd());
@@ -136,69 +245,46 @@ export default function (pi: ExtensionAPI) {
 
   // ---- Individual nudge helper (async join mode) ----
   function sendIndividualNudge(record: AgentRecord) {
-    const displayName = getDisplayName(record.type);
-    const duration = formatDuration(record.startedAt, record.completedAt);
-    const status = getStatusLabel(record.status, record.error);
-    const resultPreview = record.result
-      ? record.result.length > 500
-        ? record.result.slice(0, 500) + "\n...(truncated, use get_subagent_result for full output)"
-        : record.result
-      : "No output.";
-
     agentActivity.delete(record.id);
     widget.markFinished(record.id);
 
-    const tokens = safeFormatTokens(record.session);
-    const toolStats = tokens ? `Tool uses: ${record.toolUses} | ${tokens}` : `Tool uses: ${record.toolUses}`;
-    pi.sendUserMessage(
-      `Background agent completed: ${displayName} (${record.description})\n` +
-      `Agent ID: ${record.id} | Status: ${status} | ${toolStats} | Duration: ${duration}\n\n` +
-      resultPreview,
-      { deliverAs: "followUp" },
-    );
-    widget.update();
-  }
+    const notification = formatTaskNotification(record, 500);
+    const footer = record.outputFile ? `\nFull transcript available at: ${record.outputFile}` : '';
 
-  /** Format a single agent's summary for grouped notification. */
-  function formatAgentSummary(record: AgentRecord): string {
-    const displayName = getDisplayName(record.type);
-    const duration = formatDuration(record.startedAt, record.completedAt);
-    const status = getStatusLabel(record.status, record.error);
-    const resultPreview = record.result
-      ? record.result.length > 300
-        ? record.result.slice(0, 300) + "\n...(truncated)"
-        : record.result
-      : "No output.";
-    const tokens = safeFormatTokens(record.session);
-    const toolStats = tokens ? `Tools: ${record.toolUses} | ${tokens}` : `Tools: ${record.toolUses}`;
-    return `- ${displayName} (${record.description})\n  ID: ${record.id} | Status: ${status} | ${toolStats} | Duration: ${duration}\n  ${resultPreview}`;
+    pi.sendMessage<NotificationDetails>({
+      customType: "subagent-notification",
+      content: notification + footer,
+      display: true,
+      details: buildNotificationDetails(record, 500),
+    }, { deliverAs: "followUp" });
+
+    widget.update();
   }
 
   // ---- Group join manager ----
   const groupJoin = new GroupJoinManager(
     (records, partial) => {
-      // Filter out agents whose results were already consumed via get_subagent_result
       const unconsumed = records.filter(r => !r.resultConsumed);
+      for (const r of records) { agentActivity.delete(r.id); widget.markFinished(r.id); }
+      if (unconsumed.length === 0) { widget.update(); return; }
 
-      for (const r of records) {
-        agentActivity.delete(r.id);
-        widget.markFinished(r.id);
+      const notifications = unconsumed.map(r => formatTaskNotification(r, 300)).join('\n\n');
+      const label = partial
+        ? `${unconsumed.length} agent(s) finished (partial — others still running)`
+        : `${unconsumed.length} agent(s) finished`;
+
+      const [first, ...rest] = unconsumed;
+      const details = buildNotificationDetails(first, 300);
+      if (rest.length > 0) {
+        details.others = rest.map(r => buildNotificationDetails(r, 300));
       }
 
-      // If all results were already consumed, skip the notification entirely
-      if (unconsumed.length === 0) {
-        widget.update();
-        return;
-      }
-
-      const total = unconsumed.length;
-      const label = partial ? `${total} agent(s) finished (partial — others still running)` : `${total} agent(s) finished`;
-      const summary = unconsumed.map(r => formatAgentSummary(r)).join("\n\n");
-
-      pi.sendUserMessage(
-        `Background agent group completed: ${label}\n\n${summary}\n\nUse get_subagent_result for full output.`,
-        { deliverAs: "followUp" },
-      );
+      pi.sendMessage<NotificationDetails>({
+        customType: "subagent-notification",
+        content: `Background agent group completed: ${label}\n\n${notifications}\n\nUse get_subagent_result for full output.`,
+        display: true,
+        details,
+      }, { deliverAs: "followUp" });
       widget.update();
     },
     30_000,
@@ -564,7 +650,7 @@ Guidelines:
 
     // ---- Execute ----
 
-    execute: async (_toolCallId, params, signal, onUpdate, ctx) => {
+    execute: async (toolCallId, params, signal, onUpdate, ctx) => {
       // Ensure we have UI context for widget rendering
       widget.setUICtx(ctx.ui as UICtx);
 
@@ -647,7 +733,20 @@ Guidelines:
       if (runInBackground) {
         const { state: bgState, callbacks: bgCallbacks } = createActivityTracker();
 
-        const id = manager.spawn(pi, ctx, subagentType, params.prompt, {
+        // Wrap onSessionCreated to wire output file streaming.
+        // The callback lazily reads record.outputFile (set right after spawn)
+        // rather than closing over a value that doesn't exist yet.
+        let id: string;
+        const origBgOnSession = bgCallbacks.onSessionCreated;
+        bgCallbacks.onSessionCreated = (session: any) => {
+          origBgOnSession(session);
+          const rec = manager.getRecord(id);
+          if (rec?.outputFile) {
+            rec.outputCleanup = streamToOutputFile(session, rec.outputFile, id, ctx.cwd);
+          }
+        };
+
+        id = manager.spawn(pi, ctx, subagentType, params.prompt, {
           description: params.description,
           model,
           maxTurns: params.max_turns,
@@ -659,10 +758,16 @@ Guidelines:
           ...bgCallbacks,
         });
 
-        // Determine join mode and track for batching
+        // Set output file + join mode synchronously after spawn, before the
+        // event loop yields — onSessionCreated is async so this is safe.
         const joinMode: JoinMode = params.join_mode ?? defaultJoinMode;
         const record = manager.getRecord(id);
-        if (record) record.joinMode = joinMode;
+        if (record) {
+          record.joinMode = joinMode;
+          record.toolCallId = toolCallId;
+          record.outputFile = createOutputFilePath(ctx.cwd, id, ctx.sessionManager.getSessionId());
+          writeInitialEntry(record.outputFile, id, params.prompt, ctx.cwd);
+        }
 
         if (joinMode === 'async') {
           // Explicit async — not part of any batch
@@ -693,6 +798,7 @@ Guidelines:
           `Agent ID: ${id}\n` +
           `Type: ${displayName}\n` +
           `Description: ${params.description}\n` +
+          (record?.outputFile ? `Output file: ${record.outputFile}\n` : "") +
           (isQueued ? `Position: queued (max ${manager.getMaxConcurrent()} concurrent)\n` : "") +
           `\nYou will be notified when this agent completes.\n` +
           `Use get_subagent_result to retrieve full results, or steer_subagent to send it messages.\n` +
