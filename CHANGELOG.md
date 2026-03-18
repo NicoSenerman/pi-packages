@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.9] - 2026-03-18
+
+### Fixed
+- **Conversation viewer crash in narrow terminals** ([#7](https://github.com/tintinweb/pi-subagents/issues/7)) — `buildContentLines()` in the live conversation viewer could return lines wider than the terminal when `wrapTextWithAnsi()` misjudged visible width on ANSI-heavy input (e.g. tool output with embedded escape codes, long URLs, wide tables). All content lines are now clamped with `truncateToWidth()` before returning. Same class of bug as the widget fix in v0.2.7, different component.
+
+### Added
+- **Conversation viewer width-safety tests** — 17 tests covering `render()` and `buildContentLines()` across varied content (plain text, ANSI codes, unicode, tables, long URLs, narrow terminals). Includes mock-based regression tests that simulate upstream `wrapTextWithAnsi` returning overwidth lines, ensuring the safety net catches them.
+
 ## [0.4.8] - 2026-03-18
 
 ### Added
@@ -299,6 +307,7 @@ Initial release.
 - **Thinking level** — per-agent extended thinking control
 - **`/agent` and `/agents` commands**
 
+[0.4.9]: https://github.com/tintinweb/pi-subagents/compare/v0.4.8...v0.4.9
 [0.4.8]: https://github.com/tintinweb/pi-subagents/compare/v0.4.7...v0.4.8
 [0.4.7]: https://github.com/tintinweb/pi-subagents/compare/v0.4.6...v0.4.7
 [0.4.6]: https://github.com/tintinweb/pi-subagents/compare/v0.4.5...v0.4.6
