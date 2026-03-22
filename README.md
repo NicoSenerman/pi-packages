@@ -29,7 +29,7 @@ https://github.com/user-attachments/assets/8685261b-9338-4fea-8dfe-1c590d5df543
 - **Tool denylist** — block specific tools via `disallowed_tools` frontmatter
 - **Styled completion notifications** — background agent results render as themed, compact notification boxes (icon, stats, result preview) instead of raw XML. Expandable to show full output. Group completions render each agent individually
 - **Event bus** — lifecycle events (`subagents:created`, `started`, `completed`, `failed`, `steered`) emitted via `pi.events`, enabling other extensions to react to sub-agent activity
-- **Cross-extension RPC** — other pi extensions can spawn subagents via the `pi.events` event bus (`subagents:rpc:ping`, `subagents:rpc:spawn`). Emits `subagents:ready` on load
+- **Cross-extension RPC** — other pi extensions can spawn and stop subagents via the `pi.events` event bus (`subagents:rpc:ping`, `subagents:rpc:spawn`, `subagents:rpc:stop`). Standardized reply envelopes with protocol versioning. Emits `subagents:ready` on load
 
 ## Install
 
@@ -289,7 +289,9 @@ Agent lifecycle events are emitted via `pi.events.emit()` so other extensions ca
 
 ## Cross-Extension RPC
 
-Other pi extensions can spawn subagents programmatically via the `pi.events` event bus, without importing this package directly.
+Other pi extensions can spawn and stop subagents programmatically via the `pi.events` event bus, without importing this package directly.
+
+All RPC replies use a standardized envelope: `{ success: true, data?: T }` on success, `{ success: false, error: string }` on failure.
 
 ### Discovery
 
@@ -297,19 +299,19 @@ Listen for `subagents:ready` to know when RPC handlers are available:
 
 ```typescript
 pi.events.on("subagents:ready", () => {
-  // RPC handlers are registered — safe to call ping/spawn
+  // RPC handlers are registered — safe to call ping/spawn/stop
 });
 ```
 
 ### Ping
 
-Check if the subagents extension is loaded:
+Check if the subagents extension is loaded and get the protocol version:
 
 ```typescript
 const requestId = crypto.randomUUID();
-const unsub = pi.events.on(`subagents:rpc:ping:reply:${requestId}`, () => {
+const unsub = pi.events.on(`subagents:rpc:ping:reply:${requestId}`, (reply) => {
   unsub();
-  // Extension is alive
+  if (reply.success) console.log("Protocol version:", reply.data.version);
 });
 pi.events.emit("subagents:rpc:ping", { requestId });
 ```
@@ -322,10 +324,10 @@ Spawn a subagent and receive its ID:
 const requestId = crypto.randomUUID();
 const unsub = pi.events.on(`subagents:rpc:spawn:reply:${requestId}`, (reply) => {
   unsub();
-  if (reply.error) {
+  if (!reply.success) {
     console.error("Spawn failed:", reply.error);
   } else {
-    console.log("Agent ID:", reply.id);
+    console.log("Agent ID:", reply.data.id);
   }
 });
 pi.events.emit("subagents:rpc:spawn", {
@@ -334,6 +336,19 @@ pi.events.emit("subagents:rpc:spawn", {
   prompt: "Do something useful",
   options: { description: "My task", run_in_background: true },
 });
+```
+
+### Stop
+
+Stop a running agent by ID:
+
+```typescript
+const requestId = crypto.randomUUID();
+const unsub = pi.events.on(`subagents:rpc:stop:reply:${requestId}`, (reply) => {
+  unsub();
+  if (!reply.success) console.error("Stop failed:", reply.error);
+});
+pi.events.emit("subagents:rpc:stop", { requestId, agentId: "agent-id-here" });
 ```
 
 Reply channels are scoped per `requestId`, so concurrent requests don't interfere.

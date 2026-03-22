@@ -7,30 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-22
+
 ### Added
 - **RPC stop handler** — new `subagents:rpc:stop` event bus RPC allows other extensions to stop running subagents by agent ID. Returns structured error ("Agent not found") on failure.
 - **`abort` in `SpawnCapable` interface** — cross-extension RPC consumers can now stop agents, not just spawn them.
+- **Live turn counter** — all agents now show a live turn count in the widget, inline result, and completion notification. With a turn limit: `⟳5≤30` (5 of 30 turns). Without: `⟳5`. Updates in real time as turns progress via `onTurnEnd` callback.
+- **Biome linting** — added [Biome](https://biomejs.dev/) for correctness linting (unused imports, suspicious patterns). Style rules disabled. Run `npm run lint` to check, `npm run lint:fix` to auto-fix.
+- **CI workflow** — GitHub Actions runs lint, typecheck, and tests on push to master and PRs.
+- **Auto-trigger parent turn on background completion** — background agent completion notifications now use `triggerTurn: true`, automatically prompting the parent agent to process results instead of waiting for user input.
 
 ### Changed
 - **Standardized RPC envelope** — cross-extension RPC handlers (`ping`, `spawn`, `stop`) now use a `handleRpc` wrapper that emits structured envelopes (`{ success: true, data }` / `{ success: false, error }`), matching pi-mono's `RpcResponse` convention.
 - **Protocol versioning via ping** — ping reply now includes `{ version: PROTOCOL_VERSION }` (currently v2). Callers can detect version mismatches and warn users to update.
-
-## [0.4.11] - 2026-03-18
-
-### Fixed
+- **Default max turns is now unlimited** — subagents no longer have a 50-turn default cap. The default is unlimited (no turn limit), matching Claude Code's main loop behavior. Users can still set explicit limits per-agent via `max_turns` frontmatter or the Agent tool parameter, or globally via `/agents` → Settings (`0` = unlimited).
 - **Stale dist in published package** — added `prepublishOnly` hook to build fresh `dist/` on every `npm publish`.
 
-## [0.4.10] - 2026-03-18
-
-### Changed
-- **Default max turns is now unlimited** — subagents no longer have a 50-turn default cap. The default is unlimited (no turn limit), matching Claude Code's main loop behavior. Users can still set explicit limits per-agent via `max_turns` frontmatter or the Agent tool parameter, or globally via `/agents` → Settings (`0` = unlimited).
-- **Live turn counter** — all agents now show a live turn count in the widget, inline result, and completion notification. With a turn limit: `⟳5≤30` (5 of 30 turns). Without: `⟳5`. Updates in real time as turns progress.
-
-### Added
-- **Biome linting** — added [Biome](https://biomejs.dev/) for correctness linting (unused imports, suspicious patterns). Style rules disabled. Run `npm run lint` to check, `npm run lint:fix` to auto-fix.
-- **CI workflow** — GitHub Actions runs lint, typecheck, and tests on push to master and PRs.
-
 ### Fixed
+- **Tool name display** — `getAgentConversation` now reads `ToolCall.name` (the correct property) instead of `toolName`, resolving `[Tool: unknown]` in conversation viewer and verbose output.
 - **Env test CI failure** — `detectEnv` test assumed a branch name exists, but CI checks out detached HEAD. Split into separate tests for repo detection and branch detection with a controlled temp repo.
 
 ## [0.4.9] - 2026-03-18
@@ -335,6 +329,7 @@ Initial release.
 - **Thinking level** — per-agent extended thinking control
 - **`/agent` and `/agents` commands**
 
+[0.5.0]: https://github.com/tintinweb/pi-subagents/compare/v0.4.9...v0.5.0
 [0.4.9]: https://github.com/tintinweb/pi-subagents/compare/v0.4.8...v0.4.9
 [0.4.8]: https://github.com/tintinweb/pi-subagents/compare/v0.4.7...v0.4.8
 [0.4.7]: https://github.com/tintinweb/pi-subagents/compare/v0.4.6...v0.4.7
