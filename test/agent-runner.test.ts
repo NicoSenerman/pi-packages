@@ -76,6 +76,7 @@ function createSession(finalText: string) {
     steer: vi.fn(),
     getActiveToolNames: vi.fn(() => ["read"]),
     setActiveToolsByName: vi.fn(),
+    bindExtensions: vi.fn(async () => {}),
   };
   return { session, listeners };
 }
@@ -102,6 +103,22 @@ describe("agent-runner final output capture", () => {
     const result = await runAgent(ctx, "Explore", "Say LOCKED", { pi });
 
     expect(result.responseText).toBe("LOCKED");
+  });
+
+  it("binds extensions before prompting", async () => {
+    const { session } = createSession("BOUND");
+    createAgentSession.mockResolvedValue({ session });
+
+    await runAgent(ctx, "Explore", "Say BOUND", { pi });
+
+    expect(session.bindExtensions).toHaveBeenCalledTimes(1);
+    expect(session.bindExtensions).toHaveBeenCalledWith(
+      expect.objectContaining({ onError: expect.any(Function) }),
+    );
+
+    const bindOrder = session.bindExtensions.mock.invocationCallOrder[0];
+    const promptOrder = session.prompt.mock.invocationCallOrder[0];
+    expect(bindOrder).toBeLessThan(promptOrder);
   });
 
   it("resumeAgent also falls back to the final assistant message text", async () => {
