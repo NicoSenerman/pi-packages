@@ -68,6 +68,7 @@ import {
   requestPermissionDecisionFromUi,
 } from "./permission-dialog";
 import { PERMISSION_FORWARDING_POLL_INTERVAL_MS } from "./permission-forwarding";
+import { applyPermissionGate } from "./permission-gate";
 import { PermissionManager } from "./permission-manager";
 import {
   formatAskPrompt,
@@ -673,45 +674,44 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
       agentName ?? undefined,
     );
 
-    if (check.state === "deny") {
-      if (ctx.hasUI) {
-        const message = agentName
-          ? `Skill '${skillName}' is not permitted for agent '${agentName}'.`
-          : `Skill '${skillName}' is not permitted by the current skill policy.`;
-        ctx.ui.notify(message, "warning");
-      }
-      writeReviewLog("permission_request.blocked", {
-        source: "skill_input",
-        skillName,
-        agentName,
-        resolution: "policy_denied",
-      });
-      return { action: "handled" };
+    if (check.state === "deny" && ctx.hasUI) {
+      const notifyMessage = agentName
+        ? `Skill '${skillName}' is not permitted for agent '${agentName}'.`
+        : `Skill '${skillName}' is not permitted by the current skill policy.`;
+      ctx.ui.notify(notifyMessage, "warning");
     }
 
-    if (check.state === "ask") {
-      const message = formatSkillAskPrompt(skillName, agentName ?? undefined);
-      if (!canRequestPermissionConfirmation(ctx)) {
-        writeReviewLog("permission_request.blocked", {
+    const skillInputMessage = formatSkillAskPrompt(
+      skillName,
+      agentName ?? undefined,
+    );
+    const skillInputGate = await applyPermissionGate({
+      state: check.state,
+      canConfirm: canRequestPermissionConfirmation(ctx),
+      promptForApproval: () =>
+        promptPermission(ctx, {
+          requestId: createPermissionRequestId("skill-input"),
           source: "skill_input",
-          skillName,
           agentName,
-          message,
-          resolution: "confirmation_unavailable",
-        });
-        return { action: "handled" };
-      }
-
-      const decision = await promptPermission(ctx, {
-        requestId: createPermissionRequestId("skill-input"),
+          message: skillInputMessage,
+          skillName,
+        }),
+      writeLog: writeReviewLog,
+      logContext: {
         source: "skill_input",
-        agentName,
-        message,
         skillName,
-      });
-      if (!decision.approved) {
-        return { action: "handled" };
-      }
+        agentName,
+        message: skillInputMessage,
+      },
+      messages: {
+        denyReason: skillInputMessage,
+        unavailableReason:
+          "Skill requires approval, but no interactive UI is available.",
+        userDeniedReason: () => "User denied skill.",
+      },
+    });
+    if (skillInputGate.action === "block") {
+      return { action: "handled" };
     }
 
     return { action: "continue" };
@@ -756,64 +756,50 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
       );
 
       if (matchedSkill) {
-        if (matchedSkill.state === "deny") {
-          writeReviewLog("permission_request.blocked", {
+        const skillReadMessage = formatSkillPathAskPrompt(
+          matchedSkill,
+          event.input.path,
+          agentName ?? undefined,
+        );
+        const skillReadGate = await applyPermissionGate({
+          state: matchedSkill.state,
+          canConfirm: canRequestPermissionConfirmation(ctx),
+          promptForApproval: () =>
+            promptPermission(ctx, {
+              requestId: event.toolCallId,
+              source: "skill_read",
+              agentName,
+              message: skillReadMessage,
+              toolCallId: event.toolCallId,
+              toolName: toolName,
+              skillName: matchedSkill.name,
+              path: event.input.path,
+            }),
+          writeLog: writeReviewLog,
+          logContext: {
             source: "skill_read",
             skillName: matchedSkill.name,
             agentName,
             path: event.input.path,
-            resolution: "policy_denied",
-          });
-          return {
-            block: true,
-            reason: formatSkillPathDenyReason(
+            message: skillReadMessage,
+          },
+          messages: {
+            denyReason: formatSkillPathDenyReason(
               matchedSkill,
               event.input.path,
               agentName ?? undefined,
             ),
-          };
-        }
-
-        if (matchedSkill.state === "ask") {
-          const message = formatSkillPathAskPrompt(
-            matchedSkill,
-            event.input.path,
-            agentName ?? undefined,
-          );
-          if (!canRequestPermissionConfirmation(ctx)) {
-            writeReviewLog("permission_request.blocked", {
-              source: "skill_read",
-              skillName: matchedSkill.name,
-              agentName,
-              path: event.input.path,
-              message,
-              resolution: "confirmation_unavailable",
-            });
-            return {
-              block: true,
-              reason: `Accessing skill '${matchedSkill.name}' requires approval, but no interactive UI is available.`,
-            };
-          }
-
-          const decision = await promptPermission(ctx, {
-            requestId: event.toolCallId,
-            source: "skill_read",
-            agentName,
-            message,
-            toolCallId: event.toolCallId,
-            toolName: toolName,
-            skillName: matchedSkill.name,
-            path: event.input.path,
-          });
-          if (!decision.approved) {
-            const denialReason = decision.denialReason
-              ? ` Reason: ${decision.denialReason}.`
-              : "";
-            return {
-              block: true,
-              reason: `User denied access to skill '${matchedSkill.name}'.${denialReason}`,
-            };
-          }
+            unavailableReason: `Accessing skill '${matchedSkill.name}' requires approval, but no interactive UI is available.`,
+            userDeniedReason: (decision) => {
+              const denialReason = decision.denialReason
+                ? ` Reason: ${decision.denialReason}.`
+                : "";
+              return `User denied access to skill '${matchedSkill.name}'.${denialReason}`;
+            },
+          },
+        });
+        if (skillReadGate.action === "block") {
+          return { block: true, reason: skillReadGate.reason };
         }
       }
     }
@@ -834,69 +820,52 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
         agentName ?? undefined,
       );
 
-      if (extCheck.state === "deny") {
-        writeReviewLog("permission_request.blocked", {
+      const extDirMessage = formatExternalDirectoryAskPrompt(
+        toolName,
+        externalDirectoryPath,
+        ctx.cwd,
+        agentName ?? undefined,
+      );
+      const extDirGate = await applyPermissionGate({
+        state: extCheck.state,
+        canConfirm: canRequestPermissionConfirmation(ctx),
+        promptForApproval: () =>
+          promptPermission(ctx, {
+            requestId: event.toolCallId,
+            source: "tool_call",
+            agentName,
+            message: extDirMessage,
+            toolCallId: event.toolCallId,
+            toolName,
+            path: externalDirectoryPath,
+          }),
+        writeLog: writeReviewLog,
+        logContext: {
           source: "tool_call",
           toolCallId: event.toolCallId,
           toolName,
           agentName,
           path: externalDirectoryPath,
-          resolution: "policy_denied",
-        });
-        return {
-          block: true,
-          reason: formatExternalDirectoryDenyReason(
+          message: extDirMessage,
+        },
+        messages: {
+          denyReason: formatExternalDirectoryDenyReason(
             toolName,
             externalDirectoryPath,
             ctx.cwd,
             agentName ?? undefined,
           ),
-        };
-      }
-
-      if (extCheck.state === "ask") {
-        const message = formatExternalDirectoryAskPrompt(
-          toolName,
-          externalDirectoryPath,
-          ctx.cwd,
-          agentName ?? undefined,
-        );
-        if (!canRequestPermissionConfirmation(ctx)) {
-          writeReviewLog("permission_request.blocked", {
-            source: "tool_call",
-            toolCallId: event.toolCallId,
-            toolName,
-            agentName,
-            path: externalDirectoryPath,
-            message,
-            resolution: "confirmation_unavailable",
-          });
-          return {
-            block: true,
-            reason: `Accessing '${externalDirectoryPath}' outside the working directory requires approval, but no interactive UI is available.`,
-          };
-        }
-
-        const extDecision = await promptPermission(ctx, {
-          requestId: event.toolCallId,
-          source: "tool_call",
-          agentName,
-          message,
-          toolCallId: event.toolCallId,
-          toolName,
-          path: externalDirectoryPath,
-        });
-
-        if (!extDecision.approved) {
-          return {
-            block: true,
-            reason: formatExternalDirectoryUserDeniedReason(
+          unavailableReason: `Accessing '${externalDirectoryPath}' outside the working directory requires approval, but no interactive UI is available.`,
+          userDeniedReason: (decision) =>
+            formatExternalDirectoryUserDeniedReason(
               toolName,
               externalDirectoryPath,
-              extDecision.denialReason,
+              decision.denialReason,
             ),
-          };
-        }
+        },
+      });
+      if (extDirGate.action === "block") {
+        return { block: true, reason: extDirGate.reason };
       }
       // state === "allow" → fall through to normal permission check
     }
@@ -916,69 +885,53 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
             agentName ?? undefined,
           );
 
-          if (extCheck.state === "deny") {
-            writeReviewLog("permission_request.blocked", {
+          const bashExtMessage = formatBashExternalDirectoryAskPrompt(
+            command,
+            externalPaths,
+            ctx.cwd,
+            agentName ?? undefined,
+          );
+          const bashExtGate = await applyPermissionGate({
+            state: extCheck.state,
+            canConfirm: canRequestPermissionConfirmation(ctx),
+            promptForApproval: () =>
+              promptPermission(ctx, {
+                requestId: event.toolCallId,
+                source: "tool_call",
+                agentName,
+                message: bashExtMessage,
+                toolCallId: event.toolCallId,
+                toolName,
+                command,
+              }),
+            writeLog: writeReviewLog,
+            logContext: {
               source: "tool_call",
               toolCallId: event.toolCallId,
               toolName,
               agentName,
               command,
               externalPaths,
-              resolution: "policy_denied",
-            });
-            return {
-              block: true,
-              reason: formatBashExternalDirectoryDenyReason(
+              message: bashExtMessage,
+            },
+            messages: {
+              denyReason: formatBashExternalDirectoryDenyReason(
                 command,
                 externalPaths,
                 ctx.cwd,
                 agentName ?? undefined,
               ),
-            };
-          }
-
-          if (extCheck.state === "ask") {
-            const message = formatBashExternalDirectoryAskPrompt(
-              command,
-              externalPaths,
-              ctx.cwd,
-              agentName ?? undefined,
-            );
-            if (!canRequestPermissionConfirmation(ctx)) {
-              writeReviewLog("permission_request.blocked", {
-                source: "tool_call",
-                toolCallId: event.toolCallId,
-                toolName,
-                agentName,
-                command,
-                externalPaths,
-                message,
-                resolution: "confirmation_unavailable",
-              });
-              return {
-                block: true,
-                reason: `Bash command '${command}' references path(s) outside the working directory and requires approval, but no interactive UI is available.`,
-              };
-            }
-
-            const extDecision = await promptPermission(ctx, {
-              requestId: event.toolCallId,
-              source: "tool_call",
-              agentName,
-              message,
-              toolCallId: event.toolCallId,
-              toolName,
-              command,
-            });
-            if (!extDecision.approved) {
-              const reasonSuffix = extDecision.denialReason
-                ? ` Reason: ${extDecision.denialReason}.`
-                : "";
-              return {
-                block: true,
-                reason: `User denied external directory access for bash command '${command}'.${reasonSuffix} ${formatExternalDirectoryHardStopHint()}`,
-              };
-            }
+              unavailableReason: `Bash command '${command}' references path(s) outside the working directory and requires approval, but no interactive UI is available.`,
+              userDeniedReason: (decision) => {
+                const reasonSuffix = decision.denialReason
+                  ? ` Reason: ${decision.denialReason}.`
+                  : "";
+                return `User denied external directory access for bash command '${command}'.${reasonSuffix} ${formatExternalDirectoryHardStopHint()}`;
+              },
+            },
+          });
+          if (bashExtGate.action === "block") {
+            return { block: true, reason: bashExtGate.reason };
           }
           // state === "allow" → fall through to normal bash permission check
         }
@@ -996,61 +949,49 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
       PATH_BEARING_TOOLS,
     );
 
-    if (check.state === "deny") {
-      writeReviewLog("permission_request.blocked", {
-        source: "tool_call",
-        toolCallId: event.toolCallId,
-        toolName,
-        agentName,
-        ...permissionLogContext,
-        resolution: "policy_denied",
-      });
-      return {
-        block: true,
-        reason: formatDenyReason(check, agentName ?? undefined),
-      };
-    }
+    const toolUnavailableReason =
+      toolName === "bash" && isToolCallEventType("bash", event)
+        ? `Running bash command '${event.input.command}' requires approval, but no interactive UI is available.`
+        : toolName === "mcp"
+          ? "Using tool 'mcp' requires approval, but no interactive UI is available."
+          : `Using tool '${toolName}' requires approval, but no interactive UI is available.`;
 
-    if (check.state === "ask") {
-      const unavailableReason =
-        toolName === "bash" && isToolCallEventType("bash", event)
-          ? `Running bash command '${event.input.command}' requires approval, but no interactive UI is available.`
-          : toolName === "mcp"
-            ? "Using tool 'mcp' requires approval, but no interactive UI is available."
-            : `Using tool '${toolName}' requires approval, but no interactive UI is available.`;
-
-      const message = formatAskPrompt(check, agentName ?? undefined, input);
-      if (!canRequestPermissionConfirmation(ctx)) {
-        writeReviewLog("permission_request.blocked", {
+    const toolAskMessage = formatAskPrompt(
+      check,
+      agentName ?? undefined,
+      input,
+    );
+    const toolGate = await applyPermissionGate({
+      state: check.state,
+      canConfirm: canRequestPermissionConfirmation(ctx),
+      promptForApproval: () =>
+        promptPermission(ctx, {
+          requestId: event.toolCallId,
           source: "tool_call",
+          agentName,
+          message: toolAskMessage,
           toolCallId: event.toolCallId,
           toolName,
-          agentName,
-          message,
           ...permissionLogContext,
-          resolution: "confirmation_unavailable",
-        });
-        return {
-          block: true,
-          reason: unavailableReason,
-        };
-      }
-
-      const decision = await promptPermission(ctx, {
-        requestId: event.toolCallId,
+        }),
+      writeLog: writeReviewLog,
+      logContext: {
         source: "tool_call",
-        agentName,
-        message,
         toolCallId: event.toolCallId,
         toolName,
+        agentName,
+        message: toolAskMessage,
         ...permissionLogContext,
-      });
-      if (!decision.approved) {
-        return {
-          block: true,
-          reason: formatUserDeniedReason(check, decision.denialReason),
-        };
-      }
+      },
+      messages: {
+        denyReason: formatDenyReason(check, agentName ?? undefined),
+        unavailableReason: toolUnavailableReason,
+        userDeniedReason: (decision) =>
+          formatUserDeniedReason(check, decision.denialReason),
+      },
+    });
+    if (toolGate.action === "block") {
+      return { block: true, reason: toolGate.reason };
     }
 
     return {};
