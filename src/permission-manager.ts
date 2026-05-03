@@ -843,15 +843,16 @@ export class PermissionManager {
     if (normalizedToolName === "skill") {
       const skillName = toRecord(input).name;
       if (typeof skillName === "string") {
-        const result = findCompiledPermissionMatch(compiledSkills, skillName);
+        const skillRuleset = compiledToRuleset("skill", compiledSkills);
+        const rule = evaluate("skill", skillName, skillRuleset);
+        const explicit = skillRuleset.includes(rule);
         return {
           toolName,
-          state: result?.state || merged.defaultPolicy.skills,
-          matchedPattern: result?.matchedPattern,
+          state: explicit ? rule.action : merged.defaultPolicy.skills,
+          matchedPattern: explicit ? rule.pattern : undefined,
           source: "skill",
         };
       }
-
       return {
         toolName,
         state: merged.defaultPolicy.skills,
