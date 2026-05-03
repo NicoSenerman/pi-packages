@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { getEventInput, handleToolCall } from "../../src/handlers/tool-call";
 import type { HandlerDeps } from "../../src/handlers/types";
+import type { ExtensionRuntime } from "../../src/runtime";
 import type { PermissionCheckResult } from "../../src/types";
 
 // ── SDK stubs ──────────────────────────────────────────────────────────────
@@ -54,8 +55,43 @@ function makePermissionResult(
   return { state, toolName: "read", source: "tool" };
 }
 
+function makeRuntime(
+  overrides: Partial<ExtensionRuntime> = {},
+): ExtensionRuntime {
+  return {
+    agentDir: "/test/agent",
+    sessionsDir: "/test/agent/sessions",
+    subagentSessionsDir: "/test/agent/subagent-sessions",
+    forwardingDir: "/test/agent/sessions/permission-forwarding",
+    globalLogsDir: "/test/agent/extensions/pi-permission-system/logs",
+    config: { debugLog: false, permissionReviewLog: true, yoloMode: false },
+    runtimeContext: null,
+    permissionManager: {
+      checkPermission: vi.fn().mockReturnValue(makePermissionResult("allow")),
+    } as unknown as ExtensionRuntime["permissionManager"],
+    activeSkillEntries: [],
+    lastKnownActiveAgentName: null,
+    lastActiveToolsCacheKey: null,
+    lastPromptStateCacheKey: null,
+    lastConfigWarning: null,
+    sessionApprovalCache: {
+      approve: vi.fn(),
+      has: vi.fn().mockReturnValue(false),
+      findMatchingPrefix: vi.fn().mockReturnValue(null),
+      clear: vi.fn(),
+    } as unknown as ExtensionRuntime["sessionApprovalCache"],
+    permissionForwardingContext: null,
+    permissionForwardingTimer: null,
+    isProcessingForwardedRequests: false,
+    writeDebugLog: vi.fn(),
+    writeReviewLog: vi.fn(),
+    ...overrides,
+  } as ExtensionRuntime;
+}
+
 function makeDeps(overrides: Partial<HandlerDeps> = {}): HandlerDeps {
   return {
+    runtime: makeRuntime(),
     getPermissionManager: vi.fn().mockReturnValue({
       checkPermission: vi.fn().mockReturnValue(makePermissionResult("allow")),
     }),

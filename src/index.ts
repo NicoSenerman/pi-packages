@@ -59,6 +59,7 @@ import {
 } from "./permission-dialog";
 import { PERMISSION_FORWARDING_POLL_INTERVAL_MS } from "./permission-forwarding";
 import { PermissionManager } from "./permission-manager";
+import type { ExtensionRuntime } from "./runtime";
 import { SessionApprovalCache } from "./session-approval-cache";
 import type { SkillPromptEntry } from "./skill-prompt-sanitizer";
 import {
@@ -409,6 +410,82 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
   };
 
   const deps: HandlerDeps = {
+    runtime: {
+      agentDir: PI_AGENT_DIR,
+      sessionsDir: SESSIONS_DIR,
+      subagentSessionsDir: SUBAGENT_SESSIONS_DIR,
+      forwardingDir: PERMISSION_FORWARDING_DIR,
+      globalLogsDir: GLOBAL_LOGS_DIR,
+      get config() {
+        return extensionConfig;
+      },
+      set config(v) {
+        setExtensionConfig(v);
+      },
+      get runtimeContext() {
+        return runtimeContext;
+      },
+      set runtimeContext(v) {
+        runtimeContext = v;
+      },
+      get permissionManager() {
+        return permissionManager;
+      },
+      set permissionManager(v) {
+        permissionManager = v;
+      },
+      get activeSkillEntries() {
+        return activeSkillEntries;
+      },
+      set activeSkillEntries(v) {
+        activeSkillEntries = v;
+      },
+      get lastKnownActiveAgentName() {
+        return lastKnownActiveAgentName;
+      },
+      set lastKnownActiveAgentName(v) {
+        lastKnownActiveAgentName = v;
+      },
+      get lastActiveToolsCacheKey() {
+        return lastActiveToolsCacheKey;
+      },
+      set lastActiveToolsCacheKey(v) {
+        lastActiveToolsCacheKey = v;
+      },
+      get lastPromptStateCacheKey() {
+        return lastPromptStateCacheKey;
+      },
+      set lastPromptStateCacheKey(v) {
+        lastPromptStateCacheKey = v;
+      },
+      get lastConfigWarning() {
+        return lastConfigWarning;
+      },
+      set lastConfigWarning(v) {
+        lastConfigWarning = v;
+      },
+      sessionApprovalCache,
+      get permissionForwardingContext() {
+        return permissionForwardingContext;
+      },
+      set permissionForwardingContext(v) {
+        permissionForwardingContext = v;
+      },
+      get permissionForwardingTimer() {
+        return permissionForwardingTimer;
+      },
+      set permissionForwardingTimer(v) {
+        permissionForwardingTimer = v;
+      },
+      get isProcessingForwardedRequests() {
+        return isProcessingForwardedRequests;
+      },
+      set isProcessingForwardedRequests(v) {
+        isProcessingForwardedRequests = v;
+      },
+      writeDebugLog,
+      writeReviewLog,
+    },
     getPermissionManager: () => permissionManager,
     setPermissionManager: (pm) => {
       permissionManager = pm;

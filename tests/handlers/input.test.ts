@@ -6,6 +6,7 @@ import {
   handleInput,
 } from "../../src/handlers/input";
 import type { HandlerDeps } from "../../src/handlers/types";
+import type { ExtensionRuntime } from "../../src/runtime";
 import type { SkillPromptEntry } from "../../src/skill-prompt-sanitizer";
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -33,8 +34,43 @@ function makeInputEvent(text: string) {
   return { text };
 }
 
+function makeRuntime(
+  overrides: Partial<ExtensionRuntime> = {},
+): ExtensionRuntime {
+  return {
+    agentDir: "/test/agent",
+    sessionsDir: "/test/agent/sessions",
+    subagentSessionsDir: "/test/agent/subagent-sessions",
+    forwardingDir: "/test/agent/sessions/permission-forwarding",
+    globalLogsDir: "/test/agent/extensions/pi-permission-system/logs",
+    config: { debugLog: false, permissionReviewLog: true, yoloMode: false },
+    runtimeContext: null,
+    permissionManager: {
+      checkPermission: vi.fn().mockReturnValue({ state: "allow" }),
+    } as unknown as ExtensionRuntime["permissionManager"],
+    activeSkillEntries: [] as SkillPromptEntry[],
+    lastKnownActiveAgentName: null,
+    lastActiveToolsCacheKey: null,
+    lastPromptStateCacheKey: null,
+    lastConfigWarning: null,
+    sessionApprovalCache: {
+      approve: vi.fn(),
+      has: vi.fn(),
+      findMatchingPrefix: vi.fn(),
+      clear: vi.fn(),
+    } as unknown as ExtensionRuntime["sessionApprovalCache"],
+    permissionForwardingContext: null,
+    permissionForwardingTimer: null,
+    isProcessingForwardedRequests: false,
+    writeDebugLog: vi.fn(),
+    writeReviewLog: vi.fn(),
+    ...overrides,
+  } as ExtensionRuntime;
+}
+
 function makeDeps(overrides: Partial<HandlerDeps> = {}): HandlerDeps {
   return {
+    runtime: makeRuntime(),
     getPermissionManager: vi.fn().mockReturnValue({
       checkPermission: vi.fn().mockReturnValue({ state: "allow" }),
       getConfigIssues: vi.fn().mockReturnValue([]),

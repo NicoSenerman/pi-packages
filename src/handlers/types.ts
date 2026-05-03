@@ -2,6 +2,7 @@ import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 import type { PermissionPromptDecision } from "../permission-dialog";
 import type { PermissionManager } from "../permission-manager";
+import type { ExtensionRuntime } from "../runtime";
 import type { SessionApprovalCache } from "../session-approval-cache";
 import type { SkillPromptEntry } from "../skill-prompt-sanitizer";
 
@@ -25,15 +26,17 @@ export interface PromptPermissionDetails {
 /**
  * Explicit dependency bag passed to each extracted event handler.
  *
- * All mutable shared state is wrapped in getter/setter pairs so that:
- * - Tests can construct a plain object with stubs and exercise handlers in
- *   isolation without importing src/index.ts.
- * - Issue #43 can replace this interface with ExtensionRuntime without
- *   changing handler signatures — only the deps object construction in
- *   index.ts needs to change.
+ * `runtime` holds all mutable state directly; the getter/setter pairs below
+ * are kept temporarily while handlers are migrated in #43 step 4.
+ * Once all handlers read/write `deps.runtime.*` directly, the getters and
+ * setters will be removed.
  */
 export interface HandlerDeps {
-  // ── Mutable state accessors ────────────────────────────────────────────
+  // ── Runtime context (added in #43) ────────────────────────────────────
+  /** All mutable extension state. Handlers will migrate from getters/setters to this. */
+  runtime: ExtensionRuntime;
+
+  // ── Mutable state accessors (to be removed in #43 step 4) ─────────────
   getPermissionManager(): PermissionManager;
   setPermissionManager(pm: PermissionManager): void;
   getRuntimeContext(): ExtensionContext | null;
