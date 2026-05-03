@@ -261,48 +261,46 @@ No step changes the config format or user-visible behavior.
 
 ```mermaid
 flowchart TD
-    A["#42 Extract event handlers"] --> D["#43 Eliminate module-scope state"]
+    A["✅ #42 Extract event handlers"] --> D["✅ #43 Eliminate module-scope state"]
     B["✅ #55 Extract pure evaluate()"] --> C["✅ #56 Unify Rule type + normalize config"]
     C --> E["#57 Replace SessionApprovalCache with session Ruleset"]
     E --> F["#51 Generalize session approvals to all surfaces"]
     F --> G["#52 Bash arity table"]
     G --> H["#53 ~/​$HOME expansion"]
-    I["#54 Deprecate doom_loop (dead code)"] -.->|"independent"| C
+    I["✅ #54 Deprecate doom_loop (dead code)"] -.->|"independent"| C
 
-    style A fill:#e8f5e9
+    style A fill:#c8e6c9
     style B fill:#c8e6c9
     style C fill:#c8e6c9
-    style D fill:#e8f5e9
-    style I fill:#fff3e0
+    style D fill:#c8e6c9
+    style I fill:#c8e6c9
 ```
 
-Green nodes can start immediately (no blockers).
 Dark-green node (✅) is complete.
-Orange node is investigation, can run in parallel.
 
 ### Phase 1: Structural cleanup (no behavior change)
 
-|Issue|Summary|Blocks|
-|---|---|---|
-|#42|Extract event handlers from index.ts|#43|
-|#43|Eliminate module-scope mutable state|—|
-|✅ #55|Extract pure `evaluate()` function|#56|
-|✅ #54|Deprecate doom_loop dead config key|#56 (soft)|
+|Issue|Summary|Blocks|Complete|
+|---|---|---|---|
+|#42|Extract event handlers from index.ts|#43|✅|
+|#43|Eliminate module-scope mutable state|—|✅|
+|#55|Extract pure `evaluate()` function|#56|✅|
+|#54|Deprecate doom_loop dead config key|#56 (soft)|✅|
 
 ### Phase 2: Unified model (internal refactor, no config change)
 
-|Issue|Summary|Blocks|
-|---|---|---|
-|✅ #56|Unify Rule type + normalize config into Ruleset|#57|
-|#57|Replace SessionApprovalCache with session Ruleset|#51|
+|Issue|Summary|Blocks|Complete|
+|---|---|---|---|
+|#56|Unify Rule type + normalize config into Ruleset|#57|✅|
+|#57|Replace SessionApprovalCache with session Ruleset|#51||
 
 ### Phase 3: Feature delivery
 
-|Issue|Summary|Blocks|
-|---|---|---|
-|#51|Generalize session approvals to all surfaces|#52|
-|#52|Bash arity table for approval pattern suggestions|#53 (soft)|
-|#53|`~`/`$HOME` expansion in permission patterns|—|
+|Issue|Summary|Blocks|Complete|
+|---|---|---|---|
+|#51|Generalize session approvals to all surfaces|#52||
+|#52|Bash arity table for approval pattern suggestions|#53 (soft)||
+|#53|`~`/`$HOME` expansion in permission patterns|—||
 
 ## Migration and compatibility
 
