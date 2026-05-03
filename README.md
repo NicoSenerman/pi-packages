@@ -367,7 +367,7 @@ Reserved permission checks:
 
 `external_directory` is evaluated before the normal tool permission check. For example, `tools.read: "allow"` can permit ordinary reads while `special.external_directory: "ask"` still requires confirmation before reading `../outside.txt` or an absolute path outside `ctx.cwd`. Optional-path search tools (`find`, `grep`, `ls`) skip this check when no `path` is provided because they default to the active working directory.
 
-Bash commands are also covered: the extension extracts path-like tokens from the command string and applies the same gate when any resolve outside `ctx.cwd`. Quoted strings are stripped first to reduce false positives (e.g., paths inside `git commit -m "..."` messages). This is a best-effort heuristic — variable expansion, subshells, and escaped quotes are not parsed.
+Bash commands are also covered: the extension extracts path-like tokens from the command string and applies the same gate when any resolve outside `ctx.cwd`. Quoted strings are stripped first to reduce false positives (e.g., paths inside `git commit -m "..."` messages). This is a best-effort heuristic — variable expansion, subshells, and escaped quotes are not parsed. OS device paths (`/dev/null`, `/dev/stdin`, `/dev/stdout`, `/dev/stderr`) are always excluded from this check — they cannot hold or leak data and commonly appear in stderr-redirect idioms such as `command 2>/dev/null`.
 
 ---
 
