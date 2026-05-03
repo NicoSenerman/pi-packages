@@ -40,6 +40,8 @@ Read `docs/plans/` before making architectural changes (created by `/plan-issue`
 - Permission decisions should be pure functions of (policy, request) wherever possible — keep IO at the edges.
 - Do not cache `getAgentDir()` or other environment-derived values at module scope — tests set `PI_CODING_AGENT_DIR` after import.
   Call `getAgentDir()` at invocation time inside `piPermissionSystemExtension()` closures.
+- The tsconfig target is ES2022 (`noEmit: true`).
+  Do not use APIs introduced after ES2022 (`findLast`, `Array.fromAsync`, `Object.groupBy`, etc.) — use manual equivalents consistent with existing code.
 
 ## Markdown
 
