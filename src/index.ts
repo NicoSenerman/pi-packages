@@ -81,6 +81,10 @@ import {
   formatUserDeniedReason,
 } from "./permission-prompts";
 import {
+  deriveApprovalPrefix,
+  SessionApprovalCache,
+} from "./session-approval-cache";
+import {
   findSkillPathMatch,
   resolveSkillPromptEntries,
   type SkillPromptEntry,
@@ -234,6 +238,7 @@ function createPermissionManagerForCwd(
 
 export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
   let permissionManager = new PermissionManager();
+  const sessionApprovalCache = new SessionApprovalCache();
   let activeSkillEntries: SkillPromptEntry[] = [];
   let lastKnownActiveAgentName: string | null = null;
   let lastActiveToolsCacheKey: string | null = null;
@@ -587,6 +592,7 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
     runtimeContext?.ui.setStatus(PERMISSION_SYSTEM_STATUS_KEY, undefined);
     runtimeContext = null;
     invalidateAgentStartCache();
+    sessionApprovalCache.clear();
     stopForwardedPermissionPolling();
   });
 
@@ -814,60 +820,91 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
       externalDirectoryPath &&
       isPathOutsideWorkingDirectory(externalDirectoryPath, ctx.cwd)
     ) {
-      const extCheck = permissionManager.checkPermission(
-        "external_directory",
-        {},
-        agentName ?? undefined,
-      );
-
-      const extDirMessage = formatExternalDirectoryAskPrompt(
-        toolName,
+      const normalizedExtPath = normalizePathForComparison(
         externalDirectoryPath,
         ctx.cwd,
-        agentName ?? undefined,
       );
-      const extDirGate = await applyPermissionGate({
-        state: extCheck.state,
-        canConfirm: canRequestPermissionConfirmation(ctx),
-        promptForApproval: () =>
-          promptPermission(ctx, {
-            requestId: event.toolCallId,
-            source: "tool_call",
-            agentName,
-            message: extDirMessage,
-            toolCallId: event.toolCallId,
-            toolName,
-            path: externalDirectoryPath,
-          }),
-        writeLog: writeReviewLog,
-        logContext: {
+      const sessionPrefix = sessionApprovalCache.findMatchingPrefix(
+        "external_directory",
+        normalizedExtPath,
+      );
+
+      if (sessionPrefix) {
+        writeReviewLog("permission_request.session_approved", {
           source: "tool_call",
           toolCallId: event.toolCallId,
           toolName,
           agentName,
           path: externalDirectoryPath,
-          message: extDirMessage,
-        },
-        messages: {
-          denyReason: formatExternalDirectoryDenyReason(
+          resolution: "session_approved",
+          sessionApprovalPrefix: sessionPrefix,
+        });
+        // Fall through to normal permission check
+      } else {
+        const extCheck = permissionManager.checkPermission(
+          "external_directory",
+          {},
+          agentName ?? undefined,
+        );
+
+        let extDirDecision: PermissionPromptDecision | null = null;
+        const extDirMessage = formatExternalDirectoryAskPrompt(
+          toolName,
+          externalDirectoryPath,
+          ctx.cwd,
+          agentName ?? undefined,
+        );
+        const extDirGate = await applyPermissionGate({
+          state: extCheck.state,
+          canConfirm: canRequestPermissionConfirmation(ctx),
+          promptForApproval: async () => {
+            const decision = await promptPermission(ctx, {
+              requestId: event.toolCallId,
+              source: "tool_call",
+              agentName,
+              message: extDirMessage,
+              toolCallId: event.toolCallId,
+              toolName,
+              path: externalDirectoryPath,
+            });
+            extDirDecision = decision;
+            return decision;
+          },
+          writeLog: writeReviewLog,
+          logContext: {
+            source: "tool_call",
+            toolCallId: event.toolCallId,
             toolName,
-            externalDirectoryPath,
-            ctx.cwd,
-            agentName ?? undefined,
-          ),
-          unavailableReason: `Accessing '${externalDirectoryPath}' outside the working directory requires approval, but no interactive UI is available.`,
-          userDeniedReason: (decision) =>
-            formatExternalDirectoryUserDeniedReason(
+            agentName,
+            path: externalDirectoryPath,
+            message: extDirMessage,
+          },
+          messages: {
+            denyReason: formatExternalDirectoryDenyReason(
               toolName,
               externalDirectoryPath,
-              decision.denialReason,
+              ctx.cwd,
+              agentName ?? undefined,
             ),
-        },
-      });
-      if (extDirGate.action === "block") {
-        return { block: true, reason: extDirGate.reason };
+            unavailableReason: `Accessing '${externalDirectoryPath}' outside the working directory requires approval, but no interactive UI is available.`,
+            userDeniedReason: (decision) =>
+              formatExternalDirectoryUserDeniedReason(
+                toolName,
+                externalDirectoryPath,
+                decision.denialReason,
+              ),
+          },
+        });
+        if (extDirGate.action === "block") {
+          return { block: true, reason: extDirGate.reason };
+        }
+
+        if (extDirDecision?.state === "approved_for_session") {
+          const prefix = deriveApprovalPrefix(normalizedExtPath);
+          sessionApprovalCache.approve("external_directory", prefix);
+        }
       }
-      // state === "allow" → fall through to normal permission check
+      // Fall through to normal permission check
     }
 
     // Bash external directory gate: extract paths from bash commands
@@ -879,61 +916,91 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
           ctx.cwd,
         );
         if (externalPaths.length > 0) {
-          const extCheck = permissionManager.checkPermission(
-            "external_directory",
-            {},
-            agentName ?? undefined,
+          // Filter out paths already covered by session approvals
+          const uncoveredPaths = externalPaths.filter(
+            (p) => !sessionApprovalCache.has("external_directory", p),
           );
 
-          const bashExtMessage = formatBashExternalDirectoryAskPrompt(
-            command,
-            externalPaths,
-            ctx.cwd,
-            agentName ?? undefined,
-          );
-          const bashExtGate = await applyPermissionGate({
-            state: extCheck.state,
-            canConfirm: canRequestPermissionConfirmation(ctx),
-            promptForApproval: () =>
-              promptPermission(ctx, {
-                requestId: event.toolCallId,
-                source: "tool_call",
-                agentName,
-                message: bashExtMessage,
-                toolCallId: event.toolCallId,
-                toolName,
-                command,
-              }),
-            writeLog: writeReviewLog,
-            logContext: {
+          if (uncoveredPaths.length === 0) {
+            // All external paths are session-approved
+            writeReviewLog("permission_request.session_approved", {
               source: "tool_call",
               toolCallId: event.toolCallId,
               toolName,
               agentName,
               command,
               externalPaths,
-              message: bashExtMessage,
-            },
-            messages: {
-              denyReason: formatBashExternalDirectoryDenyReason(
-                command,
-                externalPaths,
-                ctx.cwd,
-                agentName ?? undefined,
-              ),
-              unavailableReason: `Bash command '${command}' references path(s) outside the working directory and requires approval, but no interactive UI is available.`,
-              userDeniedReason: (decision) => {
-                const reasonSuffix = decision.denialReason
-                  ? ` Reason: ${decision.denialReason}.`
-                  : "";
-                return `User denied external directory access for bash command '${command}'.${reasonSuffix} ${formatExternalDirectoryHardStopHint()}`;
+              resolution: "session_approved",
+            });
+            // Fall through to normal bash permission check
+          } else {
+            const extCheck = permissionManager.checkPermission(
+              "external_directory",
+              {},
+              agentName ?? undefined,
+            );
+
+            let bashExtDecision: PermissionPromptDecision | null = null;
+            const bashExtMessage = formatBashExternalDirectoryAskPrompt(
+              command,
+              uncoveredPaths,
+              ctx.cwd,
+              agentName ?? undefined,
+            );
+            const bashExtGate = await applyPermissionGate({
+              state: extCheck.state,
+              canConfirm: canRequestPermissionConfirmation(ctx),
+              promptForApproval: async () => {
+                const decision = await promptPermission(ctx, {
+                  requestId: event.toolCallId,
+                  source: "tool_call",
+                  agentName,
+                  message: bashExtMessage,
+                  toolCallId: event.toolCallId,
+                  toolName,
+                  command,
+                });
+                bashExtDecision = decision;
+                return decision;
               },
-            },
-          });
-          if (bashExtGate.action === "block") {
-            return { block: true, reason: bashExtGate.reason };
+              writeLog: writeReviewLog,
+              logContext: {
+                source: "tool_call",
+                toolCallId: event.toolCallId,
+                toolName,
+                agentName,
+                command,
+                externalPaths: uncoveredPaths,
+                message: bashExtMessage,
+              },
+              messages: {
+                denyReason: formatBashExternalDirectoryDenyReason(
+                  command,
+                  uncoveredPaths,
+                  ctx.cwd,
+                  agentName ?? undefined,
+                ),
+                unavailableReason: `Bash command '${command}' references path(s) outside the working directory and requires approval, but no interactive UI is available.`,
+                userDeniedReason: (decision) => {
+                  const reasonSuffix = decision.denialReason
+                    ? ` Reason: ${decision.denialReason}.`
+                    : "";
+                  return `User denied external directory access for bash command '${command}'.${reasonSuffix} ${formatExternalDirectoryHardStopHint()}`;
+                },
+              },
+            });
+            if (bashExtGate.action === "block") {
+              return { block: true, reason: bashExtGate.reason };
+            }
+
+            if (bashExtDecision?.state === "approved_for_session") {
+              for (const extPath of uncoveredPaths) {
+                const prefix = deriveApprovalPrefix(extPath);
+                sessionApprovalCache.approve("external_directory", prefix);
+              }
+            }
           }
-          // state === "allow" → fall through to normal bash permission check
+          // Fall through to normal bash permission check
         }
       }
     }

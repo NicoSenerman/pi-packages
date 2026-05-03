@@ -2644,3 +2644,292 @@ test("PermissionManager.getConfigIssues returns empty array for clean config", (
     cleanup();
   }
 });
+
+// --- session-scoped approval tests (#45) ---
+
+test("session approval: first prompt with 'Yes, for this session' skips subsequent prompts under same prefix", async () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "pi-session-approval-"));
+  const cwd = join(rootDir, "repo");
+  const siblingDir = join(rootDir, "sibling-project");
+  mkdirSync(cwd, { recursive: true });
+  mkdirSync(siblingDir, { recursive: true });
+
+  const harness = createToolCallHarness(
+    {
+      defaultPolicy: {
+        tools: "allow",
+        bash: "allow",
+        mcp: "allow",
+        skills: "allow",
+        special: "ask",
+      },
+      special: { external_directory: "ask" },
+    },
+    ["read", "grep"],
+    { cwd },
+  );
+
+  try {
+    // First access — user selects "Yes, for this session"
+    const result1 = await runToolCall(
+      harness,
+      {
+        toolName: "read",
+        toolCallId: "ext-session-1",
+        input: { path: join(siblingDir, "src", "foo.ts") },
+      },
+      { hasUI: true, selectResponse: "Yes, for this session" },
+    );
+    assert.deepEqual(result1, {});
+    assert.equal(harness.prompts.length, 1);
+
+    // Second access under same prefix — should skip prompt
+    const result2 = await runToolCall(
+      harness,
+      {
+        toolName: "read",
+        toolCallId: "ext-session-2",
+        input: { path: join(siblingDir, "src", "bar.ts") },
+      },
+      { hasUI: true, selectResponse: "Yes, for this session" },
+    );
+    assert.deepEqual(result2, {});
+    // No new prompt — still just the original one
+    assert.equal(harness.prompts.length, 1);
+
+    // Third access with different tool under same prefix — also skipped
+    const result3 = await runToolCall(
+      harness,
+      {
+        toolName: "grep",
+        toolCallId: "ext-session-3",
+        input: { pattern: "needle", path: join(siblingDir, "src", "baz.ts") },
+      },
+      { hasUI: true, selectResponse: "Yes, for this session" },
+    );
+    assert.deepEqual(result3, {});
+    assert.equal(harness.prompts.length, 1);
+  } finally {
+    await harness.cleanup();
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("session approval: different directory prefix still prompts", async () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "pi-session-approval-"));
+  const cwd = join(rootDir, "repo");
+  const siblingA = join(rootDir, "sibling-a");
+  const siblingB = join(rootDir, "sibling-b");
+  mkdirSync(cwd, { recursive: true });
+  mkdirSync(siblingA, { recursive: true });
+  mkdirSync(siblingB, { recursive: true });
+
+  const harness = createToolCallHarness(
+    {
+      defaultPolicy: {
+        tools: "allow",
+        bash: "allow",
+        mcp: "allow",
+        skills: "allow",
+        special: "ask",
+      },
+      special: { external_directory: "ask" },
+    },
+    ["read"],
+    { cwd },
+  );
+
+  try {
+    // Approve sibling-a/src/ for session
+    await runToolCall(
+      harness,
+      {
+        toolName: "read",
+        toolCallId: "ext-diff-1",
+        input: { path: join(siblingA, "src", "foo.ts") },
+      },
+      { hasUI: true, selectResponse: "Yes, for this session" },
+    );
+    assert.equal(harness.prompts.length, 1);
+
+    // Access sibling-b — different prefix, should prompt again
+    await runToolCall(
+      harness,
+      {
+        toolName: "read",
+        toolCallId: "ext-diff-2",
+        input: { path: join(siblingB, "src", "bar.ts") },
+      },
+      { hasUI: true, selectResponse: "Yes" },
+    );
+    assert.equal(harness.prompts.length, 2);
+  } finally {
+    await harness.cleanup();
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("session approval: session_shutdown clears session approvals", async () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "pi-session-approval-"));
+  const cwd = join(rootDir, "repo");
+  const siblingDir = join(rootDir, "sibling");
+  mkdirSync(cwd, { recursive: true });
+  mkdirSync(siblingDir, { recursive: true });
+
+  const harness = createToolCallHarness(
+    {
+      defaultPolicy: {
+        tools: "allow",
+        bash: "allow",
+        mcp: "allow",
+        skills: "allow",
+        special: "ask",
+      },
+      special: { external_directory: "ask" },
+    },
+    ["read"],
+    { cwd },
+  );
+
+  try {
+    // Approve for session
+    await runToolCall(
+      harness,
+      {
+        toolName: "read",
+        toolCallId: "ext-shutdown-1",
+        input: { path: join(siblingDir, "src", "foo.ts") },
+      },
+      { hasUI: true, selectResponse: "Yes, for this session" },
+    );
+    assert.equal(harness.prompts.length, 1);
+
+    // Trigger session_shutdown (clears cache)
+    const shutdownCtx = createMockContext(cwd, harness.prompts, {
+      hasUI: true,
+      selectResponse: "Yes",
+    });
+    await Promise.resolve(harness.handlers.session_shutdown?.({}, shutdownCtx));
+
+    // Access same path again — should prompt because cache was cleared
+    const result = await runToolCall(
+      harness,
+      {
+        toolName: "read",
+        toolCallId: "ext-shutdown-2",
+        input: { path: join(siblingDir, "src", "foo.ts") },
+      },
+      { hasUI: true, selectResponse: "Yes" },
+    );
+    assert.deepEqual(result, {});
+    assert.equal(harness.prompts.length, 2);
+  } finally {
+    await harness.cleanup();
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("session approval: bash external directory with 'Yes, for this session' skips subsequent prompts", async () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "pi-session-approval-"));
+  const cwd = join(rootDir, "repo");
+  mkdirSync(cwd, { recursive: true });
+
+  const harness = createToolCallHarness(
+    {
+      defaultPolicy: {
+        tools: "allow",
+        bash: "allow",
+        mcp: "allow",
+        skills: "allow",
+        special: "ask",
+      },
+      special: { external_directory: "ask" },
+    },
+    ["bash"],
+    { cwd },
+  );
+
+  try {
+    const externalPath = join(rootDir, "other-project", "src");
+    // First bash command referencing external path
+    const result1 = await runToolCall(
+      harness,
+      {
+        toolName: "bash",
+        toolCallId: "bash-session-1",
+        input: { command: `ls ${externalPath}/foo.ts` },
+      },
+      { hasUI: true, selectResponse: "Yes, for this session" },
+    );
+    assert.deepEqual(result1, {});
+    assert.equal(harness.prompts.length, 1);
+
+    // Second bash command referencing path under same prefix — skips prompt
+    const result2 = await runToolCall(
+      harness,
+      {
+        toolName: "bash",
+        toolCallId: "bash-session-2",
+        input: { command: `cat ${externalPath}/bar.ts` },
+      },
+      { hasUI: true, selectResponse: "Yes, for this session" },
+    );
+    assert.deepEqual(result2, {});
+    assert.equal(harness.prompts.length, 1);
+  } finally {
+    await harness.cleanup();
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("session approval: regular 'Yes' does not create session approval", async () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "pi-session-approval-"));
+  const cwd = join(rootDir, "repo");
+  const siblingDir = join(rootDir, "sibling");
+  mkdirSync(cwd, { recursive: true });
+  mkdirSync(siblingDir, { recursive: true });
+
+  const harness = createToolCallHarness(
+    {
+      defaultPolicy: {
+        tools: "allow",
+        bash: "allow",
+        mcp: "allow",
+        skills: "allow",
+        special: "ask",
+      },
+      special: { external_directory: "ask" },
+    },
+    ["read"],
+    { cwd },
+  );
+
+  try {
+    // Approve once with "Yes" (not session)
+    await runToolCall(
+      harness,
+      {
+        toolName: "read",
+        toolCallId: "ext-once-1",
+        input: { path: join(siblingDir, "src", "foo.ts") },
+      },
+      { hasUI: true, selectResponse: "Yes" },
+    );
+    assert.equal(harness.prompts.length, 1);
+
+    // Same prefix — should still prompt since we used "Yes" not session
+    await runToolCall(
+      harness,
+      {
+        toolName: "read",
+        toolCallId: "ext-once-2",
+        input: { path: join(siblingDir, "src", "bar.ts") },
+      },
+      { hasUI: true, selectResponse: "Yes" },
+    );
+    assert.equal(harness.prompts.length, 2);
+  } finally {
+    await harness.cleanup();
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
