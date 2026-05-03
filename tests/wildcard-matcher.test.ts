@@ -5,6 +5,7 @@ import {
   compileWildcardPatternEntries,
   findCompiledWildcardMatch,
   findCompiledWildcardMatchForNames,
+  wildcardMatch,
 } from "../src/wildcard-matcher";
 
 afterEach(() => {
@@ -176,5 +177,43 @@ describe("findCompiledWildcardMatchForNames", () => {
     expect(compiled.state).toBe("ask");
     expect(compiled.regex.test("bash ls -la")).toBe(true);
     expect(compiled.regex.test("echo hello")).toBe(false);
+  });
+});
+
+describe("wildcardMatch", () => {
+  test("'*' pattern matches any value", () => {
+    expect(wildcardMatch("*", "anything")).toBe(true);
+    expect(wildcardMatch("*", "")).toBe(true);
+    expect(wildcardMatch("*", "bash")).toBe(true);
+  });
+
+  test("exact pattern matches identical value", () => {
+    expect(wildcardMatch("read", "read")).toBe(true);
+    expect(wildcardMatch("external_directory", "external_directory")).toBe(
+      true,
+    );
+  });
+
+  test("exact pattern does not match a different value", () => {
+    expect(wildcardMatch("read", "write")).toBe(false);
+    expect(wildcardMatch("read", "readonly")).toBe(false);
+    expect(wildcardMatch("read", "read ")).toBe(false);
+  });
+
+  test("glob pattern matches with wildcard", () => {
+    expect(wildcardMatch("git *", "git status")).toBe(true);
+    expect(wildcardMatch("git *", "git push origin main")).toBe(true);
+    expect(wildcardMatch("git *", "npm install")).toBe(false);
+  });
+
+  test("glob with no trailing space matches longer string", () => {
+    expect(wildcardMatch("git*", "git")).toBe(true);
+    expect(wildcardMatch("git*", "git status")).toBe(true);
+    expect(wildcardMatch("git*", "npm")).toBe(false);
+  });
+
+  test("regex special characters in pattern are treated as literals", () => {
+    expect(wildcardMatch("tool.name", "tool.name")).toBe(true);
+    expect(wildcardMatch("tool.name", "toolXname")).toBe(false);
   });
 });

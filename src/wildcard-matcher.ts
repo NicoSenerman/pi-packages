@@ -62,6 +62,15 @@ export function findCompiledWildcardMatch<TState>(
   return null;
 }
 
+/**
+ * Test whether `value` matches `pattern` using wildcard rules.
+ * `*` in the pattern matches any sequence of characters (including empty).
+ * Used by evaluate() for rule matching.
+ */
+export function wildcardMatch(pattern: string, value: string): boolean {
+  return compileWildcardPattern(pattern, null).regex.test(value);
+}
+
 export function findCompiledWildcardMatchForNames<TState>(
   patterns: readonly CompiledWildcardPattern<TState>[],
   names: readonly string[],
