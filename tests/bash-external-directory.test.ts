@@ -320,6 +320,40 @@ describe("extractExternalPathsFromBashCommand", () => {
     });
   });
 
+  describe("node -e and multi-line commands", () => {
+    test("does not flag path inside single-quoted string in node -e argument", () => {
+      const result = extractExternalPathsFromBashCommand(
+        "node -e \"const p = '/etc/hosts'; console.log(p);\"",
+        cwd,
+      );
+      expect(result).toHaveLength(0);
+    });
+
+    test("does not flag path inside multi-line node -e argument", () => {
+      // Actual newlines inside the double-quoted -e argument.
+      const cmd =
+        "node -e \"\nimport('x').then(() => {\n  console.log('/etc/hosts');\n});\n\"";
+      const result = extractExternalPathsFromBashCommand(cmd, cwd);
+      expect(result).toHaveLength(0);
+    });
+
+    test("does not flag path that appears after escaped quote in multi-line node -e argument", () => {
+      // This is the shape of the command that triggered a prompt during dog-fooding.
+      // The outer \"...\" arg contains both actual newlines and \\" escape sequences,
+      // with /etc/hosts appearing after a \\" boundary.
+      const cmd = [
+        'node -e "',
+        "import('shell-quote').then(({ parse }) => {",
+        "  const cmd = \\\"cat << 'EOF'\\n/etc/hosts\\nsome content\\nEOF\\\";",
+        "  console.log(JSON.stringify(parse(cmd)));",
+        "});",
+        '"',
+      ].join("\n");
+      const result = extractExternalPathsFromBashCommand(cmd, cwd);
+      expect(result).toHaveLength(0);
+    });
+  });
+
   describe("shell-quote tokenizer edge cases", () => {
     test("does not flag path inside string when escaped quote is present", () => {
       // stripQuotedStrings regex breaks at \" — content after it leaks into the token stream.
