@@ -184,6 +184,10 @@ function classifyTokenAsPathCandidate(token: string): string | null {
   // Skip @scope/package patterns
   if (token.startsWith("@") && !token.startsWith("@/")) return null;
 
+  // Skip bare-slash tokens (// JS comments, lone /, etc.) — they resolve to root
+  // and are never meaningful path arguments in practice.
+  if (/^\/+$/.test(token)) return null;
+
   // Must look like a path: starts with /, ~/, or contains ..
   if (token.startsWith("/")) return token;
   if (token.startsWith("~/")) return token;

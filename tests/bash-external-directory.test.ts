@@ -279,6 +279,37 @@ describe("extractExternalPathsFromBashCommand", () => {
     });
   });
 
+  describe("bare-slash tokens are skipped", () => {
+    test("does not flag // token", () => {
+      const result = extractExternalPathsFromBashCommand("echo //", cwd);
+      expect(result).toHaveLength(0);
+    });
+
+    test("does not flag / token", () => {
+      const result = extractExternalPathsFromBashCommand("echo /", cwd);
+      expect(result).toHaveLength(0);
+    });
+
+    test("does not flag /// token", () => {
+      const result = extractExternalPathsFromBashCommand("echo ///", cwd);
+      expect(result).toHaveLength(0);
+    });
+
+    test("does not flag // in echo with other args", () => {
+      const result = extractExternalPathsFromBashCommand("echo // hello", cwd);
+      expect(result).toHaveLength(0);
+    });
+
+    test("still flags real external path alongside //", () => {
+      const result = extractExternalPathsFromBashCommand(
+        "cat /etc/hosts; echo //",
+        cwd,
+      );
+      expect(result).toContain("/etc/hosts");
+      expect(result).toHaveLength(1);
+    });
+  });
+
   describe("deduplication", () => {
     test("returns deduplicated paths", () => {
       const result = extractExternalPathsFromBashCommand(
