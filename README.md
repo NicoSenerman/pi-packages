@@ -640,7 +640,9 @@ The hook configuration lives in `prek.toml` at the repo root.
 ## Acknowledgments
 
 This project began as a fork of [MasuRii/pi-permission-system](https://github.com/MasuRii/pi-permission-system).
-Thank you to MasuRii for the original work that made this possible.
+Thank you to [MasuRii](https://github.com/MasuRii) for the original work that made this possible.
+
+Thank you to the [OpenCode](https://opencode.ai) team for the permission model design that inspired the flat config format and evaluation semantics used in this extension.
 
 ## License
 
