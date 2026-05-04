@@ -301,6 +301,15 @@ describe("extractExternalPathsFromBashCommand", () => {
       expect(result).toHaveLength(0);
     });
 
+    test("bare-slash guard is still needed: shell-quote emits / as a string token", () => {
+      // shell-quote.parse('echo /') returns ['echo', '/'] — the bare slash IS a string
+      // token, not an operator. classifyTokenAsPathCandidate must still reject it.
+      // This test documents that the /^\/+$/ guard remains a necessary
+      // defense-in-depth layer even with shell-quote as the tokenizer.
+      const result = extractExternalPathsFromBashCommand("echo /", cwd);
+      expect(result).toHaveLength(0);
+    });
+
     test("still flags real external path alongside //", () => {
       const result = extractExternalPathsFromBashCommand(
         "cat /etc/hosts; echo //",
