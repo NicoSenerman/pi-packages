@@ -179,6 +179,74 @@ describe("applyPermissionGate", () => {
     });
   });
 
+  describe("ask branch — approved_for_session with sessionApproval", () => {
+    it("attaches sessionApproval to result when decision is approved_for_session and param provided", async () => {
+      const decision: PermissionPromptDecision = {
+        approved: true,
+        state: "approved_for_session",
+      };
+      const promptForApproval = vi.fn().mockResolvedValue(decision);
+      const params = makeParams({
+        state: "ask",
+        canConfirm: true,
+        promptForApproval,
+        sessionApproval: { surface: "bash", pattern: "git *" },
+      });
+      const result = await applyPermissionGate(params);
+      expect(result).toEqual({
+        action: "allow",
+        sessionApproval: { surface: "bash", pattern: "git *" },
+      });
+    });
+
+    it("does not attach sessionApproval when decision is approved (once)", async () => {
+      const decision: PermissionPromptDecision = {
+        approved: true,
+        state: "approved",
+      };
+      const promptForApproval = vi.fn().mockResolvedValue(decision);
+      const params = makeParams({
+        state: "ask",
+        canConfirm: true,
+        promptForApproval,
+        sessionApproval: { surface: "bash", pattern: "git *" },
+      });
+      const result = await applyPermissionGate(params);
+      expect(result).toEqual({ action: "allow" });
+    });
+
+    it("does not attach sessionApproval when no sessionApproval param", async () => {
+      const decision: PermissionPromptDecision = {
+        approved: true,
+        state: "approved_for_session",
+      };
+      const promptForApproval = vi.fn().mockResolvedValue(decision);
+      const params = makeParams({
+        state: "ask",
+        canConfirm: true,
+        promptForApproval,
+      });
+      const result = await applyPermissionGate(params);
+      expect(result).toEqual({ action: "allow" });
+    });
+
+    it("does not attach sessionApproval when user denies", async () => {
+      const decision: PermissionPromptDecision = {
+        approved: false,
+        state: "denied",
+      };
+      const promptForApproval = vi.fn().mockResolvedValue(decision);
+      const params = makeParams({
+        state: "ask",
+        canConfirm: true,
+        promptForApproval,
+        sessionApproval: { surface: "bash", pattern: "git *" },
+      });
+      const result = await applyPermissionGate(params);
+      expect(result).toEqual({ action: "block", reason: "User denied." });
+    });
+  });
+
   describe("allow branch", () => {
     it("returns allow immediately when state is allow", async () => {
       const params = makeParams({ state: "allow" });
