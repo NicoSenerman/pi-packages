@@ -15,6 +15,12 @@ import { mergeDefaults } from "./defaults";
 import { normalizeConfig } from "./normalize";
 import type { Ruleset } from "./rule";
 import { evaluate } from "./rule";
+import {
+  composeRuleset,
+  synthesizeBaseline,
+  synthesizeDefaults,
+  synthesizeOverrides,
+} from "./synthesize";
 import type {
   PermissionCheckResult,
   PermissionDefaultPolicy,
@@ -42,14 +48,6 @@ const BUILT_IN_TOOL_PERMISSION_NAMES = new Set([
   "ls",
 ]);
 const SPECIAL_PERMISSION_KEYS = new Set(["external_directory"]);
-const MCP_BASELINE_TARGETS = new Set([
-  "mcp_status",
-  "mcp_list",
-  "mcp_search",
-  "mcp_describe",
-  "mcp_connect",
-]);
-
 const DEFAULT_POLICY: PermissionDefaultPolicy = {
   tools: "ask",
   bash: "ask",
@@ -364,13 +362,11 @@ export interface ResolvedPolicyPaths {
 }
 
 type ResolvedPermissions = {
-  rules: Ruleset;
-  defaults: PermissionDefaultPolicy;
-  /** tools.bash fallback: tools.bash || defaults.bash */
-  bashDefault: PermissionState;
-  /** tools.mcp fallback (undefined = no explicit tools.mcp) */
-  mcpToolLevel: PermissionState | undefined;
-  hasAnyMcpAllowRule: boolean;
+  /**
+   * Fully composed ruleset: synthesized defaults → baseline → overrides → config.
+   * Session rules are appended at call-time inside checkPermission().
+   */
+  composedRules: Ruleset;
 };
 
 type FileCacheEntry<TValue> = {
@@ -599,16 +595,20 @@ export class PermissionManager {
     const agentConfig = this.loadScopeConfig(agentName);
     const projectAgentConfig = this.loadProjectScopeConfig(agentName);
 
-    // Normalize each scope into a flat Ruleset and concatenate.
-    // Later scopes appear last → higher priority via last-match-wins.
-    const rules: Ruleset = [
-      ...normalizeConfig(globalConfig),
-      ...normalizeConfig(projectConfig),
-      ...normalizeConfig(agentConfig),
-      ...normalizeConfig(projectAgentConfig),
+    // Tag config rules with layer "config" so checkPermission() can derive
+    // the result source and matchedPattern without positional arithmetic.
+    const tagConfig = (r: import("./rule").Rule) => ({
+      ...r,
+      layer: "config" as const,
+    });
+    const configRules: Ruleset = [
+      ...normalizeConfig(globalConfig).map(tagConfig),
+      ...normalizeConfig(projectConfig).map(tagConfig),
+      ...normalizeConfig(agentConfig).map(tagConfig),
+      ...normalizeConfig(projectAgentConfig).map(tagConfig),
     ];
 
-    // Merge defaults separately (shallow spread, same precedence order).
+    // Merge defaultPolicy across scopes (shallow spread, same precedence).
     const defaults = mergeDefaults(
       globalConfig.defaultPolicy,
       projectConfig.defaultPolicy,
@@ -616,32 +616,26 @@ export class PermissionManager {
       projectAgentConfig.defaultPolicy,
     );
 
-    // tools.bash / tools.mcp are fallback overrides, not catch-all rules.
-    // Extract with last-scope-wins precedence.
-    const toolBash =
-      projectAgentConfig.tools?.bash ??
-      agentConfig.tools?.bash ??
-      projectConfig.tools?.bash ??
-      globalConfig.tools?.bash;
-    const bashDefault = toolBash ?? defaults.bash;
+    // tools.bash / tools.mcp overrides: per-scope, lowest-priority first so
+    // that later scopes win via last-match-wins in synthesizeOverrides.
+    const overrideScopes = [
+      { bash: globalConfig.tools?.bash, mcp: globalConfig.tools?.mcp },
+      { bash: projectConfig.tools?.bash, mcp: projectConfig.tools?.mcp },
+      { bash: agentConfig.tools?.bash, mcp: agentConfig.tools?.mcp },
+      {
+        bash: projectAgentConfig.tools?.bash,
+        mcp: projectAgentConfig.tools?.mcp,
+      },
+    ];
 
-    const mcpToolLevel =
-      projectAgentConfig.tools?.mcp ??
-      agentConfig.tools?.mcp ??
-      projectConfig.tools?.mcp ??
-      globalConfig.tools?.mcp;
-
-    const hasAnyMcpAllowRule = rules.some(
-      (r) => r.surface === "mcp" && r.action === "allow",
+    const composedRules = composeRuleset(
+      synthesizeDefaults(defaults),
+      synthesizeBaseline(configRules),
+      synthesizeOverrides(overrideScopes),
+      configRules,
     );
 
-    const value: ResolvedPermissions = {
-      rules,
-      defaults,
-      bashDefault,
-      mcpToolLevel,
-      hasAnyMcpAllowRule,
-    };
+    const value: ResolvedPermissions = { composedRules };
 
     this.resolvedPermissionsCache.set(cacheKey, { stamp, value });
     return value;
@@ -679,47 +673,69 @@ export class PermissionManager {
    * @returns The permission state for the tool at the tool level
    */
   getToolPermission(toolName: string, agentName?: string): PermissionState {
-    const { rules, defaults, bashDefault, mcpToolLevel } =
-      this.resolvePermissions(agentName);
+    const { composedRules } = this.resolvePermissions(agentName);
     const normalizedToolName = toolName.trim();
 
-    // Special keys use the special default.
+    // Special surfaces: evaluate via the "special" surface used by config rules
+    // and the synthesized special default.
     if (SPECIAL_PERMISSION_KEYS.has(normalizedToolName)) {
-      const rule = evaluate("special", normalizedToolName, rules);
-      if (rules.includes(rule)) return rule.action;
-      return defaults.special;
+      return evaluate("special", normalizedToolName, composedRules).action;
     }
 
-    // Bash and MCP have dedicated fallback overrides from tools.bash / tools.mcp.
-    if (normalizedToolName === "bash") return bashDefault;
-    if (normalizedToolName === "mcp") return mcpToolLevel ?? defaults.mcp;
+    // For bash, mcp, skill: evaluate with "*" value against composedRules.
+    // The synthesized override/default rules are catch-alls (pattern "*") that
+    // respond correctly to a "*" lookup without matching specific patterns.
+    if (normalizedToolName === "bash") {
+      return evaluate("bash", "*", composedRules).action;
+    }
+    if (normalizedToolName === "mcp") {
+      return evaluate("mcp", "*", composedRules).action;
+    }
+    if (normalizedToolName === "skill") {
+      return evaluate("skill", "*", composedRules).action;
+    }
 
-    // Skills use the skills default.
-    if (normalizedToolName === "skill") return defaults.skills;
-
-    // Tool-name surfaces: check rules, fall back to tools default.
-    const rule = evaluate(normalizedToolName, "*", rules);
-    if (rules.includes(rule)) return rule.action;
-    return defaults.tools;
+    // Tool-name surfaces (read, write, etc. and extension tools).
+    return evaluate(normalizedToolName, "*", composedRules).action;
   }
 
   checkPermission(
     toolName: string,
     input: unknown,
     agentName?: string,
+    sessionRules?: Ruleset,
   ): PermissionCheckResult {
-    const { rules, defaults, bashDefault, mcpToolLevel, hasAnyMcpAllowRule } =
-      this.resolvePermissions(agentName);
+    const { composedRules } = this.resolvePermissions(agentName);
     const normalizedToolName = toolName.trim();
 
     // --- Special surfaces (external_directory) ---
+    // Config/default rules use surface "special"; session rules use surface
+    // "external_directory" with path patterns. Check each independently.
     if (SPECIAL_PERMISSION_KEYS.has(normalizedToolName)) {
-      const rule = evaluate("special", normalizedToolName, rules);
-      const explicit = rules.includes(rule);
+      // Session check: match by specific normalized path.
+      const record = toRecord(input);
+      const pathValue = typeof record.path === "string" ? record.path : null;
+      if (pathValue && sessionRules && sessionRules.length > 0) {
+        const sessionRule = evaluate(
+          "external_directory",
+          pathValue,
+          sessionRules,
+        );
+        if (sessionRules.includes(sessionRule)) {
+          return {
+            toolName,
+            state: "allow",
+            matchedPattern: sessionRule.pattern,
+            source: "session",
+          };
+        }
+      }
+      // Config/default check.
+      const rule = evaluate("special", normalizedToolName, composedRules);
       return {
         toolName,
-        state: explicit ? rule.action : defaults.special,
-        matchedPattern: explicit ? rule.pattern : undefined,
+        state: rule.action,
+        matchedPattern: rule.layer === "config" ? rule.pattern : undefined,
         source: "special",
       };
     }
@@ -727,19 +743,12 @@ export class PermissionManager {
     // --- Skills ---
     if (normalizedToolName === "skill") {
       const skillName = toRecord(input).name;
-      if (typeof skillName === "string") {
-        const rule = evaluate("skill", skillName, rules);
-        const explicit = rules.includes(rule);
-        return {
-          toolName,
-          state: explicit ? rule.action : defaults.skills,
-          matchedPattern: explicit ? rule.pattern : undefined,
-          source: explicit ? "skill" : "skill",
-        };
-      }
+      const lookupValue = typeof skillName === "string" ? skillName : "*";
+      const rule = evaluate("skill", lookupValue, composedRules);
       return {
         toolName,
-        state: defaults.skills,
+        state: rule.action,
+        matchedPattern: rule.layer === "config" ? rule.pattern : undefined,
         source: "skill",
       };
     }
@@ -748,13 +757,12 @@ export class PermissionManager {
     if (normalizedToolName === "bash") {
       const record = toRecord(input);
       const command = typeof record.command === "string" ? record.command : "";
-      const rule = evaluate("bash", command, rules);
-      const explicit = rules.includes(rule);
+      const rule = evaluate("bash", command, composedRules);
       return {
         toolName,
-        state: explicit ? rule.action : bashDefault,
+        state: rule.action,
         command,
-        matchedPattern: explicit ? rule.pattern : undefined,
+        matchedPattern: rule.layer === "config" ? rule.pattern : undefined,
         source: "bash",
       };
     }
@@ -770,67 +778,39 @@ export class PermissionManager {
       ];
       const fallbackTarget = mcpTargets[0] || "mcp";
 
-      // Try each candidate target against the merged rules.
+      // Try each candidate target. Stop on the first non-default match
+      // (config, override, or baseline rule). Default rules are catch-alls
+      // that would fire on every target — skip them so more-specific targets
+      // can be checked first.
       for (const target of mcpTargets) {
-        const rule = evaluate("mcp", target, rules);
-        if (rules.includes(rule)) {
+        const rule = evaluate("mcp", target, composedRules);
+        if (rule.layer !== "default") {
           return {
             toolName,
             state: rule.action,
-            matchedPattern: rule.pattern,
+            matchedPattern: rule.layer === "config" ? rule.pattern : undefined,
             target,
-            source: "mcp",
+            source: rule.layer === "override" ? "tool" : "mcp",
           };
         }
       }
 
-      // tools.mcp fallback (e.g. tools: { mcp: "allow" }).
-      if (mcpToolLevel) {
-        return {
-          toolName,
-          state: mcpToolLevel,
-          target: fallbackTarget,
-          source: "tool",
-        };
-      }
-
-      // Baseline auto-allow: if this is a metadata operation and at least one
-      // MCP rule allows something (or the default is allow), auto-allow.
-      const baselineTarget = mcpTargets.find((target) =>
-        MCP_BASELINE_TARGETS.has(target),
-      );
-      if (baselineTarget) {
-        if (hasAnyMcpAllowRule || defaults.mcp === "allow") {
-          return {
-            toolName,
-            state: "allow",
-            target: baselineTarget,
-            source: "mcp",
-          };
-        }
-      }
-
+      // All targets matched only the synthesized default.
+      const defaultRule = evaluate("mcp", fallbackTarget, composedRules);
       return {
         toolName,
-        state: defaults.mcp,
+        state: defaultRule.action,
         target: fallbackTarget,
         source: "default",
       };
     }
 
     // --- Tools (read, write, edit, grep, find, ls, extension tools) ---
-    const rule = evaluate(normalizedToolName, "*", rules);
-    const explicit = rules.includes(rule);
+    const rule = evaluate(normalizedToolName, "*", composedRules);
 
+    // Built-in tools always report source "tool" regardless of which layer
+    // supplied the decision (matches current behaviour).
     if (BUILT_IN_TOOL_PERMISSION_NAMES.has(normalizedToolName)) {
-      return {
-        toolName,
-        state: explicit ? rule.action : defaults.tools,
-        source: "tool",
-      };
-    }
-
-    if (explicit) {
       return {
         toolName,
         state: rule.action,
@@ -838,10 +818,12 @@ export class PermissionManager {
       };
     }
 
+    // Extension tools: "default" layer → source "default"; any explicit rule
+    // (config or override) → source "tool".
     return {
       toolName,
-      state: defaults.tools,
-      source: "default",
+      state: rule.action,
+      source: rule.layer === "default" ? "default" : "tool",
     };
   }
 }
