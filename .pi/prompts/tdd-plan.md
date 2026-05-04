@@ -31,7 +31,7 @@ Read `AGENTS.md`. The relevant rules for this template:
 - Don't remove functionality without explicit user discussion.
 - Keep `schemas/permissions.schema.json`, `config/config.example.json`, `README.md`, and the TypeScript types/loaders aligned when any one of them changes.
 - Default to least privilege — never weaken a permission default without an explicit goal in the plan.
-- Preserve upstream-shared on-disk identity (config dir, log filenames, slash command, event channel names).
+- Preserve the `/permission-system` slash command name — renaming it is a breaking change.
 
 ## Execute the TDD cycle
 
@@ -43,7 +43,7 @@ For **each** step in the plan's "TDD Order", in order:
 3. **Commit.** Use the commit message the plan suggests, or a Conventional Commits message that matches:
    - `test:` for test-only commits (rare; usually folded into the feat).
    - `feat:` for new behavior.
-   - `feat!:` for breaking changes the plan calls out (include a `BREAKING CHANGE:` footer). Any change to on-disk identity or default policy state is breaking.
+   - `feat!:` for breaking changes the plan calls out (include a `BREAKING CHANGE:` footer). Renaming the `/permission-system` slash command or changing a default policy state is breaking.
    - `fix:` for bug fixes.
 
 One logical change per commit. Do not bundle multiple TDD steps into one commit.

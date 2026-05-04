@@ -4,9 +4,9 @@
 
 Permission enforcement extension for the Pi coding agent that provides centralized, deterministic permission gates for tool, bash, MCP, skill, and special operations.
 
-> **Fork notice:** This package is a friendly fork of [MasuRii/pi-permission-system](https://github.com/MasuRii/pi-permission-system), published to npm as `@gotgenes/pi-permission-system`.
-> This fork diverges from upstream in config layout (#10).
-> The `/permission-system` slash command name is preserved; the config and log paths are not.
+> **Fork notice:** This package is a full fork of [MasuRii/pi-permission-system](https://github.com/MasuRii/pi-permission-system), published to npm as `@gotgenes/pi-permission-system`.
+> It has diverged substantially from upstream in config format, internal architecture, and permission model.
+> The `/permission-system` slash command name is the only upstream identity preserved.
 
 ## Features
 
@@ -52,14 +52,8 @@ Pi auto-discovers extensions in these paths.
 
 ```jsonc
 {
-  "defaultPolicy": {
-    "tools": "ask",
-    "bash": "ask",
-    "mcp": "ask",
-    "skills": "ask",
-    "special": "ask"
-  },
-  "tools": {
+  "permission": {
+    "*": "ask",
     "read": "allow",
     "write": "deny"
   }
@@ -96,8 +90,8 @@ The extension integrates via Pi's lifecycle hooks:
 - When a subagent hits an `ask` permission without direct UI access, the request can be forwarded to the main interactive session for confirmation
 - Generic extension-tool approval prompts include a bounded input preview; built-in file tools use concise human-readable summaries instead of raw multiline JSON
 - Permission review logs include bounded `toolInputPreview` values for non-bash/non-MCP tool calls so approvals can be audited without writing raw full payloads
-- Path-bearing file tools (`read`, `write`, `edit`, `find`, `grep`, `ls`) evaluate `special.external_directory` before their normal tool permission when an explicit path points outside `ctx.cwd`
-- Bash commands are scanned for path tokens (absolute, `~/`, or `..`-relative) that resolve outside `ctx.cwd`; matching commands trigger the same `special.external_directory` gate before the normal bash pattern check
+- Path-bearing file tools (`read`, `write`, `edit`, `find`, `grep`, `ls`) evaluate `permission.external_directory` before their normal tool permission when an explicit path points outside `ctx.cwd`
+- Bash commands are scanned for path tokens (absolute, `~/`, or `..`-relative) that resolve outside `ctx.cwd`; matching commands trigger the same `permission.external_directory` gate before the normal bash pattern check
 
 ## Configuration
 
@@ -111,7 +105,7 @@ The extension integrates via Pi's lifecycle hooks:
 | Project | `<cwd>/.pi/extensions/pi-permission-system/config.json`                                           |
 
 Project config overrides global config; per-agent frontmatter overrides both.
-Object-shaped fields (`defaultPolicy`, `tools`, `bash`, `mcp`, `skills`, `special`) use shallow-merge (later source wins per-key).
+The `permission` object uses deep-shallow merge: string-vs-string replaces; both-object shallow-merges pattern maps; string-vs-object the override wins entirely.
 Scalar fields (`debugLog`, `permissionReviewLog`, `yoloMode`) use simple replacement.
 
 The config file combines runtime knobs and permission policy in one object:
@@ -125,19 +119,16 @@ The config file combines runtime knobs and permission policy in one object:
   "permissionReviewLog": true,
   "yoloMode": false,
 
-  // Policy
-  "defaultPolicy": {
-    "tools": "ask",
-    "bash": "ask",
-    "mcp": "ask",
-    "skills": "ask",
-    "special": "ask"
-  },
-  "tools": { "read": "allow", "write": "deny" },
-  "bash": { "git status": "allow", "git *": "ask" },
-  "mcp": { "mcp_status": "allow" },
-  "skills": { "*": "ask" },
-  "special": { "external_directory": "ask" }
+  // Flat permission policy
+  "permission": {
+    "*": "ask",                              // universal fallback
+    "read": "allow",
+    "write": "deny",
+    "bash": { "git status": "allow", "git *": "ask" },
+    "mcp": { "mcp_status": "allow" },
+    "skill": { "*": "ask" },
+    "external_directory": "ask"
+  }
 }
 ```
 
@@ -156,14 +147,16 @@ No debug output is printed to the terminal.
 
 The config file is a JSON object with these policy sections:
 
-| Section         | Description                                                                  |
-| --------------- | ---------------------------------------------------------------------------- |
-| `defaultPolicy` | Fallback permissions per category                                            |
-| `tools`         | Exact-name tool permissions for registered tools                             |
-| `bash`          | Command pattern permissions                                                  |
-| `mcp`           | MCP server/tool permissions for calls routed through a registered `mcp` tool |
-| `skills`        | Skill name pattern permissions                                               |
-| `special`       | Reserved permission checks such as external directory access                 |
+The `permission` object maps surface names to actions:
+
+| Key | Value type | Description |
+| --- | ---------- | ----------- |
+| `"*"` | string | Universal fallback — applies when no surface-specific rule matches |
+| tool name (e.g. `read`) | string | Catch-all for that tool surface |
+| `bash` | string or object | Bash catch-all or `{ pattern: action }` map |
+| `mcp` | string or object | MCP catch-all or `{ pattern: action }` map |
+| `skill` | string or object | Skill catch-all or `{ pattern: action }` map |
+| `external_directory` | string | Controls access to paths outside `cwd` |
 
 > **Note:** Trailing commas are **not** supported. If parsing fails, the extension falls back to `ask` for all categories.
 
@@ -213,159 +206,149 @@ These project files are resolved from Pi's current session `cwd`, so they are wo
 3. Global agent frontmatter
 4. Project agent frontmatter
 
-Later layers override earlier layers within the same permission category. For wildcard-based sections like `bash`, `mcp`, `skills`, and `special`, matching still follows the extension's existing **last matching rule wins** behavior after the layers are combined. The recommended convention — also used by [OpenCode's permission model](https://opencode.ai/docs/permissions/#granular-rules-object-syntax) — is to put the broad catch-all rule first and specific overrides after it.
+Later layers override earlier layers. Within a surface map like `bash` or `mcp`, matching follows **last matching rule wins** — put broad catch-alls first and specific overrides after. The recommended convention is also used by [OpenCode's permission model](https://opencode.ai/docs/permissions/#granular-rules-object-syntax).
 
 ---
 
 ## Policy Reference
 
-### `defaultPolicy`
+### `permission["*"]` — universal fallback
 
-Sets fallback permissions when no specific rule matches:
+The `"*"` key sets the action used when no surface-specific rule matches:
 
 ```jsonc
 {
-  "defaultPolicy": {
-    "tools": "ask",
-    "bash": "ask",
-    "mcp": "ask",
-    "skills": "ask",
-    "special": "ask",
-  },
+  "permission": {
+    "*": "ask"
+  }
 }
 ```
 
-### `tools`
+Omitting `"*"` defaults to `"ask"` (least privilege).
 
-Controls tools by exact registered name (no wildcards). This is the recommended standalone format for **all** tool entries, including Pi built-ins and arbitrary third-party extension tools.
+### Tool surfaces
 
-| Tool name example  | Description                                                               |
-| ------------------ | ------------------------------------------------------------------------- |
-| `bash`             | Shell command execution (tool-level fallback before `bash` pattern rules) |
-| `read` / `write`   | Canonical Pi built-in file tools                                          |
-| `mcp`              | Registered MCP proxy tool entry/fallback when available                   |
-| `task`             | Delegation tool handled like any other registered extension tool          |
-| `third_party_tool` | Arbitrary registered extension tool                                       |
+Any registered tool name can be a surface key. A string value is a catch-all for that surface.
+
+| Surface example | Description |
+| --------------- | ----------- |
+| `read`, `write`, `edit`, `grep`, `find`, `ls` | Canonical Pi built-in file tools |
+| `bash` | Shell command execution |
+| `mcp` | Registered MCP proxy tool |
+| `task` | Delegation tool |
+| `third_party_tool` | Any other registered extension tool |
 
 ```jsonc
 {
-  "tools": {
+  "permission": {
     "read": "allow",
     "write": "deny",
-    "mcp": "allow",
-    "third_party_tool": "ask",
-  },
+    "third_party_tool": "ask"
+  }
 }
 ```
 
-Unknown or absent tools are not required in the config. If another extension is not installed, its tool simply will not be registered at runtime, and this extension will block attempts to call that missing tool before permission checks run.
+Unknown or absent tools are not required in the config. If a tool is not registered at runtime, this extension blocks it before permission checks run.
 
-> **Note:** Setting `tools.bash` affects the _default_ for bash commands, but `bash` patterns can provide command-level overrides.
->
-> **Note:** Setting `tools.mcp` controls coarse access to a registered `mcp` tool when one is available. Specific `mcp` rules still override it when a target pattern matches.
->
-> **Note:** Top-level shorthand is only supported for the canonical Pi built-ins (`bash`, `read`, `write`, `edit`, `grep`, `find`, `ls`) in agent frontmatter. Use `permission.tools.<name>` for `mcp`, `task`, and any third-party tool.
+### `bash` surface
 
-### `bash`
-
-Command patterns use `*` wildcards and match against the full command string. If multiple patterns match, the **last matching rule wins**, so put broad fallback rules first and specific overrides after them.
+Command patterns use `*` wildcards matched against the full command string. **Last matching rule wins** — put broad catch-alls first, specific overrides after.
 
 ```jsonc
 {
-  "bash": {
-    "git *": "ask",
-    "git status": "allow",
-    "rm -rf *": "deny",
-  },
+  "permission": {
+    "bash": {
+      "*": "ask",
+      "git status": "allow",
+      "git diff": "allow",
+      "git *": "ask",
+      "rm -rf *": "deny"
+    }
+  }
 }
 ```
 
-### `mcp`
-
-MCP permissions match against derived targets from tool input. These rules are more specific than `tools.mcp` and override that fallback when a pattern matches:
-
-| Target Type       | Examples                                                              |
-| ----------------- | --------------------------------------------------------------------- |
-| Baseline ops      | `mcp_status`, `mcp_list`, `mcp_search`, `mcp_describe`, `mcp_connect` |
-| Server name       | `myServer`                                                            |
-| Server/tool combo | `myServer:search`, `myServer_search`                                  |
-| Generic           | `mcp_call`                                                            |
+String shorthand sets a catch-all for all bash commands:
 
 ```jsonc
 {
-  "mcp": {
-    "mcp_status": "allow",
-    "mcp_list": "allow",
-    "myServer:*": "ask",
-    "dangerousServer": "deny",
-  },
+  "permission": { "bash": "allow" }
 }
 ```
 
-> **Note:** Baseline discovery targets may auto-allow when you permit any MCP rule.
+### `mcp` surface
 
-#### MCP Tool Fallback via `tools.mcp`
+MCP permissions match against derived targets from tool input:
 
-A registered `mcp` tool can use `tools.mcp` as an entry permission point. This provides a fallback when no specific MCP pattern matches:
+| Target type | Examples |
+| ----------- | -------- |
+| Baseline ops | `mcp_status`, `mcp_list`, `mcp_search`, `mcp_describe`, `mcp_connect` |
+| Server name | `myServer` |
+| Server/tool combo | `myServer:search`, `myServer_search` |
+| Generic | `mcp_call` |
 
 ```jsonc
 {
-  "tools": {
-    "mcp": "allow",
-  },
+  "permission": {
+    "mcp": {
+      "*": "ask",
+      "mcp_status": "allow",
+      "mcp_list": "allow",
+      "myServer:*": "ask",
+      "dangerousServer": "deny"
+    }
+  }
 }
 ```
 
-This is useful for per-agent configurations where you want to grant MCP access broadly:
+> **Note:** Baseline discovery targets auto-allow when any explicit `mcp: allow` rule exists.
+
+String shorthand grants broad MCP access — useful for per-agent overrides:
 
 ```yaml
-# In the global Pi agents directory (default: ~/.pi/agent/agents/researcher.md; respects PI_CODING_AGENT_DIR)
+# ~/.pi/agent/agents/researcher.md (respects PI_CODING_AGENT_DIR)
 ---
 name: researcher
 permission:
-  tools:
-    mcp: allow
+  mcp: allow
 ---
 ```
 
-The permission resolution order for MCP operations:
+### `skill` surface
 
-1. Specific `mcp` patterns (e.g., `myServer:toolName`, `myServer_*`)
-2. `tools.mcp` fallback (if set)
-3. `defaultPolicy.mcp`
-
-### `skills`
-
-Skill name patterns use `*` wildcards:
+Skill name patterns use `*` wildcards (note: surface is `skill`, not `skills`):
 
 ```jsonc
 {
-  "skills": {
-    "*": "ask",
-    "dangerous-*": "deny",
-  },
+  "permission": {
+    "skill": {
+      "*": "ask",
+      "dangerous-*": "deny",
+      "librarian": "allow"
+    }
+  }
 }
 ```
 
-### `special`
+### `external_directory` surface
 
-Reserved permission checks:
-
-| Key                  | Description                                                                                                                                                                   |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `external_directory` | Enforces ask/allow/deny decisions for path-bearing tools and bash commands that reference paths outside the active working directory                                          |
+Controls access to paths outside the active working directory:
 
 ```jsonc
 {
-  "special": {
-    "external_directory": "ask",
-  },
+  "permission": {
+    "external_directory": "ask"
+  }
 }
 ```
 
-`external_directory` is evaluated before the normal tool permission check. For example, `tools.read: "allow"` can permit ordinary reads while `special.external_directory: "ask"` still requires confirmation before reading `../outside.txt` or an absolute path outside `ctx.cwd`. Optional-path search tools (`find`, `grep`, `ls`) skip this check when no `path` is provided because they default to the active working directory.
+`external_directory` is evaluated before the normal tool permission check. For example, `read: "allow"` can permit ordinary reads while `external_directory: "ask"` still requires confirmation before reading `../outside.txt` or an absolute path outside `ctx.cwd`.
+Optional-path search tools (`find`, `grep`, `ls`) skip this check when no `path` is provided.
 
-Bash commands are also covered: the extension extracts path-like tokens from the command string and applies the same gate when any resolve outside `ctx.cwd`. Quoted strings are stripped first to reduce false positives (e.g., paths inside `git commit -m "..."` messages). This is a best-effort heuristic — variable expansion, subshells, and escaped quotes are not parsed. OS device paths (`/dev/null`, `/dev/stdin`, `/dev/stdout`, `/dev/stderr`) are always excluded from this check — they cannot hold or leak data and commonly appear in stderr-redirect idioms such as `command 2>/dev/null`.
+Bash commands are also covered: the extension extracts path-like tokens from the command string and applies the same gate when any resolve outside `ctx.cwd`.
+Quoted strings are stripped first to reduce false positives.
+This is a best-effort heuristic — variable expansion, subshells, and escaped quotes are not parsed.
+OS device paths (`/dev/null`, `/dev/stdin`, `/dev/stdout`, `/dev/stderr`) are always excluded.
 
 ---
 
@@ -375,21 +358,15 @@ Bash commands are also covered: the extension extracts path-like tokens from the
 
 ```jsonc
 {
-  "defaultPolicy": {
-    "tools": "ask",
-    "bash": "ask",
-    "mcp": "ask",
-    "skills": "ask",
-    "special": "ask",
-  },
-  "tools": {
+  "permission": {
+    "*": "ask",
     "read": "allow",
     "grep": "allow",
     "find": "allow",
     "ls": "allow",
     "write": "deny",
-    "edit": "deny",
-  },
+    "edit": "deny"
+  }
 }
 ```
 
@@ -397,19 +374,15 @@ Bash commands are also covered: the extension extracts path-like tokens from the
 
 ```jsonc
 {
-  "defaultPolicy": {
-    "tools": "ask",
-    "bash": "deny",
-    "mcp": "ask",
-    "skills": "ask",
-    "special": "ask",
-  },
-  "bash": {
-    "git *": "ask",
-    "git status": "allow",
-    "git diff": "allow",
-    "git log *": "allow",
-  },
+  "permission": {
+    "*": "ask",
+    "bash": {
+      "*": "deny",
+      "git status": "allow",
+      "git diff": "allow",
+      "git log *": "allow"
+    }
+  }
 }
 ```
 
@@ -417,20 +390,16 @@ Bash commands are also covered: the extension extracts path-like tokens from the
 
 ```jsonc
 {
-  "defaultPolicy": {
-    "tools": "ask",
-    "bash": "ask",
-    "mcp": "ask",
-    "skills": "ask",
-    "special": "ask",
-  },
-  "mcp": {
+  "permission": {
     "*": "ask",
-    "mcp_status": "allow",
-    "mcp_list": "allow",
-    "mcp_search": "allow",
-    "mcp_describe": "allow",
-  },
+    "mcp": {
+      "*": "ask",
+      "mcp_status": "allow",
+      "mcp_list": "allow",
+      "mcp_search": "allow",
+      "mcp_describe": "allow"
+    }
+  }
 }
 ```
 
@@ -441,11 +410,9 @@ In the global Pi agents directory (default: `~/.pi/agent/agents/reviewer.md`, re
 ```yaml
 ---
 permission:
-  tools:
-    write: deny
-    edit: deny
-  bash:
-    "*": deny
+  write: deny
+  edit: deny
+  bash: deny
 ---
 ```
 
@@ -470,7 +437,7 @@ Current agent requested tool 'edit' for '.gitignore' (1 replacement: edit #1 rep
 
 ### Session-Scoped Approvals
 
-When `special.external_directory` resolves to `ask`, the permission dialog offers four options:
+When `external_directory` resolves to `ask`, the permission dialog offers four options:
 
 ```text
 Yes | Yes, for this session | No | No, provide reason

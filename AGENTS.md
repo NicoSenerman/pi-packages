@@ -4,9 +4,9 @@
 
 This repository is a Pi extension that enforces deterministic permission gates over tool, bash, MCP, skill, and special operations so the agent cannot silently exceed the policy a user has configured.
 
-This package is a friendly fork of [`MasuRii/pi-permission-system`](https://github.com/MasuRii/pi-permission-system).
-This fork diverges from upstream in config layout (see #10).
-The `/permission-system` slash command name is preserved; config and log paths are not.
+This package is a full fork of [`MasuRii/pi-permission-system`](https://github.com/MasuRii/pi-permission-system).
+It began as a config-layout divergence (#10) and has since diverged substantially in config format, internal architecture, and permission model.
+The `/permission-system` slash command name is the only upstream identity preserved.
 
 Read `docs/plans/` before making architectural changes (created by `/plan-issue` on first use).
 
@@ -15,7 +15,7 @@ Read `docs/plans/` before making architectural changes (created by `/plan-issue`
 - Keep scope tight.
 - Prefer small, reversible changes.
 - Preserve intentional behavior unless there is a clear reason to change it.
-- Ask before removing functionality, changing defaults, or diverging from upstream's on-disk identity.
+- Ask before removing functionality or changing defaults.
 
 ## Implementation Priorities
 
@@ -25,10 +25,8 @@ Read `docs/plans/` before making architectural changes (created by `/plan-issue`
 - Hide denied tools from the agent before it starts (tool filtering + system-prompt sanitization) so the agent does not waste turns probing for blocked tools.
 - Keep block/ask/allow decisions reviewable: write to the permission review log by default and surface readable approval summaries in the dialog.
 - Preserve the `/permission-system` slash command name — renaming it is a breaking change.
-  Config and log paths intentionally diverge from upstream as of #10 and are not preserved.
-- `tools.bash` and `tools.mcp` are fallback overrides, not catch-all rules — they set the default when no bash/mcp pattern matches, but specific patterns from any scope always have priority.
-  `normalizeConfig()` in `src/normalize.ts` excludes these keys (see `TOOL_SURFACE_OVERRIDE_KEYS`); `synthesizeOverrides()` in `src/synthesize.ts` converts them into catch-all rules placed between synthesized defaults and config rules in the composed ruleset.
-  Specific config patterns always win because they sit at higher array indices (last-match-wins).
+- In the flat permission format, `permission["*"]` is the universal fallback and each surface key is a direct rule source.
+  Pattern ordering within a surface map matters: last-match-wins, so put broad catch-alls first and specific overrides after.
 - Wildcard matching (bash patterns, skill globs) must be explicit and tested — silent over-matching is a permission bypass.
 - When a config pattern or documented recommendation can solve a problem, prefer that over a new runtime mechanism. Mechanism is forever; docs are reversible.
 - Treat any declared config field not read at runtime as a maintenance trap. Remove it or document its purpose.
@@ -71,7 +69,7 @@ Both runtime knobs and permission policy live in the same file:
 - Example: `config/config.example.json`
 
 Merge precedence: project overrides global; per-agent frontmatter overrides both.
-Object-shaped fields (`defaultPolicy`, `tools`, `bash`, `mcp`, `skills`, `special`) use shallow-merge (later source wins per-key).
+The `permission` object uses deep-shallow merge: string vs. string replaces; both-object shallow-merges pattern maps; string vs. object the override replaces the base entirely.
 Scalar fields (`debugLog`, `permissionReviewLog`, `yoloMode`) use simple replacement.
 
 Legacy paths (`~/.pi/agent/pi-permissions.jsonc`, `<cwd>/.pi/agent/pi-permissions.jsonc`, `<extension-root>/config.json`) are detected and merged with a migration warning for one release.
@@ -82,9 +80,8 @@ Rules:
 - Do not move package configuration into Pi `settings.json` without explicit discussion.
 - Keep `schemas/permissions.schema.json`, `config/config.example.json`, `README.md`, and the TypeScript types/loaders aligned.
   Changing one without the others is a bug, not a refactor.
-- When removing a previously accepted config field, keep the loader tolerant: accept the legacy key, emit a single non-fatal config issue per occurrence describing the deprecation, and discard the value.
+- When removing a previously accepted config field, keep the loader tolerant: detect the legacy key, emit a single non-fatal config issue pointing to the migration guide, and discard the value.
   Drop the field from the TypeScript types, the JSON schema, and the docs in the same change.
-  This avoids breaking on-disk configs while still surfacing the trap.
 
 ## Documentation frontmatter
 
@@ -148,7 +145,6 @@ Before implementing, understand:
 2. which permission surface is involved (tools / bash / mcp / skills / special / external_directory)
 3. the merge precedence between global, project, and per-agent policies
 4. whether the change renames the `/permission-system` slash command — if yes, it is breaking.
-   Config and log paths diverge from upstream (#10) and are not part of the stability contract.
 5. the need to keep schema, example config, loader, and docs aligned
 
 Do not assume "allow" is a safe default. Do not add a permission surface without also adding a policy field, schema entry, and example.

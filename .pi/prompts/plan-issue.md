@@ -28,7 +28,7 @@ Before reading anything, make sure the working tree is up to date with the remot
 
 Before writing the plan, identify any genuinely ambiguous design choices. If there are 1–2 such choices (breaking-vs-non-breaking, policy-precedence change, default-state change, on-disk-identity impact, etc.), use the `ask-user` skill once to surface them with a short context summary and concrete options. Skip this step if the issue's "Proposed change" section is unambiguous.
 
-Specifically flag for confirmation any change that affects the upstream-shared on-disk identity (config directory name, log filenames, `/permission-system` slash command name, event channel names) — those are breaking for users of this fork.
+Specifically flag for confirmation any change that renames the `/permission-system` slash command or changes a default policy state — those are breaking changes.
 
 ## Write the plan
 
@@ -55,7 +55,7 @@ Then the body, sections in this order:
 - **Risks and Mitigations** — concrete risks and how the plan addresses each. Always include a "could this silently weaken a permission?" check.
 - **Open Questions** — defer-until-needed items.
 
-If the change is breaking (including any change to on-disk identity or default policy state), say so explicitly in Goals and use `feat!:` in the suggested commit messages.
+If the change is breaking (including renaming the `/permission-system` slash command or changing a default policy state), say so explicitly in Goals and use `feat!:` in the suggested commit messages.
 
 ## Commit
 
