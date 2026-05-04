@@ -2620,6 +2620,187 @@ test("session rules override config deny for external_directory", () => {
   }
 });
 
+// ── Session rule evaluation for all surfaces ─────────────────────────────
+
+test("checkPermission returns source 'session' for bash when session rules match", () => {
+  const { manager, cleanup } = createManager({ permission: {} });
+
+  try {
+    const sessionRules = [
+      {
+        surface: "bash",
+        pattern: "git *",
+        action: "allow" as const,
+        layer: "session" as const,
+      },
+    ];
+
+    const result = manager.checkPermission(
+      "bash",
+      { command: "git status --short" },
+      undefined,
+      sessionRules,
+    );
+    assert.equal(result.state, "allow");
+    assert.equal(result.source, "session");
+    assert.equal(result.matchedPattern, "git *");
+  } finally {
+    cleanup();
+  }
+});
+
+test("checkPermission returns source 'session' for bash when session rule is exact match", () => {
+  const { manager, cleanup } = createManager({ permission: {} });
+
+  try {
+    const sessionRules = [
+      {
+        surface: "bash",
+        pattern: "ls",
+        action: "allow" as const,
+        layer: "session" as const,
+      },
+    ];
+
+    const result = manager.checkPermission(
+      "bash",
+      { command: "ls" },
+      undefined,
+      sessionRules,
+    );
+    assert.equal(result.state, "allow");
+    assert.equal(result.source, "session");
+  } finally {
+    cleanup();
+  }
+});
+
+test("checkPermission falls back to config for bash when session rules do not match the command", () => {
+  const { manager, cleanup } = createManager({ permission: { bash: "deny" } });
+
+  try {
+    const sessionRules = [
+      {
+        surface: "bash",
+        pattern: "git *",
+        action: "allow" as const,
+        layer: "session" as const,
+      },
+    ];
+
+    const result = manager.checkPermission(
+      "bash",
+      { command: "npm run build" },
+      undefined,
+      sessionRules,
+    );
+    assert.equal(result.state, "deny");
+    assert.equal(result.source, "bash");
+  } finally {
+    cleanup();
+  }
+});
+
+test("checkPermission returns source 'session' for mcp when session rules match the target", () => {
+  const { manager, cleanup } = createManager({ permission: {} });
+
+  try {
+    const sessionRules = [
+      {
+        surface: "mcp",
+        pattern: "exa:*",
+        action: "allow" as const,
+        layer: "session" as const,
+      },
+    ];
+
+    const result = manager.checkPermission(
+      "mcp",
+      { tool: "exa:search" },
+      undefined,
+      sessionRules,
+    );
+    assert.equal(result.state, "allow");
+    assert.equal(result.source, "session");
+  } finally {
+    cleanup();
+  }
+});
+
+test("checkPermission returns source 'session' for skill when session rules match", () => {
+  const { manager, cleanup } = createManager({ permission: {} });
+
+  try {
+    const sessionRules = [
+      {
+        surface: "skill",
+        pattern: "librarian",
+        action: "allow" as const,
+        layer: "session" as const,
+      },
+    ];
+
+    const result = manager.checkPermission(
+      "skill",
+      { name: "librarian" },
+      undefined,
+      sessionRules,
+    );
+    assert.equal(result.state, "allow");
+    assert.equal(result.source, "session");
+    assert.equal(result.matchedPattern, "librarian");
+  } finally {
+    cleanup();
+  }
+});
+
+test("checkPermission returns source 'session' for tool surface when session rules match", () => {
+  const { manager, cleanup } = createManager({ permission: {} });
+
+  try {
+    const sessionRules = [
+      {
+        surface: "read",
+        pattern: "*",
+        action: "allow" as const,
+        layer: "session" as const,
+      },
+    ];
+
+    const result = manager.checkPermission("read", {}, undefined, sessionRules);
+    assert.equal(result.state, "allow");
+    assert.equal(result.source, "session");
+  } finally {
+    cleanup();
+  }
+});
+
+test("bash session rules do not bleed into mcp checks", () => {
+  const { manager, cleanup } = createManager({ permission: {} });
+
+  try {
+    const sessionRules = [
+      {
+        surface: "bash",
+        pattern: "git *",
+        action: "allow" as const,
+        layer: "session" as const,
+      },
+    ];
+
+    const result = manager.checkPermission(
+      "mcp",
+      { tool: "exa:search" },
+      undefined,
+      sessionRules,
+    );
+    // bash session rule must not affect mcp surface
+    assert.notEqual(result.source, "session");
+  } finally {
+    cleanup();
+  }
+});
+
 // Suppress unused import warning — PermissionState used in type annotations
 const _unused: PermissionState = "ask";
 void _unused;

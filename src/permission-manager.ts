@@ -493,6 +493,20 @@ export class PermissionManager {
     if (normalizedToolName === "skill") {
       const skillName = toRecord(input).name;
       const lookupValue = typeof skillName === "string" ? skillName : "*";
+
+      // Session check.
+      if (sessionRules && sessionRules.length > 0) {
+        const sessionRule = evaluate("skill", lookupValue, sessionRules);
+        if (sessionRules.includes(sessionRule)) {
+          return {
+            toolName,
+            state: "allow",
+            matchedPattern: sessionRule.pattern,
+            source: "session",
+          };
+        }
+      }
+
       const rule = evaluate("skill", lookupValue, composedRules);
       return {
         toolName,
@@ -506,6 +520,21 @@ export class PermissionManager {
     if (normalizedToolName === "bash") {
       const record = toRecord(input);
       const command = typeof record.command === "string" ? record.command : "";
+
+      // Session check.
+      if (sessionRules && sessionRules.length > 0) {
+        const sessionRule = evaluate("bash", command, sessionRules);
+        if (sessionRules.includes(sessionRule)) {
+          return {
+            toolName,
+            state: "allow",
+            command,
+            matchedPattern: sessionRule.pattern,
+            source: "session",
+          };
+        }
+      }
+
       const rule = evaluate("bash", command, composedRules);
       return {
         toolName,
@@ -526,6 +555,22 @@ export class PermissionManager {
         "mcp",
       ];
       const fallbackTarget = mcpTargets[0] || "mcp";
+
+      // Session check: try each candidate target against session rules.
+      if (sessionRules && sessionRules.length > 0) {
+        for (const target of mcpTargets) {
+          const sessionRule = evaluate("mcp", target, sessionRules);
+          if (sessionRules.includes(sessionRule)) {
+            return {
+              toolName,
+              state: "allow",
+              matchedPattern: sessionRule.pattern,
+              target,
+              source: "session",
+            };
+          }
+        }
+      }
 
       // Try each candidate target. Stop on the first non-default match.
       for (const target of mcpTargets) {
@@ -552,6 +597,20 @@ export class PermissionManager {
     }
 
     // --- Tools (read, write, edit, grep, find, ls, extension tools) ---
+
+    // Session check.
+    if (sessionRules && sessionRules.length > 0) {
+      const sessionRule = evaluate(normalizedToolName, "*", sessionRules);
+      if (sessionRules.includes(sessionRule)) {
+        return {
+          toolName,
+          state: "allow",
+          matchedPattern: sessionRule.pattern,
+          source: "session",
+        };
+      }
+    }
+
     const rule = evaluate(normalizedToolName, "*", composedRules);
 
     if (BUILT_IN_TOOL_PERMISSION_NAMES.has(normalizedToolName)) {
