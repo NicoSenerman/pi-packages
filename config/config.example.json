@@ -5,28 +5,18 @@
   "permissionReviewLog": true,
   "yoloMode": false,
 
-  "defaultPolicy": {
-    "tools": "ask",
-    "bash": "ask",
-    "mcp": "ask",
-    "skills": "ask",
-    "special": "ask"
-  },
-  "tools": {
+  "permission": {
+    "*": "ask",
     "read": "allow",
-    "write": "deny"
-  },
-  "bash": {
-    "git status": "allow",
-    "git *": "ask"
-  },
-  "mcp": {
-    "mcp_status": "allow"
-  },
-  "skills": {
-    "*": "ask"
-  },
-  "special": {
+    "write": "deny",
+    "bash": {
+      "*": "ask",
+      "git status": "allow",
+      "git diff": "allow",
+      "git *": "ask"
+    },
+    "mcp": { "*": "ask", "mcp_status": "allow", "mcp_list": "allow" },
+    "skill": { "*": "ask" },
     "external_directory": "ask"
   }
 }

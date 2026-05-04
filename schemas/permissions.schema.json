@@ -2,8 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/gotgenes/pi-permission-system/main/schemas/permissions.schema.json",
   "title": "PI Permission System Configuration",
-  "description": "Unified config file combining runtime knobs and permission policy for pi-permission-system.",
-  "markdownDescription": "Unified config file combining runtime knobs and permission policy for [pi-permission-system](https://github.com/gotgenes/pi-permission-system).\n\nPlace at `~/.pi/agent/extensions/pi-permission-system/config.json` (global) or `<project>/.pi/extensions/pi-permission-system/config.json` (project).",
+  "description": "Unified config file combining runtime knobs and flat permission policy for pi-permission-system.",
+  "markdownDescription": "Unified config file combining runtime knobs and flat permission policy for [pi-permission-system](https://github.com/gotgenes/pi-permission-system).\n\nPlace at `~/.pi/agent/extensions/pi-permission-system/config.json` (global) or `<project>/.pi/extensions/pi-permission-system/config.json` (project).",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -29,111 +29,43 @@
       "type": "boolean",
       "default": false
     },
-    "defaultPolicy": {
-      "description": "Fallback permission state per category when no specific rule matches.",
-      "markdownDescription": "Fallback permission state per category when no specific rule matches.\n\nAll fields default to `\"ask\"` when omitted.",
+    "permission": {
+      "description": "Flat permission policy. Each key is a surface name; values are a PermissionState string (catch-all) or a pattern→action map.",
+      "markdownDescription": "Flat permission policy.\n\nEach top-level key is a surface name:\n- `\"*\"` — universal fallback (replaces `defaultPolicy.tools` from the legacy format)\n- Tool names (`read`, `write`, `bash`, `mcp`, `skill`, `external_directory`, etc.)\n\nA **string** value is shorthand for `{ \"*\": action }` (surface-level catch-all).\nAn **object** value maps wildcard patterns to actions — last matching pattern wins.\n\n**Merge order (lowest → highest precedence):** global → project → per-agent frontmatter.",
       "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "tools": {
-          "description": "Default permission for registered tools when no exact-name rule matches in the tools map.",
-          "markdownDescription": "Default permission for registered tools when no exact-name rule matches in the `tools` map.",
-          "$ref": "#/$defs/permissionState",
-          "default": "ask"
-        },
-        "bash": {
-          "description": "Default permission for bash commands when no pattern in the bash map matches.",
-          "markdownDescription": "Default permission for bash commands when no pattern in the `bash` map matches.",
-          "$ref": "#/$defs/permissionState",
-          "default": "ask"
-        },
-        "mcp": {
-          "description": "Default permission for MCP operations when no target pattern in the mcp map matches.",
-          "markdownDescription": "Default permission for MCP operations when no target pattern in the `mcp` map matches.",
-          "$ref": "#/$defs/permissionState",
-          "default": "ask"
-        },
-        "skills": {
-          "description": "Default permission for skill loading when no pattern in the skills map matches.",
-          "markdownDescription": "Default permission for skill loading when no pattern in the `skills` map matches.",
-          "$ref": "#/$defs/permissionState",
-          "default": "ask"
-        },
-        "special": {
-          "description": "Default permission for special checks (external_directory) when no explicit rule matches.",
-          "markdownDescription": "Default permission for special checks (`external_directory`) when no explicit rule matches.",
-          "$ref": "#/$defs/permissionState",
-          "default": "ask"
-        }
-      }
-    },
-    "tools": {
-      "description": "Exact-name permissions for registered tools. Use this map for the canonical Pi built-ins and any extension-provided or third-party tools.",
-      "markdownDescription": "Exact-name permissions for registered tools. Use this map for the canonical Pi built-ins (`read`, `write`, `edit`, `bash`, `grep`, `find`, `ls`) and any extension-provided or third-party tools.\n\nNo wildcards — keys must match the registered tool name exactly.",
-      "$ref": "#/$defs/permissionMap",
-      "examples": [
-        {
-          "read": "allow",
-          "write": "deny",
-          "edit": "ask",
-          "mcp": "allow"
-        }
-      ]
-    },
-    "bash": {
-      "description": "Wildcard pattern permissions for bash commands. Patterns use * globs matched against the full command string. Last matching rule wins.",
-      "markdownDescription": "Wildcard pattern permissions for bash commands. Patterns use `*` globs matched against the full command string.\n\n**Last matching rule wins** — put broad catch-all rules first and specific overrides after them.",
-      "$ref": "#/$defs/permissionMap",
-      "examples": [
-        {
-          "git status": "allow",
-          "git diff": "allow",
-          "git *": "ask",
-          "rm -rf *": "deny"
-        }
-      ]
-    },
-    "mcp": {
-      "description": "Pattern-based permissions for targets invoked through a registered mcp tool when available.",
-      "markdownDescription": "Pattern-based permissions for targets invoked through a registered `mcp` tool when available.\n\nTargets include server names (`myServer`), qualified tool names (`myServer:search`, `myServer_search`), and baseline operations (`mcp_status`, `mcp_list`, `mcp_connect`, `mcp_describe`, `mcp_search`).",
-      "$ref": "#/$defs/permissionMap",
-      "examples": [
-        {
-          "mcp_status": "allow",
-          "mcp_list": "allow",
-          "myServer:*": "ask",
-          "dangerousServer": "deny"
-        }
-      ]
-    },
-    "skills": {
-      "description": "Wildcard pattern permissions for skill names. Controls which skills can be loaded or read from disk.",
-      "markdownDescription": "Wildcard pattern permissions for skill names. Controls which skills can be loaded or read from disk.\n\nUse `\"*\": \"ask\"` to require confirmation for all skills, or `\"dangerous-*\": \"deny\"` to block a family of skills.",
-      "$ref": "#/$defs/permissionMap",
+      "propertyNames": {
+        "description": "A surface name or the universal fallback key '*'.",
+        "type": "string",
+        "minLength": 1
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/permissionState",
+            "description": "Catch-all shorthand: equivalent to { \"*\": action }."
+          },
+          {
+            "$ref": "#/$defs/permissionMap",
+            "description": "Pattern→action map for this surface."
+          }
+        ]
+      },
       "examples": [
         {
           "*": "ask",
-          "dangerous-*": "deny"
+          "read": "allow",
+          "write": "deny",
+          "bash": {
+            "*": "ask",
+            "git status": "allow",
+            "git diff": "allow",
+            "git *": "ask"
+          },
+          "mcp": { "*": "ask", "mcp_status": "allow", "exa:*": "allow" },
+          "skill": { "*": "ask", "librarian": "allow" },
+          "external_directory": "ask"
         }
       ]
-    },
-    "special": {
-      "description": "Reserved permission checks for special runtime behaviors.",
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "external_directory": {
-          "description": "Enforces permission checks for path-bearing file tools (read, write, edit, find, grep, ls) when they target paths outside the active working directory.",
-          "markdownDescription": "Enforces permission checks for path-bearing file tools (`read`, `write`, `edit`, `find`, `grep`, `ls`) when they target paths outside the active working directory.\n\nEvaluated **before** the normal tool permission check — so `tools.read: \"allow\"` can permit ordinary reads while `external_directory: \"ask\"` still requires confirmation for paths outside `cwd`.",
-          "$ref": "#/$defs/permissionState"
-        },
-        "tool_call_limit": {
-          "description": "Deprecated and ignored. This key has no effect and should be removed from your config.",
-          "markdownDescription": "⚠️ **Deprecated and ignored.** This key has no effect and should be removed from your config.",
-          "deprecated": true,
-          "$ref": "#/$defs/permissionState"
-        }
-      }
     }
   },
   "$defs": {
@@ -155,8 +87,8 @@
       ]
     },
     "permissionMap": {
-      "description": "A map of name or wildcard patterns to permission states. Keys are matched against the relevant target (tool name, bash command, MCP target, or skill name).",
-      "markdownDescription": "A map of name or wildcard patterns to permission states.\n\nKeys are matched against the relevant target. Use `*` for wildcard matching. When multiple patterns match, the **last matching rule wins**.",
+      "description": "A map of wildcard patterns to permission states. Last matching pattern wins.",
+      "markdownDescription": "A map of wildcard patterns to permission states.\n\nUse `*` for wildcard matching. When multiple patterns match, the **last matching rule wins** — put broad catch-alls first and specific overrides after them.",
       "type": "object",
       "propertyNames": {
         "description": "A non-empty pattern string. Use * for wildcard matching.",
