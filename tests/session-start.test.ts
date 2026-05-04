@@ -27,13 +27,7 @@ describe("session_start handler consolidation", () => {
     mkdirSync(dirname(globalConfigPath), { recursive: true });
 
     const config: ScopeConfig = {
-      defaultPolicy: {
-        tools: "ask",
-        bash: "ask",
-        mcp: "ask",
-        skills: "ask",
-        special: "ask",
-      },
+      permission: { "*": "ask" },
     };
     writeFileSync(
       globalConfigPath,
