@@ -26,6 +26,12 @@ const SURFACE_TO_DEFAULT_KEY: Record<string, keyof PermissionDefaultPolicy> = {
  * - "bash", "mcp", "skill" → dedicated defaultPolicy key
  * - special-key surfaces (e.g. "external_directory") → defaults.special
  * - everything else (tool-name surfaces) → defaults.tools
+ *
+ * @deprecated Default policy is now synthesized into the composed ruleset via
+ * `synthesizeDefaults()` in `src/synthesize.ts`. Call-sites that previously
+ * consulted this function can evaluate against the composed ruleset instead.
+ * This function is kept for backward compatibility and will be removed in a
+ * future cleanup.
  */
 export function getSurfaceDefault(
   surface: string,

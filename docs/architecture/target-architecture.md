@@ -25,6 +25,16 @@ interface Rule {
   pattern: string;
   /** The decision. */
   action: PermissionState;
+  /**
+   * Origin layer — used to derive PermissionCheckResult.source after evaluation.
+   * Not used by evaluate(); purely informational metadata.
+   * "default" = synthesized from defaultPolicy
+   * "override" = synthesized from tools.bash / tools.mcp
+   * "baseline" = synthesized MCP metadata auto-allow
+   * "config" = explicit on-disk rule
+   * "session" = user-approved for this session
+   */
+  layer?: "default" | "override" | "baseline" | "config" | "session";
 }
 ```
 
@@ -37,7 +47,7 @@ type Ruleset = Rule[];
 ```
 
 Merge precedence is array ordering.
-Synthesized defaults go first (lowest priority), then global rules, project rules, agent frontmatter, and finally session rules (highest priority).
+Synthesized defaults go first (lowest priority), then MCP baseline auto-allow rules, then tools.bash/tools.mcp overrides, then config rules (global → project → agent → project-agent), and finally session rules (highest priority).
 Last-match-wins: `evaluate()` scans from the end.
 
 ### Evaluate
@@ -67,22 +77,33 @@ Index position determines priority (higher index wins):
   ┌─────────────────────────────────────────────────────────────────┐
   │                     Composed Ruleset (Rule[])                   │
   │                                                                 │
-  │  Index 0..N: Synthesized defaults                               │
-  │    { surface: "*",                  pattern: "*", action: "ask" } │
-  │    { surface: "bash",              pattern: "*", action: "ask" } │
-  │    { surface: "mcp",              pattern: "*", action: "ask" } │
-  │    { surface: "skill",            pattern: "*", action: "ask" } │
-  │    { surface: "external_directory", pattern: "*", action: "ask" } │
+  │  Index 0..D: Synthesized defaults (layer: "default")            │
+  │    { surface: "*",       pattern: "*", action: defaults.tools } │
+  │    { surface: "bash",    pattern: "*", action: defaults.bash }  │
+  │    { surface: "mcp",     pattern: "*", action: defaults.mcp }   │
+  │    { surface: "skill",   pattern: "*", action: defaults.skills } │
+  │    { surface: "special", pattern: "*", action: defaults.special } │
   │                                                                 │
-  │  Index N+1..M: Config rules (global, then project, then agent)  │
-  │    { surface: "bash",  pattern: "git *",  action: "allow" }     │
-  │    { surface: "bash",  pattern: "rm *",   action: "deny"  }     │
-  │    { surface: "read",  pattern: "*",      action: "allow" }     │
-  │    { surface: "mcp",   pattern: "exa:*",  action: "allow" }     │
+  │  Index D+1..B: MCP baseline auto-allow (layer: "baseline")      │
+  │    (only when any config rule has surface:"mcp" action:"allow") │
+  │    { surface: "mcp", pattern: "mcp_status",   action: "allow" } │
+  │    { surface: "mcp", pattern: "mcp_list",     action: "allow" } │
+  │    { surface: "mcp", pattern: "mcp_search",   action: "allow" } │
+  │    { surface: "mcp", pattern: "mcp_describe", action: "allow" } │
+  │    { surface: "mcp", pattern: "mcp_connect",  action: "allow" } │
   │                                                                 │
-  │  Index M+1..end: Session rules (highest priority)               │
-  │    { surface: "bash",              pattern: "git status*", action: "allow" } │
-  │    { surface: "external_directory", pattern: "/other/proj/*", action: "allow" } │
+  │  Index B+1..O: tools.bash/tools.mcp overrides (layer:"override") │
+  │    { surface: "bash", pattern: "*", action: tools.bash }        │
+  │    { surface: "mcp",  pattern: "*", action: tools.mcp }         │
+  │                                                                 │
+  │  Index O+1..C: Config rules (global → project → agent, layer:"config") │
+  │    { surface: "bash",    pattern: "git *",  action: "allow" }   │
+  │    { surface: "bash",    pattern: "rm *",   action: "deny"  }   │
+  │    { surface: "read",    pattern: "*",      action: "allow" }   │
+  │    { surface: "mcp",     pattern: "exa:*",  action: "allow" }   │
+  │                                                                 │
+  │  Index C+1..end: Session rules (layer: "session", highest)      │
+  │    { surface: "external_directory", pattern: "/other/*", action: "allow" } │
   │                                                                 │
   │  ◄── evaluate() scans from end, first match wins ──►            │
   └─────────────────────────────────────────────────────────────────┘
@@ -90,23 +111,37 @@ Index position determines priority (higher index wins):
 
 ### Default synthesis
 
-`defaultPolicy` and `tools.bash`/`tools.mcp` fallback overrides become actual rules at the front of the array:
+`defaultPolicy` and `tools.bash`/`tools.mcp` fallback overrides become actual rules at the front of the array.
+Three functions in `src/synthesize.ts` handle this:
 
 ```typescript
+// Lowest-priority catch-alls from defaultPolicy.
 function synthesizeDefaults(defaults: PermissionDefaultPolicy): Ruleset {
   return [
-    // Universal catch-all (covers any surface without a specific default)
-    { surface: "*", pattern: "*", action: defaults.tools },
-    // Per-surface overrides of the catch-all
-    { surface: "bash", pattern: "*", action: defaults.bash },
-    { surface: "mcp", pattern: "*", action: defaults.mcp },
-    { surface: "skill", pattern: "*", action: defaults.skills },
-    { surface: "external_directory", pattern: "*", action: defaults.special },
+    { surface: "*",       pattern: "*", action: defaults.tools,   layer: "default" },
+    { surface: "bash",    pattern: "*", action: defaults.bash,    layer: "default" },
+    { surface: "mcp",     pattern: "*", action: defaults.mcp,     layer: "default" },
+    { surface: "skill",   pattern: "*", action: defaults.skills,  layer: "default" },
+    { surface: "special", pattern: "*", action: defaults.special, layer: "default" },
   ];
+}
+
+// MCP metadata auto-allow — only synthesized when any config rule has
+// surface: "mcp" && action: "allow". Placed before overrides so that an
+// explicit tools.mcp override still wins (higher array index = higher priority).
+function synthesizeBaseline(configRules: Ruleset): Ruleset { … }
+
+// per-scope tools.bash / tools.mcp catch-alls (layer: "override").
+function synthesizeOverrides(scopes: OverrideScope[]): Ruleset { … }
+
+// Concat in priority order: defaults, baseline, overrides, config.
+function composeRuleset(defaults, baseline, overrides, config): Ruleset {
+  return [...defaults, ...baseline, ...overrides, ...config];
 }
 ```
 
-`tools.bash: "allow"` in the config layer becomes `{ surface: "bash", pattern: "*", action: "allow" }` — a normal rule at a higher index than the synthesized default, so it wins.
+`tools.bash: "allow"` synthesizes as `{ surface: "bash", pattern: "*", action: "allow", layer: "override" }` — placed after the synthesized default, so it wins for any command that isn't covered by a specific config rule.
+Specific config rules (layer `"config"`) come even later and always win.
 
 This eliminates `bashDefault`, `mcpToolLevel`, `hasAnyMcpAllowRule`, and all per-surface branching in `checkPermission()`.
 
@@ -126,13 +161,19 @@ flowchart TD
     subgraph Defaults["Default synthesis"]
         DP["defaultPolicy"] --> Synth["synthesizeDefaults()"]
         Synth --> DR["Default Rules (lowest priority)"]
+        Norm --> BL["synthesizeBaseline()"]
+        BL --> BR["Baseline Rules (conditional)"]
+        Norm --> OV["synthesizeOverrides()"]
+        OV --> OR["Override Rules (tools.bash/mcp)"]
     end
 
-    Norm --> CR["Config Rules"]
-    SA["Session Rules<br/>(appended at runtime)"]
+    Norm --> CR["Config Rules (layer: config)"]
+    SA["Session Rules<br/>(layer: session, runtime)"]
 
     subgraph Compose["Rule composition"]
-        DR --> Concat["[...defaults, ...config, ...session]"]
+        DR --> Concat["composeRuleset(...) + session"]
+        BR --> Concat
+        OR --> Concat
         CR --> Concat
         SA --> Concat
     end
