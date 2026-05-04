@@ -9,7 +9,7 @@ This document describes the target internal design for the permission system, in
 3. **Session approvals are just more rules** — no separate matching engine, no separate pre-check.
 4. **MCP stays special** — multi-name target derivation is pre-processing, not a special evaluation path.
 5. **Defaults are rules** — `defaultPolicy` and `tools.bash`/`tools.mcp` overrides are synthesized as low-priority rules in the array. No side-channel fallbacks.
-6. **Drive toward flat config** — accept both legacy and flat (`permission: { ... }`) formats. Normalize both to the same internal `Rule[]`. Legacy format emits a migration hint.
+6. **Flat config format** — replace the legacy multi-namespace format with a flat `permission: { ... }` object where each key is a surface. The config IS the ruleset in human-friendly form.
 7. **Preserve the two-phase model** — tool filtering (before_agent_start) and invocation gating (tool_call) remain separate.
 8. **Ask = cache miss** — "ask" is the absence of a matching rule. The human is the oracle. Their decision is a rule. Persistence determines lifetime (once / session / config).
 
@@ -154,7 +154,7 @@ flowchart TD
 
 ## Config formats
 
-### Legacy format (current, accepted with migration hint)
+### Legacy format (current, replaced by #66)
 
 ```jsonc
 {
@@ -486,9 +486,8 @@ flowchart TD
 
 ## Migration and compatibility
 
-- **Legacy config format**: accepted indefinitely. Emits a one-time migration hint recommending the flat format.
-- **Flat config format**: preferred for new configs. Documented as the primary format.
-- **Behavior**: identical permission decisions for the same policy + input, regardless of format.
+- **Config format**: #66 replaces the legacy format with flat `permission: { ... }`. Breaking change — no backward compatibility layer.
+- **Behavior**: identical permission decisions for equivalent policy + input.
 - **API**: `checkPermission()` return type is unchanged externally.
 - **Session approvals**: existing `external_directory` prefix approvals continue to work — they are `Rule { surface: "external_directory", pattern: "<prefix>*", action: "allow" }`.
 - **Review log**: entries gain a `matchedRule` field showing the winning rule, improving auditability.
