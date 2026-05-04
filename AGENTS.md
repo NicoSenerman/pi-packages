@@ -26,6 +26,9 @@ Read `docs/plans/` before making architectural changes (created by `/plan-issue`
 - Keep block/ask/allow decisions reviewable: write to the permission review log by default and surface readable approval summaries in the dialog.
 - Preserve the `/permission-system` slash command name — renaming it is a breaking change.
   Config and log paths intentionally diverge from upstream as of #10 and are not preserved.
+- `tools.bash` and `tools.mcp` are fallback overrides, not catch-all rules — they set the default when no bash/mcp pattern matches, but specific patterns from any scope always have priority.
+  `normalizeConfig()` in `src/normalize.ts` excludes these keys (see `TOOL_SURFACE_OVERRIDE_KEYS`); they are extracted separately in `resolvePermissions()`.
+  Do not normalize them into the `Ruleset` without also changing how `checkPermission()` resolves bash and MCP defaults.
 - Wildcard matching (bash patterns, skill globs) must be explicit and tested — silent over-matching is a permission bypass.
 - When a config pattern or documented recommendation can solve a problem, prefer that over a new runtime mechanism. Mechanism is forever; docs are reversible.
 - Treat any declared config field not read at runtime as a maintenance trap. Remove it or document its purpose.
@@ -118,6 +121,8 @@ issue_title: "Per-agent permission frontmatter overrides" # required
 - When mocking `node:*` built-in modules with `vi.mock()`, include a `default` key mirroring the named exports — omitting it causes "No default export defined on the mock" errors when any import uses the default.
 - When writing TDD steps in a plan, ensure each feat step that changes behavior also accounts for existing tests that will break.
   Either fold the test updates into the same step or place a dedicated test-update step immediately before the feat step — never after it.
+- When a TDD plan lists separate steps that share a type definition (e.g. `ResolvedPermissions`), changing that type in step N breaks steps N+1 … N+k.
+  Either fold them into one step or introduce the new type alongside the old one in step N and migrate callers incrementally.
 - When a fix changes shared helper functions (e.g. `findSection`, `normalizePolicy`), run the full test suite (`npx vitest run`) before committing — not just the directly affected test file.
   Helpers are often exercised by integration-level tests in other files.
 - When a test reveals a pre-existing bug rather than a wrong assumption, use `test.fails` to document the expected behavior and file a GitHub issue. Do not adjust the test to match the buggy behavior.
