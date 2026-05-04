@@ -7,163 +7,148 @@ issue_title: "Generalize session approvals to all permission surfaces with wildc
 
 ## Problem Statement
 
-Session-scoped approvals (#45, #57) currently work only for `external_directory`.
+Session-scoped approvals currently work only for `external_directory`.
 When working in a session, the user is still prompted repeatedly for the same class of bash command, MCP tool, or skill load.
 There is no way to say "yes, allow `git status*` for the rest of this session" without changing the on-disk policy to `allow`.
 
-OpenCode solves this with a general-purpose "always" approval that works across all permission surfaces using wildcard pattern matching and per-surface pattern suggestions.
+The `SessionRules` infrastructure (#57) and unified evaluate path (#65) are both landed.
+The remaining work is to wire session approvals into all permission surfaces and add pattern suggestion logic.
 
 ## Goals
 
-- Generalize session approvals to all permission surfaces: bash, tools, mcp, skills, special, external_directory.
-- Each surface **suggests approval patterns** when prompting (e.g., bash suggests `git status*`, MCP suggests `exa:*`).
-- Show the suggested pattern in the dialog text so the user sees what they're approving.
-- Use `evaluate()` with the composed ruleset (config + session) as the sole decision path — no separate pre-checks.
-- Record `resolution: "session_approved"` with the matched pattern in the review log.
-- Re-evaluate pending/future permission checks naturally via the session layer (no explicit re-evaluation needed — Pi tool calls are sequential).
+- Extend session approvals to all permission surfaces: bash, mcp, skills, tools.
+- Each surface **suggests an approval pattern** when prompting (e.g., bash suggests `git *`, MCP suggests `server:*`).
+- Show the suggested pattern in the dialog "for session" option label.
+- Record `resolution: "session_approved"` with the matched pattern in the review log when a future check hits a session rule.
+- Handle session-hit detection in `checkPermission()` for all surfaces (not just `external_directory`).
 
 ## Non-Goals
 
-- Bash arity table for smart pattern suggestions (#52 — follow-up; initial bash suggestion uses a simpler heuristic).
+- Bash arity table for smarter pattern suggestions (#52 — follow-up).
 - `~`/`$HOME` expansion in patterns (#53 — follow-up).
-- Flat `permission: { ... }` config format (#66 — orthogonal).
-- Persisting session approvals to disk ("Always" option — future work).
-- Per-agent scoping of session approvals (use the same session layer regardless of active agent).
-- Synthesizing defaults into the ruleset (#65 — prerequisite, must land first).
-
-## Dependencies
-
-This issue is **blocked on #65** (synthesize defaults into ruleset + unify the evaluate path).
-
-Without #65:
-
-- `checkPermission()` doesn't see session rules — each surface needs a separate pre-check.
-- The external_directory pre-check in `tool-call.ts` is a one-off pattern that would need to be duplicated 4×.
-- Fallback defaults (`bashDefault`, `mcpToolLevel`) live outside the ruleset and complicate the flow.
-
-With #65 landed:
-
-- Session rules are part of the composed array passed to `evaluate()`.
-- The external_directory pre-check dissolves — `evaluate()` handles it.
-- Adding session approvals to new surfaces is: suggest a pattern → on "for session" → `sessionRules.approve(surface, pattern)` → done.
+- Persisting session approvals to disk ("Always" across sessions — future work).
+- Per-agent scoping of session approvals.
+- "Deny for session" option — defer unless demand emerges.
 
 ## Background
 
-### Relevant modules (after #65 lands)
+### Current state
 
 |File|Role|
 |---|---|
-|`src/rule.ts`|`Rule`, `Ruleset`, `evaluate()` — the sole decision engine|
-|`src/session-rules.ts`|`SessionRules` class (Ruleset wrapper) + `deriveApprovalPattern()`|
-|`src/permission-gate.ts`|`applyPermissionGate()` — deny/ask/allow branching with prompt injection|
-|`src/permission-dialog.ts`|Dialog options: Yes / Yes for session / No / No with reason|
+|`src/session-rules.ts`|`SessionRules` class with `approve(surface, pattern)` + `deriveApprovalPattern()` for paths|
+|`src/rule.ts`|`Rule`, `Ruleset`, `evaluate()` — pure last-match-wins decision engine|
+|`src/permission-manager.ts`|`checkPermission()` — accepts `sessionRules` param but only checks them for `external_directory`|
+|`src/permission-gate.ts`|`applyPermissionGate()` — deny/ask/allow branching via callbacks|
+|`src/permission-dialog.ts`|Dialog options including "Yes, for this session" → `approved_for_session` state|
 |`src/permission-prompts.ts`|User-facing message formatting per surface|
-|`src/handlers/tool-call.ts`|Consumes gates for all surfaces; currently has separate session pre-check for external_directory|
-|`src/wildcard-matcher.ts`|`wildcardMatch()` used by `evaluate()`|
+|`src/handlers/tool-call.ts`|Consumes gates; has session pre-check and approval recording for `external_directory` only|
 
-### Permission surfaces involved
+### What's already working
 
-All: `bash`, `mcp`, `skill`, `read`/`write`/`edit`/etc. (tools), `external_directory`.
+- `external_directory` session approvals: pre-check via `checkPermission(..., sessionRules)`, approval recording via `deriveApprovalPattern()`, review log with `session_approved`.
+- `SessionRules.approve(surface, pattern)` stores any surface/pattern pair.
+- `evaluate()` matches session rules by wildcard — the engine is surface-agnostic.
 
-### Current flow (external_directory only)
+### What's missing
 
-1. Check session rules separately (pre-gate) via `evaluate("external_directory", path, sessionRuleset)`.
-2. If session hit → log `session_approved`, skip gate.
-3. If miss → run gate → if `approved_for_session` → `sessionRules.approve()`.
-
-### Target flow (all surfaces, after #65)
-
-1. Compose rules: `[...defaults, ...configRules, ...sessionRules]`.
-2. Call `evaluate(surface, value, composedRules)`.
-3. If result is `allow` or `deny` → done (session hit is just another `allow`).
-4. If result is `ask` → prompt with pattern suggestion → on "for session" → `sessionRules.approve(surface, pattern)`.
-
-The separate pre-check disappears. Session approvals are just rules that win (last in array = highest priority).
+1. `checkPermission()` doesn't pass `sessionRules` to `evaluate()` for bash/mcp/skill/tool surfaces.
+2. No pattern suggestion logic for non-directory surfaces.
+3. The "for session" recording in `tool-call.ts` is only wired for `external_directory`.
+4. The dialog "for session" label is static — doesn't show what pattern will be approved.
 
 ## Design Overview
 
-### Extending `PermissionGateResult`
+### 1. Extend `checkPermission()` to check session rules for all surfaces
 
-The gate needs to communicate back "this was approved for session" so the caller can record the rule.
-We extend the result type:
-
-```typescript
-export type PermissionGateResult =
-  | { action: "allow"; sessionApproval?: { surface: string; pattern: string } }
-  | { action: "block"; reason: string };
-```
-
-And add a `sessionPatterns` field to `PermissionGateParams`:
+Currently, the session check is inside the `external_directory` branch only.
+Extend it to bash, mcp, skill, and tool branches:
 
 ```typescript
-export interface PermissionGateParams {
-  // ... existing fields ...
-  /** Suggested pattern for "approve for session". When provided, the gate attaches it to the result on session approval. */
-  sessionApproval?: { surface: string; pattern: string };
-}
-```
-
-The gate inspects `decision.state === "approved_for_session"` internally and attaches the suggested pattern to the result.
-The caller records it into `SessionRules`.
-No closure capture needed.
-
-### Pattern suggestion function
-
-```typescript
-// src/pattern-suggest.ts
-export function suggestSessionPattern(
-  surface: string,
-  value: string,
-  input?: unknown,
-): { surface: string; pattern: string } {
-  switch (surface) {
-    case "bash":
-      return { surface: "bash", pattern: suggestBashPattern(value) };
-    case "mcp":
-      return { surface: "mcp", pattern: suggestMcpPattern(value, input) };
-    case "skill":
-      return { surface: "skill", pattern: value }; // exact skill name
-    case "external_directory":
-      return { surface: "external_directory", pattern: deriveApprovalPattern(value) };
-    default:
-      // Tool surfaces (read, write, edit, etc.) — approve all uses of this tool
-      return { surface, pattern: "*" };
+// For each surface branch, after building composedRules:
+if (sessionRules && sessionRules.length > 0) {
+  const sessionRule = evaluate(surface, value, sessionRules);
+  if (sessionRules.includes(sessionRule)) {
+    return {
+      toolName,
+      state: "allow",
+      matchedPattern: sessionRule.pattern,
+      source: "session",
+      // surface-specific fields as needed
+    };
   }
 }
 ```
 
-#### Bash pattern suggestion (initial heuristic, pre-#52)
+This is a uniform pattern already established for `external_directory`.
 
-Without the arity table (#52), use a simple heuristic:
+**Architectural note**: the target architecture (`docs/architecture/target-architecture.md`) envisions session rules composed directly into the main ruleset array (highest priority at the end) so `evaluate()` is called once with no separate pre-check.
+The current implementation passes `sessionRules` as a separate parameter.
+This plan extends the current pattern to all surfaces (least-risk path); a future refactor can inline session rules into the composed array for a single `evaluate()` call per surface.
 
-- Split on first space to get the base command.
-- Suggest `<base-command> *` (e.g., `git *`, `npm *`, `cat *`).
-- For single-word commands (no arguments), suggest the exact command.
+### 2. Pattern suggestion module
 
-This is intentionally conservative — over-broad bash patterns are a security risk.
-The arity table (#52) will refine this later (e.g., `git checkout *` instead of `git *`).
+New file `src/pattern-suggest.ts` — pure functions, no IO:
 
-#### MCP pattern suggestion
+```typescript
+export interface SessionApprovalSuggestion {
+  surface: string;
+  pattern: string;
+  label: string; // Human-readable label for dialog
+}
 
-- If the resolved target contains `:` (qualified), suggest `<server>:*` (server-level).
-- If the resolved target contains `_` (munged), suggest `<server>_*` (server-level).
-- Fallback: exact target.
+export function suggestSessionPattern(
+  surface: string,
+  value: string,
+  input?: unknown,
+): SessionApprovalSuggestion;
+```
 
-#### Dialog text
+#### Per-surface heuristics
 
-The pattern is shown in the session option:
+|Surface|Input|Suggested pattern|Example|
+|---|---|---|---|
+|bash|`git status --short`|`git *`|First word + `*`|
+|bash (no args)|`ls`|`ls`|Exact command|
+|mcp (qualified)|`exa:search`|`exa:*`|Server prefix + `:*`|
+|mcp (munged)|`exa_search`|`exa_*`|Server prefix + `_*`|
+|mcp (bare)|`mcp`|`*`|Wildcard|
+|skill|`librarian`|`librarian`|Exact skill name|
+|tool (read, write, etc.)|`read`|`*`|All uses of this tool surface|
+|external_directory|`/tmp/foo.txt`|`/tmp/*`|`deriveApprovalPattern()`|
+
+Bash heuristic: split on first space → `<command> *`.
+This is intentionally conservative — `git *` is broader than ideal but visible in the dialog.
+The arity table (#52) will refine this later.
+
+### 3. Wire session approvals in `tool-call.ts`
+
+The normal tool permission gate section already calls `checkPermission()`.
+Changes needed:
+
+1. Pass `sessionRules` to the normal-tool `checkPermission()` call (it's only passed in the `external_directory` branch today).
+2. Detect `source === "session"` in the result → log `session_approved`, skip the gate.
+3. Compute `suggestSessionPattern()` before calling the gate.
+4. After gate returns with `decision.state === "approved_for_session"`, call `sessionRules.approve(surface, pattern)`.
+
+### 4. Dynamic dialog label
+
+Update the "for session" option to show the pattern:
 
 ```text
-Agent 'default' requested bash command 'git status --short'. Allow this command?
+Agent 'default' requested bash command 'git status --short'. Allow?
   ● Yes
   ● Yes, allow "git *" for this session
   ● No
   ● No, provide reason
 ```
 
-### Review log changes
+This requires `requestPermissionDecisionFromUi()` to accept a dynamic session label or the suggestion pattern.
+Approach: add an optional `sessionLabel?: string` parameter that overrides the default `APPROVE_FOR_SESSION_OPTION` when provided.
 
-When session approval is used (future check hits a session rule):
+### 5. Review log entries
+
+When session rule matches a future check:
 
 ```jsonc
 {
@@ -175,7 +160,7 @@ When session approval is used (future check hits a session rule):
 }
 ```
 
-When the user selects "for session":
+When user selects "for session":
 
 ```jsonc
 {
@@ -185,125 +170,122 @@ When the user selects "for session":
 }
 ```
 
-### Identifying session-approved results
+### 6. Gate extension
 
-After #65, session rules are part of the composed ruleset.
-The caller needs to distinguish "allowed by config" from "allowed by session rule."
+Add optional `sessionApproval` data to `PermissionGateParams` and `PermissionGateResult`:
 
-Approach: `evaluate()` returns the matching `Rule` by reference.
-The caller checks membership: `sessionRules.getRuleset().includes(matchedRule)`.
-If true, it's a session-approved hit — log `session_approved` and skip the gate entirely.
+```typescript
+export interface PermissionGateParams {
+  // ... existing ...
+  sessionApproval?: { surface: string; pattern: string; label: string };
+}
 
-Alternatively, `SessionRules` can tag its rules with a provenance marker (a symbol or a `source` field).
-The simpler membership check is sufficient for now.
+export type PermissionGateResult =
+  | { action: "allow"; sessionApproval?: { surface: string; pattern: string } }
+  | { action: "block"; reason: string };
+```
+
+When the promptForApproval callback returns `approved_for_session` and `sessionApproval` is provided, the gate attaches it to the result.
+The caller inspects it and records into `SessionRules`.
 
 ## Module-Level Changes
 
 ### `src/pattern-suggest.ts` (new)
 
-- `suggestSessionPattern(surface, value, input?)` — returns `{ surface, pattern }`.
-- `suggestBashPattern(command)` — simple first-word heuristic.
-- `suggestMcpPattern(target, input?)` — server-level wildcard.
-- Exports pure functions, no IO.
+- `suggestSessionPattern(surface, value, input?)` → `SessionApprovalSuggestion`.
+- `suggestBashPattern(command)` — first-word heuristic.
+- `suggestMcpPattern(target)` — server-level prefix wildcard.
+- Pure functions, fully testable.
+
+### `src/permission-manager.ts` (modified)
+
+- Add session rule evaluation to the bash branch, mcp branch, skill branch, and tool branch — same pattern as `external_directory`.
 
 ### `src/permission-gate.ts` (modified)
 
-- Add `sessionApproval?: { surface: string; pattern: string }` to `PermissionGateParams`.
+- Add `sessionApproval?` to `PermissionGateParams`.
 - Extend `PermissionGateResult` allow variant with optional `sessionApproval`.
-- Gate attaches `sessionApproval` to result when `decision.state === "approved_for_session"`.
-
-### `src/permission-prompts.ts` (modified)
-
-- Update `formatAskPrompt()` (and similar) to accept and display the suggested session pattern in the dialog text.
-- New helper: `formatSessionOptionLabel(pattern)` → `"Yes, allow \"<pattern>\" for this session"`.
+- Gate attaches `sessionApproval` when `decision.state === "approved_for_session"`.
 
 ### `src/permission-dialog.ts` (modified)
 
-- Update `APPROVE_FOR_SESSION_OPTION` to be dynamically generated with the pattern (or keep static and let the prompt message carry the detail).
+- `requestPermissionDecisionFromUi()` accepts optional `sessionLabel` to customize the "for session" option.
 
 ### `src/handlers/tool-call.ts` (modified)
 
-- Remove the separate session-rule pre-check for external_directory (handled by unified evaluate after #65).
-- At each gate call site, compute `suggestSessionPattern()` and pass it via `sessionApproval` param.
-- After gate returns, if `result.sessionApproval` exists, call `sessionRules.approve(...)`.
-- Handle session-hit detection: when `evaluate()` returns a rule that's in the session layer, log `session_approved` and skip the gate.
+- Pass `sessionRules` to the normal-tool `checkPermission()` call.
+- Detect `source === "session"` → log + skip gate.
+- Compute `suggestSessionPattern()` and pass to gate.
+- On `sessionApproval` in result → `sessionRules.approve(...)`.
 
-### `src/session-rules.ts` (minor modification)
+### `src/permission-prompts.ts` (modified)
 
-- Possibly add a `has(rule: Rule): boolean` method for membership checking.
-- `deriveApprovalPattern()` stays (used by `suggestSessionPattern` for external_directory).
+- Add `formatSessionOptionLabel(pattern)` → `'Yes, allow "<pattern>" for this session'`.
 
 ### `tests/pattern-suggest.test.ts` (new)
 
-- Unit tests for `suggestSessionPattern` across all surfaces.
-- Edge cases: empty command, multi-word commands, MCP qualified vs. munged names.
+- Unit tests for all pattern suggestion heuristics.
+
+### `tests/permission-manager.test.ts` (modified)
+
+- Test session rule evaluation for bash, mcp, skill, and tool surfaces.
 
 ### `tests/permission-gate.test.ts` (modified)
 
-- Test that `sessionApproval` is attached to result when `approved_for_session` and `sessionApproval` param is provided.
-- Test that it's absent when `approved` (once) or `denied`.
+- Test `sessionApproval` pass-through on `approved_for_session`.
 
 ### `tests/handlers/tool-call.test.ts` (modified)
 
-- Test session-hit detection: session rule in composed ruleset → skip gate, log `session_approved`.
-- Test session recording: user picks "for session" → `sessionRules.approve()` called with suggested pattern.
-- Test per-surface: bash, mcp, skill, tool, external_directory.
+- Test session-hit detection across surfaces.
+- Test session recording on "for session" approval.
 
 ## TDD Order
 
-1. **test: add pattern suggestion unit tests for all surfaces**
+1. **test: pattern suggestion unit tests for all surfaces**
    - Red: tests for `suggestBashPattern`, `suggestMcpPattern`, `suggestSessionPattern`.
    - Green: implement `src/pattern-suggest.ts`.
-   - Commit: `test: cover suggestSessionPattern for all surfaces`
-
-2. **feat: implement pattern suggestion module**
    - Commit: `feat: add pattern-suggest module for session approval patterns`
 
-3. **test: gate returns sessionApproval on approved_for_session**
-   - Red: test that gate attaches `sessionApproval` from params when `decision.state === "approved_for_session"`.
-   - Green: extend `PermissionGateParams` and `PermissionGateResult`.
-   - Commit: `test: cover gate sessionApproval pass-through`
+2. **test: checkPermission returns session hit for bash/mcp/skill/tool**
+   - Red: tests that `checkPermission("bash", { command: "git status" }, agent, sessionRules)` returns `{ source: "session" }` when session rules contain a matching bash rule.
+   - Green: extend the bash/mcp/skill/tool branches in `checkPermission()`.
+   - Commit: `feat: extend checkPermission session evaluation to all surfaces`
 
-4. **feat: extend permission gate with sessionApproval**
-   - Commit: `feat: extend PermissionGateResult with sessionApproval field`
+3. **test: gate attaches sessionApproval on approved_for_session**
+   - Red: test that gate returns `{ action: "allow", sessionApproval: {...} }` when decision is `approved_for_session` and params include `sessionApproval`.
+   - Green: extend `PermissionGateParams` and `PermissionGateResult`, wire in gate logic.
+   - Commit: `feat: extend permission gate with sessionApproval pass-through`
 
-5. **test: session-hit detection skips gate for all surfaces**
-   - Red: test that when `evaluate()` returns a session-layer rule, the handler logs `session_approved` and doesn't prompt.
-   - Green: implement session-hit check in tool-call handler.
-   - Commit: `test: cover session-hit detection across surfaces`
+4. **test: dialog shows dynamic session label**
+   - Red: test that `requestPermissionDecisionFromUi()` passes the custom session label to `ui.select()`.
+   - Green: add `sessionLabel` param.
+   - Commit: `feat: dynamic session approval label in permission dialog`
 
-6. **feat: wire session approvals into all gate call sites**
-   - Compute `suggestSessionPattern()` at each gate call site.
-   - Pass via `sessionApproval` param.
-   - Record into `SessionRules` when result carries `sessionApproval`.
-   - Remove external_directory-specific pre-check (replaced by unified flow).
+5. **feat: wire session approvals into tool-call handler for all surfaces**
+   - Pass `sessionRules` to the normal `checkPermission()` call.
+   - Detect `source === "session"` → log `session_approved`, skip gate.
+   - Compute `suggestSessionPattern()` and pass to gate params.
+   - Record `sessionRules.approve(...)` when result carries `sessionApproval`.
+   - Update existing tests that assert on the gate call to account for new params.
    - Commit: `feat: generalize session approvals to all permission surfaces (#51)`
 
-7. **test: dialog text shows suggested pattern**
-   - Red: test that prompt message includes the session pattern.
-   - Green: update `formatAskPrompt()` or add `formatSessionOptionLabel()`.
-   - Commit: `feat: show session approval pattern in dialog text`
-
-8. **docs: update README and example config with session approval behavior**
+6. **docs: update README with session approval behavior**
+   - Document pattern suggestion behavior per surface.
    - Commit: `docs: document generalized session approvals (#51)`
 
 ## Risks and Mitigations
 
 |Risk|Mitigation|
 |---|---|
-|Bash pattern suggestion too broad (`git *` allows `git push --force`)|Initial heuristic is deliberately simple (first word + `*`). The pattern is shown in the dialog so the user sees what they're approving. #52 refines with arity table.|
-|MCP server-level pattern (`exa:*`) allows all tools on that server|Same mitigation — shown in dialog. Users can decline and get prompted individually.|
-|Session rule shadows a config deny rule|Session rules are `allow`-only. A session allow for `git *` would override a config deny for `git push*`. This is intentional — the user explicitly said "yes for this session." The dialog text makes the scope visible.|
-|Could this silently weaken a permission?|No — every session rule requires an explicit user approval via the dialog. The pattern is visible in the option text. No rule is added without user action.|
-|Depends on #65 which may change the evaluate path|Plan is written against #65's target contract (session rules in composed array, unified evaluate). If #65's API differs, step 5–6 adjust accordingly.|
-|Pattern suggestion for tools (`{ surface: "read", pattern: "*" }`) approves all reads|This matches the current behavior for external_directory (approves all access under a directory). For tools like `write` or `edit`, this is more powerful. Consider whether tool surfaces should suggest a path-based pattern instead — defer to follow-up if needed.|
+|Bash pattern too broad (`git *` allows `git push --force`)|Pattern is shown in dialog label. User sees what they approve. #52 refines with arity table.|
+|MCP server-level pattern (`exa:*`) allows all tools on server|Shown in dialog. Users can decline for per-tool prompting.|
+|Session allow overrides a config deny|Session rules use `evaluate()` where last-match-wins. Session rules should NOT override explicit deny. Fix: in `checkPermission()`, only check session rules when config result is `ask` (not `deny`).|
+|Could this silently weaken a permission?|No. Every session rule requires explicit user approval via dialog. Pattern is visible in the label. No rule added without user action. Deny rules are not overridable by session.|
+|Tool surface `*` pattern too permissive|For tools like `write`/`edit`, approving `*` means "allow all writes." This matches the granularity of the tool-level config. Path-specific patterns are a follow-up.|
 
 ## Open Questions
 
-- Should "Yes, for session" for write/edit tools use a path-based pattern (e.g., `src/*`) rather than a blanket `*`?
-  Leaning toward blanket `*` for now — if the tool is at `ask` level, the user has already decided that tool-level gating is appropriate.
-  Path-specific session rules could be a follow-up refinement.
-- Should the dialog dynamically change the "for session" option text to show the pattern?
-  Yes — confirmed by design. The label becomes `"Yes, allow \"<pattern>\" for this session"`.
-- Should we add a "Deny for session" option?
-  Defer — deny is typically one-off (the user might change their mind). If demand emerges, add as a follow-up.
+- Should "for session" for write/edit tools suggest a path-based pattern (e.g. `src/*`) instead of blanket `*`?
+  Leaning no — the tool permission surface doesn't currently match on file paths, only tool names. Path-based session rules would need a new surface or evaluation mode.
+- Should session approvals be blocked from overriding explicit `deny` rules?
+  Yes — the implementation should only offer "for session" when the config state is `ask`, not `deny`. A `deny` bypasses the gate entirely (no prompt shown).
