@@ -36,7 +36,6 @@ export const DEFAULT_EXTENSION_CONFIG: PermissionSystemExtensionConfig = {
   debugLog: false,
   permissionReviewLog: true,
   yoloMode: false,
-  piInfrastructureReadPaths: undefined,
 };
 
 export function resolveExtensionRoot(moduleUrl = import.meta.url): string {
@@ -90,12 +89,15 @@ export function normalizePermissionSystemConfig(
     rawPaths.every((p): p is string => typeof p === "string")
       ? rawPaths
       : undefined;
-  return {
+  const result: PermissionSystemExtensionConfig = {
     debugLog: record.debugLog === true,
     permissionReviewLog: record.permissionReviewLog !== false,
     yoloMode: record.yoloMode === true,
-    piInfrastructureReadPaths,
   };
+  if (piInfrastructureReadPaths !== undefined) {
+    result.piInfrastructureReadPaths = piInfrastructureReadPaths;
+  }
+  return result;
 }
 
 function ensureConfigDirectory(configPath: string): void {
