@@ -468,6 +468,8 @@ src/
 │   └── tool-call.ts          ✅ Invocation gating
 │
 ├── index.ts                  ✅ Extension factory - event wiring
+├── permission-events.ts      ✅ Event channel constants, payload types, emit helpers (#29)
+├── permission-event-rpc.ts   ✅ permissions:rpc:check and permissions:rpc:prompt handlers (#29)
 ├── runtime.ts                ✅ ExtensionRuntime context object
 ├── config-loader.ts          ✅ File I/O, format detection
 ├── config-paths.ts           ✅ Path derivation
