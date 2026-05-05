@@ -80,6 +80,7 @@ function makeDeps(overrides: Partial<HandlerDeps> = {}): HandlerDeps {
       .fn()
       .mockResolvedValue({ approved: true, state: "approved" }),
     createPermissionRequestId: vi.fn().mockReturnValue("req-id"),
+    events: { emit: vi.fn(), on: vi.fn().mockReturnValue(() => undefined) },
     startForwardedPermissionPolling: vi.fn(),
     stopForwardedPermissionPolling: vi.fn(),
     stopPermissionRpcHandlers: vi.fn(),

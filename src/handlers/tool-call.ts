@@ -21,6 +21,10 @@ import {
 } from "../external-directory";
 import { suggestSessionPattern } from "../pattern-suggest";
 import type { PermissionPromptDecision } from "../permission-dialog";
+import {
+  emitDecisionEvent,
+  type PermissionDecisionResolution,
+} from "../permission-events";
 import { applyPermissionGate } from "../permission-gate";
 import {
   formatAskPrompt,
@@ -38,7 +42,47 @@ import {
   checkRequestedToolRegistration,
   getToolNameFromValue,
 } from "../tool-registry";
+import type { PermissionCheckResult } from "../types";
 import type { HandlerDeps } from "./types";
+
+// ── Emission helper ────────────────────────────────────────────────────────
+
+/**
+ * Derive the human-readable value for a decision event from a check result.
+ * Bash → extracted command; MCP → qualified target; others → tool name.
+ */
+function deriveDecisionValue(
+  toolName: string,
+  check: Pick<PermissionCheckResult, "command" | "target">,
+): string {
+  if (toolName === "bash") return check.command ?? toolName;
+  if (toolName === "mcp") return check.target ?? toolName;
+  return toolName;
+}
+
+/**
+ * Map the gate outcome back to a PermissionDecisionResolution.
+ *
+ * @param state     - The permission state passed to the gate.
+ * @param action    - The gate's resulting action ("allow" | "block").
+ * @param hasSession - True when the gate result carries a sessionApproval
+ *                    (indicates the user chose "for this session").
+ * @param canConfirm - Whether an interactive prompt was available.
+ */
+function deriveResolution(
+  state: "allow" | "deny" | "ask",
+  action: "allow" | "block",
+  hasSession: boolean,
+  canConfirm: boolean,
+): PermissionDecisionResolution {
+  if (state === "allow") return "policy_allow";
+  if (state === "deny") return "policy_deny";
+  // state === "ask"
+  if (action === "allow") {
+    return hasSession ? "user_approved_for_session" : "user_approved";
+  }
+  return canConfirm ? "user_denied" : "confirmation_unavailable";
+}
 
 /**
  * Extract the tool input from an event, checking both `input` and `arguments`
@@ -112,9 +156,10 @@ export async function handleToolCall(
         readEvent.input.path,
         agentName ?? undefined,
       );
+      const skillReadCanConfirm = deps.canRequestPermissionConfirmation(ctx);
       const skillReadGate = await applyPermissionGate({
         state: matchedSkill.state,
-        canConfirm: deps.canRequestPermissionConfirmation(ctx),
+        canConfirm: skillReadCanConfirm,
         promptForApproval: () =>
           deps.promptPermission(ctx, {
             requestId: (readEvent as { toolCallId: string }).toolCallId,
@@ -148,6 +193,20 @@ export async function handleToolCall(
             return `User denied access to skill '${matchedSkill.name}'.${denialReason}`;
           },
         },
+      });
+      emitDecisionEvent(deps.events, {
+        surface: "skill",
+        value: matchedSkill.name,
+        result: skillReadGate.action === "allow" ? "allow" : "deny",
+        resolution: deriveResolution(
+          matchedSkill.state,
+          skillReadGate.action,
+          false,
+          skillReadCanConfirm,
+        ),
+        origin: null,
+        agentName: agentName ?? null,
+        matchedPattern: null,
       });
       if (skillReadGate.action === "block") {
         return { block: true, reason: skillReadGate.reason };
@@ -193,6 +252,15 @@ export async function handleToolCall(
           path: externalDirectoryPath,
         },
       );
+      emitDecisionEvent(deps.events, {
+        surface: toolName,
+        value: externalDirectoryPath,
+        result: "allow",
+        resolution: "infrastructure_auto_allowed",
+        origin: null,
+        agentName: agentName ?? null,
+        matchedPattern: null,
+      });
       // Fall through to normal tool-permission check.
     } else {
       const extCheck = deps.runtime.permissionManager.checkPermission(
@@ -212,6 +280,15 @@ export async function handleToolCall(
           resolution: "session_approved",
           sessionApprovalPattern: extCheck.matchedPattern,
         });
+        emitDecisionEvent(deps.events, {
+          surface: "external_directory",
+          value: externalDirectoryPath,
+          result: "allow",
+          resolution: "session_approved",
+          origin: extCheck.origin ?? null,
+          agentName: agentName ?? null,
+          matchedPattern: extCheck.matchedPattern ?? null,
+        });
         // Fall through to normal permission check
       } else {
         let extDirDecision: PermissionPromptDecision | null = null;
@@ -221,9 +298,10 @@ export async function handleToolCall(
           ctx.cwd,
           agentName ?? undefined,
         );
-        const extDirGate = await applyPermissionGate({
+        const extDirCanConfirm = deps.canRequestPermissionConfirmation(ctx);
+        const extDirGateResult = await applyPermissionGate({
           state: extCheck.state,
-          canConfirm: deps.canRequestPermissionConfirmation(ctx),
+          canConfirm: extDirCanConfirm,
           promptForApproval: async () => {
             const decision = await deps.promptPermission(ctx, {
               requestId: (event as { toolCallId: string }).toolCallId,
@@ -262,8 +340,22 @@ export async function handleToolCall(
               ),
           },
         });
-        if (extDirGate.action === "block") {
-          return { block: true, reason: extDirGate.reason };
+        emitDecisionEvent(deps.events, {
+          surface: "external_directory",
+          value: externalDirectoryPath,
+          result: extDirGateResult.action === "allow" ? "allow" : "deny",
+          resolution: deriveResolution(
+            extCheck.state,
+            extDirGateResult.action,
+            extDirDecision?.state === "approved_for_session",
+            extDirCanConfirm,
+          ),
+          origin: extCheck.origin ?? null,
+          agentName: agentName ?? null,
+          matchedPattern: extCheck.matchedPattern ?? null,
+        });
+        if (extDirGateResult.action === "block") {
+          return { block: true, reason: extDirGateResult.reason };
         }
 
         if (extDirDecision?.state === "approved_for_session") {
@@ -397,6 +489,15 @@ export async function handleToolCall(
       resolution: "session_approved",
       sessionApprovalPattern: check.matchedPattern,
     });
+    emitDecisionEvent(deps.events, {
+      surface: toolName,
+      value: deriveDecisionValue(toolName, check),
+      result: "allow",
+      resolution: "session_approved",
+      origin: check.origin ?? null,
+      agentName: agentName ?? null,
+      matchedPattern: check.matchedPattern ?? null,
+    });
     return {};
   }
 
@@ -423,9 +524,10 @@ export async function handleToolCall(
         : `Using tool '${toolName}' requires approval, but no interactive UI is available.`;
 
   const toolAskMessage = formatAskPrompt(check, agentName ?? undefined, input);
+  const toolCanConfirm = deps.canRequestPermissionConfirmation(ctx);
   const toolGate = await applyPermissionGate({
     state: check.state,
-    canConfirm: deps.canRequestPermissionConfirmation(ctx),
+    canConfirm: toolCanConfirm,
     sessionApproval: {
       surface: suggestion.surface,
       pattern: suggestion.pattern,
@@ -456,6 +558,21 @@ export async function handleToolCall(
       userDeniedReason: (decision) =>
         formatUserDeniedReason(check, decision.denialReason),
     },
+  });
+
+  emitDecisionEvent(deps.events, {
+    surface: toolName,
+    value: deriveDecisionValue(toolName, check),
+    result: toolGate.action === "allow" ? "allow" : "deny",
+    resolution: deriveResolution(
+      check.state,
+      toolGate.action,
+      toolGate.sessionApproval !== undefined,
+      toolCanConfirm,
+    ),
+    origin: check.origin ?? null,
+    agentName: agentName ?? null,
+    matchedPattern: check.matchedPattern ?? null,
   });
 
   if (toolGate.action === "block") {

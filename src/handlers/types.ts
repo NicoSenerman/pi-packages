@@ -1,6 +1,7 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 import type { PermissionPromptDecision } from "../permission-dialog";
+import type { PermissionEventBus } from "../permission-events";
 import type { PermissionManager } from "../permission-manager";
 import type { ExtensionRuntime } from "../runtime";
 
@@ -33,6 +34,8 @@ export interface HandlerDeps {
   // ── Runtime context ────────────────────────────────────────────────────
   /** All mutable extension state and log-writing methods. */
   readonly runtime: ExtensionRuntime;
+  /** Event bus for emitting permissions:decision broadcast events. */
+  readonly events: PermissionEventBus;
 
   // ── Factories ──────────────────────────────────────────────────────────
   /** Create a new PermissionManager scoped to cwd's config hierarchy. */

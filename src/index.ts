@@ -79,6 +79,7 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
 
   const deps: HandlerDeps = {
     runtime,
+    events: pi.events,
     createPermissionManagerForCwd: (cwd) =>
       createPermissionManagerForCwd(runtime.agentDir, cwd),
     refreshExtensionConfig: (ctx) => refreshExtensionConfig(runtime, ctx),
