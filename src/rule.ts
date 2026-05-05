@@ -45,3 +45,35 @@ export function evaluate(
   }
   return { surface, pattern, action: defaultAction ?? "ask" };
 }
+
+/**
+ * Evaluate a surface against an ordered list of candidate values, stopping at
+ * the first candidate that matches a non-default rule (last-match-wins within
+ * each candidate, first-non-default-wins across candidates).
+ *
+ * Used by MCP (multi-candidate target list) and, uniformly, by all other
+ * surfaces (single-element candidate list).
+ *
+ * Returns the matched rule and the candidate value that produced it.
+ * When every candidate matches only the synthesized default, falls back to
+ * evaluating the first candidate so the caller always receives a concrete
+ * result.
+ */
+export function evaluateFirst(
+  surface: string,
+  values: string[],
+  rules: Ruleset,
+): { rule: Rule; value: string } {
+  for (const value of values) {
+    const rule = evaluate(surface, value, rules);
+    if (rule.layer !== "default") {
+      return { rule, value };
+    }
+  }
+  // All candidates matched only the synthesized default — use the first.
+  const fallbackValue = values[0] ?? "*";
+  return {
+    rule: evaluate(surface, fallbackValue, rules),
+    value: fallbackValue,
+  };
+}
