@@ -57,7 +57,6 @@ src/
 ├── index.ts                  Main extension factory — event wiring, ~1050 lines
 ├── permission-manager.ts     Config loading + merge + checkPermission(), ~940 lines
 ├── permission-gate.ts        Pure deny/ask/allow gate (injected IO)
-├── permission-prompter.ts    Yolo-mode check, review logging, UI/forwarding branch (PermissionPrompter class)
 ├── permission-dialog.ts      Dialog options: Yes / Yes for session / No / No with reason
 ├── session-rules.ts          Ephemeral session approvals — Ruleset-based, external_directory only
 ├── bash-filter.ts            Wildcard matching for bash commands
