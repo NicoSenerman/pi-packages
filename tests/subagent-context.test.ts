@@ -61,11 +61,86 @@ describe("isSubagentExecutionContext — env hint detection", () => {
     ).toBe(true);
   });
 
-  test("covers all three declared SUBAGENT_ENV_HINT_KEYS", () => {
+  // nicobailon/pi-subagents keys
+  test("returns true when PI_SUBAGENT_CHILD is set", () => {
+    vi.stubEnv("PI_SUBAGENT_CHILD", "1");
+    expect(
+      isSubagentExecutionContext(makeCtx(null), "/sessions/subagents"),
+    ).toBe(true);
+  });
+
+  test("returns true when PI_SUBAGENT_RUN_ID is set", () => {
+    vi.stubEnv("PI_SUBAGENT_RUN_ID", "run-abc");
+    expect(
+      isSubagentExecutionContext(makeCtx(null), "/sessions/subagents"),
+    ).toBe(true);
+  });
+
+  test("returns true when PI_SUBAGENT_CHILD_AGENT is set", () => {
+    vi.stubEnv("PI_SUBAGENT_CHILD_AGENT", "worker");
+    expect(
+      isSubagentExecutionContext(makeCtx(null), "/sessions/subagents"),
+    ).toBe(true);
+  });
+
+  test("returns true when PI_SUBAGENT_DEPTH is set", () => {
+    vi.stubEnv("PI_SUBAGENT_DEPTH", "1");
+    expect(
+      isSubagentExecutionContext(makeCtx(null), "/sessions/subagents"),
+    ).toBe(true);
+  });
+
+  test("returns true when PI_SUBAGENT_DEPTH is zero (depth-0 is still a subagent context)", () => {
+    vi.stubEnv("PI_SUBAGENT_DEPTH", "0");
+    expect(
+      isSubagentExecutionContext(makeCtx(null), "/sessions/subagents"),
+    ).toBe(true);
+  });
+
+  // HazAT/pi-interactive-subagents keys
+  test("returns true when PI_SUBAGENT_NAME is set", () => {
+    vi.stubEnv("PI_SUBAGENT_NAME", "my-agent");
+    expect(
+      isSubagentExecutionContext(makeCtx(null), "/sessions/subagents"),
+    ).toBe(true);
+  });
+
+  test("returns true when PI_SUBAGENT_ID is set", () => {
+    vi.stubEnv("PI_SUBAGENT_ID", "id-xyz");
+    expect(
+      isSubagentExecutionContext(makeCtx(null), "/sessions/subagents"),
+    ).toBe(true);
+  });
+
+  test("returns true when PI_SUBAGENT_SESSION is set", () => {
+    vi.stubEnv("PI_SUBAGENT_SESSION", "session-xyz");
+    expect(
+      isSubagentExecutionContext(makeCtx(null), "/sessions/subagents"),
+    ).toBe(true);
+  });
+
+  test("returns true when PI_SUBAGENT_ACTIVITY_FILE is set", () => {
+    vi.stubEnv("PI_SUBAGENT_ACTIVITY_FILE", "/tmp/activity.json");
+    expect(
+      isSubagentExecutionContext(makeCtx(null), "/sessions/subagents"),
+    ).toBe(true);
+  });
+
+  test("covers all declared SUBAGENT_ENV_HINT_KEYS", () => {
     // Verify the keys we test match what the module declares.
     expect(SUBAGENT_ENV_HINT_KEYS).toContain("PI_IS_SUBAGENT");
     expect(SUBAGENT_ENV_HINT_KEYS).toContain("PI_SUBAGENT_SESSION_ID");
     expect(SUBAGENT_ENV_HINT_KEYS).toContain("PI_AGENT_ROUTER_SUBAGENT");
+    // nicobailon/pi-subagents
+    expect(SUBAGENT_ENV_HINT_KEYS).toContain("PI_SUBAGENT_CHILD");
+    expect(SUBAGENT_ENV_HINT_KEYS).toContain("PI_SUBAGENT_RUN_ID");
+    expect(SUBAGENT_ENV_HINT_KEYS).toContain("PI_SUBAGENT_CHILD_AGENT");
+    expect(SUBAGENT_ENV_HINT_KEYS).toContain("PI_SUBAGENT_DEPTH");
+    // HazAT/pi-interactive-subagents
+    expect(SUBAGENT_ENV_HINT_KEYS).toContain("PI_SUBAGENT_NAME");
+    expect(SUBAGENT_ENV_HINT_KEYS).toContain("PI_SUBAGENT_ID");
+    expect(SUBAGENT_ENV_HINT_KEYS).toContain("PI_SUBAGENT_SESSION");
+    expect(SUBAGENT_ENV_HINT_KEYS).toContain("PI_SUBAGENT_ACTIVITY_FILE");
   });
 
   test("returns false when env hint value is empty string", () => {
