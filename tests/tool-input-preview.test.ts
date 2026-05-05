@@ -452,4 +452,25 @@ describe("getPermissionLogContext", () => {
     );
     expect(ctx.toolInputPreview).toContain("/foo.ts");
   });
+
+  test("includes origin from check result when present", () => {
+    const result: PermissionCheckResult = {
+      toolName: "read",
+      state: "allow",
+      source: "tool",
+      origin: "project",
+    };
+    const ctx = getPermissionLogContext(result, {}, pathBearingTools);
+    expect(ctx.origin).toBe("project");
+  });
+
+  test("origin is absent from context when check result has no origin", () => {
+    const result: PermissionCheckResult = {
+      toolName: "read",
+      state: "allow",
+      source: "tool",
+    };
+    const ctx = getPermissionLogContext(result, {}, pathBearingTools);
+    expect(ctx.origin).toBeUndefined();
+  });
 });

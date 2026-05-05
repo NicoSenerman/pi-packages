@@ -193,7 +193,12 @@ export function getPermissionLogContext(
   result: PermissionCheckResult,
   input: unknown,
   pathBearingTools: ReadonlySet<string>,
-): { command?: string; target?: string; toolInputPreview?: string } {
+): {
+  command?: string;
+  target?: string;
+  toolInputPreview?: string;
+  origin?: string;
+} {
   return {
     command: result.command,
     target: result.target,
@@ -202,5 +207,6 @@ export function getPermissionLogContext(
       input,
       pathBearingTools,
     ),
+    origin: result.origin,
   };
 }
