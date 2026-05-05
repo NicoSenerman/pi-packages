@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import type { RuleOrigin } from "../src/rule";
 import { evaluate } from "../src/rule";
 import {
   composeRuleset,
@@ -37,6 +38,36 @@ describe("synthesizeDefaults", () => {
   test("universal rule has layer 'default'", () => {
     const rules = synthesizeDefaults("allow");
     expect(evaluate("read", "*", rules).layer).toBe("default");
+  });
+
+  test("universal rule has no origin when origin not supplied", () => {
+    const rules = synthesizeDefaults("ask");
+    expect(rules[0].origin).toBeUndefined();
+  });
+
+  test("universal rule carries origin when origin is supplied", () => {
+    const origin: RuleOrigin = "global";
+    const rules = synthesizeDefaults("ask", origin);
+    expect(rules[0].origin).toBe("global");
+  });
+
+  test("origin is preserved through evaluate()", () => {
+    const rules = synthesizeDefaults("allow", "project");
+    const result = evaluate("read", "*", rules);
+    expect(result.origin).toBe("project");
+  });
+
+  test("all four RuleOrigin values are accepted", () => {
+    const origins: RuleOrigin[] = [
+      "global",
+      "project",
+      "agent",
+      "project-agent",
+    ];
+    for (const origin of origins) {
+      const rules = synthesizeDefaults("ask", origin);
+      expect(rules[0].origin).toBe(origin);
+    }
   });
 });
 

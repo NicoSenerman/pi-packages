@@ -411,6 +411,10 @@ export class PermissionManager {
     const universalFallback = isPermissionState(mergedPermission["*"])
       ? (mergedPermission["*"] as PermissionState)
       : DEFAULT_UNIVERSAL_FALLBACK;
+    // Track which scope contributed the universal fallback, if any.
+    const universalFallbackOrigin: RuleOrigin | undefined = origins
+      .get("*")
+      ?.get("*");
 
     // Build config rules from everything except the universal "*" key.
     const permissionWithoutUniversal: FlatPermissionConfig = Object.fromEntries(
@@ -429,7 +433,7 @@ export class PermissionManager {
     );
 
     const composedRules = composeRuleset(
-      synthesizeDefaults(universalFallback),
+      synthesizeDefaults(universalFallback, universalFallbackOrigin),
       synthesizeBaseline(configRules),
       configRules,
     );

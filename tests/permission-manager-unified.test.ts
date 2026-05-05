@@ -619,4 +619,38 @@ describe("checkPermission — rule origin provenance", () => {
     expect(result.source).toBe("session");
     expect(result.origin).toBeUndefined();
   });
+
+  it("universal fallback (*) set in global config carries origin 'global'", () => {
+    const { manager, cleanup } = makeManagerWithScopes({ "*": "allow" });
+    try {
+      // No explicit surface rule — hits the synthesized default derived from "*".
+      const result = manager.checkPermission("read", {});
+      expect(result.state).toBe("allow");
+      expect(result.origin).toBe("global");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("universal fallback (*) overridden by project carries origin 'project'", () => {
+    const { manager, cleanup } = makeManagerWithScopes(
+      { "*": "ask" },
+      { "*": "allow" },
+    );
+    try {
+      const result = manager.checkPermission("read", {});
+      expect(result.state).toBe("allow");
+      expect(result.origin).toBe("project");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("built-in fallback (no * in any config): origin is undefined", () => {
+    // Manager with no config file — built-in "ask" default, no user origin.
+    const manager = makeManager();
+    const result = manager.checkPermission("read", {});
+    expect(result.state).toBe("ask");
+    expect(result.origin).toBeUndefined();
+  });
 });

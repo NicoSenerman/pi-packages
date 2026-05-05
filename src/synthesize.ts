@@ -1,4 +1,4 @@
-import type { Rule, Ruleset } from "./rule";
+import type { Rule, RuleOrigin, Ruleset } from "./rule";
 import type { PermissionState } from "./types";
 
 /**
@@ -11,15 +11,20 @@ import type { PermissionState } from "./types";
  * regular config rules from `normalizeFlatConfig()` and sit at higher indices
  * in the composed array, so they override this default via last-match-wins.
  */
-export function synthesizeDefaults(universalDefault: PermissionState): Ruleset {
-  return [
-    {
-      surface: "*",
-      pattern: "*",
-      action: universalDefault,
-      layer: "default",
-    },
-  ];
+export function synthesizeDefaults(
+  universalDefault: PermissionState,
+  origin?: RuleOrigin,
+): Ruleset {
+  const rule: Rule = {
+    surface: "*",
+    pattern: "*",
+    action: universalDefault,
+    layer: "default",
+  };
+  if (origin !== undefined) {
+    rule.origin = origin;
+  }
+  return [rule];
 }
 
 /**
