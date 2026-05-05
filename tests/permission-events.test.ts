@@ -1,4 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { getGlobalConfigPath } from "../src/config-paths";
+import piPermissionSystemExtension from "../src/index";
 import type {
   PermissionDecisionEvent,
   PermissionsCheckReplyData,
@@ -241,5 +247,55 @@ describe("type shapes (PermissionsPromptReplyData)", () => {
       denialReason: "Too risky",
     };
     expect(data.denialReason).toBe("Too risky");
+  });
+});
+
+// ── piPermissionSystemExtension emits permissions:ready ────────────────────
+
+describe("piPermissionSystemExtension ready event wiring", () => {
+  let baseDir: string;
+  let originalAgentDir: string | undefined;
+
+  beforeEach(() => {
+    baseDir = mkdtempSync(join(tmpdir(), "pi-perm-events-test-"));
+    originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+    const globalConfigPath = getGlobalConfigPath(baseDir);
+    mkdirSync(dirname(globalConfigPath), { recursive: true });
+    mkdirSync(join(baseDir, "agents"), { recursive: true });
+    writeFileSync(
+      globalConfigPath,
+      JSON.stringify({ permission: { "*": "ask" } }) + "\n",
+      "utf8",
+    );
+    process.env.PI_CODING_AGENT_DIR = baseDir;
+  });
+
+  afterEach(() => {
+    if (originalAgentDir === undefined) {
+      delete process.env.PI_CODING_AGENT_DIR;
+    } else {
+      process.env.PI_CODING_AGENT_DIR = originalAgentDir;
+    }
+    rmSync(baseDir, { recursive: true, force: true });
+  });
+
+  it("emits permissions:ready with protocolVersion when extension loads", () => {
+    const emitSpy = vi.fn<[string, unknown], void>();
+    piPermissionSystemExtension({
+      on: vi.fn(),
+      registerCommand: vi.fn(),
+      getAllTools: vi.fn().mockReturnValue([]),
+      setActiveTools: vi.fn(),
+      registerProvider: vi.fn(),
+      events: { emit: emitSpy, on: vi.fn().mockReturnValue(() => undefined) },
+    } as never);
+
+    const readyCalls = emitSpy.mock.calls.filter(
+      ([channel]) => channel === PERMISSIONS_READY_CHANNEL,
+    );
+    expect(readyCalls).toHaveLength(1);
+    expect(readyCalls[0][1]).toEqual({
+      protocolVersion: PERMISSIONS_PROTOCOL_VERSION,
+    });
   });
 });

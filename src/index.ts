@@ -12,6 +12,7 @@ import {
   handleToolCall,
 } from "./handlers";
 import { requestPermissionDecisionFromUi } from "./permission-dialog";
+import { emitReadyEvent } from "./permission-events";
 import { PermissionPrompter } from "./permission-prompter";
 import {
   createExtensionRuntime,
@@ -95,6 +96,8 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
     getAllTools: () => pi.getAllTools(),
     setActiveTools: (names) => pi.setActiveTools(names),
   };
+
+  emitReadyEvent(pi.events);
 
   pi.on("session_start", (event, ctx) => handleSessionStart(deps, event, ctx));
   pi.on("resources_discover", (event) => handleResourcesDiscover(deps, event));
