@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { Rule, Ruleset } from "../src/rule";
+import type { Rule, RuleOrigin, Ruleset } from "../src/rule";
 import { evaluate, evaluateFirst } from "../src/rule";
 
 describe("evaluate", () => {
@@ -167,6 +167,54 @@ describe("evaluate", () => {
     expect(evaluate("bash", "git status", reversedRuleset)).toEqual(
       withDefault,
     );
+  });
+
+  test("evaluate() preserves origin on a matched rule", () => {
+    const origin: RuleOrigin = "project";
+    const rule: Rule = {
+      surface: "bash",
+      pattern: "git *",
+      action: "allow",
+      layer: "config",
+      origin,
+    };
+    const result = evaluate("bash", "git status", [rule]);
+    expect(result.origin).toBe("project");
+  });
+
+  test("evaluate() returns undefined origin when matched rule has no origin", () => {
+    const rule: Rule = {
+      surface: "bash",
+      pattern: "git *",
+      action: "allow",
+      layer: "config",
+    };
+    const result = evaluate("bash", "git status", [rule]);
+    expect(result.origin).toBeUndefined();
+  });
+
+  test("evaluate() synthetic fallback rule has no origin", () => {
+    const result = evaluate("bash", "npm install", []);
+    expect(result.origin).toBeUndefined();
+  });
+
+  test("RuleOrigin values are the four config scope names", () => {
+    const origins: RuleOrigin[] = [
+      "global",
+      "project",
+      "agent",
+      "project-agent",
+    ];
+    for (const origin of origins) {
+      const rule: Rule = {
+        surface: "read",
+        pattern: "*",
+        action: "allow",
+        layer: "config",
+        origin,
+      };
+      expect(evaluate("read", "*", [rule]).origin).toBe(origin);
+    }
   });
 });
 

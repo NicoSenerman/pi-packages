@@ -1,6 +1,9 @@
 import type { PermissionState } from "./types";
 import { wildcardMatch } from "./wildcard-matcher";
 
+/** Which config scope contributed a rule. Only set for layer="config". */
+export type RuleOrigin = "global" | "project" | "agent" | "project-agent";
+
 /** A single permission rule — the atomic unit of policy. */
 export interface Rule {
   /** The permission surface: "bash", "read", "mcp", "skill", "external_directory", etc. */
@@ -14,6 +17,11 @@ export interface Rule {
    * Not used by evaluate(); purely informational metadata.
    */
   layer?: "default" | "baseline" | "config" | "session";
+  /**
+   * Which config scope contributed this rule.
+   * Only set for layer="config" rules; absent on default, baseline, and session rules.
+   */
+  origin?: RuleOrigin;
 }
 
 /** An ordered list of rules. Later rules take priority (last-match-wins). */
