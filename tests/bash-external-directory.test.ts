@@ -703,6 +703,53 @@ describe("extractExternalPathsFromBashCommand", () => {
         expect(result).toContain("/etc/hosts");
       });
     });
+
+    describe("edge cases", () => {
+      test("full-path command invocation: /usr/bin/sed", async () => {
+        const result = await extractExternalPathsFromBashCommand(
+          "/usr/bin/sed 's/foo/bar/' /etc/hosts",
+          cwd,
+        );
+        expect(result).toContain("/etc/hosts");
+        expect(result).toHaveLength(1);
+      });
+
+      test("-- end-of-flags: all remaining args are positional files", async () => {
+        const result = await extractExternalPathsFromBashCommand(
+          "grep -- '/etc/' /var/log/syslog",
+          cwd,
+        );
+        // After --, '/etc/' is the pattern positional, /var/log/syslog is a file
+        expect(result).toContain("/var/log/syslog");
+        expect(result).toHaveLength(1);
+      });
+
+      test("redirect target still extracted for pattern-first command", async () => {
+        const result = await extractExternalPathsFromBashCommand(
+          "sed 's/foo/bar/' input.txt > /tmp/output.txt",
+          cwd,
+        );
+        expect(result).toContain("/tmp/output.txt");
+      });
+
+      test("pipeline: sed piped to cat with external path", async () => {
+        const result = await extractExternalPathsFromBashCommand(
+          "sed 's/foo/bar/' src/file.ts | cat /etc/hosts",
+          cwd,
+        );
+        expect(result).toContain("/etc/hosts");
+        expect(result).toHaveLength(1);
+      });
+
+      test("command substitution inside pattern-first command", async () => {
+        const result = await extractExternalPathsFromBashCommand(
+          "grep 'pattern' $(cat /etc/file-list)",
+          cwd,
+        );
+        // /etc/file-list is an argument to cat inside command substitution
+        expect(result).toContain("/etc/file-list");
+      });
+    });
   });
 
   describe("regex patterns are not mistaken for paths", () => {
