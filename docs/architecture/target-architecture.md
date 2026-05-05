@@ -8,14 +8,16 @@ This document describes the target internal design for the permission system, in
 2. **Pure evaluation** — permission decisions are pure functions of (surface, pattern, rules). IO stays at the edges.
 3. **Session approvals are just more rules** — no separate matching engine, no separate pre-check.
 4. **MCP stays special** — multi-name target derivation is pre-processing, not a special evaluation path.
-5. **Defaults are rules** — `defaultPolicy` and `tools.bash`/`tools.mcp` overrides are synthesized as low-priority rules in the array. No side-channel fallbacks.
-6. **Flat config format** — replace the legacy multi-namespace format with a flat `permission: { ... }` object where each key is a surface. The config IS the ruleset in human-friendly form.
+5. **Defaults are rules** — the universal default (`permission["*"]`) is synthesized as a low-priority rule in the array. No side-channel fallbacks.
+6. **Flat config format** — the flat `permission: { ... }` object where each key is a surface. The config IS the ruleset in human-friendly form.
 7. **Preserve the two-phase model** — tool filtering (before_agent_start) and invocation gating (tool_call) remain separate.
 8. **Ask = cache miss** — "ask" is the absence of a matching rule. The human is the oracle. Their decision is a rule. Persistence determines lifetime (once / session / config).
 
 ## Core data model
 
 ### Rule
+
+✅ Implemented in `src/rule.ts` (#55, #56).
 
 ```typescript
 interface Rule {
@@ -28,11 +30,6 @@ interface Rule {
   /**
    * Origin layer — used to derive PermissionCheckResult.source after evaluation.
    * Not used by evaluate(); purely informational metadata.
-   * "default" = synthesized from defaultPolicy
-   * "override" = synthesized from tools.bash / tools.mcp
-   * "baseline" = synthesized MCP metadata auto-allow
-   * "config" = explicit on-disk rule
-   * "session" = user-approved for this session
    */
   layer?: "default" | "override" | "baseline" | "config" | "session";
 }
@@ -47,10 +44,12 @@ type Ruleset = Rule[];
 ```
 
 Merge precedence is array ordering.
-Synthesized defaults go first (lowest priority), then MCP baseline auto-allow rules, then tools.bash/tools.mcp overrides, then config rules (global → project → agent → project-agent), and finally session rules (highest priority).
+The synthesized universal default goes first (lowest priority), then MCP baseline auto-allow rules, then config rules (global → project → agent → project-agent), and finally session rules (highest priority).
 Last-match-wins: `evaluate()` scans from the end.
 
 ### Evaluate
+
+✅ Implemented in `src/rule.ts` (#55).
 
 ```typescript
 function evaluate(surface: string, value: string, rules: Ruleset): Rule {
@@ -77,14 +76,10 @@ Index position determines priority (higher index wins):
   ┌─────────────────────────────────────────────────────────────────┐
   │                     Composed Ruleset (Rule[])                   │
   │                                                                 │
-  │  Index 0..D: Synthesized defaults (layer: "default")            │
-  │    { surface: "*",       pattern: "*", action: defaults.tools } │
-  │    { surface: "bash",    pattern: "*", action: defaults.bash }  │
-  │    { surface: "mcp",     pattern: "*", action: defaults.mcp }   │
-  │    { surface: "skill",   pattern: "*", action: defaults.skills } │
-  │    { surface: "special", pattern: "*", action: defaults.special } │
+  │  Index 0: Synthesized universal default (layer: "default")      │
+  │    { surface: "*", pattern: "*", action: permission["*"] }      │
   │                                                                 │
-  │  Index D+1..B: MCP baseline auto-allow (layer: "baseline")      │
+  │  Index 1..B: MCP baseline auto-allow (layer: "baseline")        │
   │    (only when any config rule has surface:"mcp" action:"allow") │
   │    { surface: "mcp", pattern: "mcp_status",   action: "allow" } │
   │    { surface: "mcp", pattern: "mcp_list",     action: "allow" } │
@@ -92,58 +87,56 @@ Index position determines priority (higher index wins):
   │    { surface: "mcp", pattern: "mcp_describe", action: "allow" } │
   │    { surface: "mcp", pattern: "mcp_connect",  action: "allow" } │
   │                                                                 │
-  │  Index B+1..O: tools.bash/tools.mcp overrides (layer:"override") │
-  │    { surface: "bash", pattern: "*", action: tools.bash }        │
-  │    { surface: "mcp",  pattern: "*", action: tools.mcp }         │
-  │                                                                 │
-  │  Index O+1..C: Config rules (global → project → agent, layer:"config") │
+  │  Index B+1..C: Config rules (global → project → agent,         │
+  │                              layer: "config")                   │
+  │    { surface: "bash",    pattern: "*",      action: "allow" }   │
   │    { surface: "bash",    pattern: "git *",  action: "allow" }   │
   │    { surface: "bash",    pattern: "rm *",   action: "deny"  }   │
   │    { surface: "read",    pattern: "*",      action: "allow" }   │
   │    { surface: "mcp",     pattern: "exa:*",  action: "allow" }   │
   │                                                                 │
   │  Index C+1..end: Session rules (layer: "session", highest)      │
-  │    { surface: "external_directory", pattern: "/other/*", action: "allow" } │
+  │    { surface: "external_directory", pattern: "/other/*",        │
+  │      action: "allow" }                                          │
   │                                                                 │
   │  ◄── evaluate() scans from end, first match wins ──►            │
   └─────────────────────────────────────────────────────────────────┘
 ```
 
+### Current state
+
+✅ **Synthesis and composition are implemented** in `src/synthesize.ts` (#65, #66).
+
+`synthesizeDefaults()` produces a single universal catch-all from `permission["*"]`.
+Per-surface catch-alls (e.g. `bash: { "*": "allow" }`) are expressed as regular config rules via `normalizeFlatConfig()` — no separate override layer is needed.
+
+`synthesizeBaseline()` conditionally emits MCP metadata auto-allow rules.
+
+`composeRuleset()` concatenates: defaults + baseline + config rules.
+
+⚠️ **Session rules are not yet concatenated into the composed ruleset** (#81).
+`checkPermission()` currently checks session rules in a separate pass with a duplicated guard in each surface branch.
+The target is for session rules to be appended to the composed array so `evaluate()` handles them via last-match-wins — no separate pre-check.
+
 ### Default synthesis
 
-`defaultPolicy` and `tools.bash`/`tools.mcp` fallback overrides become actual rules at the front of the array.
-Three functions in `src/synthesize.ts` handle this:
-
 ```typescript
-// Lowest-priority catch-alls from defaultPolicy.
-function synthesizeDefaults(defaults: PermissionDefaultPolicy): Ruleset {
+// Single universal catch-all from permission["*"].
+function synthesizeDefaults(universalDefault: PermissionState): Ruleset {
   return [
-    { surface: "*",       pattern: "*", action: defaults.tools,   layer: "default" },
-    { surface: "bash",    pattern: "*", action: defaults.bash,    layer: "default" },
-    { surface: "mcp",     pattern: "*", action: defaults.mcp,     layer: "default" },
-    { surface: "skill",   pattern: "*", action: defaults.skills,  layer: "default" },
-    { surface: "special", pattern: "*", action: defaults.special, layer: "default" },
+    { surface: "*", pattern: "*", action: universalDefault, layer: "default" },
   ];
 }
 
 // MCP metadata auto-allow — only synthesized when any config rule has
-// surface: "mcp" && action: "allow". Placed before overrides so that an
-// explicit tools.mcp override still wins (higher array index = higher priority).
+// surface: "mcp" && action: "allow".
 function synthesizeBaseline(configRules: Ruleset): Ruleset { … }
 
-// per-scope tools.bash / tools.mcp catch-alls (layer: "override").
-function synthesizeOverrides(scopes: OverrideScope[]): Ruleset { … }
-
-// Concat in priority order: defaults, baseline, overrides, config.
-function composeRuleset(defaults, baseline, overrides, config): Ruleset {
-  return [...defaults, ...baseline, ...overrides, ...config];
+// Concat in priority order: defaults, baseline, config.
+function composeRuleset(defaults, baseline, config): Ruleset {
+  return [...defaults, ...baseline, ...config];
 }
 ```
-
-`tools.bash: "allow"` synthesizes as `{ surface: "bash", pattern: "*", action: "allow", layer: "override" }` — placed after the synthesized default, so it wins for any command that isn't covered by a specific config rule.
-Specific config rules (layer `"config"`) come even later and always win.
-
-This eliminates `bashDefault`, `mcpToolLevel`, `hasAnyMcpAllowRule`, and all per-surface branching in `checkPermission()`.
 
 ## Architecture overview
 
@@ -153,18 +146,16 @@ flowchart TD
         GF["Global config file"]
         PF["Project config file"]
         AF["Agent frontmatter"]
-        GF --> Norm["normalizeConfig()"]
+        GF --> Norm["normalizeFlatConfig()"]
         PF --> Norm
         AF --> Norm
     end
 
     subgraph Defaults["Default synthesis"]
-        DP["defaultPolicy"] --> Synth["synthesizeDefaults()"]
-        Synth --> DR["Default Rules (lowest priority)"]
+        DP["permission[*]"] --> Synth["synthesizeDefaults()"]
+        Synth --> DR["Default Rule (lowest priority)"]
         Norm --> BL["synthesizeBaseline()"]
         BL --> BR["Baseline Rules (conditional)"]
-        Norm --> OV["synthesizeOverrides()"]
-        OV --> OR["Override Rules (tools.bash/mcp)"]
     end
 
     Norm --> CR["Config Rules (layer: config)"]
@@ -173,7 +164,6 @@ flowchart TD
     subgraph Compose["Rule composition"]
         DR --> Concat["composeRuleset(...) + session"]
         BR --> Concat
-        OR --> Concat
         CR --> Concat
         SA --> Concat
     end
@@ -193,22 +183,9 @@ flowchart TD
     PreProcess --> E
 ```
 
-## Config formats
+## Config format
 
-### Legacy format (current, replaced by #66)
-
-```jsonc
-{
-  "defaultPolicy": { "tools": "ask", "bash": "ask", "mcp": "ask", "skills": "ask", "special": "ask" },
-  "tools": { "read": "allow", "bash": "allow" },
-  "bash": { "git *": "allow", "npm *": "allow" },
-  "mcp": { "exa:*": "allow" },
-  "skills": { "librarian": "allow" },
-  "special": { "external_directory": "ask" }
-}
-```
-
-### Flat format (target, preferred)
+✅ Implemented in #66. The legacy multi-namespace format has been removed.
 
 ```jsonc
 {
@@ -226,65 +203,11 @@ flowchart TD
 Each top-level key in `permission` is a surface name.
 A string value is shorthand for `{ "*": action }` (surface-level catch-all).
 An object value maps patterns to actions.
-`permission["*"]` is the universal fallback — equivalent to `defaultPolicy.tools` in the legacy format.
+`permission["*"]` is the universal fallback.
 
-### Both normalize to the same `Rule[]`
+### Normalization to Rule[]
 
-```typescript
-[
-  { surface: "*",                  pattern: "*",      action: "ask"   },  // from "*": "ask" or defaultPolicy.tools
-  { surface: "read",              pattern: "*",      action: "allow" },  // from "read": "allow" or tools.read
-  { surface: "bash",             pattern: "*",      action: "allow" },  // from bash["*"] or tools.bash
-  { surface: "bash",             pattern: "git *",  action: "allow" },  // from bash["git *"]
-  { surface: "bash",             pattern: "rm *",   action: "deny"  },
-  { surface: "mcp",             pattern: "*",      action: "ask"   },  // from mcp["*"] or defaultPolicy.mcp
-  { surface: "mcp",             pattern: "exa:*",  action: "allow" },
-  { surface: "skill",           pattern: "*",      action: "ask"   },
-  { surface: "skill",           pattern: "librarian", action: "allow" },
-  { surface: "external_directory", pattern: "*",      action: "ask"   },
-]
-```
-
-One representation. One evaluation path.
-
-## Config normalization
-
-### Legacy format parser
-
-```typescript
-function normalizeLegacyConfig(config: LegacyConfig): Ruleset {
-  const rules: Ruleset = [];
-
-  // tools — surface = tool name, pattern = "*"
-  for (const [name, action] of Object.entries(config.tools ?? {})) {
-    rules.push({ surface: name, pattern: "*", action });
-  }
-
-  // bash — surface = "bash", pattern = command glob
-  for (const [pattern, action] of Object.entries(config.bash ?? {})) {
-    rules.push({ surface: "bash", pattern, action });
-  }
-
-  // mcp — surface = "mcp", pattern = target name glob
-  for (const [pattern, action] of Object.entries(config.mcp ?? {})) {
-    rules.push({ surface: "mcp", pattern, action });
-  }
-
-  // skills — surface = "skill", pattern = skill name glob
-  for (const [pattern, action] of Object.entries(config.skills ?? {})) {
-    rules.push({ surface: "skill", pattern, action });
-  }
-
-  // special — surface = key name, pattern = "*"
-  for (const [name, action] of Object.entries(config.special ?? {})) {
-    rules.push({ surface: name, pattern: "*", action });
-  }
-
-  return rules;
-}
-```
-
-### Flat format parser
+✅ Implemented in `src/normalize.ts` (#56, #66).
 
 ```typescript
 function normalizeFlatConfig(permission: FlatPermissionConfig): Ruleset {
@@ -327,7 +250,13 @@ flowchart LR
 The priority ordering of candidates is preserved.
 The evaluation function is unchanged — MCP just calls it multiple times with different values.
 
+⚠️ **MCP target derivation helpers are still inline in `permission-manager.ts`** (#81).
+The target is to extract them to a focused `mcp-targets.ts` module as part of input normalization.
+
 ## Session approvals: the cache-miss model
+
+✅ Session rules stored as `Ruleset` (#57).
+✅ Session approvals generalized to all surfaces (#51).
 
 `evaluate()` is a **lookup** against cached decisions.
 When no rule matches (or the matching rule says "ask"), the system has a cache miss — it needs the human oracle to produce a decision.
@@ -359,6 +288,8 @@ The dialog determines **persistence** — where the rule lives:
 
 ### Pattern suggestions
 
+✅ Implemented in `src/pattern-suggest.ts` (#51).
+
 When prompting, each surface suggests a **pattern** for the "for session" option.
 The pattern determines what class of future requests auto-approve:
 
@@ -378,6 +309,9 @@ The suggestion is shown in the dialog text so the user sees what they're approvi
   ● Allow "git checkout *" for this session
   ● Deny
 ```
+
+⚠️ Bash pattern suggestions currently use a simple first-token heuristic.
+Smart arity-based suggestions are tracked in #52.
 
 ### Implementation
 
@@ -432,59 +366,84 @@ if (decision.persistence === "session") {
 return decision.action === "allow" ? proceed : block;
 ```
 
-Same `evaluate()`, same ruleset. The only surface-specific logic is input normalization (what `surface` and `value` to look up) and pattern suggestion (what glob to offer for "session" approval).
+Same `evaluate()`, same ruleset.
+The only surface-specific logic is input normalization (what `surface` and `value` to look up) and pattern suggestion (what glob to offer for "session" approval).
+
+⚠️ **`checkPermission()` still has per-surface branching** (#81).
+Each branch duplicates the session-check + config-check pattern.
+The target is a single flow: normalize input → evaluate → build result.
 
 ## Module structure (target)
 
+Modules marked ✅ exist today.
+Modules marked ⚠️ are future work.
+Modules marked 🔀 exist under a different name.
+
 ```text
 src/
-├── rule.ts                   Rule type, Ruleset type, evaluate()
-├── normalize.ts              Config → Ruleset normalization (both formats)
-├── synthesize-defaults.ts    defaultPolicy → Ruleset (prepended as lowest-priority rules)
-├── wildcard-matcher.ts       Compiled glob matching (existing)
-├── mcp-targets.ts            MCP multi-name target derivation (extracted)
-├── pattern-suggest.ts        Per-surface approval pattern suggestions
-├── bash-arity.ts             Command arity table for bash pattern suggestions (#52)
-├── home-expand.ts            ~/$HOME expansion for patterns (#53)
-├── session-rules.ts          Session approval store (Ruleset wrapper)
-├── permission-checker.ts     Pure: evaluate() + input normalization per surface
-├── permission-gate.ts        IO boundary: the "elicitor" — ask-path handler
-├── permission-dialog.ts      Dialog options (once / session / deny)
+├── rule.ts                   ✅ Rule type, Ruleset type, evaluate()
+├── normalize.ts              ✅ Config → Ruleset normalization (flat format)
+├── synthesize.ts             ✅ Universal default + MCP baseline → Ruleset (🔀 target name was synthesize-defaults.ts)
+├── wildcard-matcher.ts       ✅ Compiled glob matching
+├── mcp-targets.ts            ⚠️ MCP multi-name target derivation (currently in permission-manager.ts, #81)
+├── pattern-suggest.ts        ✅ Per-surface approval pattern suggestions
+├── bash-arity.ts             ⚠️ Command arity table for bash pattern suggestions (#52)
+├── home-expand.ts            ⚠️ ~/$HOME expansion for patterns (#53)
+├── session-rules.ts          ✅ Session approval store (Ruleset wrapper)
+├── permission-manager.ts     ✅ Config loading + merge + checkPermission() (target: extract pure checker, #81)
+├── permission-gate.ts        ✅ Pure deny/ask/allow gate (injected IO)
+├── permission-prompter.ts    ✅ Yolo-mode, review logging, UI/forwarding branch (#80)
+├── permission-dialog.ts      ✅ Dialog options (once / session / deny)
 │
-├── handlers/                 Extracted event handlers
-│   ├── lifecycle.ts
-│   ├── before-agent-start.ts
-│   ├── input.ts
-│   └── tool-call.ts
+├── handlers/                 ✅ Extracted event handlers
+│   ├── index.ts              ✅ Re-exports
+│   ├── types.ts              ✅ HandlerDeps, PromptPermissionDetails
+│   ├── lifecycle.ts          ✅ session_start, session_shutdown, resources_discover
+│   ├── before-agent-start.ts ✅ Tool filtering + prompt sanitization
+│   ├── input.ts              ✅ Skill input gate
+│   └── tool-call.ts          ✅ Invocation gating
 │
-├── runtime.ts                ExtensionRuntime context object
-├── config-loader.ts          File I/O, format detection, legacy migration hints
-├── config-paths.ts           Path derivation (unchanged)
-├── extension-config.ts       Runtime knobs (unchanged)
+├── index.ts                  ✅ Extension factory — event wiring
+├── runtime.ts                ✅ ExtensionRuntime context object
+├── config-loader.ts          ✅ File I/O, format detection
+├── config-paths.ts           ✅ Path derivation
+├── config-reporter.ts        ✅ Structured log entries for resolved config
+├── config-modal.ts           ✅ /permission-system slash command UI
+├── extension-config.ts       ✅ Runtime knobs (debugLog, yoloMode, etc.)
 │
-├── external-directory.ts     Path-outside-cwd detection
-├── system-prompt-sanitizer.ts  (unchanged)
-├── skill-prompt-sanitizer.ts   (unchanged)
-├── permission-prompts.ts       (unchanged)
-├── logging.ts                  (unchanged)
-└── …
+├── external-directory.ts     ✅ Path-outside-cwd detection (tree-sitter-bash AST)
+├── system-prompt-sanitizer.ts ✅ Remove denied tools from system prompt
+├── skill-prompt-sanitizer.ts  ✅ Skill prompt filtering by policy
+├── permission-prompts.ts      ✅ User-facing message formatting per surface
+├── tool-input-preview.ts      ✅ Loggable context from tool inputs
+├── tool-registry.ts           ✅ Tool name validation
+├── active-agent.ts            ✅ Agent name detection from session/system prompt
+├── subagent-context.ts        ✅ Subagent execution context detection
+├── permission-forwarding.ts   ✅ Constants for cross-session forwarding
+├── forwarded-permissions/     ✅ Poll-based approval forwarding for subagents
+├── logging.ts                 ✅ JSONL review/debug log writer
+├── status.ts                  ✅ Footer status bar integration
+├── yolo-mode.ts               ✅ Auto-approve logic
+├── common.ts                  ✅ Shared parsing utilities
+├── types.ts                   ✅ Core type definitions (PermissionState, FlatPermissionConfig, etc.)
+└── before-agent-start-cache.ts ✅ Memoization for prompt sanitization
 ```
 
 ## Refactoring sequence
-
-The transformation from current to target architecture is a sequence of mechanical refactors, each independently shippable and testable.
 
 ```mermaid
 flowchart TD
     A["✅ #42 Extract event handlers"] --> D["✅ #43 Eliminate module-scope state"]
     B["✅ #55 Extract pure evaluate()"] --> C["✅ #56 Unify Rule type + normalize config"]
     C --> E["✅ #57 Replace SessionApprovalCache with session Ruleset"]
-    E --> X["#65 Synthesize defaults + unify evaluate path"]
-    X --> F["#51 Generalize session approvals to all surfaces"]
+    E --> X["✅ #65 Synthesize defaults + unify evaluate path"]
+    X --> F["✅ #51 Generalize session approvals to all surfaces"]
     F --> G["#52 Bash arity table"]
     G --> H["#53 ~/$HOME expansion"]
-    X -.-> Y["#66 Accept flat permission config format"]
+    X --> Y["✅ #66 Flat permission config format"]
+    Y --> Z["#81 Unify checkPermission surface branching"]
     I["✅ #54 Deprecate doom_loop (dead code)"] -.->|"independent"| C
+    J["✅ #80 Extract PermissionPrompter"] -.->|"independent"| D
 
     style A fill:#c8e6c9
     style B fill:#c8e6c9
@@ -492,47 +451,54 @@ flowchart TD
     style D fill:#c8e6c9
     style E fill:#c8e6c9
     style I fill:#c8e6c9
+    style X fill:#c8e6c9
+    style F fill:#c8e6c9
+    style Y fill:#c8e6c9
+    style J fill:#c8e6c9
 ```
 
 ### Phase 1: Structural cleanup (complete)
 
-|Issue|Summary|Complete|
+|Issue|Summary|
+|---|---|
+|#42|✅ Extract event handlers from index.ts|
+|#43|✅ Eliminate module-scope mutable state|
+|#55|✅ Extract pure `evaluate()` function|
+|#54|✅ Deprecate doom_loop dead config key|
+|#56|✅ Unify Rule type + normalize config into Ruleset|
+|#57|✅ Replace SessionApprovalCache with session Ruleset|
+
+### Phase 2: Unified evaluation (complete)
+
+|Issue|Summary|
+|---|---|
+|#65|✅ Synthesize defaults into ruleset + unify evaluate path|
+
+### Phase 3: Feature delivery (mostly complete)
+
+|Issue|Summary|Status|
 |---|---|---|
-|#42|Extract event handlers from index.ts|✅|
-|#43|Eliminate module-scope mutable state|✅|
-|#55|Extract pure `evaluate()` function|✅|
-|#54|Deprecate doom_loop dead config key|✅|
-|#56|Unify Rule type + normalize config into Ruleset|✅|
-|#57|Replace SessionApprovalCache with session Ruleset|✅|
+|#51|Generalize session approvals to all surfaces|✅|
+|#66|Flat permission config format|✅|
+|#80|Extract PermissionPrompter class|✅|
+|#52|Bash arity table for approval pattern suggestions|Open|
+|#53|`~`/`$HOME` expansion in permission patterns|Open|
 
-### Phase 2: Unified evaluation (internal refactor, no behavior change)
+### Phase 4: Final unification
 
-|Issue|Summary|Blocks|
+|Issue|Summary|Status|
 |---|---|---|
-|#65|Synthesize defaults into ruleset + unify evaluate path|#51|
-
-### Phase 3: Feature delivery
-
-|Issue|Summary|Blocks|
-|---|---|---|
-|#51|Generalize session approvals to all surfaces|#52|
-|#52|Bash arity table for approval pattern suggestions|#53 (soft)|
-|#53|`~`/`$HOME` expansion in permission patterns|—|
-
-### Phase 4: Config format evolution
-
-|Issue|Summary|Blocks|
-|---|---|---|
-|#66|Accept flat `permission: { ... }` config format|—|
+|#81|Unify `checkPermission()` surface branching (+ session concatenation + MCP extraction)|Open|
+|#82|Delete deprecated empty `defaults.ts` stub|Open|
 
 ## Migration and compatibility
 
-- **Config format**: #66 replaces the legacy format with flat `permission: { ... }`. Breaking change — no backward compatibility layer.
+- **Config format**: #66 replaced the legacy multi-namespace format with flat `permission: { ... }`. This was a breaking change with no backward compatibility layer.
 - **Behavior**: identical permission decisions for equivalent policy + input.
 - **API**: `checkPermission()` return type is unchanged externally.
-- **Session approvals**: existing `external_directory` prefix approvals continue to work — they are `Rule { surface: "external_directory", pattern: "<prefix>*", action: "allow" }`.
-- **Review log**: entries gain a `matchedRule` field showing the winning rule, improving auditability.
-- **Debuggability**: `/permission-system` command can dump the composed ruleset — the exact array `evaluate()` sees.
+- **Session approvals**: generalized to all surfaces (#51) — stored as `Rule { surface, pattern, action: "allow" }` in session rules.
+- **Review log**: structured entries for all permission decisions (waiting, approved, denied, auto-approved).
+- **Debuggability**: `/permission-system` command provides config inspection.
 
 Each phase is independently shippable.
 The system works correctly at every intermediate state.
