@@ -4,14 +4,14 @@ This document describes the target internal design for the permission system, in
 
 ## Design principles
 
-1. **Unified rule model** — one `Rule` type, one evaluation function, all surfaces.
-2. **Pure evaluation** — permission decisions are pure functions of (surface, pattern, rules). IO stays at the edges.
-3. **Session approvals are just more rules** — no separate matching engine, no separate pre-check.
-4. **MCP stays special** — multi-name target derivation is pre-processing, not a special evaluation path.
-5. **Defaults are rules** — the universal default (`permission["*"]`) is synthesized as a low-priority rule in the array. No side-channel fallbacks.
-6. **Flat config format** — the flat `permission: { ... }` object where each key is a surface. The config IS the ruleset in human-friendly form.
-7. **Preserve the two-phase model** — tool filtering (before_agent_start) and invocation gating (tool_call) remain separate.
-8. **Ask = cache miss** — "ask" is the absence of a matching rule. The human is the oracle. Their decision is a rule. Persistence determines lifetime (once / session / config).
+1. **Unified rule model** - one `Rule` type, one evaluation function, all surfaces.
+2. **Pure evaluation** - permission decisions are pure functions of (surface, pattern, rules). IO stays at the edges.
+3. **Session approvals are just more rules** - no separate matching engine, no separate pre-check.
+4. **MCP stays special** - multi-name target derivation is pre-processing, not a special evaluation path.
+5. **Defaults are rules** - the universal default (`permission["*"]`) is synthesized as a low-priority rule in the array. No side-channel fallbacks.
+6. **Flat config format** - the flat `permission: { ... }` object where each key is a surface. The config IS the ruleset in human-friendly form.
+7. **Preserve the two-phase model** - tool filtering (before_agent_start) and invocation gating (tool_call) remain separate.
+8. **Ask = cache miss** - "ask" is the absence of a matching rule. The human is the oracle. Their decision is a rule. Persistence determines lifetime (once / session / config).
 
 ## Core data model
 
@@ -28,7 +28,7 @@ interface Rule {
   /** The decision. */
   action: PermissionState;
   /**
-   * Origin layer — used to derive PermissionCheckResult.source after evaluation.
+   * Origin layer - used to derive PermissionCheckResult.source after evaluation.
    * Not used by evaluate(); purely informational metadata.
    */
   layer?: "default" | "override" | "baseline" | "config" | "session";
@@ -59,13 +59,13 @@ function evaluate(surface: string, value: string, rules: Ruleset): Rule {
       return rule;
     }
   }
-  // Unreachable when defaults are synthesized — the catch-all always matches.
+  // Unreachable when defaults are synthesized - the catch-all always matches.
   return { surface, pattern: value, action: "ask" };
 }
 ```
 
 The entire decision engine.
-When defaults are synthesized into the array, the catch-all `{ surface: "*", pattern: "*", action: "ask" }` always matches — the fallback return is defensive only.
+When defaults are synthesized into the array, the catch-all `{ surface: "*", pattern: "*", action: "ask" }` always matches - the fallback return is defensive only.
 
 ## Composed ruleset
 
@@ -108,15 +108,14 @@ Index position determines priority (higher index wins):
 ✅ **Synthesis and composition are implemented** in `src/synthesize.ts` (#65, #66).
 
 `synthesizeDefaults()` produces a single universal catch-all from `permission["*"]`.
-Per-surface catch-alls (e.g. `bash: { "*": "allow" }`) are expressed as regular config rules via `normalizeFlatConfig()` — no separate override layer is needed.
+Per-surface catch-alls (e.g. `bash: { "*": "allow" }`) are expressed as regular config rules via `normalizeFlatConfig()` - no separate override layer is needed.
 
 `synthesizeBaseline()` conditionally emits MCP metadata auto-allow rules.
 
 `composeRuleset()` concatenates: defaults + baseline + config rules.
 
-⚠️ **Session rules are not yet concatenated into the composed ruleset** (#81).
-`checkPermission()` currently checks session rules in a separate pass with a duplicated guard in each surface branch.
-The target is for session rules to be appended to the composed array so `evaluate()` handles them via last-match-wins — no separate pre-check.
+✅ **Session rules are concatenated into the composed ruleset** (#81).
+`checkPermission()` appends session rules after the config rules so `evaluate()` handles them via last-match-wins — no separate per-branch pre-check.
 
 ### Default synthesis
 
@@ -128,9 +127,9 @@ function synthesizeDefaults(universalDefault: PermissionState): Ruleset {
   ];
 }
 
-// MCP metadata auto-allow — only synthesized when any config rule has
+// MCP metadata auto-allow - only synthesized when any config rule has
 // surface: "mcp" && action: "allow".
-function synthesizeBaseline(configRules: Ruleset): Ruleset { … }
+function synthesizeBaseline(configRules: Ruleset): Ruleset { ... }
 
 // Concat in priority order: defaults, baseline, config.
 function composeRuleset(defaults, baseline, config): Ruleset {
@@ -248,10 +247,10 @@ flowchart LR
 ```
 
 The priority ordering of candidates is preserved.
-The evaluation function is unchanged — MCP just calls it multiple times with different values.
+The evaluation function is unchanged - MCP just calls it multiple times with different values.
 
-⚠️ **MCP target derivation helpers are still inline in `permission-manager.ts`** (#81).
-The target is to extract them to a focused `mcp-targets.ts` module as part of input normalization.
+✅ **MCP target derivation helpers extracted to `src/mcp-targets.ts`** (#81).
+Input normalization for all surfaces lives in `src/input-normalizer.ts`.
 
 ## Session approvals: the cache-miss model
 
@@ -259,14 +258,14 @@ The target is to extract them to a focused `mcp-targets.ts` module as part of in
 ✅ Session approvals generalized to all surfaces (#51).
 
 `evaluate()` is a **lookup** against cached decisions.
-When no rule matches (or the matching rule says "ask"), the system has a cache miss — it needs the human oracle to produce a decision.
+When no rule matches (or the matching rule says "ask"), the system has a cache miss - it needs the human oracle to produce a decision.
 
 The human's response is simultaneously:
 
 1. **The answer** for this request (allow or deny).
 2. **A rule** that can be cached for future lookups.
 
-The dialog determines **persistence** — where the rule lives:
+The dialog determines **persistence** - where the rule lives:
 
 ```text
   evaluate(surface, value, composedRules)
@@ -328,7 +327,7 @@ sequenceDiagram
     User-->>Gate: "Session"
     Gate->>Session: append { surface: "bash", pattern: "git status*", action: "allow" }
 
-    Note over Gate,Session: Next similar call — cache hit
+    Note over Gate,Session: Next similar call - cache hit
     Gate->>Eval: evaluate("bash", "git status --short", composedRules incl. session)
     Eval-->>Gate: { action: "allow" } (matched session rule)
     Note over Gate: No prompt needed
@@ -345,7 +344,7 @@ function shouldExposeTool(toolName: string, rules: Ruleset): boolean {
 }
 ```
 
-Uses `evaluate()` with pattern `"*"` — "is this tool denied at the surface level, regardless of specific input?"
+Uses `evaluate()` with pattern `"*"` - "is this tool denied at the surface level, regardless of specific input?"
 
 ### Phase 2: Invocation gating (`tool_call`)
 
@@ -358,7 +357,7 @@ const rule = evaluate(surface, value, composedRules);
 
 if (rule.action === "allow") return proceed;
 if (rule.action === "deny") return block;
-// rule.action === "ask" — elicit from oracle
+// rule.action === "ask" - elicit from oracle
 const decision = await elicitRule(surface, value, suggestPattern(surface, value));
 if (decision.persistence === "session") {
   sessionRules.approve(surface, decision.pattern);
@@ -369,9 +368,8 @@ return decision.action === "allow" ? proceed : block;
 Same `evaluate()`, same ruleset.
 The only surface-specific logic is input normalization (what `surface` and `value` to look up) and pattern suggestion (what glob to offer for "session" approval).
 
-⚠️ **`checkPermission()` still has per-surface branching** (#81).
-Each branch duplicates the session-check + config-check pattern.
-The target is a single flow: normalize input → evaluate → build result.
+✅ **`checkPermission()` uses a single evaluate path** (#81).
+The ~200-line if/else if chain is replaced by: `normalizeInput()` → `evaluateFirst()` → `deriveSource()` → single result object.
 
 ## Module structure (target)
 
@@ -385,7 +383,8 @@ src/
 ├── normalize.ts              ✅ Config → Ruleset normalization (flat format)
 ├── synthesize.ts             ✅ Universal default + MCP baseline → Ruleset (🔀 target name was synthesize-defaults.ts)
 ├── wildcard-matcher.ts       ✅ Compiled glob matching
-├── mcp-targets.ts            ⚠️ MCP multi-name target derivation (currently in permission-manager.ts, #81)
+├── mcp-targets.ts            ✅ MCP multi-name target derivation (#81)
+├── input-normalizer.ts       ✅ Surface-specific input normalization → NormalizedInput (#81)
 ├── pattern-suggest.ts        ✅ Per-surface approval pattern suggestions
 ├── bash-arity.ts             ⚠️ Command arity table for bash pattern suggestions (#52)
 ├── home-expand.ts            ⚠️ ~/$HOME expansion for patterns (#53)
@@ -403,7 +402,7 @@ src/
 │   ├── input.ts              ✅ Skill input gate
 │   └── tool-call.ts          ✅ Invocation gating
 │
-├── index.ts                  ✅ Extension factory — event wiring
+├── index.ts                  ✅ Extension factory - event wiring
 ├── runtime.ts                ✅ ExtensionRuntime context object
 ├── config-loader.ts          ✅ File I/O, format detection
 ├── config-paths.ts           ✅ Path derivation
@@ -441,7 +440,7 @@ flowchart TD
     F --> G["#52 Bash arity table"]
     G --> H["#53 ~/$HOME expansion"]
     X --> Y["✅ #66 Flat permission config format"]
-    Y --> Z["#81 Unify checkPermission surface branching"]
+    Y --> Z["✅ #81 Unify checkPermission surface branching"]
     I["✅ #54 Deprecate doom_loop (dead code)"] -.->|"independent"| C
     J["✅ #80 Extract PermissionPrompter"] -.->|"independent"| D
 
@@ -455,7 +454,8 @@ flowchart TD
     style F fill:#c8e6c9
     style Y fill:#c8e6c9
     style J fill:#c8e6c9
-```
+    style Z fill:#c8e6c9
+  ```
 
 ### Phase 1: Structural cleanup (complete)
 
@@ -488,15 +488,15 @@ flowchart TD
 
 |Issue|Summary|Status|
 |---|---|---|
-|#81|Unify `checkPermission()` surface branching (+ session concatenation + MCP extraction)|Open|
-|#82|Delete deprecated empty `defaults.ts` stub|Open|
+|#81|Unify `checkPermission()` surface branching (+ session concatenation + MCP extraction)|✅|
+|#82|Delete deprecated empty `defaults.ts` stub|✅|
 
 ## Migration and compatibility
 
 - **Config format**: #66 replaced the legacy multi-namespace format with flat `permission: { ... }`. This was a breaking change with no backward compatibility layer.
 - **Behavior**: identical permission decisions for equivalent policy + input.
 - **API**: `checkPermission()` return type is unchanged externally.
-- **Session approvals**: generalized to all surfaces (#51) — stored as `Rule { surface, pattern, action: "allow" }` in session rules.
+- **Session approvals**: generalized to all surfaces (#51) - stored as `Rule { surface, pattern, action: "allow" }` in session rules.
 - **Review log**: structured entries for all permission decisions (waiting, approved, denied, auto-approved).
 - **Debuggability**: `/permission-system` command provides config inspection.
 
