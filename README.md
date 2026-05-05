@@ -379,7 +379,7 @@ Infrastructure directories include:
 
 1. The agent config directory (`~/.pi/agent/` or `$PI_CODING_AGENT_DIR`)
 2. Git-cloned global packages (`<agentDir>/git/`)
-3. The global `node_modules` root (auto-discovered from the extension's own install path — works for npm, pnpm, bun, Homebrew)
+3. The global `node_modules` root (auto-discovered from the extension's own install path; falls back to `npm root -g` when running from a local development checkout)
 4. Project-local Pi packages (`<cwd>/.pi/npm/` and `<cwd>/.pi/git/`)
 5. Any paths listed in `piInfrastructureReadPaths`
 

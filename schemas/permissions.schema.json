@@ -31,7 +31,7 @@
     },
     "piInfrastructureReadPaths": {
       "description": "Additional directories to auto-allow for reads as Pi infrastructure, bypassing the external_directory gate. Supports ~ expansion. Directory prefixes only (no globs).",
-      "markdownDescription": "Additional directories to auto-allow for reads as Pi infrastructure, bypassing the `external_directory` gate.\n\nThe extension auto-discovers the global node_modules root, `agentDir`, `agentDir/git`, and project-local `.pi/npm/` and `.pi/git/`. Add entries here for edge cases where auto-discovery is insufficient.\n\nSupports `~` expansion. Directory prefixes only — no glob patterns.",
+      "markdownDescription": "Additional directories to auto-allow for reads as Pi infrastructure, bypassing the `external_directory` gate.\n\nThe extension auto-discovers the global node_modules root (walks up from the extension's install path; falls back to `npm root -g` from a dev checkout), `agentDir`, `agentDir/git`, and project-local `.pi/npm/` and `.pi/git/`. Add entries here for edge cases where auto-discovery is insufficient (e.g. custom `npmCommand` pointing to pnpm).\n\nSupports `~` expansion. Directory prefixes only — no glob patterns.",
       "type": "array",
       "items": {
         "type": "string",
