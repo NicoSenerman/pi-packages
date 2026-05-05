@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeInput } from "../src/input-normalizer";
+import { createMcpPermissionTargets } from "../src/mcp-targets";
 
 describe("normalizeInput — non-MCP surfaces", () => {
   describe("special / external_directory", () => {
@@ -86,5 +87,64 @@ describe("normalizeInput — non-MCP surfaces", () => {
       expect(result.values).toEqual(["*"]);
       expect(result.resultExtras).toEqual({});
     });
+  });
+});
+
+describe("normalizeInput — MCP surface", () => {
+  it("surface is 'mcp'", () => {
+    const result = normalizeInput("mcp", { tool: "exa:search" }, []);
+    expect(result.surface).toBe("mcp");
+  });
+
+  it("values end with the catch-all 'mcp' target", () => {
+    const result = normalizeInput("mcp", { tool: "exa:search" }, []);
+    expect(result.values.at(-1)).toBe("mcp");
+  });
+
+  it("values include specific targets before the catch-all for a qualified tool call", () => {
+    const result = normalizeInput("mcp", { tool: "exa:search" }, []);
+    expect(result.values).toContain("exa_search");
+    expect(result.values).toContain("exa:search");
+    expect(result.values).toContain("exa");
+    expect(result.values).toContain("mcp_call");
+    // 'mcp' is always last
+    expect(result.values.at(-1)).toBe("mcp");
+  });
+
+  it("matches createMcpPermissionTargets output + 'mcp' appended", () => {
+    const rawTargets = createMcpPermissionTargets({ tool: "exa:search" }, [
+      "exa",
+    ]);
+    const result = normalizeInput("mcp", { tool: "exa:search" }, ["exa"]);
+    expect(result.values).toEqual([...rawTargets, "mcp"]);
+  });
+
+  it("resultExtras.target is the first specific target (most-specific)", () => {
+    const result = normalizeInput("mcp", { tool: "exa:search" }, []);
+    expect(result.resultExtras.target).toBe(result.values[0]);
+  });
+
+  it("resultExtras.target is 'mcp' when no specific targets are derived", () => {
+    // Empty input → only mcp_status then mcp appended
+    const result = normalizeInput("mcp", {}, []);
+    expect(result.resultExtras.target).toBe("mcp_status");
+  });
+
+  it("values contain no duplicates", () => {
+    const result = normalizeInput("mcp", { tool: "exa:search" }, ["exa"]);
+    const unique = [...new Set(result.values)];
+    expect(result.values).toEqual(unique);
+  });
+
+  it("produces mcp_status + mcp for status input", () => {
+    const result = normalizeInput("mcp", {}, []);
+    expect(result.values).toEqual(["mcp_status", "mcp"]);
+  });
+
+  it("produces connect targets + mcp for connect input", () => {
+    const result = normalizeInput("mcp", { connect: "exa" }, []);
+    expect(result.values).toContain("mcp_connect_exa");
+    expect(result.values).toContain("mcp_connect");
+    expect(result.values.at(-1)).toBe("mcp");
   });
 });
