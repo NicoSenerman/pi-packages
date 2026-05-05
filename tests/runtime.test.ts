@@ -11,6 +11,7 @@ const {
   mockGetActiveAgentName,
   mockGetActiveAgentNameFromSystemPrompt,
   mockBuildResolvedConfigLogEntry,
+  mockDiscoverGlobalNodeModulesRoot,
 } = vi.hoisted(() => ({
   mockLoggerDebug:
     vi.fn<
@@ -27,6 +28,7 @@ const {
   mockGetActiveAgentNameFromSystemPrompt:
     vi.fn<(prompt?: string) => string | null>(),
   mockBuildResolvedConfigLogEntry: vi.fn(),
+  mockDiscoverGlobalNodeModulesRoot: vi.fn<() => string | null>(),
 }));
 
 vi.mock("../src/logging", () => ({
@@ -65,6 +67,10 @@ vi.mock("../src/subagent-context", () => ({
   isSubagentExecutionContext: vi.fn().mockReturnValue(false),
 }));
 
+vi.mock("../src/external-directory", () => ({
+  discoverGlobalNodeModulesRoot: mockDiscoverGlobalNodeModulesRoot,
+}));
+
 vi.mock("../src/session-rules", () => ({
   SessionRules: vi.fn(),
   deriveApprovalPattern: vi.fn(),
@@ -99,6 +105,10 @@ describe("createExtensionRuntime", () => {
       debug: mockLoggerDebug,
       review: mockLoggerReview,
     });
+    mockDiscoverGlobalNodeModulesRoot.mockReset();
+    mockDiscoverGlobalNodeModulesRoot.mockReturnValue(
+      "/mock/global/node_modules",
+    );
   });
 
   // ── Path derivation ──────────────────────────────────────────────────────
@@ -128,6 +138,41 @@ describe("createExtensionRuntime", () => {
   it("derives globalLogsDir via getGlobalLogsDir", () => {
     const runtime = createExtensionRuntime({ agentDir: "/test/agent" });
     expect(runtime.globalLogsDir).toBe(getGlobalLogsDir("/test/agent"));
+  });
+
+  // ── piInfrastructureDirs ─────────────────────────────────────────────────
+
+  it("includes agentDir in piInfrastructureDirs", () => {
+    const runtime = createExtensionRuntime({ agentDir: "/test/agent" });
+    expect(runtime.piInfrastructureDirs).toContain("/test/agent");
+  });
+
+  it("includes agentDir/git in piInfrastructureDirs", () => {
+    const runtime = createExtensionRuntime({ agentDir: "/test/agent" });
+    expect(runtime.piInfrastructureDirs).toContain("/test/agent/git");
+  });
+
+  it("includes discovered global node_modules root in piInfrastructureDirs", () => {
+    const runtime = createExtensionRuntime({ agentDir: "/test/agent" });
+    expect(runtime.piInfrastructureDirs).toContain("/mock/global/node_modules");
+  });
+
+  it("excludes null when discoverGlobalNodeModulesRoot returns null", () => {
+    mockDiscoverGlobalNodeModulesRoot.mockReturnValue(null);
+    const runtime = createExtensionRuntime({ agentDir: "/test/agent" });
+    for (const dir of runtime.piInfrastructureDirs) {
+      expect(dir).not.toBeNull();
+      expect(typeof dir).toBe("string");
+    }
+  });
+
+  it("omits global node_modules from piInfrastructureDirs when discovery returns null", () => {
+    mockDiscoverGlobalNodeModulesRoot.mockReturnValue(null);
+    const runtime = createExtensionRuntime({ agentDir: "/test/agent" });
+    // Only agentDir and agentDir/git should be present.
+    expect(runtime.piInfrastructureDirs).toHaveLength(2);
+    expect(runtime.piInfrastructureDirs).toContain("/test/agent");
+    expect(runtime.piInfrastructureDirs).toContain("/test/agent/git");
   });
 
   // ── Default mutable state ────────────────────────────────────────────────

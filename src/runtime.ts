@@ -34,6 +34,7 @@ import {
   normalizePermissionSystemConfig,
   type PermissionSystemExtensionConfig,
 } from "./extension-config";
+import { discoverGlobalNodeModulesRoot } from "./external-directory";
 import {
   type PermissionForwardingDeps,
   processForwardedPermissionRequests,
@@ -64,6 +65,14 @@ export interface ExtensionRuntime {
   readonly subagentSessionsDir: string;
   readonly forwardingDir: string;
   readonly globalLogsDir: string;
+  /**
+   * Static Pi infrastructure directories used for external-directory
+   * read auto-allow. Computed once at construction from `agentDir` and
+   * `discoverGlobalNodeModulesRoot()`. Config-based extras
+   * (`piInfrastructureReadPaths`) are read from `runtime.config` at
+   * call time in the handler so they pick up config reloads.
+   */
+  readonly piInfrastructureDirs: string[];
 
   // ── Mutable state ──────────────────────────────────────────────────────
   config: PermissionSystemExtensionConfig;
@@ -341,6 +350,13 @@ export function createExtensionRuntime(options?: {
   const forwardingDir = join(sessionsDir, "permission-forwarding");
   const globalLogsDir = getGlobalLogsDir(agentDir);
 
+  const globalNodeModulesRoot = discoverGlobalNodeModulesRoot();
+  const piInfrastructureDirs: string[] = [
+    agentDir,
+    join(agentDir, "git"),
+    ...(globalNodeModulesRoot ? [globalNodeModulesRoot] : []),
+  ];
+
   // Build a plain-object runtime first so the logger's `getConfig` closure
   // can reference `runtime.config` directly (always reads current value).
   const runtime: ExtensionRuntime = {
@@ -349,6 +365,7 @@ export function createExtensionRuntime(options?: {
     subagentSessionsDir,
     forwardingDir,
     globalLogsDir,
+    piInfrastructureDirs,
     config: { ...DEFAULT_EXTENSION_CONFIG },
     runtimeContext: null,
     permissionManager: createPermissionManagerForCwd(agentDir, undefined),
