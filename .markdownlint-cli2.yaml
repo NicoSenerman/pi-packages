@@ -7,3 +7,8 @@ config:
   line-length: false
   no-duplicate-heading:
     siblings_only: true
+  no-inline-html:
+    allowed_elements:
+      - p
+      - img
+  first-line-heading: false
