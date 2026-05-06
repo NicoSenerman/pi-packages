@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.0.3](https://github.com/gotgenes/pi-autoformat/compare/v4.0.2...v4.0.3) (2026-05-06)
+
+
+### Bug Fixes
+
+* add repository URL for OIDC provenance publishing ([4b5335e](https://github.com/gotgenes/pi-autoformat/commit/4b5335e2a7b39531af811a6756ef5656e64831ef))
+
 ## [4.0.2](https://github.com/gotgenes/pi-autoformat/compare/v4.0.1...v4.0.2) (2026-05-06)
 
 
