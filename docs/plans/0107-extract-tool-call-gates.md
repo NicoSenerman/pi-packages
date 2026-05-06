@@ -145,6 +145,7 @@ export async function handleToolCall(deps, event, ctx) {
 ### New files
 
 - `src/handlers/gates/types.ts` — `GateOutcome`, `ToolCallContext` types.
+- `src/handlers/gates/helpers.ts` — `deriveDecisionValue`, `deriveResolution` (currently private in `tool-call.ts`).
 - `src/handlers/gates/skill-read.ts` — skill-read gate logic extracted from lines ~130–185 of `tool-call.ts`.
 - `src/handlers/gates/external-directory.ts` — external-directory gate logic extracted from lines ~190–310, including Pi infrastructure read bypass and session-rule check.
 - `src/handlers/gates/bash-external-directory.ts` — bash external-directory gate extracted from lines ~315–405.
@@ -158,6 +159,7 @@ export async function handleToolCall(deps, event, ctx) {
 
 ### New test files
 
+- `tests/handlers/gates/helpers.test.ts` — unit tests for `deriveDecisionValue` and `deriveResolution`.
 - `tests/handlers/gates/skill-read.test.ts` — unit tests for the skill-read gate in isolation.
 - `tests/handlers/gates/external-directory.test.ts` — unit tests for external-directory gate.
 - `tests/handlers/gates/bash-external-directory.test.ts` — unit tests for bash external-directory gate.
@@ -177,7 +179,28 @@ export async function handleToolCall(deps, event, ctx) {
 
 Commit: `refactor: add gate types for tool-call decomposition (#107)`
 
-### Step 2: Extract skill-read gate (red → green)
+### Step 2: Extract helpers (red → green)
+
+`deriveDecisionValue` and `deriveResolution` are currently private module-scope functions.
+Extracting them to `src/handlers/gates/helpers.ts` makes them directly unit-testable.
+
+1. Write `tests/handlers/gates/helpers.test.ts` testing:
+   - `deriveDecisionValue`: returns command for bash, target for mcp, toolName otherwise.
+   - `deriveResolution`: returns `policy_allow` for allow state, `policy_deny` for deny state.
+   - `deriveResolution`: returns `user_approved` for ask+allow without session.
+   - `deriveResolution`: returns `user_approved_for_session` for ask+allow with session.
+   - `deriveResolution`: returns `auto_approved` for ask+allow with autoApproved flag.
+   - `deriveResolution`: returns `user_denied` for ask+block with canConfirm.
+   - `deriveResolution`: returns `confirmation_unavailable` for ask+block without canConfirm.
+2. Move `deriveDecisionValue` and `deriveResolution` to `src/handlers/gates/helpers.ts`.
+3. Tests go green.
+
+Commit: `refactor: extract gate helper functions (#107)`
+
+### Step 3: Extract skill-read gate (red → green)
+
+The existing integration tests only cover deny and non-skill-path passthrough.
+The extracted gate's direct interface enables testing paths that are hard to reach through the full pipeline.
 
 1. Write `tests/handlers/gates/skill-read.test.ts` testing:
    - Returns `null` when tool is not `read`.
@@ -187,68 +210,86 @@ Commit: `refactor: add gate types for tool-call decomposition (#107)`
    - Returns `{ action: "block", reason }` when skill state is `deny`.
    - Returns `{ action: "allow" }` when state is `ask` and user approves.
    - Returns `{ action: "block", reason }` when state is `ask` and user denies.
-   - Emits decision event with correct surface/resolution.
+   - Returns `{ action: "block" }` when state is `ask` and no UI available (confirmation-unavailable).
+   - Emits decision event with correct surface (`skill`), resolution, origin, and matchedPattern fields.
 2. Implement `src/handlers/gates/skill-read.ts`.
 3. Tests go green.
 
 Commit: `refactor: extract evaluateSkillReadGate (#107)`
 
-### Step 3: Extract external-directory gate (red → green)
+### Step 4: Extract external-directory gate (red → green)
+
+The existing integration tests miss: confirmation-unavailable, user-denies-ask, and decision event field assertions (resolution, origin, matchedPattern) for each sub-path (infra bypass, session hit, policy gate).
 
 1. Write `tests/handlers/gates/external-directory.test.ts` testing:
    - Returns `null` when no CWD.
    - Returns `null` when tool is not path-bearing.
    - Returns `null` when path is inside CWD.
-   - Pi infrastructure read bypass — returns `{ action: "allow" }` and emits `infrastructure_auto_allowed`.
-   - Session-rule hit — returns `{ action: "allow" }` and emits `session_approved`.
-   - Policy deny — returns `{ action: "block" }`.
-   - Policy ask, user approves for session — records session rule and returns `{ action: "allow" }`.
-   - Policy ask, user denies — returns `{ action: "block" }`.
+   - Pi infrastructure read bypass — returns `{ action: "allow" }`, emits event with resolution `infrastructure_auto_allowed`, and writes review log.
+   - Pi infrastructure read bypass respects `config.piInfrastructureReadPaths`.
+   - Does NOT bypass for write tools targeting infra dirs.
+   - Session-rule hit — returns `{ action: "allow" }`, emits event with resolution `session_approved` and correct `matchedPattern`.
+   - Policy deny — returns `{ action: "block" }`, emits event with resolution `policy_deny`.
+   - Policy ask, user approves once — returns `{ action: "allow" }`, does NOT record session rule.
+   - Policy ask, user approves for session — records session rule via `deriveApprovalPattern` and returns `{ action: "allow" }`.
+   - Policy ask, user denies — returns `{ action: "block" }`, emits event with resolution `user_denied`.
+   - Policy ask, no UI available — returns `{ action: "block" }`, emits event with resolution `confirmation_unavailable`.
 2. Implement `src/handlers/gates/external-directory.ts`.
 3. Tests go green.
 
 Commit: `refactor: extract evaluateExternalDirectoryGate (#107)`
 
-### Step 4: Extract bash external-directory gate (red → green)
+### Step 5: Extract bash external-directory gate (red → green)
+
+The existing integration tests miss: ask+user approves, ask+user denies, confirmation-unavailable, and multiple-uncovered-paths recording multiple session rules.
 
 1. Write `tests/handlers/gates/bash-external-directory.test.ts` testing:
    - Returns `null` when tool is not `bash`.
    - Returns `null` when no CWD.
    - Returns `null` when command has no external paths.
-   - Session-covered paths — returns `null` (fall through to normal gate).
+   - Returns `null` when all external paths are session-covered (logs `session_approved`).
    - Uncovered paths, policy deny — returns `{ action: "block" }`.
-   - Uncovered paths, user approves for session — records session rules and returns `{ action: "allow" }`.
+   - Uncovered paths, policy ask, user approves once — returns `{ action: "allow" }`, does NOT record session rules.
+   - Uncovered paths, policy ask, user approves for session — records one session rule per uncovered path.
+   - Uncovered paths, policy ask, user denies — returns `{ action: "block" }`.
+   - Uncovered paths, policy ask, no UI available — returns `{ action: "block" }`.
+   - Mixed covered/uncovered — only uncovered paths appear in the prompt.
 2. Implement `src/handlers/gates/bash-external-directory.ts`.
 3. Tests go green.
 
 Commit: `refactor: extract evaluateBashExternalDirectoryGate (#107)`
 
-### Step 5: Extract normal tool gate (red → green)
+### Step 6: Extract normal tool gate (red → green)
+
+The existing integration tests cover allow/deny/ask+approve/ask+deny and session recording well.
+The extracted gate additionally exposes: decision event field assertions per resolution, `deriveDecisionValue` producing the correct value for bash (command) and mcp (target), auto-approved resolution, and the bash-specific vs generic unavailable message.
 
 1. Write `tests/handlers/gates/tool.test.ts` testing:
-   - Session-rule hit — returns `{ action: "allow" }` and emits `session_approved`.
-   - Policy allow — returns `{ action: "allow" }` and emits `policy_allow`.
-   - Policy deny — returns `{ action: "block" }` and emits `policy_deny`.
-   - Policy ask, user approves — returns `{ action: "allow" }`.
-   - Policy ask, user approves for session — records session rule.
-   - Policy ask, user denies — returns `{ action: "block" }`.
-   - Auto-approved resolution is emitted correctly.
-   - Bash tool unavailable message differs from generic tool message.
+   - Session-rule hit — returns `{ action: "allow" }`, emits event with resolution `session_approved` and correct `matchedPattern`.
+   - Policy allow — returns `{ action: "allow" }`, emits event with resolution `policy_allow`.
+   - Policy deny — returns `{ action: "block" }`, emits event with resolution `policy_deny`.
+   - Policy ask, user approves once — returns `{ action: "allow" }`, emits `user_approved`, does NOT record session rule.
+   - Policy ask, user approves for session — records session rule via `suggestSessionPattern`, emits `user_approved_for_session`.
+   - Policy ask, user denies — returns `{ action: "block" }`, emits `user_denied`.
+   - Policy ask, no UI available — returns `{ action: "block" }`, emits `confirmation_unavailable`.
+   - Auto-approved decision emits resolution `auto_approved`.
+   - Bash tool: `deriveDecisionValue` produces the command string; unavailable message includes the command.
+   - MCP tool: `deriveDecisionValue` produces the target string.
 2. Implement `src/handlers/gates/tool.ts`.
 3. Tests go green.
 
 Commit: `refactor: extract evaluateToolGate (#107)`
 
-### Step 6: Wire orchestrator and verify existing tests
+### Step 7: Wire orchestrator and verify existing tests
 
 1. Replace inline gate logic in `handleToolCall` with calls to the four extracted gate functions.
-2. Move `deriveDecisionValue` and `deriveResolution` to `src/handlers/gates/helpers.ts` (exported for gate use).
+2. Update imports (helpers already moved in step 2).
 3. Run full test suite — all 812 lines of `tests/handlers/tool-call.test.ts` must pass unchanged.
 4. Run `pnpm run build` to confirm types.
 
 Commit: `refactor: wire handleToolCall to per-gate functions (#107)`
 
-### Step 7: Update architecture docs
+### Step 8: Update architecture docs
 
 1. Update `docs/architecture/target-architecture.md` if it references `tool-call.ts`.
 
