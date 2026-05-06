@@ -17,6 +17,9 @@
     "name": "Chris Lasher"
   },
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "pi": {
     "extensions": [
