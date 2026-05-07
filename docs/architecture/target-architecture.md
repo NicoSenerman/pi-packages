@@ -474,13 +474,15 @@ src/
 │   ├── before-agent-start.ts ✅ Tool filtering + prompt sanitization
 │   ├── input.ts              ✅ Skill input gate
 │   ├── tool-call.ts          ✅ Invocation gating orchestrator
-│   └── gates/               ✅ Per-gate functions with narrow dep interfaces (#107, #111)
-│       ├── types.ts          ✅ GateOutcome, ToolCallContext, per-gate dep interfaces
+│   └── gates/               ✅ Pure descriptor factories + runner (#107, #111, #118)
+│       ├── types.ts          ✅ GateOutcome, ToolCallContext
+│       ├── descriptor.ts     ✅ GateDescriptor, GateBypass, GateResult, GateRunnerDeps types
+│       ├── runner.ts         ✅ runGateCheck() — single site for check→log→emit→approve
 │       ├── helpers.ts        ✅ deriveDecisionValue, deriveResolution
-│       ├── skill-read.ts     ✅ Skill-read permission gate
-│       ├── external-directory.ts ✅ External-directory permission gate
-│       ├── bash-external-directory.ts ✅ Bash external-directory permission gate
-│       ├── tool.ts           ✅ Normal tool permission gate
+│       ├── skill-read.ts     ✅ describeSkillReadGate — pure descriptor factory
+│       ├── external-directory.ts ✅ describeExternalDirectoryGate — pure descriptor/bypass factory
+│       ├── bash-external-directory.ts ✅ describeBashExternalDirectoryGate — pure descriptor/bypass factory
+│       ├── tool.ts           ✅ describeToolGate — pure descriptor factory
 │       └── index.ts          ✅ Barrel re-exports
 │
 ├── index.ts                  ✅ Extension factory - event wiring
