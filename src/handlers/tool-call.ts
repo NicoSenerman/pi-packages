@@ -12,13 +12,13 @@ import {
 } from "../tool-registry";
 import { evaluateBashExternalDirectoryGate } from "./gates/bash-external-directory";
 import type { GateRunnerDeps } from "./gates/descriptor";
-import { evaluateExternalDirectoryGate } from "./gates/external-directory";
+import { isGateBypass } from "./gates/descriptor";
+import { describeExternalDirectoryGate } from "./gates/external-directory";
 import { runGateCheck } from "./gates/runner";
 import { describeSkillReadGate } from "./gates/skill-read";
 import { describeToolGate } from "./gates/tool";
 import type {
   BashExternalDirectoryGateDeps,
-  ExternalDirectoryGateDeps,
   ToolCallContext,
   ToolGateDeps,
 } from "./gates/types";
@@ -112,34 +112,8 @@ export async function handleToolCall(
   const approveSessionRule = (surface: string, pattern: string) =>
     deps.session.sessionRules.approve(surface, pattern);
 
-  // ── Skill-read gate (descriptor + runner) ────────────────────────────────
-  const skillDescriptor = describeSkillReadGate(
-    tcc,
-    () => deps.session.activeSkillEntries,
-  );
-  if (skillDescriptor) {
-    const runnerDepsForSkill: GateRunnerDeps = {
-      checkPermission,
-      getSessionRuleset,
-      approveSessionRule,
-      writeReviewLog,
-      emitDecision,
-      canConfirm,
-      promptPermission,
-    };
-    const skillResult = await runGateCheck(
-      skillDescriptor,
-      tcc.agentName,
-      tcc.toolCallId,
-      runnerDepsForSkill,
-    );
-    if (skillResult.action === "block") {
-      return { block: true, reason: skillResult.reason };
-    }
-  }
-
-  // ── External-directory gate (file tools) ─────────────────────────────────
-  const extDirGateDeps: ExternalDirectoryGateDeps = {
+  // ── Shared runner deps (built once, reused for all gates) ─────────────
+  const runnerDeps: GateRunnerDeps = {
     checkPermission,
     getSessionRuleset,
     approveSessionRule,
@@ -147,14 +121,50 @@ export async function handleToolCall(
     emitDecision,
     canConfirm,
     promptPermission,
-    getInfrastructureDirs: () => [
-      ...deps.piInfrastructureDirs,
-      ...deps.getPiInfrastructureReadPaths(),
-    ],
   };
-  const extDirResult = await evaluateExternalDirectoryGate(tcc, extDirGateDeps);
-  if (extDirResult?.action === "block") {
-    return { block: true, reason: extDirResult.reason };
+
+  // ── Skill-read gate (descriptor + runner) ────────────────────────────────
+  const skillDescriptor = describeSkillReadGate(
+    tcc,
+    () => deps.session.activeSkillEntries,
+  );
+  if (skillDescriptor) {
+    const skillResult = await runGateCheck(
+      skillDescriptor,
+      tcc.agentName,
+      tcc.toolCallId,
+      runnerDeps,
+    );
+    if (skillResult.action === "block") {
+      return { block: true, reason: skillResult.reason };
+    }
+  }
+
+  // ── External-directory gate (descriptor + runner) ─────────────────────────
+  const infraDirs = [
+    ...deps.piInfrastructureDirs,
+    ...deps.getPiInfrastructureReadPaths(),
+  ];
+  const extDirDesc = describeExternalDirectoryGate(tcc, infraDirs);
+  if (extDirDesc) {
+    if (isGateBypass(extDirDesc)) {
+      if (extDirDesc.log) {
+        writeReviewLog(extDirDesc.log.event, extDirDesc.log.details);
+      }
+      if (extDirDesc.decision) {
+        emitDecision(extDirDesc.decision);
+      }
+    } else {
+      const extDirResult = await runGateCheck(
+        extDirDesc,
+        tcc.agentName,
+        tcc.toolCallId,
+        runnerDeps,
+      );
+      if (extDirResult.action === "block") {
+        return { block: true, reason: extDirResult.reason };
+      }
+    }
   }
 
   // ── Bash external-directory gate ─────────────────────────────────────────
@@ -175,15 +185,6 @@ export async function handleToolCall(
   }
 
   // ── Normal tool permission gate (descriptor + runner) ───────────────────────────
-  const runnerDeps: GateRunnerDeps = {
-    checkPermission,
-    getSessionRuleset,
-    approveSessionRule,
-    writeReviewLog,
-    emitDecision,
-    canConfirm,
-    promptPermission,
-  };
   const toolCheck = checkPermission(
     tcc.toolName,
     tcc.input,

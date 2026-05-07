@@ -6,7 +6,10 @@ export type {
   GateRunnerDeps,
 } from "./descriptor";
 export { isGateBypass, isGateDescriptor } from "./descriptor";
-export { evaluateExternalDirectoryGate } from "./external-directory";
+export {
+  describeExternalDirectoryGate,
+  evaluateExternalDirectoryGate,
+} from "./external-directory";
 export { deriveDecisionValue, deriveResolution } from "./helpers";
 export { runGateCheck } from "./runner";
 export { describeSkillReadGate, evaluateSkillReadGate } from "./skill-read";
