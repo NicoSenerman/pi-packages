@@ -7,12 +7,14 @@ issue_title: "refactor: split external-directory.ts into focused modules"
 
 ## Problem Statement
 
-`src/external-directory.ts` is ~800 lines bundling four unrelated concerns: global node_modules discovery, path classification utilities, prompt/reason message formatting, and a tree-sitter bash parser with AST walker.
+`src/external-directory.ts` is ~760 lines bundling four unrelated concerns: global node_modules discovery, path classification utilities, prompt/reason message formatting, and a tree-sitter bash parser with AST walker.
 These concerns have no coupling to each other and should be independently testable, loadable, and changeable.
+
+Issue #109 already extracted `normalizePathForComparison` and `isPathWithinDirectory` into `src/path-utils.ts`, but the remaining path-classification helpers, discovery logic, message formatters, and the entire tree-sitter parser still live in the monolithic file.
 
 ## Goals
 
-- Split `src/external-directory.ts` into four focused modules.
+- Split `src/external-directory.ts` into three new modules (path-classification helpers extend the existing `src/path-utils.ts` from #109).
 - Preserve all existing behavior — pure extraction refactoring, no logic changes.
 - Keep `src/external-directory.ts` as a barrel re-export so downstream imports can migrate incrementally.
 - Enable independent testing of each concern without pulling in heavy dependencies (tree-sitter, child_process).
@@ -20,8 +22,7 @@ These concerns have no coupling to each other and should be independently testab
 ## Non-Goals
 
 - Changing any permission logic or policy semantics.
-- Deduplicating `normalizePathForComparison` / `isPathWithinDirectory` with `skill-prompt-sanitizer.ts` — that is #109's scope.
-- Moving path helpers to `src/path-utils.ts` — if #109 lands first, this plan's path-classification module will be absorbed into it; if #110 lands first, #109 will consume from the module created here.
+- Re-deduplicating `normalizePathForComparison` / `isPathWithinDirectory` — already completed in #109.
 
 ## Background
 
@@ -31,10 +32,10 @@ Current consumers of `src/external-directory.ts`:
 |Consumer|Imports used|
 |---|---|
 |`src/runtime.ts`|`discoverGlobalNodeModulesRoot`|
-|`src/handlers/gates/external-directory.ts`|`formatExternalDirectoryAskPrompt`, `formatExternalDirectoryDenyReason`, `formatExternalDirectoryUserDeniedReason`, `getPathBearingToolPath`, `isPathOutsideWorkingDirectory`, `isPiInfrastructureRead`, `normalizePathForComparison`|
+|`src/handlers/gates/external-directory.ts`|`formatExternalDirectoryAskPrompt`, `formatExternalDirectoryDenyReason`, `formatExternalDirectoryUserDeniedReason`, `getPathBearingToolPath`, `isPathOutsideWorkingDirectory`, `isPiInfrastructureRead` (note: `normalizePathForComparison` already imports from `path-utils`)|
 |`src/handlers/gates/bash-external-directory.ts`|`extractExternalPathsFromBashCommand`, `formatBashExternalDirectoryAskPrompt`, `formatBashExternalDirectoryDenyReason`, `formatExternalDirectoryHardStopHint`|
 |`src/handlers/gates/tool.ts`|`PATH_BEARING_TOOLS`|
-|`src/handlers/gates/skill-read.ts`|`normalizePathForComparison`|
+|`src/handlers/gates/skill-read.ts`|`normalizePathForComparison` (already imports from `path-utils`)|
 
 Test files:
 
@@ -55,20 +56,20 @@ Split into four new modules, each owning one concern:
 
 Dependencies: `node:child_process`, `node:fs`, `node:path`, `node:url`.
 
-### `src/path-classification.ts`
+### `src/path-utils.ts` (extend existing)
 
-- `normalizePathForComparison()` (exported)
-- `isPathWithinDirectory()` (exported)
-- `isPathOutsideWorkingDirectory()` (exported)
-- `getPathBearingToolPath()` (exported)
-- `isPiInfrastructureRead()` (exported)
-- `isSafeSystemPath()` (exported)
-- `SAFE_SYSTEM_PATHS` (exported)
-- `PATH_BEARING_TOOLS` (exported)
-- `READ_ONLY_PATH_BEARING_TOOLS` (exported)
+Issue #109 already created this file with `normalizePathForComparison` and `isPathWithinDirectory`.
+Add the remaining path-classification helpers:
 
-Dependencies: `node:os`, `node:path`, `./common`.
-If #109 lands and creates `src/path-utils.ts`, this module merges into it.
+- `isPathOutsideWorkingDirectory()` (moved from `external-directory.ts`)
+- `getPathBearingToolPath()` (moved from `external-directory.ts`)
+- `isPiInfrastructureRead()` (moved from `external-directory.ts`)
+- `isSafeSystemPath()` (moved from `external-directory.ts`)
+- `SAFE_SYSTEM_PATHS` (moved from `external-directory.ts`)
+- `PATH_BEARING_TOOLS` (moved from `external-directory.ts`)
+- `READ_ONLY_PATH_BEARING_TOOLS` (moved from `external-directory.ts`)
+
+Dependencies: adds `node:path` (for `join`), `./common` (for `getNonEmptyString`, `toRecord`) to existing `node:os`, `node:path`.
 
 ### `src/external-directory-messages.ts`
 
@@ -91,11 +92,11 @@ Dependencies: none (pure string builders).
 - `extractExternalPathsFromBashCommand()` (exported)
 
 Dependencies: `web-tree-sitter`, `tree-sitter-bash`, `node:module`, `node:path`.
-Imports `normalizePathForComparison`, `isPathOutsideWorkingDirectory` from `./path-classification` (or `./external-directory` barrel).
+Imports `normalizePathForComparison`, `isPathOutsideWorkingDirectory` from `./path-utils`.
 
 ### `src/external-directory.ts` (barrel)
 
-Becomes a thin barrel that re-exports everything from the four new modules.
+Becomes a thin barrel that re-exports everything from the three new modules plus `./path-utils`.
 All existing consumer imports continue to work unchanged.
 Downstream consumers can optionally migrate to direct imports in follow-up work.
 
@@ -106,7 +107,6 @@ Downstream consumers can optionally migrate to direct imports in follow-up work.
 |File|Contents|
 |---|---|
 |`src/node-modules-discovery.ts`|Global node_modules resolution|
-|`src/path-classification.ts`|Path normalization, classification, tool-path helpers|
 |`src/external-directory-messages.ts`|6 `format*` pure string builders|
 |`src/bash-path-extractor.ts`|Tree-sitter parser, AST walker, `extractExternalPathsFromBashCommand`|
 
@@ -114,20 +114,21 @@ Downstream consumers can optionally migrate to direct imports in follow-up work.
 
 |File|Change|
 |---|---|
-|`src/external-directory.ts`|Replace implementation with barrel re-exports from four new modules|
+|`src/path-utils.ts`|Add remaining path-classification helpers (`isPathOutsideWorkingDirectory`, `getPathBearingToolPath`, `isPiInfrastructureRead`, `isSafeSystemPath`, `SAFE_SYSTEM_PATHS`, `PATH_BEARING_TOOLS`, `READ_ONLY_PATH_BEARING_TOOLS`)|
+|`src/external-directory.ts`|Replace implementation with barrel re-exports from three new modules plus `path-utils`|
 
 ### New test files
 
 |File|Contents|
 |---|---|
 |`tests/node-modules-discovery.test.ts`|Extracted from `tests/external-directory.test.ts` — discovery tests|
-|`tests/path-classification.test.ts`|Extracted from `tests/external-directory.test.ts` — path util tests|
 |`tests/external-directory-messages.test.ts`|Extracted from `tests/external-directory.test.ts` — message format tests|
 
 ### Changed test files
 
 |File|Change|
 |---|---|
+|`tests/path-utils.test.ts`|Add tests for newly moved helpers (`isPathOutsideWorkingDirectory`, `getPathBearingToolPath`, `isPiInfrastructureRead`, `isSafeSystemPath`, constants)|
 |`tests/external-directory.test.ts`|Reduced to a thin smoke test verifying the barrel re-exports work, or deleted entirely if all tests migrate|
 |`tests/bash-external-directory.test.ts`|Update import from `../src/external-directory` to `../src/bash-path-extractor` (or keep barrel import)|
 
@@ -151,13 +152,13 @@ Downstream consumers can optionally migrate to direct imports in follow-up work.
 ## Test Impact Analysis
 
 1. **New unit tests enabled by extraction:**
-   - `tests/node-modules-discovery.test.ts` can mock `child_process` and `fs` without affecting path-classification tests.
-   - `tests/path-classification.test.ts` can run without tree-sitter or subprocess mocks.
+   - `tests/node-modules-discovery.test.ts` can mock `child_process` and `fs` without affecting path tests.
+   - `tests/path-utils.test.ts` gains path-classification tests that run without tree-sitter or subprocess mocks (file already exists from #109).
    - `tests/external-directory-messages.test.ts` needs zero mocks — pure string assertions.
 
 2. **Existing tests that become redundant:**
    - `tests/external-directory.test.ts` currently tests all four concerns in one file with shared mocks.
-     After extraction, its individual test blocks migrate to the three new test files.
+     After extraction, its individual test blocks migrate to the new/extended test files.
      The barrel file itself needs only a re-export smoke test (or can be deleted).
 
 3. **Existing tests that must stay as-is:**
@@ -176,15 +177,14 @@ Downstream consumers can optionally migrate to direct imports in follow-up work.
 
 Commit: `refactor: extract node-modules-discovery module (#110)`
 
-### Step 2 — Extract `path-classification.ts` with tests
+### Step 2 — Move remaining path helpers into `path-utils.ts`
 
-1. Create `src/path-classification.ts` with path helpers and constants.
-2. Create `tests/path-classification.test.ts` by extracting path-related tests from `tests/external-directory.test.ts`.
-3. Update `src/external-directory.ts` to import-and-re-export from `./path-classification`.
-4. Remove the original implementation from `external-directory.ts`.
-5. Verify all tests pass.
+1. Move `isPathOutsideWorkingDirectory`, `getPathBearingToolPath`, `isPiInfrastructureRead`, `isSafeSystemPath`, `SAFE_SYSTEM_PATHS`, `PATH_BEARING_TOOLS`, `READ_ONLY_PATH_BEARING_TOOLS` from `external-directory.ts` into `src/path-utils.ts`.
+2. Move corresponding tests from `tests/external-directory.test.ts` into `tests/path-utils.test.ts`.
+3. Update `src/external-directory.ts` to re-export the moved symbols from `./path-utils`.
+4. Verify all tests pass.
 
-Commit: `refactor: extract path-classification module (#110)`
+Commit: `refactor: move path-classification helpers into path-utils (#110)`
 
 ### Step 3 — Extract `external-directory-messages.ts` with tests
 
@@ -225,8 +225,7 @@ Commit: `docs: update architecture for external-directory split (#110)`
 |Risk|Mitigation|
 |---|---|
 |Could this silently weaken a permission?|No — pure extraction refactoring; no logic changes; barrel preserves all exports.|
-|Circular dependency between `bash-path-extractor` and `path-classification`|`bash-path-extractor` imports from `path-classification`; no reverse dependency. Barrel re-exports both without creating a cycle.|
-|#109 overlap on `path-utils.ts`|If #109 lands first, step 2 merges into its `path-utils.ts`. If #110 lands first, #109 consumes from `path-classification.ts`. Both orderings work.|
+|Circular dependency between `bash-path-extractor` and `path-utils`|`bash-path-extractor` imports from `path-utils`; no reverse dependency. Barrel re-exports both without creating a cycle.|
 |Tree-sitter WASM loading breaks after move|`bash-path-extractor.ts` preserves the same `createRequire(import.meta.url)` pattern — `import.meta.url` resolves to the new file's location, but WASM resolution uses `require.resolve` which walks `node_modules`, so it works from any file in `src/`.|
 |Test mocks leak across modules|Each new test file has its own `vi.mock()` scope. Discovery tests mock `child_process`/`fs`; path tests mock `os`; message tests need no mocks.|
 
