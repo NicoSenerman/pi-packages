@@ -174,3 +174,6 @@ Before implementing, understand:
 5. the need to keep schema, example config, loader, and docs aligned
 
 Do not assume "allow" is a safe default. Do not add a permission surface without also adding a policy field, schema entry, and example.
+
+When planning a refactoring that targets testability, read the test files alongside the production code — not only the production code.
+Tests reveal consumption ergonomics: mock depth, irrelevant fields, cast gymnastics, and override boilerplate define the target interface shape.
