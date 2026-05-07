@@ -1,4 +1,4 @@
-import { PATH_BEARING_TOOLS } from "../../external-directory";
+import { PATH_BEARING_TOOLS } from "../../path-utils";
 import { suggestSessionPattern } from "../../pattern-suggest";
 import {
   formatAskPrompt,

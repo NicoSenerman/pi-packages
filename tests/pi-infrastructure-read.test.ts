@@ -14,10 +14,8 @@ vi.mock("node:child_process", () => ({
   default: { spawnSync: mockSpawnSync },
 }));
 
-import {
-  discoverGlobalNodeModulesRoot,
-  isPiInfrastructureRead,
-} from "../src/external-directory";
+import { discoverGlobalNodeModulesRoot } from "../src/node-modules-discovery";
+import { isPiInfrastructureRead } from "../src/path-utils";
 
 // ── discoverGlobalNodeModulesRoot ──────────────────────────────────────────
 

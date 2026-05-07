@@ -1,14 +1,16 @@
 import {
-  formatExternalDirectoryAskPrompt,
-  formatExternalDirectoryDenyReason,
-  formatExternalDirectoryUserDeniedReason,
   getPathBearingToolPath,
   isPathOutsideWorkingDirectory,
   isPiInfrastructureRead,
-} from "../../external-directory";
-import { normalizePathForComparison } from "../../path-utils";
+  normalizePathForComparison,
+} from "../../path-utils";
 import { deriveApprovalPattern } from "../../session-rules";
 import type { GateResult } from "./descriptor";
+import {
+  formatExternalDirectoryAskPrompt,
+  formatExternalDirectoryDenyReason,
+  formatExternalDirectoryUserDeniedReason,
+} from "./external-directory-messages";
 import type { ToolCallContext } from "./types";
 
 /**

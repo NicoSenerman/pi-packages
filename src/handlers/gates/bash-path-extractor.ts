@@ -4,7 +4,7 @@ import { basename } from "node:path";
 import {
   isPathOutsideWorkingDirectory,
   normalizePathForComparison,
-} from "./path-utils";
+} from "../../path-utils";
 
 // ── tree-sitter-bash lazy parser ───────────────────────────────────────────
 

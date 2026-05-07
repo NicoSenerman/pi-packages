@@ -1,14 +1,14 @@
 import { getNonEmptyString, toRecord } from "../../common";
-import {
-  extractExternalPathsFromBashCommand,
-  formatBashExternalDirectoryAskPrompt,
-  formatBashExternalDirectoryDenyReason,
-  formatExternalDirectoryHardStopHint,
-} from "../../external-directory";
 import type { Rule } from "../../rule";
 import { deriveApprovalPattern } from "../../session-rules";
 import type { PermissionCheckResult } from "../../types";
+import { extractExternalPathsFromBashCommand } from "./bash-path-extractor";
 import type { GateResult } from "./descriptor";
+import {
+  formatBashExternalDirectoryAskPrompt,
+  formatBashExternalDirectoryDenyReason,
+  formatExternalDirectoryHardStopHint,
+} from "./external-directory-messages";
 import type { ToolCallContext } from "./types";
 
 /** Function type for checkPermission used by the descriptor factory. */

@@ -7,7 +7,7 @@ import {
   formatExternalDirectoryDenyReason,
   formatExternalDirectoryHardStopHint,
   formatExternalDirectoryUserDeniedReason,
-} from "../src/external-directory-messages";
+} from "../../../src/handlers/gates/external-directory-messages";
 
 describe("formatExternalDirectoryHardStopHint", () => {
   test("returns the hard stop instruction string", () => {

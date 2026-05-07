@@ -34,12 +34,12 @@ import {
   normalizePermissionSystemConfig,
   type PermissionSystemExtensionConfig,
 } from "./extension-config";
-import { discoverGlobalNodeModulesRoot } from "./external-directory";
 import {
   type PermissionForwardingDeps,
   processForwardedPermissionRequests,
 } from "./forwarded-permissions/polling";
 import { createPermissionSystemLogger } from "./logging";
+import { discoverGlobalNodeModulesRoot } from "./node-modules-discovery";
 import { PERMISSION_FORWARDING_POLL_INTERVAL_MS } from "./permission-forwarding";
 import { PermissionManager } from "./permission-manager";
 import { SessionRules } from "./session-rules";

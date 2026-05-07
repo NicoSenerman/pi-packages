@@ -67,7 +67,7 @@ vi.mock("../src/subagent-context", () => ({
   isSubagentExecutionContext: vi.fn().mockReturnValue(false),
 }));
 
-vi.mock("../src/external-directory", () => ({
+vi.mock("../src/node-modules-discovery", () => ({
   discoverGlobalNodeModulesRoot: mockDiscoverGlobalNodeModulesRoot,
 }));
 

@@ -9,11 +9,11 @@ vi.mock("node:os", () => {
   };
 });
 
+import { extractExternalPathsFromBashCommand } from "../src/handlers/gates/bash-path-extractor";
 import {
-  extractExternalPathsFromBashCommand,
   formatBashExternalDirectoryAskPrompt,
   formatBashExternalDirectoryDenyReason,
-} from "../src/external-directory";
+} from "../src/handlers/gates/external-directory-messages";
 
 afterEach(() => {
   vi.restoreAllMocks();
