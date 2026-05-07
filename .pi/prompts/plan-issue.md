@@ -23,6 +23,7 @@ Before reading anything, make sure the working tree is up to date with the remot
 3. List `docs/plans/` to see numbering and style conventions (create the directory if it does not exist yet). Pick the next free `NNNN` (prefer matching the issue number when reasonable).
 4. Read every issue the body references as a prerequisite or related (`gh issue view <n>`). Note whether each is implemented yet — your plan must say what it depends on vs. defers.
 5. Open the source files most relevant to the change and skim them before writing. Common entry points: `src/permission-manager.ts`, `src/bash-filter.ts`, `src/wildcard-matcher.ts`, `src/system-prompt-sanitizer.ts`, `src/skill-prompt-sanitizer.ts`, `src/extension-config.ts`, `schemas/permissions.schema.json`, `config/config.example.json`.
+6. If the change adds a field to a shared interface, threads a parameter through multiple layers, or touches handler/event wiring, run the `design-review` skill on the affected modules before writing the plan. Incorporate any findings (wide deps, LoD violations, output arguments, scattered resets) into the Design Overview and Module-Level Changes sections.
 
 ## Decide
 

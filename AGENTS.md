@@ -44,6 +44,17 @@ Read `docs/plans/` before making architectural changes (created by `/plan-issue`
   Define a minimal interface with only the fields the handler uses (e.g., `interface SessionStartPayload { reason: string; }`).
 - Prefer explicit configuration over hidden behavior.
 - Permission decisions should be pure functions of (policy, request) wherever possible — keep IO at the edges.
+- Do not pass a shared dependency bag to functions that only use a subset of it.
+  When a function receives an object and only touches 3 of its 15 fields, the function's real dependencies are invisible.
+  Define a narrow interface or accept the needed values directly.
+- Do not reach through an injected collaborator to talk to a stranger (`deps.session.permissionManager.checkPermission(...)` is a Law of Demeter violation).
+  If multiple callers do the same reach-through, the missing abstraction is a method on the intermediate object that delegates internally.
+- Do not write back into a received dependency bag (output arguments).
+  If a handler sets `deps.session.runtimeContext = ctx`, the handler is doing work that belongs inside the session object.
+  Encapsulate the mutation behind a method (`session.activate(ctx)`).
+- When the same set of fields is reset to the same values in multiple places, extract a single method (`reset()`, `shutdown()`) on the owning object.
+- When a new parameter must flow through a callback chain, check whether the intermediaries actually need it.
+  If they only relay it, the parameter belongs on an object the endpoints share — not threaded through every layer.
 - Do not cache `getAgentDir()` or other environment-derived values at module scope — tests set `PI_CODING_AGENT_DIR` after import.
   Call `getAgentDir()` at invocation time inside `piPermissionSystemExtension()` closures.
 - This project uses **pnpm** exclusively (`"packageManager"` in `package.json`; `pnpm-lock.yaml`).
