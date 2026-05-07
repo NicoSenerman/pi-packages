@@ -54,6 +54,6 @@ Combining them would skip those gates. Splitting also lets you rerun any phase: 
 - `docs/plans/NNNN-<slug>.md` plan layout with a "TDD Order" section.
 - Conventional Commits.
 - release-please PRs auto-opened by a GitHub Actions workflow (`.github/workflows/release-please.yml`).
-- `npm` test/lint scripts: `npx vitest run`, `npm run lint:all`, `npm run lint:fix`, `npm run build`.
+- `pnpm` test/lint scripts: `pnpm vitest run`, `pnpm run lint:all`, `pnpm run lint:fix`, `pnpm run build`.
 
 These match this repo's setup (see `AGENTS.md`, `package.json`, `.github/workflows/release-please.yml`).

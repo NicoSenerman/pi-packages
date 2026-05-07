@@ -46,6 +46,9 @@ Read `docs/plans/` before making architectural changes (created by `/plan-issue`
 - Permission decisions should be pure functions of (policy, request) wherever possible — keep IO at the edges.
 - Do not cache `getAgentDir()` or other environment-derived values at module scope — tests set `PI_CODING_AGENT_DIR` after import.
   Call `getAgentDir()` at invocation time inside `piPermissionSystemExtension()` closures.
+- This project uses **pnpm** exclusively (`"packageManager"` in `package.json`; `pnpm-lock.yaml`).
+  Use `pnpm run`, `pnpm exec`, and `pnpm add` — never `npm` or `npx`.
+  An npm shim in `scripts/bin/npm` (activated via `mise.toml`) blocks npm at the shell level; `npm root` is the sole pass-through (used by `discoverGlobalNodeModulesRoot` at startup).
 - The tsconfig target is ES2023 (`noEmit: true`).
   ES2023 APIs (`findLast`, `findLastIndex`, `Array.prototype.toReversed`, `Array.prototype.toSorted`, `Array.prototype.toSpliced`, `Array.prototype.with`) are available and preferred over manual equivalents.
   Do not use APIs introduced after ES2023 (`Object.groupBy`, `Array.fromAsync`, etc.) — use manual equivalents consistent with existing code.
@@ -136,14 +139,14 @@ issue_title: "Per-agent permission frontmatter overrides" # required
 - When a TDD plan lists separate steps that share a type definition (e.g. `ResolvedPermissions`), changing that type in step N breaks steps N+1 … N+k.
   Either fold them into one step or introduce the new type alongside the old one in step N and migrate callers incrementally.
 - When a plan adds a parameter that flows through callback chains (e.g. handler → runtime → forwarding → dialog), the “Module-Level Changes” section must list every file in the chain, not just the entry and exit points.
-- When a fix changes shared helper functions (e.g. `findSection`, `normalizePolicy`), run the full test suite (`npx vitest run`) before committing — not just the directly affected test file.
+- When a fix changes shared helper functions (e.g. `findSection`, `normalizePolicy`), run the full test suite (`pnpm vitest run`) before committing — not just the directly affected test file.
   Helpers are often exercised by integration-level tests in other files.
 - When integrating an unfamiliar library or data structure (AST parsers, WASM modules, new SDK types), write a disposable exploratory script first to inspect the actual runtime shape before writing production code or tests.
 - When a test reveals a pre-existing bug rather than a wrong assumption, use `test.fails` to document the expected behavior and file a GitHub issue. Do not adjust the test to match the buggy behavior.
 - Prefer a concrete test asserting current (even imperfect) behavior over `test.todo`.
   A real assertion documents the limitation and lets a future fix flip the expectation; a `test.todo` is invisible friction that never triggers CI.
 - Vitest uses esbuild and does not typecheck. Run `pnpm run build` (`tsc -p tsconfig.json`) for type-only changes.
-- When a TDD step changes a shared interface (e.g. `HandlerDeps`, event bus types), run `npm run build` immediately after that step's commit — not just at the end of the full cycle.
+- When a TDD step changes a shared interface (e.g. `HandlerDeps`, event bus types), run `pnpm run build` immediately after that step's commit — not just at the end of the full cycle.
   Early type-checking catches cascading breakage in integration test harnesses that Vitest's esbuild pipeline silently ignores.
 - When adding a field to a shared interface or widening the contract of an injected object (e.g. adding `on` to the event bus), grep for ALL test files that construct a compatible mock — not just `makeDeps` factories.
   Integration harnesses in `permission-system.test.ts` and `session-start.test.ts` construct raw `ExtensionAPI` stubs that bypass `makeDeps`.

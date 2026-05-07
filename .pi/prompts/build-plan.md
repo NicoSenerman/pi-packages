@@ -41,8 +41,8 @@ For **each** numbered step in the plan's "TDD Order" (or equivalent execution se
 
 1. **Implement** the change the step describes.
 2. **Verify.** Run the linters to confirm the change is clean:
-   - `npm run lint:all` (Biome + markdownlint).
-   - If it fails, run `npm run lint:fix` and re-check.
+   - `pnpm run lint:all` (Biome + markdownlint).
+   - If it fails, run `pnpm run lint:fix` and re-check.
 3. **Commit.** Use the commit message the plan suggests, or a Conventional Commits message that matches:
    - `docs:` for documentation changes.
    - `feat:` for new behavior.
@@ -56,9 +56,9 @@ If a step uncovers a problem the plan didn't anticipate, fix it as part of the s
 
 ## After the last step
 
-1. If any `src/` or `tests/` files were touched (even tangentially), run the full suite: `npx vitest run`. Must be all green.
-2. If any `.ts` files were touched, run the type check: `npm run build` (`tsc -p tsconfig.json`). Must succeed.
-3. Run the linters one final time: `npm run lint:all`. Commit any fixup as `style:` if you haven't pushed yet.
+1. If any `src/` or `tests/` files were touched (even tangentially), run the full suite: `pnpm vitest run`. Must be all green.
+2. If any `.ts` files were touched, run the type check: `pnpm run build` (`tsc -p tsconfig.json`). Must succeed.
+3. Run the linters one final time: `pnpm run lint:all`. Commit any fixup as `style:` if you haven't pushed yet.
 4. **Do not edit `CHANGELOG.md`** — release-please owns it and will generate entries from your Conventional Commit messages on the next release.
 
 ## Summarize
