@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { evaluateExternalDirectoryGate } from "../../../src/handlers/gates/external-directory";
-import type { ToolCallContext } from "../../../src/handlers/gates/types";
-import type { HandlerDeps } from "../../../src/handlers/types";
-import type { PermissionEventBus } from "../../../src/permission-events";
+import type {
+  ExternalDirectoryGateDeps,
+  ToolCallContext,
+} from "../../../src/handlers/gates/types";
 import type { PermissionCheckResult } from "../../../src/types";
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -32,41 +33,24 @@ function makeCheckResult(
   };
 }
 
-function makeEvents(): PermissionEventBus {
-  return { emit: vi.fn(), on: vi.fn().mockReturnValue(() => undefined) };
-}
-
-function makeRuntime(
-  overrides: Record<string, unknown> = {},
-): HandlerDeps["runtime"] {
+function makeExtDirGateDeps(
+  overrides: Partial<ExternalDirectoryGateDeps> = {},
+): ExternalDirectoryGateDeps {
   return {
-    piInfrastructureDirs: ["/test/agent", "/test/agent/git"],
-    config: { debugLog: false, permissionReviewLog: true, yoloMode: false },
-    runtimeContext: {} as HandlerDeps["runtime"]["runtimeContext"],
-    permissionManager: {
-      checkPermission: vi.fn().mockReturnValue(makeCheckResult("ask")),
-    },
-    sessionRules: {
-      approve: vi.fn(),
-      getRuleset: vi.fn().mockReturnValue([]),
-      clear: vi.fn(),
-    },
+    checkPermission: vi.fn().mockReturnValue(makeCheckResult("ask")),
+    getSessionRuleset: vi.fn().mockReturnValue([]),
+    approveSessionRule: vi.fn(),
     writeReviewLog: vi.fn(),
-    ...overrides,
-  } as unknown as HandlerDeps["runtime"];
-}
-
-function makeDeps(overrides: Record<string, unknown> = {}): HandlerDeps {
-  const { runtime: runtimeOverrides, events, ...rest } = overrides;
-  return {
-    runtime: makeRuntime(runtimeOverrides as Record<string, unknown>),
-    events: events ?? makeEvents(),
-    canRequestPermissionConfirmation: vi.fn().mockReturnValue(true),
+    emitDecision: vi.fn(),
+    canConfirm: vi.fn().mockReturnValue(true),
     promptPermission: vi
       .fn()
       .mockResolvedValue({ approved: true, state: "approved" }),
-    ...rest,
-  } as unknown as HandlerDeps;
+    getInfrastructureDirs: vi
+      .fn()
+      .mockReturnValue(["/test/agent", "/test/agent/git"]),
+    ...overrides,
+  };
 }
 
 // ── tests ──────────────────────────────────────────────────────────────────
@@ -74,35 +58,42 @@ function makeDeps(overrides: Record<string, unknown> = {}): HandlerDeps {
 describe("evaluateExternalDirectoryGate", () => {
   it("returns null when no CWD", async () => {
     const tcc = makeTcc({ cwd: undefined });
-    const result = await evaluateExternalDirectoryGate(tcc, makeDeps());
+    const result = await evaluateExternalDirectoryGate(
+      tcc,
+      makeExtDirGateDeps(),
+    );
     expect(result).toBeNull();
   });
 
   it("returns null when tool is not path-bearing", async () => {
     const tcc = makeTcc({ toolName: "bash", input: { command: "ls" } });
-    const result = await evaluateExternalDirectoryGate(tcc, makeDeps());
+    const result = await evaluateExternalDirectoryGate(
+      tcc,
+      makeExtDirGateDeps(),
+    );
     expect(result).toBeNull();
   });
 
   it("returns null when path is inside CWD", async () => {
     const tcc = makeTcc({ input: { path: "/test/project/src/index.ts" } });
-    const result = await evaluateExternalDirectoryGate(tcc, makeDeps());
+    const result = await evaluateExternalDirectoryGate(
+      tcc,
+      makeExtDirGateDeps(),
+    );
     expect(result).toBeNull();
   });
 
   // ── Pi infrastructure read bypass ──────────────────────────────────────
 
   it("allows and emits infrastructure_auto_allowed for read targeting infra dir", async () => {
-    const events = makeEvents();
-    const deps = makeDeps({ events });
+    const deps = makeExtDirGateDeps();
     const tcc = makeTcc({
       toolName: "read",
       input: { path: "/test/agent/git/some-package/SKILL.md" },
     });
     const result = await evaluateExternalDirectoryGate(tcc, deps);
     expect(result).toEqual({ action: "allow" });
-    expect(events.emit).toHaveBeenCalledWith(
-      "permissions:decision",
+    expect(deps.emitDecision).toHaveBeenCalledWith(
       expect.objectContaining({
         resolution: "infrastructure_auto_allowed",
         result: "allow",
@@ -111,18 +102,8 @@ describe("evaluateExternalDirectoryGate", () => {
   });
 
   it("respects config.piInfrastructureReadPaths for bypass", async () => {
-    const events = makeEvents();
-    const deps = makeDeps({
-      runtime: {
-        piInfrastructureDirs: [],
-        config: {
-          debugLog: false,
-          permissionReviewLog: true,
-          yoloMode: false,
-          piInfrastructureReadPaths: ["/custom/infra"],
-        },
-      },
-      events,
+    const deps = makeExtDirGateDeps({
+      getInfrastructureDirs: vi.fn().mockReturnValue(["/custom/infra"]),
     });
     const tcc = makeTcc({
       toolName: "read",
@@ -133,12 +114,8 @@ describe("evaluateExternalDirectoryGate", () => {
   });
 
   it("does NOT bypass for write tools targeting infra dirs", async () => {
-    const deps = makeDeps({
-      runtime: {
-        permissionManager: {
-          checkPermission: vi.fn().mockReturnValue(makeCheckResult("deny")),
-        },
-      },
+    const deps = makeExtDirGateDeps({
+      checkPermission: vi.fn().mockReturnValue(makeCheckResult("deny")),
     });
     const tcc = makeTcc({
       toolName: "write",
@@ -151,36 +128,25 @@ describe("evaluateExternalDirectoryGate", () => {
   // ── Session-rule hit ─────────────────────────────────────────────────────
 
   it("allows and emits session_approved when session rule covers the path", async () => {
-    const events = makeEvents();
-    const deps = makeDeps({
-      runtime: {
-        permissionManager: {
-          checkPermission: vi.fn().mockReturnValue(
-            makeCheckResult("allow", {
-              source: "session",
-              matchedPattern: "/outside/project/*",
-            }),
-          ),
+    const deps = makeExtDirGateDeps({
+      checkPermission: vi.fn().mockReturnValue(
+        makeCheckResult("allow", {
+          source: "session",
+          matchedPattern: "/outside/project/*",
+        }),
+      ),
+      getSessionRuleset: vi.fn().mockReturnValue([
+        {
+          surface: "external_directory",
+          pattern: "/outside/project/*",
+          action: "allow",
         },
-        sessionRules: {
-          approve: vi.fn(),
-          getRuleset: vi.fn().mockReturnValue([
-            {
-              surface: "external_directory",
-              pattern: "/outside/project/*",
-              action: "allow",
-            },
-          ]),
-          clear: vi.fn(),
-        },
-      },
-      events,
+      ]),
     });
     const tcc = makeTcc();
     const result = await evaluateExternalDirectoryGate(tcc, deps);
     expect(result).toEqual({ action: "allow" });
-    expect(events.emit).toHaveBeenCalledWith(
-      "permissions:decision",
+    expect(deps.emitDecision).toHaveBeenCalledWith(
       expect.objectContaining({
         resolution: "session_approved",
         matchedPattern: "/outside/project/*",
@@ -191,20 +157,13 @@ describe("evaluateExternalDirectoryGate", () => {
   // ── Policy deny ──────────────────────────────────────────────────────────
 
   it("blocks and emits policy_deny when policy is deny", async () => {
-    const events = makeEvents();
-    const deps = makeDeps({
-      runtime: {
-        permissionManager: {
-          checkPermission: vi.fn().mockReturnValue(makeCheckResult("deny")),
-        },
-      },
-      events,
+    const deps = makeExtDirGateDeps({
+      checkPermission: vi.fn().mockReturnValue(makeCheckResult("deny")),
     });
     const tcc = makeTcc();
     const result = await evaluateExternalDirectoryGate(tcc, deps);
     expect(result).toMatchObject({ action: "block" });
-    expect(events.emit).toHaveBeenCalledWith(
-      "permissions:decision",
+    expect(deps.emitDecision).toHaveBeenCalledWith(
       expect.objectContaining({
         surface: "external_directory",
         result: "deny",
@@ -216,18 +175,8 @@ describe("evaluateExternalDirectoryGate", () => {
   // ── Policy ask — user approves once ──────────────────────────────────────
 
   it("allows without recording session rule when user approves once", async () => {
-    const sessionRules = {
-      approve: vi.fn(),
-      getRuleset: vi.fn().mockReturnValue([]),
-      clear: vi.fn(),
-    };
-    const deps = makeDeps({
-      runtime: {
-        permissionManager: {
-          checkPermission: vi.fn().mockReturnValue(makeCheckResult("ask")),
-        },
-        sessionRules,
-      },
+    const deps = makeExtDirGateDeps({
+      checkPermission: vi.fn().mockReturnValue(makeCheckResult("ask")),
       promptPermission: vi
         .fn()
         .mockResolvedValue({ approved: true, state: "approved" }),
@@ -235,24 +184,14 @@ describe("evaluateExternalDirectoryGate", () => {
     const tcc = makeTcc();
     const result = await evaluateExternalDirectoryGate(tcc, deps);
     expect(result).toEqual({ action: "allow" });
-    expect(sessionRules.approve).not.toHaveBeenCalled();
+    expect(deps.approveSessionRule).not.toHaveBeenCalled();
   });
 
   // ── Policy ask — user approves for session ───────────────────────────────
 
   it("records session rule when user approves for session", async () => {
-    const sessionRules = {
-      approve: vi.fn(),
-      getRuleset: vi.fn().mockReturnValue([]),
-      clear: vi.fn(),
-    };
-    const deps = makeDeps({
-      runtime: {
-        permissionManager: {
-          checkPermission: vi.fn().mockReturnValue(makeCheckResult("ask")),
-        },
-        sessionRules,
-      },
+    const deps = makeExtDirGateDeps({
+      checkPermission: vi.fn().mockReturnValue(makeCheckResult("ask")),
       promptPermission: vi
         .fn()
         .mockResolvedValue({ approved: true, state: "approved_for_session" }),
@@ -260,7 +199,7 @@ describe("evaluateExternalDirectoryGate", () => {
     const tcc = makeTcc();
     const result = await evaluateExternalDirectoryGate(tcc, deps);
     expect(result).toEqual({ action: "allow" });
-    expect(sessionRules.approve).toHaveBeenCalledWith(
+    expect(deps.approveSessionRule).toHaveBeenCalledWith(
       "external_directory",
       expect.any(String),
     );
@@ -269,14 +208,8 @@ describe("evaluateExternalDirectoryGate", () => {
   // ── Policy ask — user denies ─────────────────────────────────────────────
 
   it("blocks and emits user_denied when user denies", async () => {
-    const events = makeEvents();
-    const deps = makeDeps({
-      runtime: {
-        permissionManager: {
-          checkPermission: vi.fn().mockReturnValue(makeCheckResult("ask")),
-        },
-      },
-      events,
+    const deps = makeExtDirGateDeps({
+      checkPermission: vi.fn().mockReturnValue(makeCheckResult("ask")),
       promptPermission: vi
         .fn()
         .mockResolvedValue({ approved: false, state: "denied" }),
@@ -284,8 +217,7 @@ describe("evaluateExternalDirectoryGate", () => {
     const tcc = makeTcc();
     const result = await evaluateExternalDirectoryGate(tcc, deps);
     expect(result).toMatchObject({ action: "block" });
-    expect(events.emit).toHaveBeenCalledWith(
-      "permissions:decision",
+    expect(deps.emitDecision).toHaveBeenCalledWith(
       expect.objectContaining({
         result: "deny",
         resolution: "user_denied",
@@ -296,21 +228,14 @@ describe("evaluateExternalDirectoryGate", () => {
   // ── Policy ask — no UI ───────────────────────────────────────────────────
 
   it("blocks and emits confirmation_unavailable when no UI", async () => {
-    const events = makeEvents();
-    const deps = makeDeps({
-      runtime: {
-        permissionManager: {
-          checkPermission: vi.fn().mockReturnValue(makeCheckResult("ask")),
-        },
-      },
-      events,
-      canRequestPermissionConfirmation: vi.fn().mockReturnValue(false),
+    const deps = makeExtDirGateDeps({
+      checkPermission: vi.fn().mockReturnValue(makeCheckResult("ask")),
+      canConfirm: vi.fn().mockReturnValue(false),
     });
     const tcc = makeTcc();
     const result = await evaluateExternalDirectoryGate(tcc, deps);
     expect(result).toMatchObject({ action: "block" });
-    expect(events.emit).toHaveBeenCalledWith(
-      "permissions:decision",
+    expect(deps.emitDecision).toHaveBeenCalledWith(
       expect.objectContaining({
         result: "deny",
         resolution: "confirmation_unavailable",

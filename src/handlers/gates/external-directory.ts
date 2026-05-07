@@ -8,12 +8,14 @@ import {
   normalizePathForComparison,
 } from "../../external-directory";
 import type { PermissionPromptDecision } from "../../permission-dialog";
-import { emitDecisionEvent } from "../../permission-events";
 import { applyPermissionGate } from "../../permission-gate";
 import { deriveApprovalPattern } from "../../session-rules";
-import type { HandlerDeps } from "../types";
 import { deriveResolution } from "./helpers";
-import type { GateOutcome, ToolCallContext } from "./types";
+import type {
+  ExternalDirectoryGateDeps,
+  GateOutcome,
+  ToolCallContext,
+} from "./types";
 
 /**
  * Evaluate the external-directory permission gate for file tools.
@@ -23,7 +25,7 @@ import type { GateOutcome, ToolCallContext } from "./types";
  */
 export async function evaluateExternalDirectoryGate(
   tcc: ToolCallContext,
-  deps: HandlerDeps,
+  deps: ExternalDirectoryGateDeps,
 ): Promise<GateOutcome | null> {
   if (!tcc.cwd) return null;
 
@@ -40,10 +42,7 @@ export async function evaluateExternalDirectoryGate(
   );
 
   // ── Pi infrastructure read bypass ──────────────────────────────────────
-  const allInfraDirs = [
-    ...deps.runtime.piInfrastructureDirs,
-    ...(deps.runtime.config.piInfrastructureReadPaths ?? []),
-  ];
+  const allInfraDirs = deps.getInfrastructureDirs();
   if (
     isPiInfrastructureRead(
       tcc.toolName,
@@ -52,17 +51,14 @@ export async function evaluateExternalDirectoryGate(
       tcc.cwd,
     )
   ) {
-    deps.runtime.writeReviewLog(
-      "permission_request.infrastructure_auto_allowed",
-      {
-        source: "tool_call",
-        toolCallId: tcc.toolCallId,
-        toolName: tcc.toolName,
-        agentName: tcc.agentName,
-        path: externalDirectoryPath,
-      },
-    );
-    emitDecisionEvent(deps.events, {
+    deps.writeReviewLog("permission_request.infrastructure_auto_allowed", {
+      source: "tool_call",
+      toolCallId: tcc.toolCallId,
+      toolName: tcc.toolName,
+      agentName: tcc.agentName,
+      path: externalDirectoryPath,
+    });
+    deps.emitDecision({
       surface: tcc.toolName,
       value: externalDirectoryPath,
       result: "allow",
@@ -75,16 +71,16 @@ export async function evaluateExternalDirectoryGate(
   }
 
   // ── Policy check ───────────────────────────────────────────────────────
-  const extCheck = deps.runtime.permissionManager.checkPermission(
+  const extCheck = deps.checkPermission(
     "external_directory",
     { path: normalizedExtPath },
     tcc.agentName ?? undefined,
-    deps.runtime.sessionRules.getRuleset(),
+    deps.getSessionRuleset(),
   );
 
   // Session-rule hit
   if (extCheck.source === "session") {
-    deps.runtime.writeReviewLog("permission_request.session_approved", {
+    deps.writeReviewLog("permission_request.session_approved", {
       source: "tool_call",
       toolCallId: tcc.toolCallId,
       toolName: tcc.toolName,
@@ -93,7 +89,7 @@ export async function evaluateExternalDirectoryGate(
       resolution: "session_approved",
       sessionApprovalPattern: extCheck.matchedPattern,
     });
-    emitDecisionEvent(deps.events, {
+    deps.emitDecision({
       surface: "external_directory",
       value: externalDirectoryPath,
       result: "allow",
@@ -113,29 +109,24 @@ export async function evaluateExternalDirectoryGate(
     tcc.cwd,
     tcc.agentName ?? undefined,
   );
-  const extDirCanConfirm = deps.canRequestPermissionConfirmation(
-    deps.runtime.runtimeContext!,
-  );
+  const extDirCanConfirm = deps.canConfirm();
   const extDirGateResult = await applyPermissionGate({
     state: extCheck.state,
     canConfirm: extDirCanConfirm,
     promptForApproval: async () => {
-      const decision = await deps.promptPermission(
-        deps.runtime.runtimeContext!,
-        {
-          requestId: tcc.toolCallId,
-          source: "tool_call",
-          agentName: tcc.agentName,
-          message: extDirMessage,
-          toolCallId: tcc.toolCallId,
-          toolName: tcc.toolName,
-          path: externalDirectoryPath,
-        },
-      );
+      const decision = await deps.promptPermission({
+        requestId: tcc.toolCallId,
+        source: "tool_call",
+        agentName: tcc.agentName,
+        message: extDirMessage,
+        toolCallId: tcc.toolCallId,
+        toolName: tcc.toolName,
+        path: externalDirectoryPath,
+      });
       extDirDecision = decision;
       return decision;
     },
-    writeLog: deps.runtime.writeReviewLog,
+    writeLog: deps.writeReviewLog,
     logContext: {
       source: "tool_call",
       toolCallId: tcc.toolCallId,
@@ -161,7 +152,7 @@ export async function evaluateExternalDirectoryGate(
     },
   });
 
-  emitDecisionEvent(deps.events, {
+  deps.emitDecision({
     surface: "external_directory",
     value: externalDirectoryPath,
     result: extDirGateResult.action === "allow" ? "allow" : "deny",
@@ -182,7 +173,7 @@ export async function evaluateExternalDirectoryGate(
 
   if (extDirDecision?.state === "approved_for_session") {
     const pattern = deriveApprovalPattern(normalizedExtPath);
-    deps.runtime.sessionRules.approve("external_directory", pattern);
+    deps.approveSessionRule("external_directory", pattern);
   }
 
   return { action: "allow" };

@@ -14,7 +14,11 @@ import { evaluateBashExternalDirectoryGate } from "./gates/bash-external-directo
 import { evaluateExternalDirectoryGate } from "./gates/external-directory";
 import { evaluateSkillReadGate } from "./gates/skill-read";
 import { evaluateToolGate } from "./gates/tool";
-import type { ToolCallContext, ToolGateDeps } from "./gates/types";
+import type {
+  ExternalDirectoryGateDeps,
+  ToolCallContext,
+  ToolGateDeps,
+} from "./gates/types";
 import type { HandlerDeps } from "./types";
 
 /**
@@ -89,7 +93,29 @@ export async function handleToolCall(
   }
 
   // ── External-directory gate (file tools) ─────────────────────────────────
-  const extDirResult = await evaluateExternalDirectoryGate(tcc, deps);
+  const extDirGateDeps: ExternalDirectoryGateDeps = {
+    checkPermission: (surface, input, agent, sessionRules) =>
+      deps.runtime.permissionManager.checkPermission(
+        surface,
+        input,
+        agent,
+        sessionRules,
+      ),
+    getSessionRuleset: () => deps.runtime.sessionRules.getRuleset(),
+    approveSessionRule: (surface, pattern) =>
+      deps.runtime.sessionRules.approve(surface, pattern),
+    writeReviewLog: deps.runtime.writeReviewLog,
+    emitDecision: (event) => emitDecisionEvent(deps.events, event),
+    canConfirm: () =>
+      deps.canRequestPermissionConfirmation(deps.runtime.runtimeContext!),
+    promptPermission: (details) =>
+      deps.promptPermission(deps.runtime.runtimeContext!, details),
+    getInfrastructureDirs: () => [
+      ...deps.runtime.piInfrastructureDirs,
+      ...(deps.runtime.config.piInfrastructureReadPaths ?? []),
+    ],
+  };
+  const extDirResult = await evaluateExternalDirectoryGate(tcc, extDirGateDeps);
   if (extDirResult?.action === "block") {
     return { block: true, reason: extDirResult.reason };
   }
