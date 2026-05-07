@@ -46,7 +46,7 @@ If your OpenCode config uses these features, the equivalent works in this extens
 |OpenCode-only surfaces|`lsp`, `question`, `webfetch`, `websearch`, `todowrite`|Not applicable (Pi lacks these tools)|
 |`mcp` surface|Not a documented permission surface|First-class with server/tool-level granularity|
 |Top-level string shorthand|`"permission": "allow"` sets all surfaces|Not supported; must use an object|
-|Bash arity table|Extracts "human-understandable command" from tokens|Matches against full command string|
+|Bash arity table|Extracts "human-understandable command" before rule matching|Has arity table, but uses it only for session approval pattern suggestions — rule matching is against the full command string|
 |Per-agent config location|`agent` key in config JSON or YAML frontmatter|YAML frontmatter in agent `.md` files only|
 |Config file paths|`~/.config/opencode/opencode.json`|`~/.pi/agent/extensions/pi-permission-system/config.json`|
 |Subagent prompt forwarding|Not documented|`ask` policies work in non-UI subagent contexts|
