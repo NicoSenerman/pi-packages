@@ -469,13 +469,13 @@ src/
 │
 ├── handlers/                 ✅ Extracted event handlers
 │   ├── index.ts              ✅ Re-exports
-│   ├── types.ts              ✅ HandlerDeps, PromptPermissionDetails
+│   ├── types.ts              ✅ HandlerDeps (session + promoted logging/paths), PromptPermissionDetails
 │   ├── lifecycle.ts          ✅ session_start, session_shutdown, resources_discover
 │   ├── before-agent-start.ts ✅ Tool filtering + prompt sanitization
 │   ├── input.ts              ✅ Skill input gate
 │   ├── tool-call.ts          ✅ Invocation gating orchestrator
-│   └── gates/               ✅ Per-gate functions extracted from tool-call (#107)
-│       ├── types.ts          ✅ GateOutcome, ToolCallContext
+│   └── gates/               ✅ Per-gate functions with narrow dep interfaces (#107, #111)
+│       ├── types.ts          ✅ GateOutcome, ToolCallContext, per-gate dep interfaces
 │       ├── helpers.ts        ✅ deriveDecisionValue, deriveResolution
 │       ├── skill-read.ts     ✅ Skill-read permission gate
 │       ├── external-directory.ts ✅ External-directory permission gate
@@ -486,7 +486,7 @@ src/
 ├── index.ts                  ✅ Extension factory - event wiring
 ├── permission-events.ts      ✅ Event channel constants, payload types, emit helpers (#29)
 ├── permission-event-rpc.ts   ✅ permissions:rpc:check and permissions:rpc:prompt handlers (#29)
-├── runtime.ts                ✅ ExtensionRuntime context object
+├── runtime.ts                ✅ SessionState, ExtensionRuntime context object
 ├── config-loader.ts          ✅ File I/O, format detection
 ├── config-paths.ts           ✅ Path derivation
 ├── config-reporter.ts        ✅ Structured log entries for resolved config
