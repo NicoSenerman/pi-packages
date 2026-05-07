@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-05-07
+
 > **Heads-up — behavior change:**
 > - `isolation: "worktree"` now fails loud (returns an error) instead of silently falling back to the main tree. Affects users running pi in a non-git directory or a fresh repo with no commits.
 
