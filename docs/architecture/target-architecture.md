@@ -496,8 +496,11 @@ src/
 ├── extension-config.ts       ✅ Runtime knobs (debugLog, yoloMode, etc.)
 │
 ├── permission-merge.ts        ✅ Deep-shallow merge for flat permission configs (#109)
-├── path-utils.ts              ✅ Path normalization + within-directory check (#109)
-├── external-directory.ts     ✅ Path-outside-cwd detection (tree-sitter-bash AST); Pi infrastructure read bypass
+├── path-utils.ts              ✅ Path normalization, within-directory, outside-CWD, safe-system-path, path-bearing-tool, Pi infrastructure read (#109, #110)
+├── node-modules-discovery.ts  ✅ Global node_modules resolution (walk-up + npm root -g fallback) (#110)
+├── external-directory-messages.ts ✅ External-directory prompt/deny/hint message formatting (#110)
+├── bash-path-extractor.ts     ✅ Tree-sitter-bash AST parser + external path extraction (#110)
+├── external-directory.ts      ✅ Barrel re-exporting path-utils, node-modules-discovery, external-directory-messages, bash-path-extractor (#110)
 ├── system-prompt-sanitizer.ts ✅ Remove denied tools from system prompt
 ├── skill-prompt-sanitizer.ts  ✅ Skill prompt filtering by policy
 ├── permission-prompts.ts      ✅ User-facing message formatting per surface
