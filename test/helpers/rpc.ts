@@ -3,7 +3,7 @@
  * `--mode rpc`.
  *
  * Resolves the `pi` binary from the locally-installed
- * `@mariozechner/pi-coding-agent` devDependency rather than the global
+ * `@earendil-works/pi-coding-agent` devDependency rather than the global
  * PATH so the suite runs whenever `pnpm install` has been done. Tests
  * that depend on this harness use the `piAvailable` flag to skip when
  * the binary is missing (e.g. stale `node_modules`).

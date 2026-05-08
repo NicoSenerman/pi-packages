@@ -53,8 +53,8 @@ While testing, the user reported an "Unexpected runtime error: ... `fgColors`" w
 ### Changes made
 
 1. Added this retro file at `docs/retro/0016-detailed-formatter-output-on-failure.md`.
-2. Added a one-line `pi-mono` pointer at the end of `AGENTS.md` § Notes for Agents — then **reverted it** in the same retro commit after a follow-up question surfaced that Pi publishes `@mariozechner/pi-coding-agent` to npm.
+2. Added a one-line `pi-mono` pointer at the end of `AGENTS.md` § Notes for Agents — then **reverted it** in the same retro commit after a follow-up question surfaced that Pi publishes `@earendil-works/pi-coding-agent` to npm.
    The right fix is to depend on the published types package, not to point agents at a sibling git checkout.
-3. Opened issue #22 ("Depend on `@mariozechner/pi-coding-agent` for runtime types instead of duck-typing") to track the typing refactor.
+3. Opened issue #22 ("Depend on `@earendil-works/pi-coding-agent` for runtime types instead of duck-typing") to track the typing refactor.
    The duck-typed `*Like` aliases in `src/extension.ts` are what let the `theme.fg` `this`-binding bug ship; switching to real types from the published Pi package would have caught it at compile time.
    Tracked as a follow-up rather than implemented inline because the change touches `package.json`, `src/extension.ts`, and several test files — over the retro's scope budget.

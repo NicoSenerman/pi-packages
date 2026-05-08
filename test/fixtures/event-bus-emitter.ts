@@ -7,7 +7,7 @@
  * LLM-driven tool call.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export default function eventBusEmitter(pi: ExtensionAPI): void {
   pi.registerCommand("emit-touched", {

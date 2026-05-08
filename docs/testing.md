@@ -28,7 +28,7 @@ They catch regressions that pure unit tests cannot: extension load failures, pay
 
 ### Resolving the `pi` binary
 
-`@mariozechner/pi-coding-agent` is a `devDependency` of this package, and `pnpm install` produces a working `node_modules/.bin/pi`.
+`@earendil-works/pi-coding-agent` is a `devDependency` of this package, and `pnpm install` produces a working `node_modules/.bin/pi`.
 The shared harness in `test/helpers/rpc.ts` resolves `pi` from that path explicitly rather than relying on the global `PATH`:
 
 ```typescript

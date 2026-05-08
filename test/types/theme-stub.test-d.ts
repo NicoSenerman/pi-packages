@@ -12,7 +12,7 @@
  * `tsc --noEmit` to assert the type relationship.
  */
 
-import type { Theme } from "@mariozechner/pi-coding-agent";
+import type { Theme } from "@earendil-works/pi-coding-agent";
 import { describe, it } from "vitest";
 
 describe("Theme stub-shape expectations", () => {

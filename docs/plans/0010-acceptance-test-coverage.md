@@ -20,7 +20,7 @@ Issue #10 asks us to expand acceptance coverage so we also catch payload-shape d
 - Reuse the existing skip-when-`pi`-is-absent pattern so `pnpm test` stays green for contributors without Pi installed.
 - Keep each acceptance test isolated to its own `cwd` and config, with no shared state between tests.
 - Document an opt-in, env-gated path (`PI_AUTOFORMAT_LLM_TESTS=1`) for occasional LLM-backed scenarios — design only, no LLM calls in default CI.
-- Resolve the `pi` binary from the locally-installed `@mariozechner/pi-coding-agent` devDependency rather than the global `PATH`, so the acceptance suite runs in CI under the existing `pnpm install --frozen-lockfile` step with no workflow changes.
+- Resolve the `pi` binary from the locally-installed `@earendil-works/pi-coding-agent` devDependency rather than the global `PATH`, so the acceptance suite runs in CI under the existing `pnpm install --frozen-lockfile` step with no workflow changes.
 
 ## Non-Goals
 
@@ -44,8 +44,8 @@ Relevant existing surface:
 - `src/extension.ts` — `createAutoformatExtension` wires three real touched-file sources: built-in `write`/`edit` `tool_result` events, `customMutationTools` declared in config, and `pi.events.on(channel, …)` for the `autoformat:touched` (configurable) channel.
 - `src/shell-mutation-detector.ts` — drives `bash` snapshot tracking (`SnapshotTracker`) plus argument parsing and wrapper matching for known mutation commands. The `bash` RPC command sends a real `tool_call` + `tool_result` pair through Pi.
 - `src/custom-mutation-tools.ts` — `parseTouchedPayload` and `createCustomToolHandlers` accept either a `{ touched: string[] }` payload (event-bus path) or extract paths from configured custom tools.
-- `node_modules/@mariozechner/pi-coding-agent/docs/rpc.md` — confirms RPC supports `prompt`, `bash`, `get_state`, and that `prompt` accepts extension commands (`/mycommand`) which execute immediately even without an LLM provider configured.
-- `node_modules/@mariozechner/pi-coding-agent/docs/extensions.md` — confirms `pi.registerCommand(name, { handler })` lets a companion extension expose a slash command we can trigger over RPC.
+- `node_modules/@earendil-works/pi-coding-agent/docs/rpc.md` — confirms RPC supports `prompt`, `bash`, `get_state`, and that `prompt` accepts extension commands (`/mycommand`) which execute immediately even without an LLM provider configured.
+- `node_modules/@earendil-works/pi-coding-agent/docs/extensions.md` — confirms `pi.registerCommand(name, { handler })` lets a companion extension expose a slash command we can trigger over RPC.
 
 Implications:
 
@@ -137,7 +137,7 @@ After the RPC session closes, the test reads the recorder log and asserts:
 
 ### Resolving the `pi` binary
 
-`@mariozechner/pi-coding-agent` is already a devDependency and ships a `pi` bin, so `pnpm install` produces a working `node_modules/.bin/pi`.
+`@earendil-works/pi-coding-agent` is already a devDependency and ships a `pi` bin, so `pnpm install` produces a working `node_modules/.bin/pi`.
 The new harness resolves that path explicitly instead of relying on the global `PATH`:
 
 ```typescript
@@ -217,7 +217,7 @@ If the new tests expose a real bug, that bug is fixed in its own commit on the s
   Default plan picks the script flavor that matches the maintainer's CI; fallback is documented in `docs/testing.md`.
 
 - **Companion extensions drift from Pi's API.**
-  Mitigation: keep them tiny (≤ 30 lines each), import from the same `@mariozechner/pi-coding-agent` types the production extension uses, and exercise them in CI so any drift fails fast.
+  Mitigation: keep them tiny (≤ 30 lines each), import from the same `@earendil-works/pi-coding-agent` types the production extension uses, and exercise them in CI so any drift fails fast.
 
 - **Snapshot tracker false negatives.**
   The `bash` scenario depends on the snapshot tracker's globs matching the test file.

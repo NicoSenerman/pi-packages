@@ -6,7 +6,7 @@ import type {
   ExtensionContext,
   ToolCallEvent,
   ToolResultEvent,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 
 import {
   AUTOFORMAT_EXTENSION_ID,

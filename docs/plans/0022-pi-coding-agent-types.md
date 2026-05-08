@@ -1,14 +1,14 @@
 ---
 issue: 22
-issue_title: "Depend on @mariozechner/pi-coding-agent for runtime types instead of duck-typing"
+issue_title: "Depend on @earendil-works/pi-coding-agent for runtime types instead of duck-typing"
 ---
 
-# Plan: Adopt `@mariozechner/pi-coding-agent` Types (Issue #22)
+# Plan: Adopt `@earendil-works/pi-coding-agent` Types (Issue #22)
 
 ## Problem Statement
 
 `src/extension.ts` declares the entire Pi runtime API surface as duck-typed `*Like` aliases (`ExtensionApiLike`, `ExtensionContextLike`, `ExtensionUILike`, `ToolResultEventLike`, `ToolCallEventLike`, `TextContentLike`, `ThemeColorName`).
-Pi already publishes the real shapes via `@mariozechner/pi-coding-agent`, but we have no Pi dependency in `package.json`, so the duck-typed surface is what TypeScript checks against.
+Pi already publishes the real shapes via `@earendil-works/pi-coding-agent`, but we have no Pi dependency in `package.json`, so the duck-typed surface is what TypeScript checks against.
 
 That looseness shipped a real bug: our `theme?: { fg(...): string }` shape happily accepted plain arrow-function stubs in tests, which hid the `this`-binding regression in `themed()` for an entire release cycle until a user surfaced it (retro `0016`, fixes `6a6ec16` / `6ba7576`).
 Anchoring against Pi's real types — especially the `Theme` class — would have caught the bug at compile time.
@@ -17,18 +17,18 @@ This is a typing-only refactor: no behavior change, no public-config change, no 
 
 ## Goals
 
-- Add `@mariozechner/pi-coding-agent@^0.72.0` to `devDependencies` (types-only; Pi loads us at runtime).
-- Replace every `*Like` alias in `src/extension.ts` with the corresponding real export from `@mariozechner/pi-coding-agent`.
+- Add `@earendil-works/pi-coding-agent@^0.72.0` to `devDependencies` (types-only; Pi loads us at runtime).
+- Replace every `*Like` alias in `src/extension.ts` with the corresponding real export from `@earendil-works/pi-coding-agent`.
 - Type the public entrypoint and `pi.on(...)` handlers with the real `ExtensionAPI`, `ExtensionContext`, `ToolCallEvent`, and `ToolResultEvent` so a class-based `Theme` substitute is required at the boundary.
 - Update test stubs (`test/extension.test.ts`, others as needed) so they compile against the real types and continue to exercise the behavior we already cover.
-- Keep the diff zero-runtime-weight: no `dependencies`, no new imports of values from `@mariozechner/pi-coding-agent` (types only).
+- Keep the diff zero-runtime-weight: no `dependencies`, no new imports of values from `@earendil-works/pi-coding-agent` (types only).
 
 This change is **not** breaking from the consumer's perspective — Pi already injects these shapes at runtime.
 It is, however, a build-time tightening: a future incompatible Pi release will fail our build until the dep is bumped.
 
 ## Non-Goals
 
-- Adding `@mariozechner/pi-coding-agent` to `dependencies` or `peerDependencies`.
+- Adding `@earendil-works/pi-coding-agent` to `dependencies` or `peerDependencies`.
   Pi is the loader, not a consumer of our package.
 - Behavior changes to formatter dispatch, status reporting, or config loading.
 - Touching `src/config-loader.ts`, `src/formatter-config.ts`, `src/prompt-autoformatter.ts`, etc. — none of them reference the Pi runtime API.
@@ -55,7 +55,7 @@ Relevant pieces in this repo:
   Real `ExtensionContext` requires `sessionManager`, `modelRegistry`, `model`, `signal`, `isIdle()`, `abort()`, `hasPendingMessages()`, `shutdown()`, `getContextUsage()`, `compact()`, `getSystemPrompt()` — none of which our extension touches.
 - `test/extension.test.ts` already has one `class StubTheme` (the regression test for `6a6ec16`) that demonstrates the class-based stub pattern.
 
-Pi's exports we will pull in (all `import type`, all from the main `@mariozechner/pi-coding-agent` entrypoint):
+Pi's exports we will pull in (all `import type`, all from the main `@earendil-works/pi-coding-agent` entrypoint):
 
 - `ExtensionAPI`
 - `ExtensionContext`
@@ -123,13 +123,13 @@ Our existing dispatch already keys on `event.toolName === "bash" | "edit" | "wri
 
 ### `package.json`
 
-- Add `"@mariozechner/pi-coding-agent": "^0.72.0"` to `devDependencies`.
+- Add `"@earendil-works/pi-coding-agent": "^0.72.0"` to `devDependencies`.
 - No other field changes.
 
 ### `src/extension.ts`
 
 - Remove `ThemeColorName`, `ExtensionUILike`, `ExtensionContextLike`, `TextContentLike`, `ToolResultEventLike`, `ToolCallEventLike` (~25 lines).
-- Add `import type { ExtensionAPI, ExtensionContext, ExtensionUIContext, ToolCallEvent, ToolResultEvent, Theme, ThemeColor } from "@mariozechner/pi-coding-agent";` (only the symbols actually referenced).
+- Add `import type { ExtensionAPI, ExtensionContext, ExtensionUIContext, ToolCallEvent, ToolResultEvent, Theme, ThemeColor } from "@earendil-works/pi-coding-agent";` (only the symbols actually referenced).
 - Introduce local narrow aliases:
   - `type AutoformatExtensionContext = Pick<ExtensionContext, "cwd" | "hasUI" | "ui">;`
   - `type ExtensionAPIWithEvents = ExtensionAPI & { events?: { on(channel: string, handler: (data: unknown) => void): () => void } };`
@@ -167,7 +167,7 @@ Our existing dispatch already keys on `event.toolName === "bash" | "edit" | "wri
 This is a typing-only refactor, so the "red" step is **a failing `tsc`/`vitest` typecheck**, not a failing runtime assertion.
 Every cycle ends with `pnpm test` and `pnpm exec tsc --noEmit` (or whatever typecheck script lands as part of step 1).
 
-1. **chore: add `@mariozechner/pi-coding-agent` devDependency.** Install via `pnpm add -D @mariozechner/pi-coding-agent@^0.72.0`. Verify `pnpm test` still passes (no source changes yet). Commit: `chore: add pi-coding-agent for runtime types`.
+1. **chore: add `@earendil-works/pi-coding-agent` devDependency.** Install via `pnpm add -D @earendil-works/pi-coding-agent@^0.72.0`. Verify `pnpm test` still passes (no source changes yet). Commit: `chore: add pi-coding-agent for runtime types`.
 
 2. **test: prove a plain-function `theme.fg` stub will fail to typecheck once we adopt real types.** Add a single isolated typecheck-only test (e.g. `test/types/theme-stub.test-d.ts` using `expectTypeOf` or a `// @ts-expect-error` block in a new TS file under `test/`) that asserts `{ fg: (_n, t) => t }` is **not** assignable to `Theme`.
    This is currently `// @ts-expect-error` against the duck type (so it red-flags) — it goes green in step 4. Commit: `test: pin Theme stub-shape expectations`.
