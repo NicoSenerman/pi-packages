@@ -1,11 +1,7 @@
 import { appendFileSync } from "node:fs";
 
 import {
-  DEBUG_LOG_PATH,
   EXTENSION_ID,
-  ensurePermissionSystemLogsDirectory,
-  LOGS_DIR,
-  PERMISSION_REVIEW_LOG_PATH,
   type PermissionSystemExtensionConfig,
 } from "./extension-config";
 
@@ -48,19 +44,15 @@ export interface PermissionSystemLogger {
 
 interface PermissionSystemLoggerOptions {
   getConfig: () => PermissionSystemExtensionConfig;
-  debugLogPath?: string;
-  reviewLogPath?: string;
-  ensureLogsDirectory?: () => string | undefined;
+  debugLogPath: string;
+  reviewLogPath: string;
+  ensureLogsDirectory: () => string | undefined;
 }
 
 export function createPermissionSystemLogger(
   options: PermissionSystemLoggerOptions,
 ): PermissionSystemLogger {
-  const debugLogPath = options.debugLogPath ?? DEBUG_LOG_PATH;
-  const reviewLogPath = options.reviewLogPath ?? PERMISSION_REVIEW_LOG_PATH;
-  const ensureLogsDirectory =
-    options.ensureLogsDirectory ??
-    (() => ensurePermissionSystemLogsDirectory(LOGS_DIR));
+  const { debugLogPath, reviewLogPath, ensureLogsDirectory } = options;
 
   const writeLine = (
     stream: "debug" | "review",
