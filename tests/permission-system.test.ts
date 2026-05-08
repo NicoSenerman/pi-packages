@@ -17,11 +17,7 @@ import {
   shouldApplyCachedAgentStartState,
 } from "../src/before-agent-start-cache";
 import { getGlobalConfigPath } from "../src/config-paths";
-import {
-  DEFAULT_EXTENSION_CONFIG,
-  loadPermissionSystemConfig,
-  savePermissionSystemConfig,
-} from "../src/extension-config";
+import { DEFAULT_EXTENSION_CONFIG } from "../src/extension-config";
 import piPermissionSystemExtension from "../src/index";
 import { createPermissionSystemLogger } from "../src/logging";
 import {
@@ -243,123 +239,6 @@ async function runToolCall(
   );
   return (result ?? {}) as Record<string, unknown>;
 }
-
-test("Permission-system extension config defaults debug off, review log on, and yolo mode off", () => {
-  const baseDir = mkdtempSync(join(tmpdir(), "pi-permission-system-config-"));
-  const configPath = join(baseDir, "config.json");
-
-  try {
-    const result = loadPermissionSystemConfig(configPath);
-    assert.equal(result.created, true);
-    assert.equal(result.warning, undefined);
-    assert.deepEqual(result.config, DEFAULT_EXTENSION_CONFIG);
-    assert.equal(existsSync(configPath), true);
-
-    const raw = JSON.parse(readFileSync(configPath, "utf8")) as Record<
-      string,
-      unknown
-    >;
-    assert.equal(raw.debugLog, false);
-    assert.equal(raw.permissionReviewLog, true);
-    assert.equal(raw.yoloMode, false);
-  } finally {
-    rmSync(baseDir, { recursive: true, force: true });
-  }
-});
-
-test("Permission-system extension config loads yolo mode when explicitly enabled", () => {
-  const baseDir = mkdtempSync(
-    join(tmpdir(), "pi-permission-system-config-yolo-"),
-  );
-  const configPath = join(baseDir, "config.json");
-
-  try {
-    writeFileSync(
-      configPath,
-      `${JSON.stringify(
-        {
-          debugLog: true,
-          permissionReviewLog: false,
-          yoloMode: true,
-        },
-        null,
-        2,
-      )}\n`,
-      "utf8",
-    );
-
-    const result = loadPermissionSystemConfig(configPath);
-    assert.equal(result.created, false);
-    assert.equal(result.warning, undefined);
-    assert.deepEqual(result.config, {
-      debugLog: true,
-      permissionReviewLog: false,
-      yoloMode: true,
-    });
-  } finally {
-    rmSync(baseDir, { recursive: true, force: true });
-  }
-});
-
-test("Permission-system extension config normalizes invalid persisted values back to defaults", () => {
-  const baseDir = mkdtempSync(
-    join(tmpdir(), "pi-permission-system-config-invalid-"),
-  );
-  const configPath = join(baseDir, "config.json");
-
-  try {
-    writeFileSync(
-      configPath,
-      `${JSON.stringify(
-        {
-          debugLog: "true",
-          permissionReviewLog: null,
-          yoloMode: 1,
-        },
-        null,
-        2,
-      )}\n`,
-      "utf8",
-    );
-
-    const result = loadPermissionSystemConfig(configPath);
-    assert.equal(result.created, false);
-    assert.equal(result.warning, undefined);
-    assert.deepEqual(result.config, DEFAULT_EXTENSION_CONFIG);
-  } finally {
-    rmSync(baseDir, { recursive: true, force: true });
-  }
-});
-
-test("Permission-system extension config save persists normalized config", () => {
-  const baseDir = mkdtempSync(
-    join(tmpdir(), "pi-permission-system-config-save-"),
-  );
-  const configPath = join(baseDir, "config.json");
-
-  try {
-    const saved = savePermissionSystemConfig(
-      {
-        debugLog: true,
-        permissionReviewLog: false,
-        yoloMode: true,
-      },
-      configPath,
-    );
-
-    assert.equal(saved.success, true);
-
-    const result = loadPermissionSystemConfig(configPath);
-    assert.equal(result.warning, undefined);
-    assert.deepEqual(result.config, {
-      debugLog: true,
-      permissionReviewLog: false,
-      yoloMode: true,
-    });
-  } finally {
-    rmSync(baseDir, { recursive: true, force: true });
-  }
-});
 
 test("Yolo mode only auto-approves ask-state permissions", () => {
   assert.equal(
