@@ -33,11 +33,11 @@ export async function handleSessionStart(
   const policyIssues =
     deps.session.permissionManager.getConfigIssues(agentName);
   for (const issue of policyIssues) {
-    deps.notifyWarning(issue);
+    deps.logger.warn(issue);
   }
 
   if (event.reason === "reload") {
-    deps.writeDebugLog("lifecycle.reload", {
+    deps.logger.debug("lifecycle.reload", {
       triggeredBy: "session_start",
       reason: event.reason,
       cwd: ctx.cwd,
@@ -60,7 +60,7 @@ export async function handleResourcesDiscover(
   deps.session.activeSkillEntries = [];
   deps.session.lastActiveToolsCacheKey = null;
   deps.session.lastPromptStateCacheKey = null;
-  deps.writeDebugLog("lifecycle.reload", {
+  deps.logger.debug("lifecycle.reload", {
     triggeredBy: "resources_discover",
     reason: event.reason,
     cwd: runtimeContext?.cwd ?? null,

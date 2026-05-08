@@ -4,6 +4,7 @@ import type { PermissionPromptDecision } from "../permission-dialog";
 import type { PermissionEventBus } from "../permission-events";
 import type { PermissionManager } from "../permission-manager";
 import type { SessionState } from "../runtime";
+import type { SessionLogger } from "../session-logger";
 
 export type PermissionReviewSource = "tool_call" | "skill_input" | "skill_read";
 
@@ -37,9 +38,8 @@ export interface HandlerDeps {
   /** Mutable session state: permissionManager, sessionRules, cache keys. */
   readonly session: SessionState;
 
-  // ── Logging (promoted from runtime) ───────────────────────────────────
-  writeDebugLog(event: string, details?: Record<string, unknown>): void;
-  writeReviewLog(event: string, details?: Record<string, unknown>): void;
+  // ── Logging ────────────────────────────────────────────────────────────
+  readonly logger: SessionLogger;
 
   // ── Immutable infrastructure paths ───────────────────────────────────
   readonly piInfrastructureDirs: readonly string[];
@@ -59,8 +59,6 @@ export interface HandlerDeps {
   // ── Config & lifecycle helpers ─────────────────────────────────────────
   /** Reload merged config from disk; optionally update the stored runtime context. */
   refreshExtensionConfig(ctx?: ExtensionContext): void;
-  /** Show a warning notification to the user (no-op when no UI is available). */
-  notifyWarning(message: string): void;
   /** Write the resolved config path set to the review and debug logs. */
   logResolvedConfigPaths(): void;
 

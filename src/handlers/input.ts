@@ -82,7 +82,7 @@ export async function handleInput(
       skillInputAutoApproved = decision.autoApproved === true;
       return decision;
     },
-    writeLog: deps.writeReviewLog,
+    writeLog: deps.logger.review,
     logContext: {
       source: "skill_input",
       skillName,

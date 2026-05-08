@@ -91,7 +91,7 @@ export async function handleToolCall(
     deps.promptPermission(ctx, details);
   const emitDecision: GateRunnerDeps["emitDecision"] = (e) =>
     emitDecisionEvent(deps.events, e);
-  const { writeReviewLog } = deps;
+  const { review: writeReviewLog } = deps.logger;
   const checkPermission: GateRunnerDeps["checkPermission"] = (
     surface,
     input,

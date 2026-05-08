@@ -25,6 +25,7 @@ import {
   startForwardedPermissionPolling,
   stopForwardedPermissionPolling,
 } from "./runtime";
+import { createSessionLogger } from "./session-logger";
 import { isSubagentExecutionContext } from "./subagent-context";
 import {
   canResolveAskPermissionRequest,
@@ -79,8 +80,7 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
 
   const deps: HandlerDeps = {
     session: runtime,
-    writeDebugLog: (event, details) => runtime.writeDebugLog(event, details),
-    writeReviewLog: (event, details) => runtime.writeReviewLog(event, details),
+    logger: createSessionLogger(runtime),
     piInfrastructureDirs: runtime.piInfrastructureDirs,
     getPiInfrastructureReadPaths: () =>
       runtime.config.piInfrastructureReadPaths ?? [],
@@ -88,8 +88,6 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
     createPermissionManagerForCwd: (cwd) =>
       createPermissionManagerForCwd(runtime.agentDir, cwd),
     refreshExtensionConfig: (ctx) => refreshExtensionConfig(runtime, ctx),
-    notifyWarning: (message) =>
-      runtime.runtimeContext?.ui.notify(message, "warning"),
     logResolvedConfigPaths: () => logResolvedConfigPaths(runtime),
     resolveAgentName: (ctx, systemPrompt) =>
       resolveAgentName(runtime, ctx, systemPrompt),
