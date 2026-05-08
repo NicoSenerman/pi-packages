@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.0.4](https://github.com/gotgenes/pi-autoformat/compare/v4.0.3...v4.0.4) (2026-05-08)
+
+
+### Miscellaneous Chores
+
+* migrate to [@earendil-works](https://github.com/earendil-works) pi packages and upgrade pnpm to 11.0.8 ([519179d](https://github.com/gotgenes/pi-autoformat/commit/519179daa717faab632cbdc180bf368e9bf9b929))
+
 ## [4.0.3](https://github.com/gotgenes/pi-autoformat/compare/v4.0.2...v4.0.3) (2026-05-06)
 
 
