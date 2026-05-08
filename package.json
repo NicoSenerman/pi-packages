@@ -5,6 +5,7 @@
   "author": {
     "name": "Chris Lasher"
   },
+  "packageManager": "pnpm@11.0.6",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
