@@ -243,6 +243,50 @@ describe("wildcardMatch", () => {
     expect(wildcardMatch("tool.name", "tool.name")).toBe(true);
     expect(wildcardMatch("tool.name", "toolXname")).toBe(false);
   });
+
+  describe("trailing wildcard optionality", () => {
+    test("'git *' matches bare 'git' (trailing space+wildcard is optional)", () => {
+      expect(wildcardMatch("git *", "git")).toBe(true);
+    });
+
+    test("'git *' still matches 'git status' (existing behaviour preserved)", () => {
+      expect(wildcardMatch("git *", "git status")).toBe(true);
+    });
+
+    test("'git *' still matches 'git status --short'", () => {
+      expect(wildcardMatch("git *", "git status --short")).toBe(true);
+    });
+
+    test("'git *' does not match an unrelated command", () => {
+      expect(wildcardMatch("git *", "npm install")).toBe(false);
+    });
+
+    test("'git status *' matches bare 'git status'", () => {
+      expect(wildcardMatch("git status *", "git status")).toBe(true);
+    });
+
+    test("'git status *' matches 'git status --short'", () => {
+      expect(wildcardMatch("git status *", "git status --short")).toBe(true);
+    });
+
+    test("non-trailing '*' is unaffected: 'g*t' does not match 'g' or 't'", () => {
+      expect(wildcardMatch("g*t", "g")).toBe(false);
+      expect(wildcardMatch("g*t", "t")).toBe(false);
+    });
+
+    test("non-trailing '*' still matches when content is present: 'g*t' matches 'git'", () => {
+      expect(wildcardMatch("g*t", "git")).toBe(true);
+    });
+
+    test("'git*' (no space) still matches bare 'git' — unchanged behaviour", () => {
+      expect(wildcardMatch("git*", "git")).toBe(true);
+    });
+
+    test("'*' alone still matches everything", () => {
+      expect(wildcardMatch("*", "git")).toBe(true);
+      expect(wildcardMatch("*", "")).toBe(true);
+    });
+  });
 });
 
 describe("home path expansion in patterns", () => {
