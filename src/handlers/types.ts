@@ -42,7 +42,7 @@ export interface HandlerDeps {
   writeReviewLog(event: string, details?: Record<string, unknown>): void;
 
   // ── Immutable infrastructure paths ───────────────────────────────────
-  readonly piInfrastructureDirs: string[];
+  readonly piInfrastructureDirs: readonly string[];
   /** Returns config-derived infrastructure read paths (current at call time). */
   getPiInfrastructureReadPaths(): string[];
 

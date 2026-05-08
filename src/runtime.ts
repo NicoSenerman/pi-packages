@@ -11,6 +11,7 @@ import {
   type ExtensionContext,
   getAgentDir,
 } from "@mariozechner/pi-coding-agent";
+
 import {
   getActiveAgentName,
   getActiveAgentNameFromSystemPrompt,
@@ -19,7 +20,6 @@ import { loadAndMergeConfigs, loadUnifiedConfig } from "./config-loader";
 import {
   DEBUG_LOG_FILENAME,
   getGlobalConfigPath,
-  getGlobalLogsDir,
   getLegacyExtensionConfigPath,
   getLegacyGlobalPolicyPath,
   getLegacyProjectPolicyPath,
@@ -34,12 +34,15 @@ import {
   normalizePermissionSystemConfig,
   type PermissionSystemExtensionConfig,
 } from "./extension-config";
+import { computeExtensionPaths, type ExtensionPaths } from "./extension-paths";
+
+export type { ExtensionPaths } from "./extension-paths";
+
 import {
   type PermissionForwardingDeps,
   processForwardedPermissionRequests,
 } from "./forwarded-permissions/polling";
 import { createPermissionSystemLogger } from "./logging";
-import { discoverGlobalNodeModulesRoot } from "./node-modules-discovery";
 import { PERMISSION_FORWARDING_POLL_INTERVAL_MS } from "./permission-forwarding";
 import { PermissionManager } from "./permission-manager";
 import { SessionRules } from "./session-rules";
@@ -73,22 +76,7 @@ export interface SessionState {
  * Tests construct this via `createExtensionRuntime({ agentDir: tmpDir })`
  * without timing issues around `PI_CODING_AGENT_DIR`.
  */
-export interface ExtensionRuntime extends SessionState {
-  // ── Immutable paths (derived from agentDir at construction) ───────────
-  readonly agentDir: string;
-  readonly sessionsDir: string;
-  readonly subagentSessionsDir: string;
-  readonly forwardingDir: string;
-  readonly globalLogsDir: string;
-  /**
-   * Static Pi infrastructure directories used for external-directory
-   * read auto-allow. Computed once at construction from `agentDir` and
-   * `discoverGlobalNodeModulesRoot()`. Config-based extras
-   * (`piInfrastructureReadPaths`) are read from `runtime.config` at
-   * call time in the handler so they pick up config reloads.
-   */
-  readonly piInfrastructureDirs: string[];
-
+export interface ExtensionRuntime extends ExtensionPaths, SessionState {
   // ── Mutable state (beyond SessionState) ───────────────────────────────────
   config: PermissionSystemExtensionConfig;
   lastConfigWarning: string | null;
@@ -353,27 +341,12 @@ export function createExtensionRuntime(options?: {
   agentDir?: string;
 }): ExtensionRuntime {
   const agentDir = options?.agentDir ?? getAgentDir();
-  const sessionsDir = join(agentDir, "sessions");
-  const subagentSessionsDir = join(agentDir, "subagent-sessions");
-  const forwardingDir = join(sessionsDir, "permission-forwarding");
-  const globalLogsDir = getGlobalLogsDir(agentDir);
-
-  const globalNodeModulesRoot = discoverGlobalNodeModulesRoot();
-  const piInfrastructureDirs: string[] = [
-    agentDir,
-    join(agentDir, "git"),
-    ...(globalNodeModulesRoot ? [globalNodeModulesRoot] : []),
-  ];
+  const paths = computeExtensionPaths(agentDir);
 
   // Build a plain-object runtime first so the logger's `getConfig` closure
   // can reference `runtime.config` directly (always reads current value).
   const runtime: ExtensionRuntime = {
-    agentDir,
-    sessionsDir,
-    subagentSessionsDir,
-    forwardingDir,
-    globalLogsDir,
-    piInfrastructureDirs,
+    ...paths,
     config: { ...DEFAULT_EXTENSION_CONFIG },
     runtimeContext: null,
     permissionManager: createPermissionManagerForCwd(agentDir, undefined),
@@ -395,10 +368,10 @@ export function createExtensionRuntime(options?: {
   const logger = createPermissionSystemLogger({
     // Reads runtime.config at call time — always current.
     getConfig: () => runtime.config,
-    debugLogPath: join(globalLogsDir, DEBUG_LOG_FILENAME),
-    reviewLogPath: join(globalLogsDir, REVIEW_LOG_FILENAME),
+    debugLogPath: join(paths.globalLogsDir, DEBUG_LOG_FILENAME),
+    reviewLogPath: join(paths.globalLogsDir, REVIEW_LOG_FILENAME),
     ensureLogsDirectory: () =>
-      ensurePermissionSystemLogsDirectory(globalLogsDir),
+      ensurePermissionSystemLogsDirectory(paths.globalLogsDir),
   });
 
   const reportLoggingWarning = (message: string): void => {
