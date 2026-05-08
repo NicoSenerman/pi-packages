@@ -348,3 +348,148 @@ describe("external_directory policy state — deny", () => {
     });
   });
 });
+
+// ── Policy state matrix: ask ────────────────────────────────────────────────
+
+describe("external_directory policy state — ask", () => {
+  it("does not block when user approves", async () => {
+    const { handler } = makeHandler({
+      session: {
+        checkPermission: makeCheckPermission("ask"),
+        prompt: vi
+          .fn()
+          .mockResolvedValue({ approved: true, state: "approved" }),
+      },
+    });
+    const event = makeToolCallEvent("read", { path: EXTERNAL_PATH });
+    const result = await handler.handleToolCall(event, makeCtx());
+    expect(result).toEqual({});
+  });
+
+  it("emits user_approved decision when user approves", async () => {
+    const { handler, events } = makeHandler({
+      session: {
+        checkPermission: makeCheckPermission("ask"),
+        prompt: vi
+          .fn()
+          .mockResolvedValue({ approved: true, state: "approved" }),
+      },
+    });
+    const event = makeToolCallEvent("read", { path: EXTERNAL_PATH });
+    await handler.handleToolCall(event, makeCtx());
+    const decisions = getDecisionEvents(events);
+    const extDirDecision = decisions.find(
+      (d) => d.surface === "external_directory",
+    );
+    expect(extDirDecision).toMatchObject({
+      surface: "external_directory",
+      result: "allow",
+      resolution: "user_approved",
+    });
+  });
+
+  it("blocks when user denies", async () => {
+    const { handler } = makeHandler({
+      session: {
+        checkPermission: makeCheckPermission("ask"),
+        prompt: vi.fn().mockResolvedValue({ approved: false, state: "denied" }),
+      },
+    });
+    const event = makeToolCallEvent("read", { path: EXTERNAL_PATH });
+    const result = await handler.handleToolCall(event, makeCtx());
+    expect(result.block).toBe(true);
+  });
+
+  it("emits user_denied decision when user denies", async () => {
+    const { handler, events } = makeHandler({
+      session: {
+        checkPermission: makeCheckPermission("ask"),
+        prompt: vi.fn().mockResolvedValue({ approved: false, state: "denied" }),
+      },
+    });
+    const event = makeToolCallEvent("read", { path: EXTERNAL_PATH });
+    await handler.handleToolCall(event, makeCtx());
+    const decisions = getDecisionEvents(events);
+    const extDirDecision = decisions.find(
+      (d) => d.surface === "external_directory",
+    );
+    expect(extDirDecision).toMatchObject({
+      surface: "external_directory",
+      result: "deny",
+      resolution: "user_denied",
+    });
+  });
+
+  it("block reason includes denialReason when user provides one", async () => {
+    const { handler } = makeHandler({
+      session: {
+        checkPermission: makeCheckPermission("ask"),
+        prompt: vi.fn().mockResolvedValue({
+          approved: false,
+          state: "denied",
+          denialReason: "not needed",
+        }),
+      },
+    });
+    const event = makeToolCallEvent("read", { path: EXTERNAL_PATH });
+    const result = await handler.handleToolCall(event, makeCtx());
+    expect(result.block).toBe(true);
+    expect(result.reason).toContain("not needed");
+  });
+
+  it("blocks with confirmation_unavailable when no UI is available", async () => {
+    const { handler } = makeHandler({
+      session: {
+        checkPermission: makeCheckPermission("ask"),
+        canPrompt: vi.fn().mockReturnValue(false),
+      },
+    });
+    const event = makeToolCallEvent("read", { path: EXTERNAL_PATH });
+    const result = await handler.handleToolCall(
+      event,
+      makeCtx({ hasUI: false }),
+    );
+    expect(result.block).toBe(true);
+    expect(result.reason).toContain("outside the working directory");
+  });
+
+  it("writes review-log entry with confirmation_unavailable when no UI", async () => {
+    const { handler, session } = makeHandler({
+      session: {
+        checkPermission: makeCheckPermission("ask"),
+        canPrompt: vi.fn().mockReturnValue(false),
+      },
+    });
+    const event = makeToolCallEvent("read", { path: EXTERNAL_PATH });
+    await handler.handleToolCall(event, makeCtx({ hasUI: false }));
+    const reviewCalls = (session.logger.review as ReturnType<typeof vi.fn>).mock
+      .calls;
+    const blockEntries = reviewCalls.filter(
+      ([eventName]: [string]) => eventName === "permission_request.blocked",
+    );
+    expect(blockEntries.length).toBeGreaterThanOrEqual(1);
+    expect(blockEntries[0][1]).toMatchObject({
+      resolution: "confirmation_unavailable",
+    });
+  });
+
+  it("emits confirmation_unavailable decision when no UI", async () => {
+    const { handler, events } = makeHandler({
+      session: {
+        checkPermission: makeCheckPermission("ask"),
+        canPrompt: vi.fn().mockReturnValue(false),
+      },
+    });
+    const event = makeToolCallEvent("read", { path: EXTERNAL_PATH });
+    await handler.handleToolCall(event, makeCtx({ hasUI: false }));
+    const decisions = getDecisionEvents(events);
+    const extDirDecision = decisions.find(
+      (d) => d.surface === "external_directory",
+    );
+    expect(extDirDecision).toMatchObject({
+      surface: "external_directory",
+      result: "deny",
+      resolution: "confirmation_unavailable",
+    });
+  });
+});
