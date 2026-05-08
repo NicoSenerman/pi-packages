@@ -11,12 +11,11 @@ interface BeforeAgentStartPayload {
 import {
   createActiveToolsCacheKey,
   createBeforeAgentStartPromptStateKey,
-  shouldApplyCachedAgentStartState,
 } from "../before-agent-start-cache";
-import type { PermissionManager } from "../permission-manager";
 import { resolveSkillPromptEntries } from "../skill-prompt-sanitizer";
 import { sanitizeAvailableToolsSection } from "../system-prompt-sanitizer";
 import { getToolNameFromValue } from "../tool-registry";
+import type { PermissionState } from "../types";
 import type { HandlerDeps } from "./types";
 
 /**
@@ -27,12 +26,9 @@ import type { HandlerDeps } from "./types";
 export function shouldExposeTool(
   toolName: string,
   agentName: string | null,
-  permissionManager: PermissionManager,
+  getToolPermission: (toolName: string, agentName?: string) => PermissionState,
 ): boolean {
-  const toolPermission = permissionManager.getToolPermission(
-    toolName,
-    agentName ?? undefined,
-  );
+  const toolPermission = getToolPermission(toolName, agentName ?? undefined);
   return toolPermission !== "deny";
 }
 
@@ -41,12 +37,11 @@ export async function handleBeforeAgentStart(
   event: BeforeAgentStartPayload,
   ctx: ExtensionContext,
 ): Promise<BeforeAgentStartEventResult> {
-  deps.session.runtimeContext = ctx;
-  deps.refreshExtensionConfig(ctx);
-  deps.forwarding.start(ctx);
+  const { session } = deps;
+  session.activate(ctx);
+  session.refreshConfig(ctx);
 
-  const agentName = deps.resolveAgentName(ctx, event.systemPrompt);
-  const { permissionManager } = deps.session;
+  const agentName = session.resolveAgentName(ctx, event.systemPrompt);
   const allTools = deps.getAllTools();
   const allowedTools: string[] = [];
 
@@ -55,42 +50,34 @@ export async function handleBeforeAgentStart(
     if (!toolName) {
       continue;
     }
-    if (shouldExposeTool(toolName, agentName, permissionManager)) {
+    if (
+      shouldExposeTool(toolName, agentName, (t, a) =>
+        session.getToolPermission(t, a),
+      )
+    ) {
       allowedTools.push(toolName);
     }
   }
 
   const activeToolsCacheKey = createActiveToolsCacheKey(allowedTools);
-  if (
-    shouldApplyCachedAgentStartState(
-      deps.session.lastActiveToolsCacheKey,
-      activeToolsCacheKey,
-    )
-  ) {
+  if (session.shouldUpdateActiveTools(activeToolsCacheKey)) {
     deps.setActiveTools(allowedTools);
-    deps.session.lastActiveToolsCacheKey = activeToolsCacheKey;
+    session.commitActiveToolsCacheKey(activeToolsCacheKey);
   }
 
   const promptStateCacheKey = createBeforeAgentStartPromptStateKey({
     agentName,
     cwd: ctx.cwd,
-    permissionStamp: permissionManager.getPolicyCacheStamp(
-      agentName ?? undefined,
-    ),
+    permissionStamp: session.getPolicyCacheStamp(agentName ?? undefined),
     systemPrompt: event.systemPrompt,
     allowedToolNames: allowedTools,
   });
 
-  if (
-    !shouldApplyCachedAgentStartState(
-      deps.session.lastPromptStateCacheKey,
-      promptStateCacheKey,
-    )
-  ) {
+  if (!session.shouldUpdatePromptState(promptStateCacheKey)) {
     return {};
   }
 
-  deps.session.lastPromptStateCacheKey = promptStateCacheKey;
+  session.commitPromptStateCacheKey(promptStateCacheKey);
 
   const toolPromptResult = sanitizeAvailableToolsSection(
     event.systemPrompt,
@@ -98,11 +85,11 @@ export async function handleBeforeAgentStart(
   );
   const skillPromptResult = resolveSkillPromptEntries(
     toolPromptResult.prompt,
-    permissionManager,
+    session,
     agentName,
     ctx.cwd,
   );
-  deps.session.activeSkillEntries = skillPromptResult.entries;
+  session.setActiveSkillEntries(skillPromptResult.entries);
 
   if (skillPromptResult.prompt !== event.systemPrompt) {
     return { systemPrompt: skillPromptResult.prompt };

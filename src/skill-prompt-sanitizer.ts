@@ -4,8 +4,19 @@ import {
   isPathWithinDirectory,
   normalizePathForComparison,
 } from "./path-utils";
-import type { PermissionManager } from "./permission-manager";
-import type { PermissionState } from "./types";
+import type { PermissionCheckResult, PermissionState } from "./types";
+
+/**
+ * Narrow interface for the permission checker used by skill prompt resolution.
+ * Both `PermissionManager` and `PermissionSession` satisfy this structurally.
+ */
+export interface SkillPermissionChecker {
+  checkPermission(
+    surface: string,
+    input: unknown,
+    agentName?: string,
+  ): PermissionCheckResult;
+}
 
 const AVAILABLE_SKILLS_OPEN_TAG = "<available_skills>";
 const AVAILABLE_SKILLS_CLOSE_TAG = "</available_skills>";
@@ -148,7 +159,7 @@ export function parseAllSkillPromptSections(
 
 function resolvePermissionState(
   skillName: string,
-  permissionManager: PermissionManager,
+  permissionManager: SkillPermissionChecker,
   agentName: string | null,
   cache: Map<string, PermissionState>,
 ): PermissionState {
@@ -205,7 +216,7 @@ function removePromptRange(prompt: string, start: number, end: number): string {
 
 export function resolveSkillPromptEntries(
   prompt: string,
-  permissionManager: PermissionManager,
+  permissionManager: SkillPermissionChecker,
   agentName: string | null,
   cwd: string,
 ): { prompt: string; entries: SkillPromptEntry[] } {
