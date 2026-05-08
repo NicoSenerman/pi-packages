@@ -121,6 +121,10 @@ If a tool is not registered at runtime, this extension blocks it before permissi
 Command patterns use `*` wildcards matched against the full command string.
 **Last matching rule wins** — put broad catch-alls first, specific overrides after.
 
+A pattern ending with `*` (space + wildcard) also matches the bare command without arguments.
+For example, `"git *"` matches both `"git status"` and bare `"git"`.
+Use a more specific pattern before it to carve out exceptions.
+
 ```jsonc
 {
   "permission": {

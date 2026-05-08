@@ -29,6 +29,7 @@ The following concepts are shared between OpenCode and this extension:
 |Tool hiding|Denied tools are removed before the agent starts (no wasted turns probing)|
 |Bash path extraction|Tree-sitter AST parsing to detect external paths in shell commands (see [details below](#bash-path-extraction))|
 |Bash arity table|Generates smart approval pattern suggestions (e.g., `git checkout *` not `git *`)|
+|Trailing wildcard optionality|`"ls *"` matches bare `"ls"` — the trailing `*` is optional|
 
 If your OpenCode config uses these features, the equivalent works in this extension with minimal translation (see [Porting Guide](#porting-an-opencode-config) below).
 
@@ -41,7 +42,6 @@ If your OpenCode config uses these features, the equivalent works in this extens
 |Default fallback|`"*": "allow"` (permissive)|`"*": "ask"` (least privilege)|
 |`.env` file protection|Built-in `read` rules deny/ask `.env` files|No built-in rules; user configures manually|
 |`?` wildcard|Matches exactly one character|Not supported; `?` is a literal character|
-|Trailing wildcard optionality|`"ls *"` matches bare `"ls"` (trailing `*` is optional)|`"ls *"` does NOT match bare `"ls"`|
 |OpenCode-only surfaces|`lsp`, `question`, `webfetch`, `websearch`, `todowrite`, `doom_loop`|Not applicable — Pi does not expose these tools or events|
 |File mutation surfaces|`edit` covers `edit`, `write`, `apply_patch`|Separate `write` and `edit` surfaces|
 |Search/discovery surfaces|`glob`, `grep`, `list`|`find`, `grep`, `ls` (Pi tool names)|
@@ -84,23 +84,6 @@ To replicate OpenCode's unified behavior, set both to the same action:
   "permission": {
     "write": "ask",
     "edit": "ask"
-  }
-}
-```
-
-#### Trailing Wildcard Optionality
-
-In OpenCode, `"git *"` matches both `"git status"` and bare `"git"` (the trailing `*` is treated as optional).
-In this extension, `"git *"` only matches commands that start with `"git "` followed by something.
-To match both cases, add an explicit rule for the bare command:
-
-```jsonc
-{
-  "permission": {
-    "bash": {
-      "git": "allow",
-      "git *": "allow"
-    }
   }
 }
 ```
@@ -181,9 +164,7 @@ The result is broader coverage (paths detected in any command, not just a curate
     "*": "allow",
     "bash": {
       "*": "ask",
-      "git": "allow",
       "git *": "allow",
-      "npm": "allow",
       "npm *": "allow",
       "rm *": "deny"
     },
@@ -203,9 +184,8 @@ The result is broader coverage (paths detected in any command, not just a curate
 2. **Split `edit`** into separate `write` and `edit` entries if you need different policies for create vs. modify.
    If not, set both to the same action.
 3. **Rename search surfaces**: `glob` → `find`, `list` → `ls`.
-4. **Add bare-command rules** for any pattern that uses trailing `*` where you also want to match the command alone (e.g., add `"git": "allow"` alongside `"git *": "allow"`).
-5. **Replace `**`** with `*` in external_directory patterns — this extension's `*` already matches across path separators.
-6. **Add `.env` rules manually** if you relied on OpenCode's built-in protection:
+4. **Replace `**`** with `*` in external_directory patterns — this extension's `*` already matches across path separators.
+5. **Add `.env` rules manually** if you relied on OpenCode's built-in protection:
 
     ```jsonc
     {
@@ -220,5 +200,5 @@ The result is broader coverage (paths detected in any command, not just a curate
     }
     ```
 
-7. **Remove OpenCode-only surfaces** (`lsp`, `question`, `webfetch`, `websearch`, `todowrite`, `doom_loop`) — they have no effect in this extension.
-8. **Add `mcp` rules** if you use MCP servers — OpenCode has no equivalent, so this is new configuration.
+6. **Remove OpenCode-only surfaces** (`lsp`, `question`, `webfetch`, `websearch`, `todowrite`, `doom_loop`) — they have no effect in this extension.
+7. **Add `mcp` rules** if you use MCP servers — OpenCode has no equivalent, so this is new configuration.
