@@ -257,4 +257,214 @@ describe("PermissionSession", () => {
       expect(forwarding.stop).toHaveBeenCalled();
     });
   });
+
+  describe("resetForNewSession", () => {
+    it("creates a new PermissionManager for the context cwd", () => {
+      const pm2 = makePermissionManager({
+        checkPermission: vi.fn().mockReturnValue({
+          state: "deny",
+          toolName: "bash",
+          source: "bash",
+          origin: "config",
+        } as PermissionCheckResult),
+      });
+      mockCreatePermissionManagerForCwd.mockReturnValue(pm2);
+      const { session } = createSession();
+      const ctx = makeCtx({ cwd: "/new/project" });
+
+      session.resetForNewSession(ctx);
+
+      expect(mockCreatePermissionManagerForCwd).toHaveBeenCalledWith(
+        "/test/agent",
+        "/new/project",
+      );
+      // Verify the new PM is used for subsequent calls
+      const result = session.checkPermission("bash", { command: "rm" });
+      expect(result.state).toBe("deny");
+    });
+
+    it("clears cache keys", () => {
+      const { session } = createSession();
+      session.commitActiveToolsCacheKey("key-1");
+      session.commitPromptStateCacheKey("key-2");
+      expect(session.shouldUpdateActiveTools("key-1")).toBe(false);
+      expect(session.shouldUpdatePromptState("key-2")).toBe(false);
+
+      session.resetForNewSession(makeCtx());
+
+      // After reset, same keys should be treated as new
+      expect(session.shouldUpdateActiveTools("key-1")).toBe(true);
+      expect(session.shouldUpdatePromptState("key-2")).toBe(true);
+    });
+
+    it("clears skill entries", () => {
+      const { session } = createSession();
+      session.setActiveSkillEntries([
+        { name: "test", path: "/test", content: "c" },
+      ]);
+      expect(session.getActiveSkillEntries()).toHaveLength(1);
+
+      session.resetForNewSession(makeCtx());
+
+      expect(session.getActiveSkillEntries()).toEqual([]);
+    });
+
+    it("starts forwarding with the new context", () => {
+      const { session, forwarding } = createSession();
+      const ctx = makeCtx();
+
+      session.resetForNewSession(ctx);
+
+      expect(forwarding.start).toHaveBeenCalledWith(ctx);
+    });
+
+    it("activates the new context", () => {
+      const { session } = createSession();
+      const ctx = makeCtx();
+
+      session.resetForNewSession(ctx);
+
+      // Verify context is stored by calling resolveAgentName which needs it
+      mockGetActiveAgentName.mockReturnValue("test-agent");
+      const name = session.resolveAgentName(ctx);
+      expect(name).toBe("test-agent");
+    });
+  });
+
+  describe("shutdown", () => {
+    it("clears session rules", () => {
+      const { session } = createSession();
+      session.approveSessionRule("bash", "*");
+      expect(session.getSessionRuleset()).toHaveLength(1);
+
+      session.shutdown();
+
+      expect(session.getSessionRuleset()).toEqual([]);
+    });
+
+    it("clears cache keys", () => {
+      const { session } = createSession();
+      session.commitActiveToolsCacheKey("k1");
+      session.commitPromptStateCacheKey("k2");
+
+      session.shutdown();
+
+      expect(session.shouldUpdateActiveTools("k1")).toBe(true);
+      expect(session.shouldUpdatePromptState("k2")).toBe(true);
+    });
+
+    it("clears skill entries", () => {
+      const { session } = createSession();
+      session.setActiveSkillEntries([{ name: "s", path: "/s", content: "x" }]);
+
+      session.shutdown();
+
+      expect(session.getActiveSkillEntries()).toEqual([]);
+    });
+
+    it("stops forwarding and deactivates context", () => {
+      const { session, forwarding } = createSession();
+      session.activate(makeCtx());
+
+      session.shutdown();
+
+      expect(forwarding.stop).toHaveBeenCalled();
+    });
+  });
+
+  describe("cache key methods", () => {
+    it("shouldUpdateActiveTools returns true for new key", () => {
+      const { session } = createSession();
+      expect(session.shouldUpdateActiveTools("key-1")).toBe(true);
+    });
+
+    it("shouldUpdateActiveTools returns false for committed key", () => {
+      const { session } = createSession();
+      session.commitActiveToolsCacheKey("key-1");
+      expect(session.shouldUpdateActiveTools("key-1")).toBe(false);
+    });
+
+    it("shouldUpdateActiveTools returns true for different key", () => {
+      const { session } = createSession();
+      session.commitActiveToolsCacheKey("key-1");
+      expect(session.shouldUpdateActiveTools("key-2")).toBe(true);
+    });
+
+    it("shouldUpdatePromptState returns true for new key", () => {
+      const { session } = createSession();
+      expect(session.shouldUpdatePromptState("key-1")).toBe(true);
+    });
+
+    it("shouldUpdatePromptState returns false for committed key", () => {
+      const { session } = createSession();
+      session.commitPromptStateCacheKey("key-1");
+      expect(session.shouldUpdatePromptState("key-1")).toBe(false);
+    });
+  });
+
+  describe("skill entries", () => {
+    it("get/set skill entries", () => {
+      const { session } = createSession();
+      const entries = [
+        { name: "a", path: "/a", content: "x" },
+        { name: "b", path: "/b", content: "y" },
+      ];
+      session.setActiveSkillEntries(entries);
+      expect(session.getActiveSkillEntries()).toEqual(entries);
+    });
+  });
+
+  describe("resolveAgentName", () => {
+    it("returns name from session context", () => {
+      mockGetActiveAgentName.mockReturnValue("ctx-agent");
+      const { session } = createSession();
+      const ctx = makeCtx();
+
+      expect(session.resolveAgentName(ctx)).toBe("ctx-agent");
+    });
+
+    it("falls back to system prompt", () => {
+      mockGetActiveAgentName.mockReturnValue(null);
+      mockGetActiveAgentNameFromSystemPrompt.mockReturnValue("prompt-agent");
+      const { session } = createSession();
+      const ctx = makeCtx();
+
+      expect(session.resolveAgentName(ctx, "system prompt")).toBe(
+        "prompt-agent",
+      );
+    });
+
+    it("falls back to last known name", () => {
+      const { session } = createSession();
+      const ctx = makeCtx();
+
+      // First call sets name
+      mockGetActiveAgentName.mockReturnValue("first-agent");
+      session.resolveAgentName(ctx);
+
+      // Second call with no name resolves to last known
+      mockGetActiveAgentName.mockReturnValue(null);
+      mockGetActiveAgentNameFromSystemPrompt.mockReturnValue(null);
+      expect(session.resolveAgentName(ctx)).toBe("first-agent");
+    });
+
+    it("exposes lastKnownActiveAgentName", () => {
+      const { session } = createSession();
+      expect(session.lastKnownActiveAgentName).toBeNull();
+
+      mockGetActiveAgentName.mockReturnValue("named");
+      session.resolveAgentName(makeCtx());
+      expect(session.lastKnownActiveAgentName).toBe("named");
+    });
+  });
+
+  describe("infrastructure paths", () => {
+    it("getInfrastructureDirs returns paths from ExtensionPaths", () => {
+      const { session } = createSession();
+      expect(session.getInfrastructureDirs()).toEqual([
+        "/test/agent",
+        "/test/agent/git",
+      ]);
+    });
+  });
 });

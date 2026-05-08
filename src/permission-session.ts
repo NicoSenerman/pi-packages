@@ -1,5 +1,9 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
+import {
+  getActiveAgentName,
+  getActiveAgentNameFromSystemPrompt,
+} from "./active-agent";
 import type { ExtensionPaths } from "./extension-paths";
 import type { ForwardingController } from "./forwarding-manager";
 import type { PermissionManager } from "./permission-manager";
@@ -96,5 +100,98 @@ export class PermissionSession {
 
   approveSessionRule(surface: string, pattern: string): void {
     this.sessionRules.approve(surface, pattern);
+  }
+
+  // ── Session lifecycle ────────────────────────────────────────────────────
+
+  /**
+   * Reset all mutable state for a new session.
+   *
+   * Creates a fresh PermissionManager scoped to `ctx.cwd`, clears caches,
+   * skill entries, and activates the new context. Replaces the 4-field
+   * copy-paste reset previously scattered across lifecycle handlers.
+   */
+  resetForNewSession(ctx: ExtensionContext): void {
+    this.permissionManager = createPermissionManagerForCwd(
+      this.paths.agentDir,
+      ctx.cwd,
+    );
+    this.activeSkillEntries = [];
+    this.activeToolsCacheKey = null;
+    this.promptStateCacheKey = null;
+    this.activate(ctx);
+  }
+
+  /**
+   * Shut down the session: clear rules, caches, skill entries, and
+   * deactivate context + forwarding.
+   */
+  shutdown(): void {
+    this.sessionRules.clear();
+    this.activeSkillEntries = [];
+    this.activeToolsCacheKey = null;
+    this.promptStateCacheKey = null;
+    this.deactivate();
+  }
+
+  // ── Agent-start caching ────────────────────────────────────────────────
+
+  shouldUpdateActiveTools(cacheKey: string): boolean {
+    return this.activeToolsCacheKey !== cacheKey;
+  }
+
+  commitActiveToolsCacheKey(cacheKey: string): void {
+    this.activeToolsCacheKey = cacheKey;
+  }
+
+  shouldUpdatePromptState(cacheKey: string): boolean {
+    return this.promptStateCacheKey !== cacheKey;
+  }
+
+  commitPromptStateCacheKey(cacheKey: string): void {
+    this.promptStateCacheKey = cacheKey;
+  }
+
+  // ── Skill entries ──────────────────────────────────────────────────────
+
+  getActiveSkillEntries(): SkillPromptEntry[] {
+    return this.activeSkillEntries;
+  }
+
+  setActiveSkillEntries(entries: SkillPromptEntry[]): void {
+    this.activeSkillEntries = entries;
+  }
+
+  // ── Agent name ─────────────────────────────────────────────────────────
+
+  /**
+   * Resolve the active agent name from the session context, system prompt,
+   * or last known name. Updates lastKnownActiveAgentName as a side effect.
+   */
+  resolveAgentName(
+    ctx: ExtensionContext,
+    systemPrompt?: string,
+  ): string | null {
+    const fromSession = getActiveAgentName(ctx);
+    if (fromSession) {
+      this.knownAgentName = fromSession;
+      return fromSession;
+    }
+    const fromSystemPrompt = getActiveAgentNameFromSystemPrompt(systemPrompt);
+    if (fromSystemPrompt) {
+      this.knownAgentName = fromSystemPrompt;
+      return fromSystemPrompt;
+    }
+    return this.knownAgentName;
+  }
+
+  get lastKnownActiveAgentName(): string | null {
+    return this.knownAgentName;
+  }
+
+  // ── Infrastructure paths ───────────────────────────────────────────────
+
+  getInfrastructureDirs(): readonly string[] {
+    return this.paths.piInfrastructureDirs;
   }
 }
