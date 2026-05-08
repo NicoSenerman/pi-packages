@@ -28,6 +28,8 @@ Load this skill when writing, debugging, or planning tests.
 - When mocking a class constructor with `vi.mock()`, use `vi.fn()` with no implementation — not `vi.fn(() => ({}))`.
   Arrow-function implementations are not constructable; `new MockClass()` throws `"is not a constructor"`.
 - When mocking `node:*` built-in modules with `vi.mock()`, include a `default` key mirroring the named exports — omitting it causes "No default export defined on the mock" errors.
+- When testing code that uses `setInterval`, never use `vi.runAllTimersAsync()` — it loops infinitely.
+  Use `vi.advanceTimersByTimeAsync(ms)` with a specific duration instead.
 
 ## Test assertions
 

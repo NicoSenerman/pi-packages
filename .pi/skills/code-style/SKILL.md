@@ -37,6 +37,9 @@ Do not pass a shared dependency bag to functions that only use a subset of it.
 When a function receives an object and only touches 3 of its 15 fields, the function's real dependencies are invisible.
 Define a narrow interface or accept the needed values directly.
 
+When a shared interface (e.g., `HandlerDeps`) references a collaborator, use a narrow interface type — not the concrete class.
+Concrete class types expose private fields to TypeScript's structural checker, forcing test mocks to cast or replicate internals.
+
 ### Law of Demeter
 
 Do not reach through an injected collaborator to talk to a stranger (`deps.session.permissionManager.checkPermission(...)` is a violation).
