@@ -33,6 +33,10 @@ done
 set -- $ORIG_ARGS
 SUBCMD="${1:-}"
 
+YELLOW="\033[33m"
+BOLD="\033[1m"
+RESET="\033[0m"
+
 pass_through() {
   if [ -z "$REAL_NPM" ]; then
     echo "npm shim: could not find real npm binary" >&2
@@ -40,6 +44,11 @@ pass_through() {
   fi
   # shellcheck disable=SC2086
   exec "$REAL_NPM" $ORIG_ARGS
+}
+
+warn_and_pass_through() {
+  printf '%b\n' "${YELLOW}${BOLD}⚠ npm shim:${RESET} this is a ${BOLD}pnpm${RESET} project — passing through ${BOLD}npm $ORIG_ARGS${RESET}" >&2
+  pass_through
 }
 
 # ── Pass-through: Pi internal package management (.pi/npm) ─────────────────
@@ -58,7 +67,7 @@ case "$SUBCMD" in
   install|i|add|uninstall|remove|rm|un)
     for arg in $ORIG_ARGS; do
       case "$arg" in
-        -g|--global) pass_through ;;
+        -g|--global) warn_and_pass_through ;;
       esac
     done
     ;;
@@ -70,10 +79,7 @@ case "$SUBCMD" in
 esac
 
 # ── Block everything else ──────────────────────────────────────────────────
-BOLD="\033[1m"
 RED="\033[31m"
-YELLOW="\033[33m"
-RESET="\033[0m"
 
 echo "" >&2
 echo "${RED}${BOLD}✗ npm is not allowed in this project.${RESET}" >&2
