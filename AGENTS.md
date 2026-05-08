@@ -61,6 +61,15 @@ The `permission` object uses deep-shallow merge; scalar fields use simple replac
 - When adding an optional field to `PermissionSystemExtensionConfig`, do not include it in `DEFAULT_EXTENSION_CONFIG` with an explicit `undefined` value — tests use `deepEqual` and it breaks equality.
 - After a breaking config format change, verify the user's live global config is compatible before committing.
 
+## Debugging
+
+When investigating a reported bug in this extension:
+
+1. First check the runtime environment: which extensions are loaded, from which paths, and whether any are loaded more than once.
+   Run `pi --no-extensions -e .` to isolate this extension before instrumenting code.
+2. Check `.pi/settings.json` and `~/.pi/agent/settings.json` for overlapping package entries.
+3. Instrument only after confirming the bug reproduces in isolation.
+
 ## Testing
 
 Before writing or debugging tests, load the `testing` skill.
