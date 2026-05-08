@@ -4,8 +4,8 @@ import { getGlobalConfigPath } from "./config-paths";
 import type { PermissionForwardingDeps } from "./forwarded-permissions/polling";
 import { ForwardingManager } from "./forwarding-manager";
 import {
+  AgentPrepHandler,
   type HandlerDeps,
-  handleBeforeAgentStart,
   handleInput,
   handleToolCall,
   SessionLifecycleHandler,
@@ -132,9 +132,12 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
     lifecycle.handleResourcesDiscover(event),
   );
   pi.on("session_shutdown", () => lifecycle.handleSessionShutdown());
-  pi.on("before_agent_start", (event, ctx) =>
-    handleBeforeAgentStart(deps, event, ctx),
-  );
+  const agentPrep = new AgentPrepHandler(session, {
+    getAll: () => pi.getAllTools(),
+    setActive: (names) => pi.setActiveTools(names),
+  });
+
+  pi.on("before_agent_start", (event, ctx) => agentPrep.handle(event, ctx));
   pi.on("input", (event, ctx) => handleInput(deps, event, ctx));
   pi.on("tool_call", (event, ctx) => handleToolCall(deps, event, ctx));
 }

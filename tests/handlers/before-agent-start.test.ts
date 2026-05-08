@@ -2,11 +2,11 @@ import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  handleBeforeAgentStart,
+  AgentPrepHandler,
   shouldExposeTool,
 } from "../../src/handlers/before-agent-start";
-import type { HandlerDeps } from "../../src/handlers/types";
 import type { PermissionSession } from "../../src/permission-session";
+import type { ToolRegistry } from "../../src/tool-registry";
 import type { PermissionState } from "../../src/types";
 
 // ── SDK stubs ──────────────────────────────────────────────────────────────
@@ -65,20 +65,26 @@ function makeSession(
   } as unknown as PermissionSession;
 }
 
-function makeDeps(overrides: Partial<HandlerDeps> = {}): HandlerDeps {
+function makeToolRegistry(overrides: Partial<ToolRegistry> = {}): ToolRegistry {
   return {
-    session: makeSession(),
-    events: { emit: vi.fn(), on: vi.fn().mockReturnValue(() => undefined) },
-    canRequestPermissionConfirmation: vi.fn().mockReturnValue(false),
-    promptPermission: vi
-      .fn()
-      .mockResolvedValue({ approved: true, state: "approved" }),
-    createPermissionRequestId: vi.fn().mockReturnValue("test-id"),
-    stopPermissionRpcHandlers: vi.fn(),
-    getAllTools: vi.fn().mockReturnValue([]),
-    setActiveTools: vi.fn(),
+    getAll: vi.fn().mockReturnValue([]),
+    setActive: vi.fn(),
     ...overrides,
   };
+}
+
+function makeHandler(overrides?: {
+  session?: Partial<Record<keyof PermissionSession, unknown>>;
+  toolRegistry?: Partial<ToolRegistry>;
+}): {
+  handler: AgentPrepHandler;
+  session: PermissionSession;
+  toolRegistry: ToolRegistry;
+} {
+  const session = makeSession(overrides?.session);
+  const toolRegistry = makeToolRegistry(overrides?.toolRegistry);
+  const handler = new AgentPrepHandler(session, toolRegistry);
+  return { handler, session, toolRegistry };
 }
 
 // ── shouldExposeTool (pure helper) ─────────────────────────────────────────
@@ -112,136 +118,110 @@ describe("shouldExposeTool", () => {
   });
 });
 
-// ── handleBeforeAgentStart ─────────────────────────────────────────────────
+// ── AgentPrepHandler.handle ────────────────────────────────────────────────
 
-describe("handleBeforeAgentStart", () => {
+describe("AgentPrepHandler.handle", () => {
   it("activates the session with ctx", async () => {
     const ctx = makeCtx();
-    const deps = makeDeps();
-    await handleBeforeAgentStart(deps, makeEvent(), ctx);
-    expect(deps.session.activate).toHaveBeenCalledWith(ctx);
+    const { handler, session } = makeHandler();
+    await handler.handle(makeEvent(), ctx);
+    expect(session.activate).toHaveBeenCalledWith(ctx);
   });
 
   it("refreshes config with ctx", async () => {
     const ctx = makeCtx();
-    const deps = makeDeps();
-    await handleBeforeAgentStart(deps, makeEvent(), ctx);
-    expect(deps.session.refreshConfig).toHaveBeenCalledWith(ctx);
+    const { handler, session } = makeHandler();
+    await handler.handle(makeEvent(), ctx);
+    expect(session.refreshConfig).toHaveBeenCalledWith(ctx);
   });
 
   it("resolves agent name using systemPrompt", async () => {
     const ctx = makeCtx();
-    const deps = makeDeps();
-    await handleBeforeAgentStart(
-      deps,
-      makeEvent("<active_agent name='x'>"),
-      ctx,
-    );
-    expect(deps.session.resolveAgentName).toHaveBeenCalledWith(
+    const { handler, session } = makeHandler();
+    await handler.handle(makeEvent("<active_agent name='x'>"), ctx);
+    expect(session.resolveAgentName).toHaveBeenCalledWith(
       ctx,
       "<active_agent name='x'>",
     );
   });
 
   it("filters out denied tools from allowed list", async () => {
-    const session = makeSession({
-      getToolPermission: vi.fn().mockReturnValue("deny"),
+    const { handler, toolRegistry } = makeHandler({
+      session: { getToolPermission: vi.fn().mockReturnValue("deny") },
+      toolRegistry: {
+        getAll: vi.fn().mockReturnValue([{ name: "write" }, { name: "read" }]),
+      },
     });
-    const deps = makeDeps({
-      session,
-      getAllTools: vi
-        .fn()
-        .mockReturnValue([{ name: "write" }, { name: "read" }]),
-    });
-    await handleBeforeAgentStart(deps, makeEvent(), makeCtx());
-    expect(deps.setActiveTools).toHaveBeenCalledWith([]);
+    await handler.handle(makeEvent(), makeCtx());
+    expect(toolRegistry.setActive).toHaveBeenCalledWith([]);
   });
 
   it("includes allowed and ask tools in the active list", async () => {
-    const deps = makeDeps({
-      getAllTools: vi
-        .fn()
-        .mockReturnValue([{ name: "read" }, { name: "write" }]),
+    const { handler, toolRegistry } = makeHandler({
+      toolRegistry: {
+        getAll: vi.fn().mockReturnValue([{ name: "read" }, { name: "write" }]),
+      },
     });
-    await handleBeforeAgentStart(deps, makeEvent(), makeCtx());
-    expect(deps.setActiveTools).toHaveBeenCalledWith(["read", "write"]);
+    await handler.handle(makeEvent(), makeCtx());
+    expect(toolRegistry.setActive).toHaveBeenCalledWith(["read", "write"]);
   });
 
   it("commits active-tools cache key after applying", async () => {
-    const deps = makeDeps({
-      getAllTools: vi.fn().mockReturnValue([{ name: "read" }]),
+    const { handler, session } = makeHandler({
+      toolRegistry: {
+        getAll: vi.fn().mockReturnValue([{ name: "read" }]),
+      },
     });
-    await handleBeforeAgentStart(deps, makeEvent(), makeCtx());
-    expect(deps.session.commitActiveToolsCacheKey).toHaveBeenCalled();
+    await handler.handle(makeEvent(), makeCtx());
+    expect(session.commitActiveToolsCacheKey).toHaveBeenCalled();
   });
 
-  it("skips setActiveTools when cache key is unchanged", async () => {
-    const session = makeSession({
-      shouldUpdateActiveTools: vi.fn().mockReturnValue(false),
+  it("skips setActive when cache key is unchanged", async () => {
+    const { handler, session, toolRegistry } = makeHandler({
+      session: { shouldUpdateActiveTools: vi.fn().mockReturnValue(false) },
+      toolRegistry: {
+        getAll: vi.fn().mockReturnValue([{ name: "read" }]),
+      },
     });
-    const deps = makeDeps({
-      session,
-      getAllTools: vi.fn().mockReturnValue([{ name: "read" }]),
-    });
-    await handleBeforeAgentStart(deps, makeEvent(), makeCtx());
-    expect(deps.setActiveTools).not.toHaveBeenCalled();
+    await handler.handle(makeEvent(), makeCtx());
+    expect(toolRegistry.setActive).not.toHaveBeenCalled();
     expect(session.commitActiveToolsCacheKey).not.toHaveBeenCalled();
   });
 
   it("returns empty object when prompt cache is unchanged", async () => {
-    const session = makeSession({
-      shouldUpdatePromptState: vi.fn().mockReturnValue(false),
+    const { handler, session } = makeHandler({
+      session: { shouldUpdatePromptState: vi.fn().mockReturnValue(false) },
     });
-    const deps = makeDeps({
-      session,
-      getAllTools: vi.fn().mockReturnValue([]),
-    });
-    const result = await handleBeforeAgentStart(deps, makeEvent(), makeCtx());
+    const result = await handler.handle(makeEvent(), makeCtx());
     expect(result).toEqual({});
     expect(session.commitPromptStateCacheKey).not.toHaveBeenCalled();
   });
 
   it("commits prompt-state cache key and processes prompt when cache is new", async () => {
-    const deps = makeDeps({
-      getAllTools: vi.fn().mockReturnValue([]),
-    });
-    await handleBeforeAgentStart(deps, makeEvent(), makeCtx());
-    expect(deps.session.commitPromptStateCacheKey).toHaveBeenCalled();
+    const { handler, session } = makeHandler();
+    await handler.handle(makeEvent(), makeCtx());
+    expect(session.commitPromptStateCacheKey).toHaveBeenCalled();
   });
 
   it("stores resolved skill entries on the session", async () => {
-    const deps = makeDeps({
-      getAllTools: vi.fn().mockReturnValue([]),
-    });
-    await handleBeforeAgentStart(deps, makeEvent(), makeCtx());
-    expect(deps.session.setActiveSkillEntries).toHaveBeenCalledWith(
+    const { handler, session } = makeHandler();
+    await handler.handle(makeEvent(), makeCtx());
+    expect(session.setActiveSkillEntries).toHaveBeenCalledWith(
       expect.any(Array),
     );
   });
 
   it("returns modified systemPrompt when prompt changes", async () => {
     const systemPrompt = `You are an assistant.\n\nAvailable tools:\n- read\n- write\n`;
-    const deps = makeDeps({
-      getAllTools: vi.fn().mockReturnValue([]),
-    });
-    const result = await handleBeforeAgentStart(
-      deps,
-      makeEvent(systemPrompt),
-      makeCtx(),
-    );
+    const { handler } = makeHandler();
+    const result = await handler.handle(makeEvent(systemPrompt), makeCtx());
     expect(result).toHaveProperty("systemPrompt");
   });
 
   it("returns empty object when systemPrompt is unchanged", async () => {
     const prompt = "No tools section here.";
-    const deps = makeDeps({
-      getAllTools: vi.fn().mockReturnValue([]),
-    });
-    const result = await handleBeforeAgentStart(
-      deps,
-      makeEvent(prompt),
-      makeCtx(),
-    );
+    const { handler } = makeHandler();
+    const result = await handler.handle(makeEvent(prompt), makeCtx());
     expect(result).toEqual({});
   });
 });
