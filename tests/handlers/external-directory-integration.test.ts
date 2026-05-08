@@ -249,3 +249,102 @@ describe("external_directory path scope", () => {
     expect(result).toEqual({});
   });
 });
+
+// ── Policy state matrix: allow and deny ────────────────────────────────────
+
+describe("external_directory policy state — allow", () => {
+  it("falls through to tool gate when external_directory is allow", async () => {
+    const { handler } = makeHandler({
+      session: { checkPermission: makeCheckPermission("allow") },
+    });
+    const event = makeToolCallEvent("read", { path: EXTERNAL_PATH });
+    const result = await handler.handleToolCall(event, makeCtx());
+    expect(result).toEqual({});
+  });
+
+  it("emits decision event with policy_allow on external_directory surface", async () => {
+    const { handler, events } = makeHandler({
+      session: { checkPermission: makeCheckPermission("allow") },
+    });
+    const event = makeToolCallEvent("read", { path: EXTERNAL_PATH });
+    await handler.handleToolCall(event, makeCtx());
+    const decisions = getDecisionEvents(events);
+    const extDirDecision = decisions.find(
+      (d) => d.surface === "external_directory",
+    );
+    expect(extDirDecision).toMatchObject({
+      surface: "external_directory",
+      result: "allow",
+      resolution: "policy_allow",
+    });
+  });
+
+  it("does not write a block review-log entry when external_directory is allow", async () => {
+    const { handler, session } = makeHandler({
+      session: { checkPermission: makeCheckPermission("allow") },
+    });
+    const event = makeToolCallEvent("read", { path: EXTERNAL_PATH });
+    await handler.handleToolCall(event, makeCtx());
+    const reviewCalls = (session.logger.review as ReturnType<typeof vi.fn>).mock
+      .calls;
+    const blockEntries = reviewCalls.filter(
+      ([eventName]: [string]) => eventName === "permission_request.blocked",
+    );
+    expect(blockEntries).toHaveLength(0);
+  });
+});
+
+describe("external_directory policy state — deny", () => {
+  it("blocks with reason containing the external path", async () => {
+    const { handler } = makeHandler({
+      session: { checkPermission: makeCheckPermission("deny") },
+    });
+    const event = makeToolCallEvent("read", { path: EXTERNAL_PATH });
+    const result = await handler.handleToolCall(event, makeCtx());
+    expect(result.block).toBe(true);
+    expect(result.reason).toContain(EXTERNAL_PATH);
+  });
+
+  it("block reason contains the hard-stop hint", async () => {
+    const { handler } = makeHandler({
+      session: { checkPermission: makeCheckPermission("deny") },
+    });
+    const event = makeToolCallEvent("read", { path: EXTERNAL_PATH });
+    const result = await handler.handleToolCall(event, makeCtx());
+    expect(result.reason).toContain("Hard stop");
+  });
+
+  it("writes review-log entry with resolution policy_denied", async () => {
+    const { handler, session } = makeHandler({
+      session: { checkPermission: makeCheckPermission("deny") },
+    });
+    const event = makeToolCallEvent("read", { path: EXTERNAL_PATH });
+    await handler.handleToolCall(event, makeCtx());
+    const reviewCalls = (session.logger.review as ReturnType<typeof vi.fn>).mock
+      .calls;
+    const blockEntries = reviewCalls.filter(
+      ([eventName]: [string]) => eventName === "permission_request.blocked",
+    );
+    expect(blockEntries.length).toBeGreaterThanOrEqual(1);
+    expect(blockEntries[0][1]).toMatchObject({
+      resolution: "policy_denied",
+    });
+  });
+
+  it("emits decision event with policy_deny on external_directory surface", async () => {
+    const { handler, events } = makeHandler({
+      session: { checkPermission: makeCheckPermission("deny") },
+    });
+    const event = makeToolCallEvent("read", { path: EXTERNAL_PATH });
+    await handler.handleToolCall(event, makeCtx());
+    const decisions = getDecisionEvents(events);
+    const extDirDecision = decisions.find(
+      (d) => d.surface === "external_directory",
+    );
+    expect(extDirDecision).toMatchObject({
+      surface: "external_directory",
+      result: "deny",
+      resolution: "policy_deny",
+    });
+  });
+});
