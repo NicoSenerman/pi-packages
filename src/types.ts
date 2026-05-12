@@ -94,6 +94,19 @@ export interface AgentRecord {
   lifetimeUsage: LifetimeUsage;
   /** Number of times this agent's session has compacted. Initialized to 0 at spawn. */
   compactionCount: number;
+  /** Resolved spawn params, captured for UI display. Fixed at spawn time. */
+  invocation?: AgentInvocation;
+}
+
+export interface AgentInvocation {
+  /** Short display name, e.g. "haiku" — only set when different from parent. */
+  modelName?: string;
+  thinking?: ThinkingLevel;
+  maxTurns?: number;
+  isolated?: boolean;
+  inheritContext?: boolean;
+  runInBackground?: boolean;
+  isolation?: IsolationMode;
 }
 
 /** Details attached to custom notification messages for visual rendering. */

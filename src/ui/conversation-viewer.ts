@@ -11,11 +11,13 @@ import { extractText } from "../context.js";
 import type { AgentRecord } from "../types.js";
 import { getLifetimeTotal, getSessionContextPercent } from "../usage.js";
 import type { Theme } from "./agent-widget.js";
-import { type AgentActivity, describeActivity, formatDuration, formatSessionTokens, getDisplayName, getPromptModeLabel } from "./agent-widget.js";
+import { type AgentActivity, buildInvocationTags, describeActivity, formatDuration, formatSessionTokens, getDisplayName, getPromptModeLabel } from "./agent-widget.js";
 
-/** Lines consumed by chrome: top border + header + header sep + footer sep + footer + bottom border. */
-const CHROME_LINES = 6;
+/** Base lines consumed by chrome: top border + header + header sep + footer sep + footer + bottom border. */
+const CHROME_LINES_BASE = 6;
 const MIN_VIEWPORT = 3;
+/** Height ceiling shared by the overlay's `maxHeight` and the viewer's internal viewport cap. */
+export const VIEWPORT_HEIGHT_PCT = 70;
 
 export class ConversationViewer implements Component {
   private scrollOffset = 0;
@@ -55,10 +57,10 @@ export class ConversationViewer implements Component {
     } else if (matchesKey(data, "down") || matchesKey(data, "j")) {
       this.scrollOffset = Math.min(maxScroll, this.scrollOffset + 1);
       this.autoScroll = this.scrollOffset >= maxScroll;
-    } else if (matchesKey(data, "pageUp")) {
+    } else if (matchesKey(data, "pageUp") || matchesKey(data, "shift+up")) {
       this.scrollOffset = Math.max(0, this.scrollOffset - viewportHeight);
       this.autoScroll = false;
-    } else if (matchesKey(data, "pageDown")) {
+    } else if (matchesKey(data, "pageDown") || matchesKey(data, "shift+down")) {
       this.scrollOffset = Math.min(maxScroll, this.scrollOffset + viewportHeight);
       this.autoScroll = this.scrollOffset >= maxScroll;
     } else if (matchesKey(data, "home")) {
@@ -113,6 +115,8 @@ export class ConversationViewer implements Component {
     lines.push(row(
       `${statusIcon} ${th.bold(name)}${modeTag}  ${th.fg("muted", this.record.description)} ${th.fg("dim", "·")} ${th.fg("dim", headerParts.join(" · "))}`,
     ));
+    const invocationLine = this.invocationLine();
+    if (invocationLine) lines.push(row(invocationLine));
     lines.push(hrMid);
 
     // Content area — rebuild every render (live data, no cache needed)
@@ -137,7 +141,7 @@ export class ConversationViewer implements Component {
       ? "100%"
       : `${Math.round(((visibleStart + viewportHeight) / contentLines.length) * 100)}%`;
     const footerLeft = th.fg("dim", `${contentLines.length} lines · ${scrollPct}`);
-    const footerRight = th.fg("dim", "↑↓ scroll · PgUp/PgDn · Esc close");
+    const footerRight = th.fg("dim", "↑↓ scroll · PgUp/PgDn or Shift+↑↓ · Esc close");
     const footerGap = Math.max(1, innerW - visibleWidth(footerLeft) - visibleWidth(footerRight));
     lines.push(row(footerLeft + " ".repeat(footerGap) + footerRight));
     lines.push(hrBot);
@@ -158,7 +162,21 @@ export class ConversationViewer implements Component {
   // ---- Private ----
 
   private viewportHeight(): number {
-    return Math.max(MIN_VIEWPORT, this.tui.terminal.rows - CHROME_LINES);
+    // Cap mirrors the overlay's maxHeight — otherwise the viewer would render
+    // more lines than the overlay shows and clip the footer.
+    const maxRows = Math.floor((this.tui.terminal.rows * VIEWPORT_HEIGHT_PCT) / 100);
+    return Math.max(MIN_VIEWPORT, maxRows - this.chromeLines());
+  }
+
+  private chromeLines(): number {
+    return CHROME_LINES_BASE + (this.invocationLine() ? 1 : 0);
+  }
+
+  private invocationLine(): string | undefined {
+    const { modelName, tags } = buildInvocationTags(this.record.invocation);
+    const parts = modelName ? [modelName, ...tags] : tags;
+    if (parts.length === 0) return undefined;
+    return this.theme.fg("dim", `  ↳ ${parts.join(" · ")}`);
   }
 
   private buildContentLines(width: number): string[] {

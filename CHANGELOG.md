@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Resolved spawn args are now shown in the dedicated conversation viewer** ([#62](https://github.com/tintinweb/pi-subagents/issues/62)). Open `/subagent` → Running Agents → select an agent: a second header row displays the effective invocation — model override (when different from parent), `thinking: <level>`, `isolated`, `worktree`, `inherit context`, `background`, and `max turns: N`. Tags appear when the resolved value is notable (e.g. `isolated: true`), not just when the caller explicitly set it; `max turns` is the one exception and shows only when explicitly configured. Lets you verify the parent agent honored your spawn instructions without scrolling back through the chat. Snapshot stored on the new `AgentRecord.invocation` field. The same tag set is also surfaced on the `Agent` tool-call result render (which previously showed a narrower subset).
+- **`Shift+↑` / `Shift+↓` scroll a full page in the conversation viewer** — same behavior as `PgUp` / `PgDn`. Note: some terminal emulators intercept Shift+arrows for text selection or tab switching, in which case `PgUp`/`PgDn` remain available.
+
+### Changed
+- **Conversation viewer no longer fills the full screen.** The overlay is now capped at 70% of terminal height (90% width unchanged), and the viewer's internal viewport mirrors that cap so the footer/scroll indicator can't be clipped.
+
 ## [0.7.1] - 2026-05-07
 
 > **Heads-up — behavior change:**
