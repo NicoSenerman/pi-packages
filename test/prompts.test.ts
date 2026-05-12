@@ -168,7 +168,12 @@ describe("buildAgentPrompt", () => {
       runInBackground: false,
       isolated: false,
     };
-    const prompt = buildAgentPrompt(config, "/workspace", env, "SECRET parent prompt content");
+    const prompt = buildAgentPrompt(
+      config,
+      "/workspace",
+      env,
+      "SECRET parent prompt content",
+    );
     expect(prompt).toContain("You are a standalone agent.");
     expect(prompt).not.toContain("SECRET parent prompt content");
     expect(prompt).not.toContain("<sub_agent_context>");
@@ -176,7 +181,12 @@ describe("buildAgentPrompt", () => {
 
   it("append mode bridge contains tool reminders", () => {
     const config = getDefaultConfig("general-purpose");
-    const prompt = buildAgentPrompt(config, "/workspace", env, "Parent prompt.");
+    const prompt = buildAgentPrompt(
+      config,
+      "/workspace",
+      env,
+      "Parent prompt.",
+    );
     expect(prompt).toContain("Use the read tool instead of cat");
     expect(prompt).toContain("Use the edit tool instead of sed");
     expect(prompt).toContain("Use the grep tool instead of");
@@ -216,8 +226,16 @@ describe("buildAgentPrompt", () => {
       runInBackground: false,
       isolated: false,
     };
-    const extras = { memoryBlock: "# Agent Memory\nYou have persistent memory at /tmp/mem/" };
-    const prompt = buildAgentPrompt(config, "/workspace", env, undefined, extras);
+    const extras = {
+      memoryBlock: "# Agent Memory\nYou have persistent memory at /tmp/mem/",
+    };
+    const prompt = buildAgentPrompt(
+      config,
+      "/workspace",
+      env,
+      undefined,
+      extras,
+    );
     expect(prompt).toContain("You are a memory agent.");
     expect(prompt).toContain("Agent Memory");
     expect(prompt).toContain("persistent memory");
@@ -237,7 +255,13 @@ describe("buildAgentPrompt", () => {
       isolated: false,
     };
     const extras = { memoryBlock: "# Agent Memory\nPersistent memory here." };
-    const prompt = buildAgentPrompt(config, "/workspace", env, "Parent prompt.", extras);
+    const prompt = buildAgentPrompt(
+      config,
+      "/workspace",
+      env,
+      "Parent prompt.",
+      extras,
+    );
     expect(prompt).toContain("<sub_agent_context>");
     expect(prompt).toContain("Agent Memory");
     expect(prompt).toContain("Custom instructions.");
@@ -262,7 +286,13 @@ describe("buildAgentPrompt", () => {
         { name: "error-handling", content: "Handle errors gracefully." },
       ],
     };
-    const prompt = buildAgentPrompt(config, "/workspace", env, undefined, extras);
+    const prompt = buildAgentPrompt(
+      config,
+      "/workspace",
+      env,
+      undefined,
+      extras,
+    );
     expect(prompt).toContain("Preloaded Skill: api-conventions");
     expect(prompt).toContain("Use REST endpoints.");
     expect(prompt).toContain("Preloaded Skill: error-handling");
@@ -286,7 +316,13 @@ describe("buildAgentPrompt", () => {
       memoryBlock: "# Memory\nRemember this.",
       skillBlocks: [{ name: "skill1", content: "Skill content." }],
     };
-    const prompt = buildAgentPrompt(config, "/workspace", env, undefined, extras);
+    const prompt = buildAgentPrompt(
+      config,
+      "/workspace",
+      env,
+      undefined,
+      extras,
+    );
     expect(prompt).toContain("# Memory");
     expect(prompt).toContain("Preloaded Skill: skill1");
   });
@@ -307,5 +343,113 @@ describe("buildAgentPrompt", () => {
     const prompt = buildAgentPrompt(config, "/workspace", env);
     expect(prompt).not.toContain("Agent Memory");
     expect(prompt).not.toContain("Preloaded Skill");
+  });
+
+  // Patch 3 (RepOne #443): inject <active_agent name="..."/> tag so downstream
+  // extensions (e.g. @gotgenes/pi-permission-system) can resolve per-agent
+  // policy by parsing the child's system prompt.
+  describe("active_agent tag injection", () => {
+    it("prepends <active_agent name=...> tag in replace mode", () => {
+      const config: AgentConfig = {
+        name: "Explore",
+        description: "Explore",
+        builtinToolNames: [],
+        extensions: true,
+        skills: true,
+        systemPrompt: "You are an explorer.",
+        promptMode: "replace",
+        inheritContext: false,
+        runInBackground: false,
+        isolated: false,
+      };
+      const prompt = buildAgentPrompt(config, "/workspace", env);
+      expect(prompt.startsWith('<active_agent name="Explore"/>\n\n')).toBe(
+        true,
+      );
+    });
+
+    it("prepends <active_agent name=...> tag in append mode", () => {
+      const config: AgentConfig = {
+        name: "general-purpose",
+        description: "Twin",
+        builtinToolNames: [],
+        extensions: true,
+        skills: true,
+        systemPrompt: "",
+        promptMode: "append",
+        inheritContext: false,
+        runInBackground: false,
+        isolated: false,
+      };
+      const prompt = buildAgentPrompt(
+        config,
+        "/workspace",
+        env,
+        "Parent prompt content.",
+      );
+      expect(
+        prompt.startsWith('<active_agent name="general-purpose"/>\n\n'),
+      ).toBe(true);
+    });
+
+    it("uses agent name verbatim in the tag (no escaping or normalization)", () => {
+      const config: AgentConfig = {
+        name: "my-custom-agent",
+        description: "Custom",
+        builtinToolNames: [],
+        extensions: true,
+        skills: true,
+        systemPrompt: "You are custom.",
+        promptMode: "replace",
+        inheritContext: false,
+        runInBackground: false,
+        isolated: false,
+      };
+      const prompt = buildAgentPrompt(config, "/workspace", env);
+      expect(prompt).toContain('<active_agent name="my-custom-agent"/>');
+    });
+
+    it("active_agent tag appears before envBlock in both modes", () => {
+      const replaceConfig: AgentConfig = {
+        name: "agent-a",
+        description: "Replace",
+        builtinToolNames: [],
+        extensions: true,
+        skills: true,
+        systemPrompt: "Replace agent.",
+        promptMode: "replace",
+        inheritContext: false,
+        runInBackground: false,
+        isolated: false,
+      };
+      const replacePrompt = buildAgentPrompt(replaceConfig, "/workspace", env);
+      const tagIdx = replacePrompt.indexOf('<active_agent name="agent-a"/>');
+      const envIdx = replacePrompt.indexOf("# Environment");
+      expect(tagIdx).toBe(0);
+      expect(envIdx).toBeGreaterThan(tagIdx);
+
+      const appendConfig: AgentConfig = {
+        name: "agent-b",
+        description: "Append",
+        builtinToolNames: [],
+        extensions: true,
+        skills: true,
+        systemPrompt: "",
+        promptMode: "append",
+        inheritContext: false,
+        runInBackground: false,
+        isolated: false,
+      };
+      const appendPrompt = buildAgentPrompt(
+        appendConfig,
+        "/workspace",
+        env,
+        "Parent.",
+      );
+      const tagIdxB = appendPrompt.indexOf('<active_agent name="agent-b"/>');
+      const envIdxB = appendPrompt.indexOf("# Environment");
+      expect(tagIdxB).toBe(0);
+      expect(envIdxB).toBeGreaterThan(tagIdxB);
+    });
   });
 });
