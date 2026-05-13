@@ -84,6 +84,29 @@ No formatters run until you declare `chains` — this avoids surprises from a de
 
 For everything else — formatter chains and fallback groups, wildcard chains, built-in `treefmt` and `treefmt-nix` support, format scope, shell mutation coverage, custom mutation tools, the event-bus channel, turn-end steering notifications, and detailed failure output — see [docs/configuration.md](docs/configuration.md).
 
+## Configuration
+
+Config files live at two levels, merged with project overriding global:
+
+1. global: `~/.pi/agent/extensions/pi-autoformat/config.json`
+2. project: `.pi/extensions/pi-autoformat/config.json`
+
+The only required fields are the `formatters` you declare and the `chains` that map file extensions to them. Everything else is optional.
+
+### Key settings
+
+- **`formatters`**: named formatter definitions, each with a `command` array.
+- **`chains`**: maps file extensions (e.g. `".ts"`) to an ordered list of formatter names to run.
+- **`formatScope`**: boundary for which touched files are eligible for formatting.
+  - `"repoRoot"` (default): git root, falling back to cwd when not inside a repo.
+  - `"cwd"`: strict cwd only.
+  - `["packages/a", "/abs/path"]`: explicit roots, resolved relative to cwd.
+- **`commandTimeoutMs`**: per-formatter timeout in milliseconds. Default: `10000`.
+- **`shellMutationDetection`**: opt-in detection of files mutated by `bash` commands (e.g. `sed -i`, `mv`, `cp`). Disabled by default.
+- **`hideSummariesInTui`**: set to `true` to suppress the success status footer in the interactive TUI.
+
+See [docs/configuration.md](docs/configuration.md) for the full reference, JSON Schema, and examples.
+
 ## Reporting
 
 By default, `pi-autoformat` reports concise success summaries and per-batch failure summaries.
