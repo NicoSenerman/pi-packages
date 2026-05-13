@@ -113,8 +113,9 @@ export async function waitForForwardedPermissionApproval(
       deps.logger,
       `Permission forwarding target session could not be resolved. ` +
         `Checked env vars: ${SUBAGENT_PARENT_SESSION_ENV_CANDIDATES.join(", ")}. ` +
-        `If you are using nicobailon/pi-subagents or HazAT/pi-interactive-subagents, ` +
-        `parent-session forwarding is not yet supported for those extensions (see issue #98).`,
+        `If you are using a subagent extension (nicobailon/pi-subagents, HazAT/pi-interactive-subagents, etc.), ` +
+        `ask its maintainer to set PI_SUBAGENT_PARENT_SESSION in the child process environment ` +
+        `(see https://github.com/gotgenes/pi-permission-system/issues/143).`,
     );
     return { approved: false, state: "denied" };
   }

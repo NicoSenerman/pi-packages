@@ -24,6 +24,9 @@ export const SUBAGENT_ENV_HINT_KEYS = [
 export const SUBAGENT_PARENT_SESSION_ENV_CANDIDATES: readonly string[] = [
   // pi-agent-router (original)
   "PI_AGENT_ROUTER_PARENT_SESSION_ID",
+  // Shared convention for CLI-based subagent extensions
+  // (nicobailon/pi-subagents, HazAT/pi-interactive-subagents, etc.)
+  "PI_SUBAGENT_PARENT_SESSION",
 ] as const;
 
 /** @deprecated Use SUBAGENT_PARENT_SESSION_ENV_CANDIDATES */

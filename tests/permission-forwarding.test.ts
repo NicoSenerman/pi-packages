@@ -17,6 +17,12 @@ describe("SUBAGENT_PARENT_SESSION_ENV_CANDIDATES", () => {
     );
   });
 
+  test("contains PI_SUBAGENT_PARENT_SESSION for CLI-based subagent extensions", () => {
+    expect(SUBAGENT_PARENT_SESSION_ENV_CANDIDATES).toContain(
+      "PI_SUBAGENT_PARENT_SESSION",
+    );
+  });
+
   test("deprecated SUBAGENT_PARENT_SESSION_ENV_KEY equals the first candidate", () => {
     expect(SUBAGENT_PARENT_SESSION_ENV_KEY).toBe(
       SUBAGENT_PARENT_SESSION_ENV_CANDIDATES[0],
@@ -80,33 +86,31 @@ describe("resolvePermissionForwardingTargetSessionId", () => {
     ).toBe("parent-session-abc");
   });
 
-  test("isSubagent=true, first candidate absent but second set returns second value", () => {
-    // Inject a second candidate at test-time to validate the iteration logic
-    // without waiting for a real extension to adopt the convention.
-    const originalCandidates = [...SUBAGENT_PARENT_SESSION_ENV_CANDIDATES];
-    // Mutate the array via index-assignment through a cast so we can test
-    // multi-candidate iteration without changing the exported constant type.
-    // This is test-only; production code never mutates the array.
-    (SUBAGENT_PARENT_SESSION_ENV_CANDIDATES as unknown as string[]).push(
-      "PI_SUBAGENT_PARENT_SESSION_ID_TEST_ONLY",
-    );
+  test("isSubagent=true, PI_SUBAGENT_PARENT_SESSION resolves when PI_AGENT_ROUTER_PARENT_SESSION_ID is absent", () => {
+    expect(
+      resolvePermissionForwardingTargetSessionId({
+        hasUI: false,
+        isSubagent: true,
+        currentSessionId: "session-xyz",
+        env: {
+          PI_SUBAGENT_PARENT_SESSION: "parent-from-convention",
+        },
+      }),
+    ).toBe("parent-from-convention");
+  });
 
-    try {
-      expect(
-        resolvePermissionForwardingTargetSessionId({
-          hasUI: false,
-          isSubagent: true,
-          currentSessionId: "session-xyz",
-          env: {
-            PI_SUBAGENT_PARENT_SESSION_ID_TEST_ONLY: "parent-from-second",
-          },
-        }),
-      ).toBe("parent-from-second");
-    } finally {
-      // Restore original array contents.
-      (SUBAGENT_PARENT_SESSION_ENV_CANDIDATES as unknown as string[]).length =
-        originalCandidates.length;
-    }
+  test("isSubagent=true, PI_AGENT_ROUTER_PARENT_SESSION_ID takes precedence over PI_SUBAGENT_PARENT_SESSION", () => {
+    expect(
+      resolvePermissionForwardingTargetSessionId({
+        hasUI: false,
+        isSubagent: true,
+        currentSessionId: "session-xyz",
+        env: {
+          PI_AGENT_ROUTER_PARENT_SESSION_ID: "parent-from-router",
+          PI_SUBAGENT_PARENT_SESSION: "parent-from-convention",
+        },
+      }),
+    ).toBe("parent-from-router");
   });
 
   test("isSubagent=true, candidate value is empty string returns null", () => {
