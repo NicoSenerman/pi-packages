@@ -64,8 +64,8 @@ export async function findReleasePR(args: FindReleasePRArgs): Promise<string> {
     const prs = await ghJson<ReleasePR[]>(
       "pr",
       "list",
-      "--search",
-      "release-please in:title",
+      "--label",
+      "autorelease: pending",
       "--json",
       "number,title,headRefName,url,mergeable,mergeStateStatus",
       "--limit",
