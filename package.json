@@ -3,6 +3,9 @@
   "version": "5.17.0",
   "description": "Permission enforcement extension for the Pi coding agent.",
   "type": "module",
+  "exports": {
+    ".": "./src/service.ts"
+  },
   "files": [
     "src",
     "tests",
