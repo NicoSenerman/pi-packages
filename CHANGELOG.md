@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.1](https://github.com/gotgenes/pi-github-tools/compare/v1.0.0...v1.0.1) (2026-05-14)
+
+
+### Bug Fixes
+
+* use git for non-gh commands and add configurable merge method ([0eaecad](https://github.com/gotgenes/pi-github-tools/commit/0eaecadedfab661d27634506648603f61823f2b1))
+
+
+### Miscellaneous Chores
+
+* add pi-autoformat config for biome ([685f010](https://github.com/gotgenes/pi-github-tools/commit/685f0105d480de2a255fee2c5612db50f9fe563e))
+
 ## 1.0.0 (2026-05-14)
 
 
