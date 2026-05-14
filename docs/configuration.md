@@ -47,12 +47,13 @@ Scalar fields (`debugLog`, `permissionReviewLog`, `yoloMode`) use simple replace
   // Flat permission policy
   "permission": {
     "*": "ask",                              // universal fallback
-    "read": {
+    "path": {
       "*": "allow",
       "*.env": "deny",
       "*.env.*": "deny",
       "*.env.example": "allow"
     },
+    "read": "allow",
     "write": "deny",
     "edit": "deny",
     "bash": { "git status": "allow", "git *": "ask" },
@@ -242,6 +243,42 @@ Skill name patterns use `*` and `?` wildcards (note: surface is `skill`, not `sk
   }
 }
 ```
+
+### `path` Surface
+
+Cross-cutting gate that applies to **all** file access — both Pi tools (`read`, `write`, `edit`, `find`, `grep`, `ls`) and bash commands.
+A `path` deny cannot be overridden by a per-tool allow.
+
+```jsonc
+{
+  "permission": {
+    "path": {
+      "*": "allow",
+      "*.env": "deny",
+      "*.env.*": "deny",
+      "*.env.example": "allow",
+      "~/.ssh/*": "deny"
+    }
+  }
+}
+```
+
+The path gate runs before the external-directory and tool gates.
+If it denies, the command is blocked without reaching subsequent gates — no wasted prompts.
+
+For bash commands, the extension extracts path-candidate tokens from the command (dot-files like `.env`, relative paths like `src/foo.ts`, and absolute paths) and evaluates each against the path rules.
+The most restrictive result across all tokens determines the outcome.
+
+Four orthogonal layers compose with most-restrictive-wins:
+
+|Layer|Question|Applies to|
+|---|---|---|
+|`path`|Is this specific path pattern allowed?|All tools + bash|
+|`external_directory`|Is accessing outside CWD ok?|All tools + bash|
+|Per-tool patterns|Is this path ok for this specific tool?|Individual tools|
+|`bash` command patterns|Is this command ok?|Bash only|
+
+Configs without a `path` key behave identically to before — the gate does not fire.
 
 ### `external_directory` Surface
 

@@ -41,7 +41,7 @@
     },
     "permission": {
       "description": "Flat permission policy. Each key is a surface name; values are a PermissionState string (catch-all) or a pattern→action map.",
-      "markdownDescription": "Flat permission policy.\n\nEach top-level key is a surface name:\n- `\"*\"` — universal fallback (replaces `defaultPolicy.tools` from the legacy format)\n- Tool names (`read`, `write`, `bash`, `mcp`, `skill`, `external_directory`, etc.)\n\nA **string** value is shorthand for `{ \"*\": action }` (surface-level catch-all).\nAn **object** value maps wildcard patterns to actions — last matching pattern wins.\n\nFor path-bearing tools (`read`, `write`, `edit`, `find`, `grep`, `ls`), patterns are matched against the file path from `input.path`. For example, `\"read\": { \"*\": \"allow\", \"*.env\": \"deny\" }` allows reads but denies `.env` files.\n\n**Merge order (lowest → highest precedence):** global → project → per-agent frontmatter.",
+      "markdownDescription": "Flat permission policy.\n\nEach top-level key is a surface name:\n- `\"*\"` — universal fallback (replaces `defaultPolicy.tools` from the legacy format)\n- Tool names (`read`, `write`, `bash`, `mcp`, `skill`, `external_directory`, `path`, etc.)\n\nA **string** value is shorthand for `{ \"*\": action }` (surface-level catch-all).\nAn **object** value maps wildcard patterns to actions — last matching pattern wins.\n\nFor path-bearing tools (`read`, `write`, `edit`, `find`, `grep`, `ls`), patterns are matched against the file path from `input.path`. For example, `\"read\": { \"*\": \"allow\", \"*.env\": \"deny\" }` allows reads but denies `.env` files.\n\nThe `path` surface is a cross-cutting gate that applies to **all** file access — both Pi tools and bash commands. A `path` deny cannot be overridden by a per-tool allow. Use it to protect sensitive files (`.env`, `~/.ssh/*`) from all tools at once.\n\n**Merge order (lowest → highest precedence):** global → project → per-agent frontmatter.",
       "type": "object",
       "propertyNames": {
         "description": "A surface name or the universal fallback key '*'.",
@@ -63,12 +63,13 @@
       "examples": [
         {
           "*": "ask",
-          "read": {
+          "path": {
             "*": "allow",
             "*.env": "deny",
             "*.env.*": "deny",
             "*.env.example": "allow"
           },
+          "read": "allow",
           "write": "deny",
           "edit": "deny",
           "bash": {

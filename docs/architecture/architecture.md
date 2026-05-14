@@ -36,7 +36,7 @@ type RuleOrigin =
   | "session";
 
 interface Rule {
-  /** The permission surface: "bash", "edit", "mcp", "skill", "external_directory", etc. */
+  /** The permission surface: "bash", "edit", "mcp", "skill", "external_directory", "path", etc. */
   surface: string;
   /** The match pattern: a command glob, tool name, file path, skill name, or "*". */
   pattern: string;
@@ -192,9 +192,11 @@ flowchart TD
         MCP["MCP target derivation<br/>→ candidate values[]"]
         Bash["Bash command extraction<br/>→ command string"]
         Skill["Skill name extraction<br/>→ skill name"]
+        PathGate["Cross-cutting path gate<br/>(all file access: tools + bash)<br/>→ most restrictive wins"]
         ExtDir["External directory detection<br/>(tree-sitter-bash AST for bash; direct path for tools)<br/>→ normalized path<br/>(Pi infrastructure reads auto-allowed before gate)"]
     end
 
+    PathGate --> E
     PreProcess --> E
 ```
 
@@ -208,6 +210,7 @@ flowchart TD
     "bash": { "*": "allow", "git *": "allow", "npm *": "allow", "rm *": "deny" },
     "mcp": { "*": "ask", "exa:*": "allow" },
     "skill": { "*": "ask", "librarian": "allow" },
+    "path": { "*": "allow", "*.env": "deny" },
     "external_directory": "ask"
   }
 }
@@ -459,7 +462,9 @@ src/
 │       ├── external-directory.ts describeExternalDirectoryGate — pure descriptor/bypass factory
 │       ├── external-directory-messages.ts External-directory prompt/deny/hint message formatting
 │       ├── bash-external-directory.ts describeBashExternalDirectoryGate — pure descriptor/bypass factory
-│       ├── bash-path-extractor.ts Tree-sitter-bash AST parser + external path extraction
+│       ├── bash-path.ts      describeBashPathGate — async descriptor/bypass factory for bash path rules
+│       ├── bash-path-extractor.ts Tree-sitter-bash AST parser + external/rule path extraction
+│       ├── path.ts           describePathGate — pure descriptor factory for cross-cutting path rules
 │       ├── tool.ts           describeToolGate — pure descriptor factory
 │       └── index.ts          Barrel re-exports
 │

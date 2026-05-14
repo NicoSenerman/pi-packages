@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type {
-  GateDescriptor,
-  GateResult,
-} from "../../../src/handlers/gates/descriptor";
+import type { GateDescriptor } from "../../../src/handlers/gates/descriptor";
 import { isGateDescriptor } from "../../../src/handlers/gates/descriptor";
 import { describePathGate } from "../../../src/handlers/gates/path";
 import type { ToolCallContext } from "../../../src/handlers/gates/types";

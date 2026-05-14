@@ -1,6 +1,5 @@
 import { getNonEmptyString, toRecord } from "../../common";
 import type { Rule } from "../../rule";
-import { evaluate } from "../../rule";
 import { deriveApprovalPattern } from "../../session-rules";
 import type { PermissionCheckResult } from "../../types";
 import { extractTokensForPathRules } from "./bash-path-extractor";

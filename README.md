@@ -34,7 +34,7 @@ pi install npm:@gotgenes/pi-permission-system
     {
       "permission": {
         "*": "allow",
-        "read": {
+        "path": {
           "*": "allow",
           "*.env": "deny",
           "*.env.*": "deny",
@@ -62,8 +62,13 @@ All permissions use one of three states:
 When the dialog prompts, you can approve once or approve a pattern for the rest of the session.
 See [docs/session-approvals.md](docs/session-approvals.md) for details on session-scoped rules and pattern suggestions.
 
-For path-bearing tools (`read`, `write`, `edit`, `find`, `grep`, `ls`), patterns in the permission map are matched against the file path from `input.path`.
-This lets you express rules like "allow reads but deny `.env` files" — see the example config above.
+The `path` surface is a cross-cutting gate that applies to **all** file access — both Pi tools and bash commands.
+A `path` deny cannot be overridden by a per-tool allow, making it the right place to protect sensitive files like `.env` or `~/.ssh/*` from every tool at once.
+
+For per-tool path patterns (`read`, `write`, `edit`, `find`, `grep`, `ls`), patterns are matched against the file path from `input.path`.
+This lets you express rules like "allow reads but deny `.env` files" at the individual tool level.
+
+Four layers compose with most-restrictive-wins: `path` (cross-cutting) → `external_directory` (CWD boundary) → per-tool patterns → `bash` command patterns.
 
 ## Configuration
 
