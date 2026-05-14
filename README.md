@@ -17,6 +17,7 @@ Permission enforcement extension for the [Pi](https://pi.mariozechner.at/) codin
 - **Enforces allow / ask / deny** at tool-call time with UI confirmation dialogs
 - **Controls bash commands** with wildcard pattern matching (`git *: ask`, `rm -rf *: deny`)
 - **Gates MCP and skill access** at server, tool, and skill-name granularity
+- **Protects sensitive file patterns** — cross-cutting `path` rules deny `.env`, `~/.ssh/*`, etc. across all tools and bash at once
 - **Guards external paths** — prompts before file tools or bash commands reach outside `cwd`
 - **Forwards prompts from subagents** — `ask` policies work even in non-UI execution contexts
 

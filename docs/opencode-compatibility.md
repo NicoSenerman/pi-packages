@@ -41,7 +41,8 @@ If your OpenCode config uses these features, the equivalent works in this extens
 |Area|OpenCode|This extension|
 |---|---|---|
 |Default fallback|`"*": "allow"` (permissive)|`"*": "ask"` (least privilege)|
-|`.env` file protection|Built-in `read` rules deny/ask `.env` files|No built-in rules; user configures with per-tool path patterns (see [porting guide](#porting-an-opencode-config))|
+|`.env` file protection|Built-in `read` rules deny/ask `.env` files|No built-in rules; user configures with the cross-cutting `path` surface or per-tool path patterns (see [porting guide](#porting-an-opencode-config))|
+|Cross-cutting `path` gate|No equivalent — `.env` protection is per-tool only|`path` surface denies/asks across all tools and bash at once; a `path` deny cannot be overridden by a per-tool allow|
 |OpenCode-only surfaces|`lsp`, `question`, `webfetch`, `websearch`, `todowrite`, `doom_loop`|Not applicable — Pi does not expose these tools or events|
 |File mutation surfaces|`edit` covers `edit`, `write`, `apply_patch`|Separate `write` and `edit` surfaces|
 |Search/discovery surfaces|`glob`, `grep`, `list`|`find`, `grep`, `ls` (Pi tool names)|
@@ -140,10 +141,10 @@ The result is broader coverage (paths detected in any command, not just a curate
     },
     "edit": {
       "*": "ask",
-      "src/**/*.ts": "allow"
+      "src/*.ts": "allow"
     },
     "external_directory": {
-      "~/projects/**": "allow"
+      "~/projects/*": "allow"
     }
   }
 }
@@ -178,8 +179,23 @@ The result is broader coverage (paths detected in any command, not just a curate
 2. **Split `edit`** into separate `write` and `edit` entries if you need different policies for create vs. modify.
    If not, set both to the same action.
 3. **Rename search surfaces**: `glob` → `find`, `list` → `ls`.
-4. **Replace `**`** with `*` in external_directory patterns — this extension's `*` already matches across path separators.
-5. **Add `.env` rules manually** if you relied on OpenCode's built-in protection:
+4. **Add `.env` rules manually** if you relied on OpenCode's built-in protection.
+   The `path` surface is the recommended approach — it covers all tools and bash in one rule:
+
+    ```jsonc
+    {
+      "permission": {
+        "path": {
+          "*": "allow",
+          "*.env": "deny",
+          "*.env.*": "deny",
+          "*.env.example": "allow"
+        }
+      }
+    }
+    ```
+
+   Alternatively, use per-tool patterns if you only need to protect specific tools (e.g., `read`):
 
     ```jsonc
     {
@@ -194,5 +210,5 @@ The result is broader coverage (paths detected in any command, not just a curate
     }
     ```
 
-6. **Remove OpenCode-only surfaces** (`lsp`, `question`, `webfetch`, `websearch`, `todowrite`, `doom_loop`) — they have no effect in this extension.
-7. **Add `mcp` rules** if you use MCP servers — OpenCode has no equivalent, so this is new configuration.
+5. **Remove OpenCode-only surfaces** (`lsp`, `question`, `webfetch`, `websearch`, `todowrite`, `doom_loop`) — they have no effect in this extension.
+6. **Add `mcp` rules** if you use MCP servers — OpenCode has no equivalent, so this is new configuration.

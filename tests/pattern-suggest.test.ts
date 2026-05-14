@@ -121,6 +121,21 @@ describe("suggestSessionPattern", () => {
     });
   });
 
+  describe("path surface", () => {
+    it("returns directory-scoped pattern for a file path", () => {
+      const result = suggestSessionPattern("path", "src/.env");
+      expect(result).toMatchObject({
+        surface: "path",
+        pattern: "src/*",
+      });
+    });
+
+    it("label includes path pattern", () => {
+      const result = suggestSessionPattern("path", "src/.env");
+      expect(result.label).toBe('Yes, allow path "src/*" for this session');
+    });
+  });
+
   describe("path-bearing tool surfaces", () => {
     it("returns directory-scoped pattern for read with a file path", () => {
       const result = suggestSessionPattern("read", "/outside/project/file.ts");

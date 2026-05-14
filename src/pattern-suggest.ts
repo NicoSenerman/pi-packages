@@ -69,6 +69,8 @@ function buildLabel(pattern: string, surface: string): string {
       return `Yes, allow skill "${pattern}" for this session`;
     case "external_directory":
       return `Yes, allow access to external directory "${pattern}" for this session`;
+    case "path":
+      return `Yes, allow path "${pattern}" for this session`;
     default:
       // Path-bearing tools with a specific path pattern show the pattern.
       if (PATH_BEARING_TOOLS.has(surface) && pattern !== "*") {
@@ -102,6 +104,9 @@ export function suggestSessionPattern(
       pattern = value;
       break;
     case "external_directory":
+      pattern = deriveApprovalPattern(value);
+      break;
+    case "path":
       pattern = deriveApprovalPattern(value);
       break;
     default:

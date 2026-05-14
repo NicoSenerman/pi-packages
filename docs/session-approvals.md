@@ -21,7 +21,9 @@ The suggested pattern is surface-specific:
 |mcp (qualified)|`exa:search`|`exa:*`|
 |mcp (munged)|`exa_search`|`exa_*`|
 |skill|`librarian`|`librarian`|
-|tool (read, write, …)|`read`|`*`|
+|path|`src/.env`|`src/*`|
+|tool with path (read, write, …)|`read` for `src/foo.ts`|`src/*`|
+|tool catch-all|`read` (no extractable path)|`*`|
 |external_directory|`/other/project/src/foo.ts`|`/other/project/src/*`|
 
 ## Bash Arity Table
