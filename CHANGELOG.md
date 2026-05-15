@@ -1,5 +1,23 @@
 # Changelog
 
+## [4.0.5](https://github.com/gotgenes/pi-autoformat/compare/v4.0.4...v4.0.5) (2026-05-15)
+
+
+### Bug Fixes
+
+* expand tilde in file paths before resolving against cwd ([2697ad3](https://github.com/gotgenes/pi-autoformat/commit/2697ad30a943760b581fcc545077c7d04d986351))
+
+
+### Documentation
+
+* add Configuration section to README ([f22f9c8](https://github.com/gotgenes/pi-autoformat/commit/f22f9c847f5db3bd64418d213fea1501e03fa9de))
+
+
+### Miscellaneous Chores
+
+* format .pi/settings.json ([a5daa84](https://github.com/gotgenes/pi-autoformat/commit/a5daa848d7ca374d6c57bed7492d8cf38ed77cd2))
+* upgrade pnpm to 11.1.1 and update GitHub Actions ([79e5b78](https://github.com/gotgenes/pi-autoformat/commit/79e5b78839b56791fed99ed98720ced4ce9518e2))
+
 ## [4.0.4](https://github.com/gotgenes/pi-autoformat/compare/v4.0.3...v4.0.4) (2026-05-08)
 
 
