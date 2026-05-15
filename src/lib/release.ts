@@ -64,7 +64,7 @@ export async function findReleasePR(args: FindReleasePRArgs): Promise<string> {
       );
     }
 
-    const prs = await ghJson<ReleasePR[]>(
+    const prs = await ghJson<ReleasePR[]>([
       "pr",
       "list",
       "--label",
@@ -73,7 +73,7 @@ export async function findReleasePR(args: FindReleasePRArgs): Promise<string> {
       "number,title,headRefName,url,mergeable,mergeStateStatus",
       "--limit",
       "5",
-    );
+    ]);
 
     if (prs.length > 0) {
       const pr = prs[0];
@@ -109,13 +109,13 @@ export async function mergeReleasePR(
 ): Promise<ToolResult> {
   const prNumber = args.prNumber;
 
-  const pr = await ghJson<PRState>(
+  const pr = await ghJson<PRState>([
     "pr",
     "view",
     String(prNumber),
     "--json",
     "number,title,mergeable,mergeStateStatus",
-  );
+  ]);
 
   if (pr.mergeable !== "MERGEABLE" || pr.mergeStateStatus !== "CLEAN") {
     return {
@@ -130,11 +130,11 @@ export async function mergeReleasePR(
   }
 
   const method = args.method ?? "merge";
-  await gh("pr", "merge", String(prNumber), `--${method}`);
+  await gh(["pr", "merge", String(prNumber), `--${method}`]);
 
-  await git("pull", "--ff-only");
+  await git(["pull", "--ff-only"]);
 
-  const headSha = await git("rev-parse", "HEAD");
+  const headSha = await git(["rev-parse", "HEAD"]);
 
   return {
     content: [
@@ -161,8 +161,8 @@ export async function watchRelease(args: WatchReleaseArgs): Promise<string> {
   let elapsed = 0;
 
   while (true) {
-    await git("fetch", "--tags");
-    const tagOutput = await git("tag", "--points-at", "HEAD");
+    await git(["fetch", "--tags"]);
+    const tagOutput = await git(["tag", "--points-at", "HEAD"]);
     const tags = tagOutput
       .split("\n")
       .map((t) => t.trim())
@@ -170,7 +170,7 @@ export async function watchRelease(args: WatchReleaseArgs): Promise<string> {
 
     if (tags.length > 0) {
       const tag = tags[tags.length - 1]; // most recent tag
-      const headSha = await git("rev-parse", "HEAD");
+      const headSha = await git(["rev-parse", "HEAD"]);
       return [
         `tag: ${tag}`,
         `version: ${tag.replace(/^v/, "")}`,

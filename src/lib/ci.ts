@@ -100,7 +100,7 @@ export async function findRun(args: FindRunArgs): Promise<string> {
       );
     }
 
-    const runs = await ghJson<RunSummary[]>(
+    const runs = await ghJson<RunSummary[]>([
       "run",
       "list",
       "--limit",
@@ -109,7 +109,7 @@ export async function findRun(args: FindRunArgs): Promise<string> {
       workflowFile,
       "--json",
       "databaseId,url,status,conclusion,headSha,displayTitle,name",
-    );
+    ]);
 
     if (runs.length > 0) {
       lastSeenRun = runs[0];
@@ -117,13 +117,13 @@ export async function findRun(args: FindRunArgs): Promise<string> {
 
     const matchingRun = runs.find((r) => r.headSha === expectedSha);
     if (matchingRun) {
-      const { jobs } = await ghJson<RunJobs>(
+      const { jobs } = await ghJson<RunJobs>([
         "run",
         "view",
         String(matchingRun.databaseId),
         "--json",
         "jobs",
-      );
+      ]);
       return formatFind(matchingRun, jobs);
     }
 
@@ -160,13 +160,13 @@ export async function watchRun(args: WatchRunArgs): Promise<string> {
   const progressLog: string[] = [];
 
   while (true) {
-    const run = await ghJson<WatchPoll>(
+    const run = await ghJson<WatchPoll>([
       "run",
       "view",
       String(runId),
       "--json",
       "status,conclusion,name,headSha,jobs",
-    );
+    ]);
 
     const progressLine = formatProgress(run.jobs, elapsed);
     progressLog.push(progressLine);
@@ -199,7 +199,7 @@ export async function listRuns(args: ListRunsArgs): Promise<string> {
   const workflowFile = `${args.workflow}.yml`;
   const limit = args.limit ?? 5;
 
-  const runs = await ghJson<RunSummary[]>(
+  const runs = await ghJson<RunSummary[]>([
     "run",
     "list",
     "--limit",
@@ -208,7 +208,7 @@ export async function listRuns(args: ListRunsArgs): Promise<string> {
     workflowFile,
     "--json",
     "databaseId,url,status,conclusion,headSha,name,displayTitle",
-  );
+  ]);
 
   if (runs.length === 0) {
     return `No runs found for ${workflowFile}`;

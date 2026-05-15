@@ -108,14 +108,17 @@ describe("mergeReleasePR", () => {
     expect(mockRunCommand).toHaveBeenNthCalledWith(2, {
       cmd: "gh",
       args: ["pr", "merge", "42", "--merge"],
+      signal: undefined,
     });
     expect(mockRunCommand).toHaveBeenNthCalledWith(3, {
       cmd: "git",
       args: ["pull", "--ff-only"],
+      signal: undefined,
     });
     expect(mockRunCommand).toHaveBeenNthCalledWith(4, {
       cmd: "git",
       args: ["rev-parse", "HEAD"],
+      signal: undefined,
     });
   });
 
@@ -125,6 +128,7 @@ describe("mergeReleasePR", () => {
     expect(mockRunCommand).toHaveBeenNthCalledWith(2, {
       cmd: "gh",
       args: ["pr", "merge", "42", "--squash"],
+      signal: undefined,
     });
   });
 
@@ -134,6 +138,7 @@ describe("mergeReleasePR", () => {
     expect(mockRunCommand).toHaveBeenNthCalledWith(2, {
       cmd: "gh",
       args: ["pr", "merge", "42", "--merge"],
+      signal: undefined,
     });
   });
 
@@ -178,14 +183,17 @@ describe("watchRelease", () => {
     expect(mockRunCommand).toHaveBeenNthCalledWith(1, {
       cmd: "git",
       args: ["fetch", "--tags"],
+      signal: undefined,
     });
     expect(mockRunCommand).toHaveBeenNthCalledWith(2, {
       cmd: "git",
       args: ["tag", "--points-at", "HEAD"],
+      signal: undefined,
     });
     expect(mockRunCommand).toHaveBeenNthCalledWith(3, {
       cmd: "git",
       args: ["rev-parse", "HEAD"],
+      signal: undefined,
     });
   });
 

@@ -26,11 +26,27 @@ describe("gh", () => {
       stderr: "",
       exitCode: 0,
     });
-    const result = await gh("run", "list");
+    const result = await gh(["run", "list"]);
     expect(result).toBe("some output");
     expect(mockRunCommand).toHaveBeenCalledWith({
       cmd: "gh",
       args: ["run", "list"],
+      signal: undefined,
+    });
+  });
+
+  it("forwards signal to runCommand", async () => {
+    mockRunCommand.mockResolvedValue({
+      stdout: "ok\n",
+      stderr: "",
+      exitCode: 0,
+    });
+    const controller = new AbortController();
+    await gh(["run", "list"], controller.signal);
+    expect(mockRunCommand).toHaveBeenCalledWith({
+      cmd: "gh",
+      args: ["run", "list"],
+      signal: controller.signal,
     });
   });
 
@@ -40,7 +56,7 @@ describe("gh", () => {
       stderr: "not found",
       exitCode: 1,
     });
-    await expect(gh("run", "view", "999")).rejects.toThrow(
+    await expect(gh(["run", "view", "999"])).rejects.toThrow(
       /gh run view 999 failed \(exit 1\)/,
     );
   });
@@ -53,8 +69,23 @@ describe("ghJson", () => {
       stderr: "",
       exitCode: 0,
     });
-    const result = await ghJson<{ id: number }>("issue", "view", "1");
+    const result = await ghJson<{ id: number }>(["issue", "view", "1"]);
     expect(result).toEqual({ id: 42 });
+  });
+
+  it("forwards signal to runCommand", async () => {
+    mockRunCommand.mockResolvedValue({
+      stdout: '{"id": 42}\n',
+      stderr: "",
+      exitCode: 0,
+    });
+    const controller = new AbortController();
+    await ghJson(["issue", "view", "1"], controller.signal);
+    expect(mockRunCommand).toHaveBeenCalledWith({
+      cmd: "gh",
+      args: ["issue", "view", "1"],
+      signal: controller.signal,
+    });
   });
 });
 
@@ -65,11 +96,27 @@ describe("git", () => {
       stderr: "",
       exitCode: 0,
     });
-    const result = await git("rev-parse", "HEAD");
+    const result = await git(["rev-parse", "HEAD"]);
     expect(result).toBe("abc1234");
     expect(mockRunCommand).toHaveBeenCalledWith({
       cmd: "git",
       args: ["rev-parse", "HEAD"],
+      signal: undefined,
+    });
+  });
+
+  it("forwards signal to runCommand", async () => {
+    mockRunCommand.mockResolvedValue({
+      stdout: "abc1234\n",
+      stderr: "",
+      exitCode: 0,
+    });
+    const controller = new AbortController();
+    await git(["rev-parse", "HEAD"], controller.signal);
+    expect(mockRunCommand).toHaveBeenCalledWith({
+      cmd: "git",
+      args: ["rev-parse", "HEAD"],
+      signal: controller.signal,
     });
   });
 
@@ -79,7 +126,7 @@ describe("git", () => {
       stderr: "fatal: not a git repository",
       exitCode: 128,
     });
-    await expect(git("rev-parse", "HEAD")).rejects.toThrow(
+    await expect(git(["rev-parse", "HEAD"])).rejects.toThrow(
       /git rev-parse HEAD failed \(exit 128\)/,
     );
   });

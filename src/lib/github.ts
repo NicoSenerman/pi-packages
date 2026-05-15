@@ -23,10 +23,14 @@ export function resetRepoCache(): void {
  * Run a `gh` CLI command and return stdout as a trimmed string.
  * Throws on non-zero exit.
  */
-export async function gh(...args: string[]): Promise<string> {
+export async function gh(
+  args: string[],
+  signal?: AbortSignal,
+): Promise<string> {
   const { stdout, stderr, exitCode } = await runCommand({
     cmd: "gh",
     args,
+    signal,
   });
   if (exitCode !== 0) {
     throw new Error(
@@ -40,10 +44,14 @@ export async function gh(...args: string[]): Promise<string> {
  * Run a `git` command and return stdout as a trimmed string.
  * Throws on non-zero exit.
  */
-export async function git(...args: string[]): Promise<string> {
+export async function git(
+  args: string[],
+  signal?: AbortSignal,
+): Promise<string> {
   const { stdout, stderr, exitCode } = await runCommand({
     cmd: "git",
     args,
+    signal,
   });
   if (exitCode !== 0) {
     throw new Error(
@@ -57,8 +65,11 @@ export async function git(...args: string[]): Promise<string> {
  * Run a `gh` CLI command and parse stdout as JSON.
  * Throws on non-zero exit or invalid JSON.
  */
-export async function ghJson<T>(...args: string[]): Promise<T> {
-  const text = await gh(...args);
+export async function ghJson<T>(
+  args: string[],
+  signal?: AbortSignal,
+): Promise<T> {
+  const text = await gh(args, signal);
   return JSON.parse(text) as T;
 }
 
@@ -76,19 +87,19 @@ export async function detectRepo(): Promise<RepoInfo> {
 
   // Try gh first
   try {
-    const result = await ghJson<{ owner: { login: string }; name: string }>(
+    const result = await ghJson<{ owner: { login: string }; name: string }>([
       "repo",
       "view",
       "--json",
       "owner,name",
-    );
+    ]);
     cachedRepo = { owner: result.owner.login, repo: result.name };
     return cachedRepo;
   } catch {
     // Fall back to git remote
   }
 
-  const remoteUrl = await git("remote", "get-url", "origin");
+  const remoteUrl = await git(["remote", "get-url", "origin"]);
   const match = remoteUrl.match(/github\.com[:/]([^/]+)\/([^/.]+)/);
   if (!match) {
     throw new Error("Could not detect GitHub repository from git remote");
