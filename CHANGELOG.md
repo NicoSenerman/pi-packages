@@ -1,5 +1,28 @@
 # Changelog
 
+## [2.0.0](https://github.com/gotgenes/pi-github-tools/compare/v1.0.2...v2.0.0) (2026-05-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* config directory has changed from   ~/.pi/agent/extensions/@gotgenes/pi-github-tools/config.json to   ~/.pi/agent/extensions/pi-github-tools/config.json Move your existing config file to the new location.
+
+### Bug Fixes
+
+* revert package.json author change ([f3c8225](https://github.com/gotgenes/pi-github-tools/commit/f3c82252b6d871cc12d0f11ac40d35d6d812b6e4))
+* use pi-github-tools (not scoped name) as config directory ([b850843](https://github.com/gotgenes/pi-github-tools/commit/b85084302aeec93a7082b2b34ad5335d17382dfe))
+
+
+### Documentation
+
+* add badges to README ([c8edf0d](https://github.com/gotgenes/pi-github-tools/commit/c8edf0d6549442bda4d23741471ba69a6e29baa9))
+* add pnpm badge to README ([83cfa93](https://github.com/gotgenes/pi-github-tools/commit/83cfa930cd6534d31468895941a4a371d7a55c47))
+
+
+### Miscellaneous Chores
+
+* update license copyright to Christopher D. Lasher ([17decb7](https://github.com/gotgenes/pi-github-tools/commit/17decb7766c2f28c2cb7c72bcda7aa5b8f0258b8))
+
 ## [1.0.2](https://github.com/gotgenes/pi-github-tools/compare/v1.0.1...v1.0.2) (2026-05-15)
 
 
