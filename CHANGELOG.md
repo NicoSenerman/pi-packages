@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.2](https://github.com/gotgenes/pi-github-tools/compare/v1.0.1...v1.0.2) (2026-05-15)
+
+
+### Bug Fixes
+
+* correct merge defaults and agentDir path ([ff1b1b5](https://github.com/gotgenes/pi-github-tools/commit/ff1b1b54640e4fe7449e73645a891f466bd2b9ed))
+* fetch remote tags before polling in watchRelease ([00acae4](https://github.com/gotgenes/pi-github-tools/commit/00acae48c3080c8a9b3158af1315b14a2259185d))
+
 ## [1.0.1](https://github.com/gotgenes/pi-github-tools/compare/v1.0.0...v1.0.1) (2026-05-14)
 
 
