@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import path from "node:path";
 
 import type { FormatScope } from "./format-scope.js";
@@ -93,11 +94,22 @@ function isToolResultPayload(value: unknown): value is ToolResultPayload {
   return typeof value === "object" && value !== null;
 }
 
-function normalizePath(cwd: string, filePath: string): string {
-  if (path.isAbsolute(filePath)) {
-    return path.normalize(filePath);
+function expandTilde(filePath: string): string {
+  if (filePath === "~") {
+    return homedir();
   }
-  return path.normalize(path.resolve(cwd, filePath));
+  if (filePath.startsWith("~/")) {
+    return path.join(homedir(), filePath.slice(2));
+  }
+  return filePath;
+}
+
+function normalizePath(cwd: string, filePath: string): string {
+  const expanded = expandTilde(filePath);
+  if (path.isAbsolute(expanded)) {
+    return path.normalize(expanded);
+  }
+  return path.normalize(path.resolve(cwd, expanded));
 }
 
 // ---------------------------------------------------------------------------

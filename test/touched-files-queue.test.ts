@@ -82,4 +82,28 @@ describe("TouchedFilesQueue", () => {
     queue.addPath("src/snapshot.ts");
     expect(queue.flush()).toEqual(["/repo/src/snapshot.ts"]);
   });
+
+  it("expands tilde paths to the home directory instead of joining with cwd", () => {
+    const queue = new TouchedFilesQueue("/repo");
+    const os = require("node:os");
+    const home = os.homedir();
+
+    queue.recordToolResult("write", {
+      path: "~/.pi/agent/extensions/pi-permission-system/config.json",
+    });
+
+    const flushed = queue.flush();
+    expect(flushed).toEqual([
+      `${home}/.pi/agent/extensions/pi-permission-system/config.json`,
+    ]);
+    // Must NOT contain the cwd prefix
+    expect(flushed[0]).not.toContain("/repo/");
+  });
+
+  it("expands bare tilde to the home directory", () => {
+    const queue = new TouchedFilesQueue("/repo");
+    const os = require("node:os");
+    queue.addPath("~");
+    expect(queue.flush()).toEqual([os.homedir()]);
+  });
 });

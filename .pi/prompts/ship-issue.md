@@ -21,10 +21,10 @@ Before pushing, make sure local `HEAD` is current with the remote:
 
 ## 3. Verify CI on the pushed commit
 
-- Run `gh run list --branch <branch> --limit 3` and find the run for the latest commit (`git rev-parse HEAD`).
-- If the latest run is `in_progress` or `queued`, wait (`sleep 15`) and re-check up to ~3 times.
-- If it lands `failure`, stop and report. Do not close the issue or merge anything.
-- If it lands `success`, continue.
+1. Use `ci_find` with the pushed SHA (`git rev-parse HEAD`) and workflow `ci` to locate the CI run.
+2. Use `ci_watch` with the returned `run_id` and workflow `ci` to wait for it to complete.
+3. If the run conclusion is `failure`, stop and report. Do not close the issue or merge anything.
+4. If it lands `success`, continue.
 
 ## 4. Close the issue
 
@@ -42,23 +42,16 @@ The comment should include:
 - A note flagging any breaking change (matches `feat!:` commits).
 - If the change unblocks or partially addresses other issues, mention them.
 
-Then:
-
-```bash
-gh issue close $1 --comment "<the summary above>"
-```
+Then use `issue_close` with issue number `$1` and the summary as the comment.
 
 ## 5. Merge release-please PR (if present)
 
-- `gh pr list --search "release-please" --state open` — find an open release PR for `main`.
-- If none exists, skip to step 6.
-- If one exists:
-  - `gh pr view <num> --json mergeable,mergeStateStatus,title` — confirm `MERGEABLE` and `CLEAN`.
-  - Note: release-please PRs typically have **no CI runs** because PRs created by the default `GITHUB_TOKEN` do not trigger workflows. This is expected; do not block on it.
-  - `gh pr merge <num> --rebase`.
-  - `git pull --ff-only` to pick up the release commit and any tag. If this pull fails, stop and report — same rules as step 1.
-
-If the release-please PR is in any state other than `CLEAN`/`MERGEABLE`, stop and report — let the user decide.
+1. Use `release_pr_find` to locate an open release-please PR.
+2. If none is found (timeout), skip to step 6.
+3. If one exists, use `release_pr_merge` with the PR number.
+   - Note: release-please PRs typically have **no CI runs** because PRs created by the default `GITHUB_TOKEN` do not trigger workflows. This is expected; do not block on it.
+   - If `release_pr_merge` returns an error (not mergeable), stop and report — let the user decide.
+4. Use `release_watch` to wait for the release tag to land on HEAD.
 
 ## 6. Final report
 
