@@ -47,25 +47,25 @@ This extension was designed with OpenCode's model as a reference (noted in `docs
 
 ### Divergences (verified from source)
 
-|Area|OpenCode|This extension|Notes|
-|---|---|---|---|
-|Default fallback|`"*": "allow"` (most surfaces)|`"*": "ask"` (least privilege)|OpenCode is permissive by default; this extension requires explicit opt-in|
-|`.env` file protection|Built-in `read: { "*.env": "ask", "*.env.*": "ask", "*.env.example": "allow" }`|No built-in `.env` rules|User must configure manually|
-|`?` wildcard|Supported (matches exactly one character)|Not supported (`?` is escaped as literal)|Only `*` works in this extension|
-|Trailing wildcard optionality|`"ls *"` matches bare `"ls"` (trailing `*` becomes optional)|`"ls *"` does NOT match bare `"ls"`|OpenCode's `Wildcard.match` special-cases patterns ending in `*`|
-|`doom_loop` surface|Active, defaults to `ask`|Deprecated and removed|Not a permission concern in Pi's architecture|
-|File mutation surfaces|`edit` covers `edit`, `write`, `apply_patch`|Separate `write` and `edit` surfaces|Pi has distinct tools per operation|
-|Search/discovery surfaces|`glob`, `grep`, `list` are gatable surfaces|`find`, `grep`, `ls` are the Pi tool names|Different tool names, same concept|
-|OpenCode-only surfaces|`lsp`, `question`, `webfetch`, `websearch`, `todowrite`, `plan_enter`, `plan_exit`|Not applicable|Pi does not expose these tools|
-|`mcp` surface|Not a documented permission surface|First-class surface with server/tool-level granularity|Pi-specific feature|
-|Top-level string shorthand|`"permission": "allow"` sets all surfaces at once|Not supported; `permission` must be an object|Use `"permission": { "*": "allow" }` instead|
-|External directory globs|Uses `**` for recursive matching in docs|Uses `*` (single wildcard matches across path separators)|Both `*` implementations match `/` in paths (dot-all regex flag)|
-|Bash arity table|Built-in `arity.ts` (~100 entries) extracts "human-understandable command" from tokens|No arity table; matches against full command string|Session approval patterns serve a similar role|
-|Per-agent config|`agent` key inside `opencode.json` or YAML frontmatter in `.md` files|YAML frontmatter in Pi agent definition `.md` files only|OpenCode supports both; this extension only uses frontmatter|
-|Config file paths|`~/.config/opencode/opencode.json` or `.opencode/config.json`|`~/.pi/agent/extensions/pi-permission-system/config.json` or `<cwd>/.pi/extensions/pi-permission-system/config.json`|Completely different directory conventions|
-|Subagent prompt forwarding|Not documented as explicit feature|`ask` policies work in non-UI subagent contexts via prompt forwarding|Pi-specific feature|
-|Pi infrastructure auto-allow|N/A|Read-only tools to Pi infra dirs bypass the external_directory gate|Pi-specific feature|
-|Permission review log|No equivalent documented|Writes decisions to `logs/pi-permission-system-permission-review.jsonl`|Auditability feature|
+| Area                          | OpenCode                                                                               | This extension                                                                                                       | Notes                                                                      |
+| ----------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Default fallback              | `"*": "allow"` (most surfaces)                                                         | `"*": "ask"` (least privilege)                                                                                       | OpenCode is permissive by default; this extension requires explicit opt-in |
+| `.env` file protection        | Built-in `read: { "*.env": "ask", "*.env.*": "ask", "*.env.example": "allow" }`        | No built-in `.env` rules                                                                                             | User must configure manually                                               |
+| `?` wildcard                  | Supported (matches exactly one character)                                              | Not supported (`?` is escaped as literal)                                                                            | Only `*` works in this extension                                           |
+| Trailing wildcard optionality | `"ls *"` matches bare `"ls"` (trailing `*` becomes optional)                           | `"ls *"` does NOT match bare `"ls"`                                                                                  | OpenCode's `Wildcard.match` special-cases patterns ending in `*`           |
+| `doom_loop` surface           | Active, defaults to `ask`                                                              | Deprecated and removed                                                                                               | Not a permission concern in Pi's architecture                              |
+| File mutation surfaces        | `edit` covers `edit`, `write`, `apply_patch`                                           | Separate `write` and `edit` surfaces                                                                                 | Pi has distinct tools per operation                                        |
+| Search/discovery surfaces     | `glob`, `grep`, `list` are gatable surfaces                                            | `find`, `grep`, `ls` are the Pi tool names                                                                           | Different tool names, same concept                                         |
+| OpenCode-only surfaces        | `lsp`, `question`, `webfetch`, `websearch`, `todowrite`, `plan_enter`, `plan_exit`     | Not applicable                                                                                                       | Pi does not expose these tools                                             |
+| `mcp` surface                 | Not a documented permission surface                                                    | First-class surface with server/tool-level granularity                                                               | Pi-specific feature                                                        |
+| Top-level string shorthand    | `"permission": "allow"` sets all surfaces at once                                      | Not supported; `permission` must be an object                                                                        | Use `"permission": { "*": "allow" }` instead                               |
+| External directory globs      | Uses `**` for recursive matching in docs                                               | Uses `*` (single wildcard matches across path separators)                                                            | Both `*` implementations match `/` in paths (dot-all regex flag)           |
+| Bash arity table              | Built-in `arity.ts` (~100 entries) extracts "human-understandable command" from tokens | No arity table; matches against full command string                                                                  | Session approval patterns serve a similar role                             |
+| Per-agent config              | `agent` key inside `opencode.json` or YAML frontmatter in `.md` files                  | YAML frontmatter in Pi agent definition `.md` files only                                                             | OpenCode supports both; this extension only uses frontmatter               |
+| Config file paths             | `~/.config/opencode/opencode.json` or `.opencode/config.json`                          | `~/.pi/agent/extensions/pi-permission-system/config.json` or `<cwd>/.pi/extensions/pi-permission-system/config.json` | Completely different directory conventions                                 |
+| Subagent prompt forwarding    | Not documented as explicit feature                                                     | `ask` policies work in non-UI subagent contexts via prompt forwarding                                                | Pi-specific feature                                                        |
+| Pi infrastructure auto-allow  | N/A                                                                                    | Read-only tools to Pi infra dirs bypass the external_directory gate                                                  | Pi-specific feature                                                        |
+| Permission review log         | No equivalent documented                                                               | Writes decisions to `logs/pi-permission-system-permission-review.jsonl`                                              | Auditability feature                                                       |
 
 ## Design Overview
 
@@ -112,12 +112,12 @@ Suggested single commit: `docs: document OpenCode compatibility (#106)`.
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|---|---|
-|Comparison becomes stale as OpenCode evolves|Note the reference point (OpenCode v1.1.x permission rework, source as of 2026-05) and link to upstream docs|
-|Could imply feature parity where it doesn't exist|Explicit divergence table with concrete differences|
-|Could this silently weaken a permission?|No — docs-only change, no runtime behavior affected|
-|Inaccurate claims about OpenCode behavior|All divergences verified from OpenCode source (`packages/opencode/src/permission/`, `src/util/wildcard.ts`, `src/config/permission.ts`)|
+| Risk                                              | Mitigation                                                                                                                              |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Comparison becomes stale as OpenCode evolves      | Note the reference point (OpenCode v1.1.x permission rework, source as of 2026-05) and link to upstream docs                            |
+| Could imply feature parity where it doesn't exist | Explicit divergence table with concrete differences                                                                                     |
+| Could this silently weaken a permission?          | No — docs-only change, no runtime behavior affected                                                                                     |
+| Inaccurate claims about OpenCode behavior         | All divergences verified from OpenCode source (`packages/opencode/src/permission/`, `src/util/wildcard.ts`, `src/config/permission.ts`) |
 
 ## Open Questions
 

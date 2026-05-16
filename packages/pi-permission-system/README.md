@@ -54,11 +54,11 @@ pi install npm:@gotgenes/pi-permission-system
 
 All permissions use one of three states:
 
-|State|Behavior|
-|---|---|
-|`allow`|Permits the action silently|
-|`deny`|Blocks the action with an error message|
-|`ask`|Prompts the user for confirmation via UI|
+| State   | Behavior                                 |
+| ------- | ---------------------------------------- |
+| `allow` | Permits the action silently              |
+| `deny`  | Blocks the action with an error message  |
+| `ask`   | Prompts the user for confirmation via UI |
 
 When the dialog prompts, you can approve once or approve a pattern for the rest of the session.
 See [docs/session-approvals.md](docs/session-approvals.md) for details on session-scoped rules and pattern suggestions.
@@ -75,10 +75,10 @@ Four layers compose with most-restrictive-wins: `path` (cross-cutting) → `exte
 
 Config lives in one JSON file per scope:
 
-|Scope|Path|
-|---|---|
-|Global|`~/.pi/agent/extensions/pi-permission-system/config.json`|
-|Project|`<cwd>/.pi/extensions/pi-permission-system/config.json`|
+| Scope   | Path                                                      |
+| ------- | --------------------------------------------------------- |
+| Global  | `~/.pi/agent/extensions/pi-permission-system/config.json` |
+| Project | `<cwd>/.pi/extensions/pi-permission-system/config.json`   |
 
 Project overrides global; per-agent YAML frontmatter overrides both.
 
@@ -88,16 +88,16 @@ For the full reference — all surfaces, runtime knobs, per-agent overrides, mer
 
 ## Documentation
 
-|Document|Contents|
-|---|---|
-|[docs/configuration.md](docs/configuration.md)|Full policy reference, runtime knobs, per-agent overrides, recipes|
-|[docs/session-approvals.md](docs/session-approvals.md)|Session-scoped rules, pattern suggestions, bash arity table|
-|[docs/cross-extension-api.md](docs/cross-extension-api.md)|Cross-extension service accessor, event bus integration, decision broadcasts|
-|[docs/subagent-integration.md](docs/subagent-integration.md)|Permission forwarding, coexistence with subagent extensions|
-|[docs/guides/permission-frontmatter-for-subagent-extensions.md](docs/guides/permission-frontmatter-for-subagent-extensions.md)|Convention guide for subagent extension authors|
-|[docs/opencode-compatibility.md](docs/opencode-compatibility.md)|OpenCode compatibility — shared concepts, divergences, porting guide|
-|[docs/troubleshooting.md](docs/troubleshooting.md)|Common issues, diagnostic logging, threat model|
-|[docs/migration/legacy-to-flat.md](docs/migration/legacy-to-flat.md)|Migration from pre-v2 config layout|
+| Document                                                                                                                       | Contents                                                                     |
+| ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| [docs/configuration.md](docs/configuration.md)                                                                                 | Full policy reference, runtime knobs, per-agent overrides, recipes           |
+| [docs/session-approvals.md](docs/session-approvals.md)                                                                         | Session-scoped rules, pattern suggestions, bash arity table                  |
+| [docs/cross-extension-api.md](docs/cross-extension-api.md)                                                                     | Cross-extension service accessor, event bus integration, decision broadcasts |
+| [docs/subagent-integration.md](docs/subagent-integration.md)                                                                   | Permission forwarding, coexistence with subagent extensions                  |
+| [docs/guides/permission-frontmatter-for-subagent-extensions.md](docs/guides/permission-frontmatter-for-subagent-extensions.md) | Convention guide for subagent extension authors                              |
+| [docs/opencode-compatibility.md](docs/opencode-compatibility.md)                                                               | OpenCode compatibility — shared concepts, divergences, porting guide         |
+| [docs/troubleshooting.md](docs/troubleshooting.md)                                                                             | Common issues, diagnostic logging, threat model                              |
+| [docs/migration/legacy-to-flat.md](docs/migration/legacy-to-flat.md)                                                           | Migration from pre-v2 config layout                                          |
 
 ## Development
 

@@ -66,11 +66,11 @@ Both must pass with zero changes beyond the import paths.
 
 ## Module-Level Changes
 
-|File / glob|Change|
-|-|-|
-|`src/**/*.ts` (~20 files)|Strip `.js` from relative import paths|
-|`tests/**/*.ts` (~10 files)|Strip `.js` from relative import paths|
-|`package.json`|Add `lint:imports` script; append to `lint:all`|
+| File / glob                 | Change                                          |
+| --------------------------- | ----------------------------------------------- |
+| `src/**/*.ts` (~20 files)   | Strip `.js` from relative import paths          |
+| `tests/**/*.ts` (~10 files) | Strip `.js` from relative import paths          |
+| `package.json`              | Add `lint:imports` script; append to `lint:all` |
 
 No schema, config, or documentation changes required.
 
@@ -89,11 +89,11 @@ Alternatively, steps 1–2 can be a single commit since the change is atomic and
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|-|-|
-|Missed an import that actually needs `.js` (e.g. a non-TS asset)|Only strip from `*.ts` files with relative paths; `npm run build` and `npm run test` catch any resolution failures immediately.|
-|Could this silently weaken a permission?|No — this change touches only import specifier strings, not runtime behavior or policy resolution.|
-|`lint:imports` grep is too broad / too narrow|The pattern targets `from ".<relative>.js"` only; tested against the cleaned tree and a synthetic reintroduction before committing.|
+| Risk                                                             | Mitigation                                                                                                                          |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Missed an import that actually needs `.js` (e.g. a non-TS asset) | Only strip from `*.ts` files with relative paths; `npm run build` and `npm run test` catch any resolution failures immediately.     |
+| Could this silently weaken a permission?                         | No — this change touches only import specifier strings, not runtime behavior or policy resolution.                                  |
+| `lint:imports` grep is too broad / too narrow                    | The pattern targets `from ".<relative>.js"` only; tested against the cleaned tree and a synthetic reintroduction before committing. |
 
 ## Open Questions
 

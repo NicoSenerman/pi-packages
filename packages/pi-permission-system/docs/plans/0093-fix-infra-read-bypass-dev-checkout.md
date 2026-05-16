@@ -184,13 +184,13 @@ Key details:
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|----|----------|
-|`npm root -g` returns an unexpected path, widening the auto-allow set|`existsSync` check validates the path exists. The auto-allow is restricted to `READ_ONLY_PATH_BEARING_TOOLS` via `isPiInfrastructureRead`. Writes are never bypassed.|
-|Could this silently weaken a permission?|No. The change only affects which directories are added to `piInfrastructureDirs`, and only for read-only tools. The directory added is the npm global root — the same directory that production installs already auto-allow via the walk-up.|
-|Subprocess hangs or is slow|5-second timeout. Only runs when walk-up fails (dev checkout only). Production installs never hit this path.|
-|npm not available (Bun binary, restricted env)|`catch` returns `null`, identical to current behavior. No regression.|
-|#48 rejected `npm root -g`|#48 rejected it as the *primary* strategy because the walk-up-from-self approach was zero-cost for production. Here it's a *fallback* that only fires from dev checkouts where the walk-up fails. The production path is unchanged.|
+| Risk                                                                  | Mitigation                                                                                                                                                                                                                                    |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm root -g` returns an unexpected path, widening the auto-allow set | `existsSync` check validates the path exists. The auto-allow is restricted to `READ_ONLY_PATH_BEARING_TOOLS` via `isPiInfrastructureRead`. Writes are never bypassed.                                                                         |
+| Could this silently weaken a permission?                              | No. The change only affects which directories are added to `piInfrastructureDirs`, and only for read-only tools. The directory added is the npm global root — the same directory that production installs already auto-allow via the walk-up. |
+| Subprocess hangs or is slow                                           | 5-second timeout. Only runs when walk-up fails (dev checkout only). Production installs never hit this path.                                                                                                                                  |
+| npm not available (Bun binary, restricted env)                        | `catch` returns `null`, identical to current behavior. No regression.                                                                                                                                                                         |
+| #48 rejected `npm root -g`                                            | #48 rejected it as the *primary* strategy because the walk-up-from-self approach was zero-cost for production. Here it's a *fallback* that only fires from dev checkouts where the walk-up fails. The production path is unchanged.           |
 
 ## Open Questions
 

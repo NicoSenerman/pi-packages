@@ -182,20 +182,20 @@ Once all callers pass it, remove the module-scope `logger` variable and `setForw
 
 Factory helpers currently defined inside `piPermissionSystemExtension()` in `src/index.ts` (~200 lines) move into `src/runtime.ts` as standalone functions that take `ExtensionRuntime`:
 
-|Helper|Current location|New location|
-|---|---|---|
-|`refreshExtensionConfig`|index.ts closure|`src/runtime.ts` (takes runtime)|
-|`saveExtensionConfig`|index.ts closure|`src/runtime.ts` (takes runtime)|
-|`createPermissionManagerForCwd`|index.ts module scope|`src/runtime.ts` (takes agentDir)|
-|`derivePiProjectPaths`|index.ts module scope|`src/runtime.ts` (pure, unchanged)|
-|`writeDebugLog`/`writeReviewLog`|index.ts module scope|`ExtensionRuntime` methods|
-|`reportLoggingWarning`|index.ts module scope|internal to runtime logger setup|
-|`reviewPermissionDecision`|index.ts closure|`src/runtime.ts` (takes writeReviewLog)|
-|`promptPermission`|index.ts closure|`src/runtime.ts` (takes runtime)|
-|`resolveAgentName`|index.ts closure|`src/runtime.ts` (takes runtime)|
-|`logResolvedConfigPaths`|index.ts closure|`src/runtime.ts` (takes runtime)|
-|`startForwardedPermissionPolling`|index.ts closure|`src/runtime.ts` (takes runtime)|
-|`stopForwardedPermissionPolling`|index.ts closure|`src/runtime.ts` (takes runtime)|
+| Helper                            | Current location      | New location                            |
+| --------------------------------- | --------------------- | --------------------------------------- |
+| `refreshExtensionConfig`          | index.ts closure      | `src/runtime.ts` (takes runtime)        |
+| `saveExtensionConfig`             | index.ts closure      | `src/runtime.ts` (takes runtime)        |
+| `createPermissionManagerForCwd`   | index.ts module scope | `src/runtime.ts` (takes agentDir)       |
+| `derivePiProjectPaths`            | index.ts module scope | `src/runtime.ts` (pure, unchanged)      |
+| `writeDebugLog`/`writeReviewLog`  | index.ts module scope | `ExtensionRuntime` methods              |
+| `reportLoggingWarning`            | index.ts module scope | internal to runtime logger setup        |
+| `reviewPermissionDecision`        | index.ts closure      | `src/runtime.ts` (takes writeReviewLog) |
+| `promptPermission`                | index.ts closure      | `src/runtime.ts` (takes runtime)        |
+| `resolveAgentName`                | index.ts closure      | `src/runtime.ts` (takes runtime)        |
+| `logResolvedConfigPaths`          | index.ts closure      | `src/runtime.ts` (takes runtime)        |
+| `startForwardedPermissionPolling` | index.ts closure      | `src/runtime.ts` (takes runtime)        |
+| `stopForwardedPermissionPolling`  | index.ts closure      | `src/runtime.ts` (takes runtime)        |
 
 ### Target `src/index.ts` shape
 
@@ -221,34 +221,34 @@ Target: ≤150 lines.
 
 ### New files
 
-|File|Contents|
-|---|---|
-|`src/runtime.ts`|`ExtensionRuntime` interface, `createExtensionRuntime()` factory, relocated helper functions|
+| File             | Contents                                                                                     |
+| ---------------- | -------------------------------------------------------------------------------------------- |
+| `src/runtime.ts` | `ExtensionRuntime` interface, `createExtensionRuntime()` factory, relocated helper functions |
 
 ### Modified files
 
-|File|Change|
-|---|---|
-|`src/index.ts`|Remove all module-scope state (lines 74–130), remove factory helper closures (~200 lines), replace with `createExtensionRuntime()` + `createHandlerDeps()`. Target ≤150 lines.|
-|`src/handlers/types.ts`|Simplify `HandlerDeps`: replace getter/setter pairs with `runtime: ExtensionRuntime` field. Remove ~30 lines of accessor declarations.|
-|`src/handlers/lifecycle.ts`|Update to access state via `deps.runtime.*` instead of `deps.get*()` / `deps.set*()`.|
-|`src/handlers/before-agent-start.ts`|Same state-access updates.|
-|`src/handlers/input.ts`|Same state-access updates.|
-|`src/handlers/tool-call.ts`|Same state-access updates.|
-|`src/forwarded-permissions/io.ts`|Remove module-scope `logger` and `setForwardedPermissionLogger`. Add logger parameter to `logPermissionForwardingWarning` and `logPermissionForwardingError`. Thread through internal callers.|
-|`src/forwarded-permissions/polling.ts`|Pass logger from `PermissionForwardingDeps` to IO functions that need it.|
+| File                                   | Change                                                                                                                                                                                         |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/index.ts`                         | Remove all module-scope state (lines 74–130), remove factory helper closures (~200 lines), replace with `createExtensionRuntime()` + `createHandlerDeps()`. Target ≤150 lines.                 |
+| `src/handlers/types.ts`                | Simplify `HandlerDeps`: replace getter/setter pairs with `runtime: ExtensionRuntime` field. Remove ~30 lines of accessor declarations.                                                         |
+| `src/handlers/lifecycle.ts`            | Update to access state via `deps.runtime.*` instead of `deps.get*()` / `deps.set*()`.                                                                                                          |
+| `src/handlers/before-agent-start.ts`   | Same state-access updates.                                                                                                                                                                     |
+| `src/handlers/input.ts`                | Same state-access updates.                                                                                                                                                                     |
+| `src/handlers/tool-call.ts`            | Same state-access updates.                                                                                                                                                                     |
+| `src/forwarded-permissions/io.ts`      | Remove module-scope `logger` and `setForwardedPermissionLogger`. Add logger parameter to `logPermissionForwardingWarning` and `logPermissionForwardingError`. Thread through internal callers. |
+| `src/forwarded-permissions/polling.ts` | Pass logger from `PermissionForwardingDeps` to IO functions that need it.                                                                                                                      |
 
 ### Test files
 
-|File|Change|
-|---|---|
-|`tests/runtime.test.ts` (new)|Unit tests for `createExtensionRuntime()` and relocated helper functions.|
-|`tests/handlers/lifecycle.test.ts`|Update mock deps to use `runtime` field instead of getter/setter stubs.|
-|`tests/handlers/before-agent-start.test.ts`|Same mock deps updates.|
-|`tests/handlers/input.test.ts`|Same mock deps updates.|
-|`tests/handlers/tool-call.test.ts`|Same mock deps updates.|
-|`tests/permission-system.test.ts`|May need updates if module-scope imports of removed functions change. Run full suite to verify.|
-|`tests/forwarded-permissions/io.test.ts` (new or update)|Test that IO functions work with explicit logger parameter.|
+| File                                                     | Change                                                                                          |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `tests/runtime.test.ts` (new)                            | Unit tests for `createExtensionRuntime()` and relocated helper functions.                       |
+| `tests/handlers/lifecycle.test.ts`                       | Update mock deps to use `runtime` field instead of getter/setter stubs.                         |
+| `tests/handlers/before-agent-start.test.ts`              | Same mock deps updates.                                                                         |
+| `tests/handlers/input.test.ts`                           | Same mock deps updates.                                                                         |
+| `tests/handlers/tool-call.test.ts`                       | Same mock deps updates.                                                                         |
+| `tests/permission-system.test.ts`                        | May need updates if module-scope imports of removed functions change. Run full suite to verify. |
+| `tests/forwarded-permissions/io.test.ts` (new or update) | Test that IO functions work with explicit logger parameter.                                     |
 
 ### No changes to
 
@@ -305,14 +305,14 @@ Target: ≤150 lines.
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|---|---|
-|Could this silently weaken a permission?|No — this is a pure structural refactor. Permission decisions are unchanged. The same `PermissionManager`, `applyPermissionGate`, and handler logic run with identical inputs. No new `"allow"` path is introduced.|
-|Handler tests break due to mock shape change|Step 3 updates all handler test mocks *before* step 4 changes the production `HandlerDeps` type. This ensures tests are green on both sides of the transition.|
-|`forwarded-permissions/io.ts` functions silently lose logging|Step 5 adds the logger parameter and removes the setter in one atomic step. Any function that previously called `logger?.writeReviewLog(...)` now receives the logger explicitly. The `?.` optional chaining is preserved for the case where no logger is configured (e.g., direct IO function usage in tests).|
-|Integration tests in `permission-system.test.ts` import module-scope functions that get removed|`permission-system.test.ts` imports `piPermissionSystemExtension` (the factory), not the module-scope helpers directly. The only risk is if test setup depends on module-scope state being initialized at import time — but the test already sets `PI_CODING_AGENT_DIR` before calling the factory, so the fix aligns with the test's intent.|
-|`createExtensionRuntime` called multiple times in concurrent test files|Each call creates an independent runtime with its own state. No shared mutable state between instances — this is the whole point.|
-|Large changeset across many files|Steps are ordered so each commit is independently valid and testable. The riskiest step (6) is preceded by comprehensive mock updates (3) and type changes (4) that surface any mismatch at compile time.|
+| Risk                                                                                            | Mitigation                                                                                                                                                                                                                                                                                                                                    |
+| ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Could this silently weaken a permission?                                                        | No — this is a pure structural refactor. Permission decisions are unchanged. The same `PermissionManager`, `applyPermissionGate`, and handler logic run with identical inputs. No new `"allow"` path is introduced.                                                                                                                           |
+| Handler tests break due to mock shape change                                                    | Step 3 updates all handler test mocks *before* step 4 changes the production `HandlerDeps` type. This ensures tests are green on both sides of the transition.                                                                                                                                                                                |
+| `forwarded-permissions/io.ts` functions silently lose logging                                   | Step 5 adds the logger parameter and removes the setter in one atomic step. Any function that previously called `logger?.writeReviewLog(...)` now receives the logger explicitly. The `?.` optional chaining is preserved for the case where no logger is configured (e.g., direct IO function usage in tests).                               |
+| Integration tests in `permission-system.test.ts` import module-scope functions that get removed | `permission-system.test.ts` imports `piPermissionSystemExtension` (the factory), not the module-scope helpers directly. The only risk is if test setup depends on module-scope state being initialized at import time — but the test already sets `PI_CODING_AGENT_DIR` before calling the factory, so the fix aligns with the test's intent. |
+| `createExtensionRuntime` called multiple times in concurrent test files                         | Each call creates an independent runtime with its own state. No shared mutable state between instances — this is the whole point.                                                                                                                                                                                                             |
+| Large changeset across many files                                                               | Steps are ordered so each commit is independently valid and testable. The riskiest step (6) is preceded by comprehensive mock updates (3) and type changes (4) that surface any mismatch at compile time.                                                                                                                                     |
 
 ## Implementation Notes
 

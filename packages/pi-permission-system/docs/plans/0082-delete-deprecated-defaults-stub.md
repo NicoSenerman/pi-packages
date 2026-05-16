@@ -38,10 +38,10 @@ Pure deletion — no logic changes, no API changes, no config changes.
 
 ## Module-Level Changes
 
-|File|Action|
-|----|------|
-|`src/defaults.ts`|Delete|
-|`tests/defaults.test.ts`|Delete|
+| File                     | Action |
+| ------------------------ | ------ |
+| `src/defaults.ts`        | Delete |
+| `tests/defaults.test.ts` | Delete |
 
 No schema, config, or architecture doc changes needed.
 
@@ -52,10 +52,10 @@ No schema, config, or architecture doc changes needed.
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|----|----------|
-|Hidden import we missed|Grep confirmed zero imports; CI will catch any missed reference.|
-|Could this silently weaken a permission?|No — the file exports nothing and is not imported anywhere.|
+| Risk                                     | Mitigation                                                       |
+| ---------------------------------------- | ---------------------------------------------------------------- |
+| Hidden import we missed                  | Grep confirmed zero imports; CI will catch any missed reference. |
+| Could this silently weaken a permission? | No — the file exports nothing and is not imported anywhere.      |
 
 ## Open Questions
 

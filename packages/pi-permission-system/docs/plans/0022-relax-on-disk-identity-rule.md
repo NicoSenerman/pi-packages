@@ -83,11 +83,11 @@ A single commit is sufficient.
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-| ---- | ---------- |
-| Docs land before #10 while code still uses old paths | Issue specifies landing together with #10; plan reiterates this. Reviewer should enforce co-landing. |
-| Could this silently weaken a permission? | No. This is a documentation change only. No policy, schema, or runtime code is touched. |
-| #20 deletes the event channel, leaving a stale bullet | #20's PR will naturally update the same bullets. The plan notes this so the #20 author knows. |
+| Risk                                                  | Mitigation                                                                                           |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Docs land before #10 while code still uses old paths  | Issue specifies landing together with #10; plan reiterates this. Reviewer should enforce co-landing. |
+| Could this silently weaken a permission?              | No. This is a documentation change only. No policy, schema, or runtime code is touched.              |
+| #20 deletes the event channel, leaving a stale bullet | #20's PR will naturally update the same bullets. The plan notes this so the #20 author knows.        |
 
 ## Open Questions
 

@@ -38,18 +38,18 @@ The permission review log (`writeReviewLog`) continues to record all decisions; 
 
 ### Code locations
 
-| Location | What | Lines |
-| -------- | ---- | ----- |
-| `src/index.ts:82–84` | `PermissionRequestSource`, `PermissionRequestState` types | 3 |
-| `src/index.ts:85–99` | `PermissionRequestEvent` type | 15 |
-| `src/index.ts:100–101` | `PERMISSION_REQUEST_EVENT_CHANNEL` constant | 2 |
-| `src/index.ts:1347–1349` | `createPermissionRequestId` helper | 3 |
-| `src/index.ts:1350–1362` | `emitPermissionRequestEvent` function | 13 |
-| `src/index.ts:1416–1429` | emit in auto-approve path | 14 |
-| `src/index.ts:1434–1446` | emit in waiting path | 13 |
-| `src/index.ts:1460–1472` | emit in resolved path | 13 |
-| `AGENTS.md` | § Project Purpose, § Implementation Priorities, § Notes for Agents | 3 mentions |
-| `README.md` | Fork notice (line 9) | 1 mention |
+| Location                 | What                                                               | Lines      |
+| ------------------------ | ------------------------------------------------------------------ | ---------- |
+| `src/index.ts:82–84`     | `PermissionRequestSource`, `PermissionRequestState` types          | 3          |
+| `src/index.ts:85–99`     | `PermissionRequestEvent` type                                      | 15         |
+| `src/index.ts:100–101`   | `PERMISSION_REQUEST_EVENT_CHANNEL` constant                        | 2          |
+| `src/index.ts:1347–1349` | `createPermissionRequestId` helper                                 | 3          |
+| `src/index.ts:1350–1362` | `emitPermissionRequestEvent` function                              | 13         |
+| `src/index.ts:1416–1429` | emit in auto-approve path                                          | 14         |
+| `src/index.ts:1434–1446` | emit in waiting path                                               | 13         |
+| `src/index.ts:1460–1472` | emit in resolved path                                              | 13         |
+| `AGENTS.md`              | § Project Purpose, § Implementation Priorities, § Notes for Agents | 3 mentions |
+| `README.md`              | Fork notice (line 9)                                               | 1 mention  |
 
 ### Dependencies
 
@@ -97,11 +97,11 @@ Keep the type alias but rename it to `PermissionReviewSource` (or inline the uni
 
 ## Module-Level Changes
 
-| File | Action | Detail |
-| ---- | ------ | ------ |
+| File           | Action  | Detail                                                                                                                                                                                                                |
+| -------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/index.ts` | changed | Remove `PermissionRequestEvent`, `PERMISSION_REQUEST_EVENT_CHANNEL`, `emitPermissionRequestEvent`, all emit call sites. Rename `PermissionRequestSource` → `PermissionReviewSource`. Keep `requestId` for review log. |
-| `AGENTS.md` | changed | Remove event channel from preserved-identity mentions (3 locations). |
-| `README.md` | changed | Remove event channel from fork notice. |
+| `AGENTS.md`    | changed | Remove event channel from preserved-identity mentions (3 locations).                                                                                                                                                  |
+| `README.md`    | changed | Remove event channel from fork notice.                                                                                                                                                                                |
 
 No changes to `schemas/`, `config/`, or `tests/` (there are no existing event-channel tests).
 
@@ -121,13 +121,13 @@ No changes to `schemas/`, `config/`, or `tests/` (there are no existing event-ch
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-| ---- | ---------- |
-| Could this silently weaken a permission? | No. The event channel is fire-and-forget with no subscribers. Removing it does not change any allow/deny/ask decision. The review log continues to record all decisions. |
-| External consumer breaks | No known consumers exist. The type was never exported. If someone was subscribing by channel name string, #29 will re-add with a proper contract. |
-| `requestId` removal breaks review log correlation | Plan explicitly keeps `requestId` and `createPermissionRequestId` — only the event emission is removed. |
-| `PermissionRequestSource` removal breaks review log | Plan renames to `PermissionReviewSource` rather than deleting, preserving the type for `reviewPermissionDecision`. |
-| #22's AGENTS.md wording becomes stale | This plan updates the same locations #22 touched, removing the now-deleted channel reference. |
+| Risk                                                | Mitigation                                                                                                                                                               |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Could this silently weaken a permission?            | No. The event channel is fire-and-forget with no subscribers. Removing it does not change any allow/deny/ask decision. The review log continues to record all decisions. |
+| External consumer breaks                            | No known consumers exist. The type was never exported. If someone was subscribing by channel name string, #29 will re-add with a proper contract.                        |
+| `requestId` removal breaks review log correlation   | Plan explicitly keeps `requestId` and `createPermissionRequestId` — only the event emission is removed.                                                                  |
+| `PermissionRequestSource` removal breaks review log | Plan renames to `PermissionReviewSource` rather than deleting, preserving the type for `reviewPermissionDecision`.                                                       |
+| #22's AGENTS.md wording becomes stale               | This plan updates the same locations #22 touched, removing the now-deleted channel reference.                                                                            |
 
 ## Open Questions
 

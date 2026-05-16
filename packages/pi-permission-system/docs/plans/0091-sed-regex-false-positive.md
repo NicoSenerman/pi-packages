@@ -54,11 +54,11 @@ Redirect targets remain universally extracted — they are syntactically unambig
 
 ### Existing modules
 
-|File|Role|
-|----|----|
-|`src/external-directory.ts`|`extractExternalPathsFromBashCommand` (entry point), `collectPathCandidateTokens` (AST walker), `classifyTokenAsPathCandidate` (heuristic classifier), tree-sitter parser init|
-|`src/handlers/tool-call.ts`|Calls `extractExternalPathsFromBashCommand` for bash tool invocations|
-|`tests/bash-external-directory.test.ts`|Test suite for extraction, classification, and formatting|
+| File                                    | Role                                                                                                                                                                           |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/external-directory.ts`             | `extractExternalPathsFromBashCommand` (entry point), `collectPathCandidateTokens` (AST walker), `classifyTokenAsPathCandidate` (heuristic classifier), tree-sitter parser init |
+| `src/handlers/tool-call.ts`             | Calls `extractExternalPathsFromBashCommand` for bash tool invocations                                                                                                          |
+| `tests/bash-external-directory.test.ts` | Test suite for extraction, classification, and formatting                                                                                                                      |
 
 ### Current flow
 
@@ -291,10 +291,10 @@ Mitigation:
 
 ## Module-Level Changes
 
-|File|Change|
-|----|----|
-|`src/external-directory.ts`|Add `PatternCommandConfig` interface and `PATTERN_FIRST_COMMANDS` map. Add `extractCommandName` helper (extracts command name from `command_name` child, applies `basename`). Refactor the `command` branch in `collectPathCandidateTokens` to dispatch to `collectPatternCommandTokens` for pattern-first commands vs existing generic logic for others. Add `collectPatternCommandTokens` implementing position-based skipping. Import `basename` from `node:path` (already imported).|
-|`tests/bash-external-directory.test.ts`|Add `describe("command-aware extraction")` block with sub-describes for sed, grep, awk, rg, sd, unknown commands, and edge cases. Add the issue reproducer as a named test. Update any existing tests whose behavior changes (if any — the position-based skipping should only REDUCE the set of extracted tokens for pattern commands, never increase it for non-pattern commands).|
+| File                                    | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/external-directory.ts`             | Add `PatternCommandConfig` interface and `PATTERN_FIRST_COMMANDS` map. Add `extractCommandName` helper (extracts command name from `command_name` child, applies `basename`). Refactor the `command` branch in `collectPathCandidateTokens` to dispatch to `collectPatternCommandTokens` for pattern-first commands vs existing generic logic for others. Add `collectPatternCommandTokens` implementing position-based skipping. Import `basename` from `node:path` (already imported). |
+| `tests/bash-external-directory.test.ts` | Add `describe("command-aware extraction")` block with sub-describes for sed, grep, awk, rg, sd, unknown commands, and edge cases. Add the issue reproducer as a named test. Update any existing tests whose behavior changes (if any — the position-based skipping should only REDUCE the set of extracted tokens for pattern commands, never increase it for non-pattern commands).                                                                                                     |
 
 No changes to schema, config, docs/architecture, or other source modules.
 
@@ -339,14 +339,14 @@ Suggested commit: `test: document sed -i no-extension known limitation (#91)`
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|----|----|
-|Could this silently weaken a permission?|Position-based skipping only skips the inline script/pattern argument for known pattern-first commands. File arguments are still extracted. For unknown commands, behavior is unchanged. Redirect targets are still universally extracted. The only tokens we stop detecting are pattern arguments — which were false positives, not real paths.|
-|`PATTERN_FIRST_COMMANDS` set is incomplete|The set covers the most common pattern-first commands (sed, awk, grep, rg, sd and variants). Uncommon commands with similar argument structure can be added incrementally. Commands NOT in the set fall through to the existing generic extraction — no regression.|
-|Flag config is incomplete (combined flags, long options)|Unrecognized flags are treated as regular flags (no arg consumed). This may cause misidentification of argument positions in rare cases, but `classifyTokenAsPathCandidate` provides defense-in-depth. Combined flag and long option support can be added incrementally.|
-|`sed -i` without extension (GNU sed) causes false negative|Documented as a known limitation. The bash permission gate still applies. A follow-up can refine `-i` handling.|
-|Command name extraction fails (variable expansion, alias, subshell)|If the command name cannot be extracted (e.g., `$CMD /etc/hosts`), fall back to generic extraction. No regression.|
-|Refactoring `collectPathCandidateTokens` breaks existing tests|The refactor only changes behavior for pattern-first commands. Generic extraction path is preserved as-is. Full test suite run confirms no regressions.|
+| Risk                                                                | Mitigation                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Could this silently weaken a permission?                            | Position-based skipping only skips the inline script/pattern argument for known pattern-first commands. File arguments are still extracted. For unknown commands, behavior is unchanged. Redirect targets are still universally extracted. The only tokens we stop detecting are pattern arguments — which were false positives, not real paths. |
+| `PATTERN_FIRST_COMMANDS` set is incomplete                          | The set covers the most common pattern-first commands (sed, awk, grep, rg, sd and variants). Uncommon commands with similar argument structure can be added incrementally. Commands NOT in the set fall through to the existing generic extraction — no regression.                                                                              |
+| Flag config is incomplete (combined flags, long options)            | Unrecognized flags are treated as regular flags (no arg consumed). This may cause misidentification of argument positions in rare cases, but `classifyTokenAsPathCandidate` provides defense-in-depth. Combined flag and long option support can be added incrementally.                                                                         |
+| `sed -i` without extension (GNU sed) causes false negative          | Documented as a known limitation. The bash permission gate still applies. A follow-up can refine `-i` handling.                                                                                                                                                                                                                                  |
+| Command name extraction fails (variable expansion, alias, subshell) | If the command name cannot be extracted (e.g., `$CMD /etc/hosts`), fall back to generic extraction. No regression.                                                                                                                                                                                                                               |
+| Refactoring `collectPathCandidateTokens` breaks existing tests      | The refactor only changes behavior for pattern-first commands. Generic extraction path is preserved as-is. Full test suite run confirms no regressions.                                                                                                                                                                                          |
 
 ## Open Questions
 

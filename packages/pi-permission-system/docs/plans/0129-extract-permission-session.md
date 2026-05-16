@@ -50,11 +50,11 @@ Handlers receive `HandlerDeps` with `session: SessionState` and 15+ additional f
 
 The scattered mutations in lifecycle handlers:
 
-|Handler|Fields reset|
-|---|---|
-|`handleSessionStart`|`runtimeContext`, `permissionManager`, `activeSkillEntries`, `lastActiveToolsCacheKey`, `lastPromptStateCacheKey`, `lastKnownActiveAgentName`|
-|`handleResourcesDiscover` (reload)|`permissionManager`, `activeSkillEntries`, `lastActiveToolsCacheKey`, `lastPromptStateCacheKey`|
-|`handleSessionShutdown`|`runtimeContext`, `activeSkillEntries`, `lastActiveToolsCacheKey`, `lastPromptStateCacheKey`, `sessionRules.clear()`|
+| Handler                            | Fields reset                                                                                                                                  |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `handleSessionStart`               | `runtimeContext`, `permissionManager`, `activeSkillEntries`, `lastActiveToolsCacheKey`, `lastPromptStateCacheKey`, `lastKnownActiveAgentName` |
+| `handleResourcesDiscover` (reload) | `permissionManager`, `activeSkillEntries`, `lastActiveToolsCacheKey`, `lastPromptStateCacheKey`                                               |
+| `handleSessionShutdown`            | `runtimeContext`, `activeSkillEntries`, `lastActiveToolsCacheKey`, `lastPromptStateCacheKey`, `sessionRules.clear()`                          |
 
 ### GateRunnerDeps alignment
 
@@ -150,17 +150,17 @@ Key design points:
 
 After migration, `HandlerDeps` shrinks — many fields become unnecessary because `PermissionSession` encapsulates them:
 
-|Removed from HandlerDeps|Absorbed by PermissionSession|
-|---|---|
-|`createPermissionManagerForCwd`|Internal to `resetForNewSession()`|
-|`refreshExtensionConfig`|`session.refreshConfig()`|
-|`logResolvedConfigPaths`|`session.logResolvedConfigPaths()`|
-|`resolveAgentName`|`session.resolveAgentName()`|
-|`canRequestPermissionConfirmation`|`session.canPrompt()`|
-|`promptPermission`|`session.prompt()`|
-|`forwarding`|Internal, exposed via `session.startForwarding()`/`session.stopForwarding()`|
-|`piInfrastructureDirs`|`session.getInfrastructureDirs()`|
-|`getPiInfrastructureReadPaths`|`session.getInfrastructureReadPaths()`|
+| Removed from HandlerDeps           | Absorbed by PermissionSession                                                |
+| ---------------------------------- | ---------------------------------------------------------------------------- |
+| `createPermissionManagerForCwd`    | Internal to `resetForNewSession()`                                           |
+| `refreshExtensionConfig`           | `session.refreshConfig()`                                                    |
+| `logResolvedConfigPaths`           | `session.logResolvedConfigPaths()`                                           |
+| `resolveAgentName`                 | `session.resolveAgentName()`                                                 |
+| `canRequestPermissionConfirmation` | `session.canPrompt()`                                                        |
+| `promptPermission`                 | `session.prompt()`                                                           |
+| `forwarding`                       | Internal, exposed via `session.startForwarding()`/`session.stopForwarding()` |
+| `piInfrastructureDirs`             | `session.getInfrastructureDirs()`                                            |
+| `getPiInfrastructureReadPaths`     | `session.getInfrastructureReadPaths()`                                       |
 
 Fields that remain on `HandlerDeps` (until #130 removes it entirely): `events`, `stopPermissionRpcHandlers`, `getAllTools`, `setActiveTools`, `createPermissionRequestId`.
 
@@ -198,24 +198,24 @@ No more LoD violations — every call is one level deep.
 
 ## Module-level changes
 
-|File|Change|
-|---|---|
-|`src/permission-session.ts`|**New.** `PermissionSession` class with 4 constructor deps.|
-|`src/runtime.ts`|`SessionState` retained for backward compat during migration. `createPermissionManagerForCwd` stays as a free function (used by `PermissionSession` internally).|
-|`src/handlers/types.ts`|`HandlerDeps.session` type changes from `SessionState` to `PermissionSession`. Remove fields absorbed by the session.|
-|`src/handlers/lifecycle.ts`|Replace scattered field resets with `session.resetForNewSession(ctx)` / `session.shutdown()`. Remove `deps.createPermissionManagerForCwd` / `deps.refreshExtensionConfig` calls.|
-|`src/handlers/before-agent-start.ts`|Replace `deps.session.permissionManager.*` with `session.checkPermission(...)` etc. Replace `deps.resolveAgentName` with `session.resolveAgentName`.|
-|`src/handlers/tool-call.ts`|Simplify gate adapter construction — delegate to `session.*` methods. Replace `deps.forwarding.start(ctx)` with `session.startForwarding(ctx)`.|
-|`src/handlers/input.ts`|Replace `deps.session.permissionManager.checkPermission` with `session.checkPermission`. Replace `deps.canRequestPermissionConfirmation` with `session.canPrompt`.|
-|`src/index.ts`|Construct `PermissionSession` with `ExtensionPaths`, `SessionLogger`, `PermissionPrompter`, `ForwardingManager`. Pass it as `deps.session`. Remove fields from `deps` that are now on the session.|
-|`tests/permission-session.test.ts`|**New.** Unit tests for `PermissionSession` methods: `activate`, `resetForNewSession`, `shutdown`, `checkPermission` delegation, `resolveAgentName`, cache key methods.|
-|`tests/handlers/lifecycle.test.ts`|Replace `makeSession()` with `PermissionSession` mock. Simplify — no more direct field assertions on session state.|
-|`tests/handlers/before-agent-start.test.ts`|Replace LoD mock chains with flat `session.checkPermission` / `session.getToolPermission` stubs.|
-|`tests/handlers/tool-call.test.ts`|Simplify `makeDeps()` — session mock provides `checkPermission`, `getSessionRuleset`, etc. directly.|
-|`tests/handlers/tool-call-events.test.ts`|Same simplification.|
-|`tests/handlers/input.test.ts`|Replace `deps.session.permissionManager.checkPermission` with `session.checkPermission`.|
-|`tests/handlers/input-events.test.ts`|Same simplification.|
-|`docs/architecture/architecture.md`|Update module listing: add `permission-session.ts`, update `handlers/types.ts` description.|
+| File                                        | Change                                                                                                                                                                                             |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/permission-session.ts`                 | **New.** `PermissionSession` class with 4 constructor deps.                                                                                                                                        |
+| `src/runtime.ts`                            | `SessionState` retained for backward compat during migration. `createPermissionManagerForCwd` stays as a free function (used by `PermissionSession` internally).                                   |
+| `src/handlers/types.ts`                     | `HandlerDeps.session` type changes from `SessionState` to `PermissionSession`. Remove fields absorbed by the session.                                                                              |
+| `src/handlers/lifecycle.ts`                 | Replace scattered field resets with `session.resetForNewSession(ctx)` / `session.shutdown()`. Remove `deps.createPermissionManagerForCwd` / `deps.refreshExtensionConfig` calls.                   |
+| `src/handlers/before-agent-start.ts`        | Replace `deps.session.permissionManager.*` with `session.checkPermission(...)` etc. Replace `deps.resolveAgentName` with `session.resolveAgentName`.                                               |
+| `src/handlers/tool-call.ts`                 | Simplify gate adapter construction — delegate to `session.*` methods. Replace `deps.forwarding.start(ctx)` with `session.startForwarding(ctx)`.                                                    |
+| `src/handlers/input.ts`                     | Replace `deps.session.permissionManager.checkPermission` with `session.checkPermission`. Replace `deps.canRequestPermissionConfirmation` with `session.canPrompt`.                                 |
+| `src/index.ts`                              | Construct `PermissionSession` with `ExtensionPaths`, `SessionLogger`, `PermissionPrompter`, `ForwardingManager`. Pass it as `deps.session`. Remove fields from `deps` that are now on the session. |
+| `tests/permission-session.test.ts`          | **New.** Unit tests for `PermissionSession` methods: `activate`, `resetForNewSession`, `shutdown`, `checkPermission` delegation, `resolveAgentName`, cache key methods.                            |
+| `tests/handlers/lifecycle.test.ts`          | Replace `makeSession()` with `PermissionSession` mock. Simplify — no more direct field assertions on session state.                                                                                |
+| `tests/handlers/before-agent-start.test.ts` | Replace LoD mock chains with flat `session.checkPermission` / `session.getToolPermission` stubs.                                                                                                   |
+| `tests/handlers/tool-call.test.ts`          | Simplify `makeDeps()` — session mock provides `checkPermission`, `getSessionRuleset`, etc. directly.                                                                                               |
+| `tests/handlers/tool-call-events.test.ts`   | Same simplification.                                                                                                                                                                               |
+| `tests/handlers/input.test.ts`              | Replace `deps.session.permissionManager.checkPermission` with `session.checkPermission`.                                                                                                           |
+| `tests/handlers/input-events.test.ts`       | Same simplification.                                                                                                                                                                               |
+| `docs/architecture/architecture.md`         | Update module listing: add `permission-session.ts`, update `handlers/types.ts` description.                                                                                                        |
 
 ## Test impact analysis
 
@@ -285,14 +285,14 @@ No more LoD violations — every call is one level deep.
 
 ## Risks and mitigations
 
-|Risk|Mitigation|
-|---|---|
-|Could this silently weaken a permission?|Pure refactor — same `checkPermission` calls, same parameters, same gate evaluation order. `PermissionSession.checkPermission` delegates directly to `PermissionManager.checkPermission`. Integration tests validate end-to-end.|
-|Large blast radius across 6 test files|Handlers are migrated one at a time (phase 3). Each step leaves the repo green. `PermissionSession` mock is flat — no nested object chains.|
-|`PermissionSession` becomes a god object|It encapsulates state that is already coupled (permissionManager + sessionRules + caches + skillEntries all reset together). The class has ~20 methods but they are thin delegates — no business logic beyond lifecycle coordination.|
-|`ExtensionRuntime` and `PermissionSession` overlap during migration|`ExtensionRuntime` continues to exist as the internal composition root. `PermissionSession` wraps a subset of its state. After #130 (handler classes), `ExtensionRuntime` may be simplified further.|
-|Test factories must be rewritten|`makeSession()` factories change from 7 nested-mock fields to flat `vi.fn()` stubs on `PermissionSession` methods. This is mechanical and reduces test boilerplate.|
-|`refreshExtensionConfig` and `saveExtensionConfig` live on `runtime.ts` and touch `ExtensionRuntime` directly|`PermissionSession.refreshConfig()` delegates to the existing `refreshExtensionConfig(runtime, ctx)` free function. `saveExtensionConfig` stays on `runtime.ts` — it is only called from the `/permission-system` command, not from handlers.|
+| Risk                                                                                                          | Mitigation                                                                                                                                                                                                                                    |
+| ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Could this silently weaken a permission?                                                                      | Pure refactor — same `checkPermission` calls, same parameters, same gate evaluation order. `PermissionSession.checkPermission` delegates directly to `PermissionManager.checkPermission`. Integration tests validate end-to-end.              |
+| Large blast radius across 6 test files                                                                        | Handlers are migrated one at a time (phase 3). Each step leaves the repo green. `PermissionSession` mock is flat — no nested object chains.                                                                                                   |
+| `PermissionSession` becomes a god object                                                                      | It encapsulates state that is already coupled (permissionManager + sessionRules + caches + skillEntries all reset together). The class has ~20 methods but they are thin delegates — no business logic beyond lifecycle coordination.         |
+| `ExtensionRuntime` and `PermissionSession` overlap during migration                                           | `ExtensionRuntime` continues to exist as the internal composition root. `PermissionSession` wraps a subset of its state. After #130 (handler classes), `ExtensionRuntime` may be simplified further.                                          |
+| Test factories must be rewritten                                                                              | `makeSession()` factories change from 7 nested-mock fields to flat `vi.fn()` stubs on `PermissionSession` methods. This is mechanical and reduces test boilerplate.                                                                           |
+| `refreshExtensionConfig` and `saveExtensionConfig` live on `runtime.ts` and touch `ExtensionRuntime` directly | `PermissionSession.refreshConfig()` delegates to the existing `refreshExtensionConfig(runtime, ctx)` free function. `saveExtensionConfig` stays on `runtime.ts` — it is only called from the `/permission-system` command, not from handlers. |
 
 ## Open questions
 

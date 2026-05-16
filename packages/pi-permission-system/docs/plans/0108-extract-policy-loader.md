@@ -33,15 +33,15 @@ This change is surface-agnostic — it restructures internal plumbing, not permi
 
 ### Relevant modules
 
-|File|Role|
-|----|-----|
-|`src/permission-manager.ts`|All three responsibilities today|
-|`src/runtime.ts`|`createPermissionManagerForCwd()` — constructs `PermissionManager`|
-|`src/handlers/types.ts`|`HandlerDeps.createPermissionManagerForCwd` — factory signature|
-|`src/config-loader.ts`|`loadUnifiedConfig`, `normalizeUnifiedConfig`, `stripJsonComments` — called by PM's load methods|
-|`src/common.ts`|`extractFrontmatter`, `parseSimpleYamlMap` — called by agent-scope loading|
-|`tests/permission-manager-unified.test.ts`|663-line test file exercising PM through temp files|
-|`tests/permission-system.test.ts`|Integration tests constructing PM directly|
+| File                                       | Role                                                                                             |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `src/permission-manager.ts`                | All three responsibilities today                                                                 |
+| `src/runtime.ts`                           | `createPermissionManagerForCwd()` — constructs `PermissionManager`                               |
+| `src/handlers/types.ts`                    | `HandlerDeps.createPermissionManagerForCwd` — factory signature                                  |
+| `src/config-loader.ts`                     | `loadUnifiedConfig`, `normalizeUnifiedConfig`, `stripJsonComments` — called by PM's load methods |
+| `src/common.ts`                            | `extractFrontmatter`, `parseSimpleYamlMap` — called by agent-scope loading                       |
+| `tests/permission-manager-unified.test.ts` | 663-line test file exercising PM through temp files                                              |
+| `tests/permission-system.test.ts`          | Integration tests constructing PM directly                                                       |
 
 ### How PermissionManager is constructed today
 
@@ -161,19 +161,19 @@ The following test categories can be written without touching the filesystem:
 Once the in-memory `PolicyLoader` tests cover merge and evaluation thoroughly, the following filesystem-based tests in `permission-system.test.ts` become integration-level redundancy.
 They should **not** be deleted in this PR — they serve as regression anchors — but they can be marked for future simplification.
 
-|Test (permission-system.test.ts)|What it really tests|After extraction|
-|----|----|----||
-|"PermissionManager canonical built-in permission checking" (line 621)|Evaluation: tool surface routing|Covered by in-memory eval test; file-based version is redundant integration|
-|"multiline bash command resolves to allow" (line 639)|Evaluation: dotAll matching|Same — pure evaluation concern|
-|"Bash specific deny patterns override catch-all" (line 660)|Evaluation: last-match-wins|Same|
-|"MCP wildcard matching" (line 685)|Evaluation: MCP target normalization + matching|Same|
-|"Arbitrary extension tools" (line 718)|Evaluation: extension tool source derivation|Same|
-|"Skill permission matching" (line 742)|Evaluation: skill surface|Same|
-|"MCP proxy tool infers server-prefixed aliases" (line 778)|Evaluation: MCP name inference|Same|
-|"Project-level config overrides base bash patterns" (line 1372)|Merge: project > global|Covered by in-memory merge test|
-|"System-agent config overrides project-level" (line 1405)|Merge: agent > project|Same|
-|"Project-agent config overrides system-agent" (line 1447)|Merge: project-agent > agent|Same|
-|"Full precedence chain" (line 1481)|Merge: all 4 scopes|Same|
+| Test (permission-system.test.ts)                                      | What it really tests                            | After extraction                                                            |
+| --------------------------------------------------------------------- | ----------------------------------------------- | --------------------------------------------------------------------------- |
+| "PermissionManager canonical built-in permission checking" (line 621) | Evaluation: tool surface routing                | Covered by in-memory eval test; file-based version is redundant integration |
+| "multiline bash command resolves to allow" (line 639)                 | Evaluation: dotAll matching                     | Same — pure evaluation concern                                              |
+| "Bash specific deny patterns override catch-all" (line 660)           | Evaluation: last-match-wins                     | Same                                                                        |
+| "MCP wildcard matching" (line 685)                                    | Evaluation: MCP target normalization + matching | Same                                                                        |
+| "Arbitrary extension tools" (line 718)                                | Evaluation: extension tool source derivation    | Same                                                                        |
+| "Skill permission matching" (line 742)                                | Evaluation: skill surface                       | Same                                                                        |
+| "MCP proxy tool infers server-prefixed aliases" (line 778)            | Evaluation: MCP name inference                  | Same                                                                        |
+| "Project-level config overrides base bash patterns" (line 1372)       | Merge: project > global                         | Covered by in-memory merge test                                             |
+| "System-agent config overrides project-level" (line 1405)             | Merge: agent > project                          | Same                                                                        |
+| "Project-agent config overrides system-agent" (line 1447)             | Merge: project-agent > agent                    | Same                                                                        |
+| "Full precedence chain" (line 1481)                                   | Merge: all 4 scopes                             | Same                                                                        |
 
 These tests write temp files solely to feed `PermissionManager` a known policy.
 With an in-memory loader, the same assertions run faster, in isolation, and without cleanup.
@@ -182,13 +182,13 @@ With an in-memory loader, the same assertions run faster, in isolation, and with
 
 Some tests genuinely exercise the I/O layer and belong on `FilePolicyLoader`:
 
-|Test|Why it must stay file-based|
-|----|----|
-|"getResolvedPolicyPaths returns correct paths and existence" (line 2304)|Tests `existsSync` path probing|
-|"getResolvedPolicyPaths returns false for missing files" (line 2340)|Same|
-|"PermissionManager reads config from PI_CODING_AGENT_DIR" (line 1561)|Tests env-driven path resolution|
-|"MCP server names in settings.json are not used" (line 805)|Tests mcp.json file reading|
-|Agent frontmatter tests with `.md` files (lines 999–1099)|Tests YAML frontmatter extraction from disk|
+| Test                                                                     | Why it must stay file-based                 |
+| ------------------------------------------------------------------------ | ------------------------------------------- |
+| "getResolvedPolicyPaths returns correct paths and existence" (line 2304) | Tests `existsSync` path probing             |
+| "getResolvedPolicyPaths returns false for missing files" (line 2340)     | Same                                        |
+| "PermissionManager reads config from PI_CODING_AGENT_DIR" (line 1561)    | Tests env-driven path resolution            |
+| "MCP server names in settings.json are not used" (line 805)              | Tests mcp.json file reading                 |
+| Agent frontmatter tests with `.md` files (lines 999–1099)                | Tests YAML frontmatter extraction from disk |
 
 These move to `tests/policy-loader.test.ts` or remain as integration tests that exercise the full stack.
 
@@ -227,12 +227,12 @@ This follow-up is tracked as a non-goal of the current issue.
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|----|----------|
-|Could this silently weaken a permission?|No — merge algorithm and evaluation logic are unchanged; only the I/O call site moves.|
-|Breaking existing constructor API|`FilePolicyLoader` is constructed internally when `policyLoader` option is absent; all existing callers work unchanged.|
-|Cache invalidation regression|`FilePolicyLoader.getCacheStamp()` uses the same `getFileStamp()` logic; `PermissionManager.resolvedPermissionsCache` continues to use the stamp for its own invalidation.|
-|Large test rewrite risk|Existing test files are NOT rewritten — only additive tests are planned.|
+| Risk                                     | Mitigation                                                                                                                                                                 |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Could this silently weaken a permission? | No — merge algorithm and evaluation logic are unchanged; only the I/O call site moves.                                                                                     |
+| Breaking existing constructor API        | `FilePolicyLoader` is constructed internally when `policyLoader` option is absent; all existing callers work unchanged.                                                    |
+| Cache invalidation regression            | `FilePolicyLoader.getCacheStamp()` uses the same `getFileStamp()` logic; `PermissionManager.resolvedPermissionsCache` continues to use the stamp for its own invalidation. |
+| Large test rewrite risk                  | Existing test files are NOT rewritten — only additive tests are planned.                                                                                                   |
 
 ## Open Questions
 

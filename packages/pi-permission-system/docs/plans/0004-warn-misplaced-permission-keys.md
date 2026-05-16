@@ -136,12 +136,12 @@ No changes — this schema governs the permission-policy file, not `config.json`
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-| ---- | ---------- |
-| Warning message is too noisy for users with valid configs | Warning only fires when misplaced keys are actually present; clean configs produce no output. |
-| Could this silently weaken a permission? | No — this change only *adds* a warning. Permission resolution logic is untouched; misplaced keys are still ignored exactly as before. |
-| `normalizePermissionSystemConfig` return-type change breaks callers | All call sites are in this repo (`loadPermissionSystemConfig`, `savePermissionSystemConfig`). Update them in the same commit. `savePermissionSystemConfig` only passes a typed `PermissionSystemExtensionConfig`, so it will never hit misplaced keys — but the type change must be handled. |
-| Future extension keys could collide with permission-policy key names | Unlikely (`PERMISSION_POLICY_KEYS` names are domain-specific), but if it happens the key should be removed from the set at that time. |
+| Risk                                                                 | Mitigation                                                                                                                                                                                                                                                                                   |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Warning message is too noisy for users with valid configs            | Warning only fires when misplaced keys are actually present; clean configs produce no output.                                                                                                                                                                                                |
+| Could this silently weaken a permission?                             | No — this change only *adds* a warning. Permission resolution logic is untouched; misplaced keys are still ignored exactly as before.                                                                                                                                                        |
+| `normalizePermissionSystemConfig` return-type change breaks callers  | All call sites are in this repo (`loadPermissionSystemConfig`, `savePermissionSystemConfig`). Update them in the same commit. `savePermissionSystemConfig` only passes a typed `PermissionSystemExtensionConfig`, so it will never hit misplaced keys — but the type change must be handled. |
+| Future extension keys could collide with permission-policy key names | Unlikely (`PERMISSION_POLICY_KEYS` names are domain-specific), but if it happens the key should be removed from the set at that time.                                                                                                                                                        |
 
 ## Open Questions
 

@@ -40,18 +40,18 @@ Forwarding is the mechanism by which subagent permission prompts are relayed to 
 
 ### Current layout
 
-|Artifact|Location|
-|---|---|
-|3 mutable fields|`ExtensionRuntime` interface in `src/runtime.ts`|
-|`startForwardedPermissionPolling()`|Free function in `src/runtime.ts` (~30 lines)|
-|`stopForwardedPermissionPolling()`|Free function in `src/runtime.ts` (~10 lines)|
-|`PermissionForwardingDeps`|`src/forwarded-permissions/polling.ts`|
-|`isSubagentExecutionContext()`|`src/subagent-context.ts` (called inside `start`)|
-|`processForwardedPermissionRequests()`|`src/forwarded-permissions/polling.ts`|
-|`HandlerDeps` forwarding fields|`startForwardedPermissionPolling`, `stopForwardedPermissionPolling` in `src/handlers/types.ts`|
-|Handler call sites|`before-agent-start.ts`, `input.ts`, `tool-call.ts`, `lifecycle.ts`|
-|Composition root wiring|`src/index.ts` lines ~46–108|
-|Runtime init (3 fields)|`createExtensionRuntime()` in `src/runtime.ts`|
+| Artifact                               | Location                                                                                       |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| 3 mutable fields                       | `ExtensionRuntime` interface in `src/runtime.ts`                                               |
+| `startForwardedPermissionPolling()`    | Free function in `src/runtime.ts` (~30 lines)                                                  |
+| `stopForwardedPermissionPolling()`     | Free function in `src/runtime.ts` (~10 lines)                                                  |
+| `PermissionForwardingDeps`             | `src/forwarded-permissions/polling.ts`                                                         |
+| `isSubagentExecutionContext()`         | `src/subagent-context.ts` (called inside `start`)                                              |
+| `processForwardedPermissionRequests()` | `src/forwarded-permissions/polling.ts`                                                         |
+| `HandlerDeps` forwarding fields        | `startForwardedPermissionPolling`, `stopForwardedPermissionPolling` in `src/handlers/types.ts` |
+| Handler call sites                     | `before-agent-start.ts`, `input.ts`, `tool-call.ts`, `lifecycle.ts`                            |
+| Composition root wiring                | `src/index.ts` lines ~46–108                                                                   |
+| Runtime init (3 fields)                | `createExtensionRuntime()` in `src/runtime.ts`                                                 |
 
 ## Design overview
 
@@ -197,12 +197,12 @@ Note: Steps 2–4 can be combined into fewer commits if the changes are small en
 
 ## Risks and mitigations
 
-|Risk|Mitigation|
-|---|---|
-|Could this silently weaken a permission?|No — pure structural refactor. Same `processForwardedPermissionRequests` call, same `isSubagentExecutionContext` guard, same timer interval. Integration tests unchanged.|
-|Timer leak if `ForwardingManager` is not stopped|Same risk exists today. `handleSessionEnd` calls `stop()` (via `deps.stopForwardedPermissionPolling()`); the new code calls `deps.forwarding.stop()` in the same place.|
-|Handler test mock shape changes break tests|Mechanical — replace two `vi.fn()` fields with one `{ start: vi.fn(), stop: vi.fn() }` object. Grep ensures no mock factory is missed.|
-|`ForwardingManager` import creates a circular dependency|`forwarding-manager.ts` imports from `forwarded-permissions/polling.ts` and `subagent-context.ts` — neither imports back. No cycle.|
+| Risk                                                     | Mitigation                                                                                                                                                                |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Could this silently weaken a permission?                 | No — pure structural refactor. Same `processForwardedPermissionRequests` call, same `isSubagentExecutionContext` guard, same timer interval. Integration tests unchanged. |
+| Timer leak if `ForwardingManager` is not stopped         | Same risk exists today. `handleSessionEnd` calls `stop()` (via `deps.stopForwardedPermissionPolling()`); the new code calls `deps.forwarding.stop()` in the same place.   |
+| Handler test mock shape changes break tests              | Mechanical — replace two `vi.fn()` fields with one `{ start: vi.fn(), stop: vi.fn() }` object. Grep ensures no mock factory is missed.                                    |
+| `ForwardingManager` import creates a circular dependency | `forwarding-manager.ts` imports from `forwarded-permissions/polling.ts` and `subagent-context.ts` — neither imports back. No cycle.                                       |
 
 ## Open questions
 

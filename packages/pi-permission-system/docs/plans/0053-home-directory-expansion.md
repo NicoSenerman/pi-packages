@@ -30,13 +30,13 @@ Users expect to write `~/development/pi/*` or `$HOME/development/pi/*` and have 
 
 ### Relevant modules
 
-| Module | Role |
-| ------ | ---- |
-| `src/normalize.ts` | `normalizeFlatConfig()` converts flat permission config into a `Ruleset`. |
-| `src/rule.ts` | `evaluate()` calls `wildcardMatch(r.pattern, value)` — patterns must already be in final matchable form. |
-| `src/wildcard-matcher.ts` | `wildcardMatch()` / `compileWildcardPattern()` compile `*`-glob patterns into regexes. |
-| `src/external-directory.ts` | `normalizePathForComparison()` already expands `~` on the value side (tool input paths). |
-| `src/input-normalizer.ts` | For `external_directory`, passes the raw `path` from tool input as the value to evaluate against. |
+| Module                      | Role                                                                                                     |
+| --------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `src/normalize.ts`          | `normalizeFlatConfig()` converts flat permission config into a `Ruleset`.                                |
+| `src/rule.ts`               | `evaluate()` calls `wildcardMatch(r.pattern, value)` — patterns must already be in final matchable form. |
+| `src/wildcard-matcher.ts`   | `wildcardMatch()` / `compileWildcardPattern()` compile `*`-glob patterns into regexes.                   |
+| `src/external-directory.ts` | `normalizePathForComparison()` already expands `~` on the value side (tool input paths).                 |
+| `src/input-normalizer.ts`   | For `external_directory`, passes the raw `path` from tool input as the value to evaluate against.        |
 
 ### Permission surface involved
 
@@ -121,16 +121,16 @@ The standalone `wildcardMatch()` function also calls `compileWildcardPattern`, s
 
 ## Module-Level Changes
 
-| File | Change |
-| ---- | ------ |
-| `src/expand-home.ts` | **New** — `expandHomePath()` utility. |
-| `src/wildcard-matcher.ts` | Import `expandHomePath`; apply in `compileWildcardPattern()`. |
-| `schemas/permissions.schema.json` | Add `markdownDescription` noting `~`/`$HOME` support in pattern keys. |
-| `config/config.example.json` | Add example using `~/...` in `external_directory`. |
-| `tests/expand-home.test.ts` | **New** — unit tests for `expandHomePath()`. |
-| `tests/wildcard-matcher.test.ts` | Add tests for home-expanded patterns via `wildcardMatch()` and `compileWildcardPattern()`. |
-| `tests/permission-manager-unified.test.ts` | Integration test: `external_directory` rule with `~/...` pattern matches expanded path. |
-| `docs/architecture/target-architecture.md` | Note home expansion in wildcard-matcher description if applicable. |
+| File                                       | Change                                                                                     |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `src/expand-home.ts`                       | **New** — `expandHomePath()` utility.                                                      |
+| `src/wildcard-matcher.ts`                  | Import `expandHomePath`; apply in `compileWildcardPattern()`.                              |
+| `schemas/permissions.schema.json`          | Add `markdownDescription` noting `~`/`$HOME` support in pattern keys.                      |
+| `config/config.example.json`               | Add example using `~/...` in `external_directory`.                                         |
+| `tests/expand-home.test.ts`                | **New** — unit tests for `expandHomePath()`.                                               |
+| `tests/wildcard-matcher.test.ts`           | Add tests for home-expanded patterns via `wildcardMatch()` and `compileWildcardPattern()`. |
+| `tests/permission-manager-unified.test.ts` | Integration test: `external_directory` rule with `~/...` pattern matches expanded path.    |
+| `docs/architecture/target-architecture.md` | Note home expansion in wildcard-matcher description if applicable.                         |
 
 ## TDD Order
 
@@ -144,12 +144,12 @@ The standalone `wildcardMatch()` function also calls `compileWildcardPattern`, s
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-| ---- | ---------- |
-| Could this silently weaken a permission? No — expansion only makes existing explicit patterns matchable. A pattern that previously failed to match (because `~` was not expanded) now correctly matches, which is the user's intent. No new implicit allows are introduced. | Confirm via integration test that only explicitly written `~`-prefixed rules gain match power. |
-| `homedir()` returns different values across platforms/users | This is the intended behavior — portability is the goal. Tests mock `homedir()` to a known value. |
-| Expanding `~` in non-path surfaces (e.g., bash command patterns like `~something`) | Unlikely to cause harm — bash commands starting with `~/` are legitimate path references. Patterns like `~username/` are not supported (documented as non-goal). |
-| `$HOME` prefix conflicts with literal `$HOME` in a non-path pattern | Extremely unlikely in practice. Document that `$HOME` is expanded; users who need a literal `$HOME` prefix can avoid it. |
+| Risk                                                                                                                                                                                                                                                                        | Mitigation                                                                                                                                                       |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Could this silently weaken a permission? No — expansion only makes existing explicit patterns matchable. A pattern that previously failed to match (because `~` was not expanded) now correctly matches, which is the user's intent. No new implicit allows are introduced. | Confirm via integration test that only explicitly written `~`-prefixed rules gain match power.                                                                   |
+| `homedir()` returns different values across platforms/users                                                                                                                                                                                                                 | This is the intended behavior — portability is the goal. Tests mock `homedir()` to a known value.                                                                |
+| Expanding `~` in non-path surfaces (e.g., bash command patterns like `~something`)                                                                                                                                                                                          | Unlikely to cause harm — bash commands starting with `~/` are legitimate path references. Patterns like `~username/` are not supported (documented as non-goal). |
+| `$HOME` prefix conflicts with literal `$HOME` in a non-path pattern                                                                                                                                                                                                         | Extremely unlikely in practice. Document that `$HOME` is expanded; users who need a literal `$HOME` prefix can avoid it.                                         |
 
 ## Open Questions
 

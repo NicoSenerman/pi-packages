@@ -109,14 +109,14 @@ export function suggestBashPattern(command: string): string {
 
 Result examples:
 
-|Command|Prefix tokens|Suggested pattern|
-|---|---|---|
-|`git checkout main`|`git checkout`|`git checkout *`|
-|`npm run dev`|`npm run dev`|`npm run dev*` (exact, arity=3 covers all 3 tokens)|
-|`rm -rf node_modules`|`rm`|`rm *`|
-|`cat file.txt`|`cat`|`cat *`|
-|`ls`|`ls`|`ls` (exact, no args)|
-|`unknown-tool --flag`|`unknown-tool`|`unknown-tool *`|
+| Command               | Prefix tokens  | Suggested pattern                                   |
+| --------------------- | -------------- | --------------------------------------------------- |
+| `git checkout main`   | `git checkout` | `git checkout *`                                    |
+| `npm run dev`         | `npm run dev`  | `npm run dev*` (exact, arity=3 covers all 3 tokens) |
+| `rm -rf node_modules` | `rm`           | `rm *`                                              |
+| `cat file.txt`        | `cat`          | `cat *`                                             |
+| `ls`                  | `ls`           | `ls` (exact, no args)                               |
+| `unknown-tool --flag` | `unknown-tool` | `unknown-tool *`                                    |
 
 Wait — for `npm run dev`, arity is 3 so `prefix(["npm","run","dev"])` returns `["npm","run","dev"]`.
 Since `meaningful.length >= tokens.length`, we return the exact command `npm run dev`.
@@ -199,13 +199,13 @@ return `${meaningful.join(" ")} *`;
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|---|---|
-|Arity entry too high → pattern too narrow (user still gets prompted)|Safe direction — prompts more, not less. User can still approve exact command.|
-|Arity entry too low → pattern too broad|Same risk as current code. Mitigated by showing pattern in dialog label. User sees what they approve.|
-|Could this silently weaken a permission?|No. The arity table only affects the **suggested** pattern shown in the dialog. The user must explicitly approve. If anything, it produces tighter patterns than before (reducing what's approved).|
-|Dictionary maintenance burden|Start with ~50-80 common commands. Dictionary is static and easy to extend via PRs.|
-|Case sensitivity — `Git` vs `git`|Normalize to lowercase during lookup.|
+| Risk                                                                 | Mitigation                                                                                                                                                                                          |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Arity entry too high → pattern too narrow (user still gets prompted) | Safe direction — prompts more, not less. User can still approve exact command.                                                                                                                      |
+| Arity entry too low → pattern too broad                              | Same risk as current code. Mitigated by showing pattern in dialog label. User sees what they approve.                                                                                               |
+| Could this silently weaken a permission?                             | No. The arity table only affects the **suggested** pattern shown in the dialog. The user must explicitly approve. If anything, it produces tighter patterns than before (reducing what's approved). |
+| Dictionary maintenance burden                                        | Start with ~50-80 common commands. Dictionary is static and easy to extend via PRs.                                                                                                                 |
+| Case sensitivity — `Git` vs `git`                                    | Normalize to lowercase during lookup.                                                                                                                                                               |
 
 ## Open Questions
 

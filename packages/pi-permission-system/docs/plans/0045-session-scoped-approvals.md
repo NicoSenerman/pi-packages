@@ -37,13 +37,13 @@ There is no way to say "yes, allow this class of access for the rest of the sess
 
 ### Existing modules
 
-|Module|Role|
-|---|---|
-|`src/permission-dialog.ts`|`requestPermissionDecisionFromUi()` presents Yes/No/No-with-reason via `PermissionDecisionUi.select()`.|
-|`src/permission-gate.ts`|`applyPermissionGate()` — pure deny/ask/allow branching. Receives a `promptForApproval` callback.|
-|`src/external-directory.ts`|Path normalization, outside-CWD detection, message formatting.|
-|`src/index.ts`|Wires the gate for file-tool and bash external-directory checks. Calls `promptPermission()` which delegates to `requestPermissionDecisionFromUi()`.|
-|`src/types.ts`|`PermissionPromptDecision`, `PermissionDecisionState` types.|
+| Module                      | Role                                                                                                                                                |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/permission-dialog.ts`  | `requestPermissionDecisionFromUi()` presents Yes/No/No-with-reason via `PermissionDecisionUi.select()`.                                             |
+| `src/permission-gate.ts`    | `applyPermissionGate()` — pure deny/ask/allow branching. Receives a `promptForApproval` callback.                                                   |
+| `src/external-directory.ts` | Path normalization, outside-CWD detection, message formatting.                                                                                      |
+| `src/index.ts`              | Wires the gate for file-tool and bash external-directory checks. Calls `promptPermission()` which delegates to `requestPermissionDecisionFromUi()`. |
+| `src/types.ts`              | `PermissionPromptDecision`, `PermissionDecisionState` types.                                                                                        |
 
 ### Flow today
 
@@ -192,13 +192,13 @@ No changes needed — `PermissionDecisionState` lives in `permission-dialog.ts`.
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|---|---|
-|Session approval silently weakens a permission by covering more paths than intended.|Prefix is derived from `dirname()` of the specific path, not the top-level external directory. Approving `~/other/src/foo.ts` covers `~/other/src/` but not `~/other/`. Users must approve broader prefixes explicitly via repeated prompts or policy config.|
-|`approved_for_session` state breaks callers that only expect three states.|`isPermissionDecisionState()` is updated in the same commit. Only `src/index.ts` inspects `decision.state` for caching; all other callers check `decision.approved` (boolean).|
-|Cache grows without bound during long sessions.|External-directory prefixes are short strings; even hundreds of approvals are negligible. No eviction needed.|
-|Bash external-directory extracts multiple paths — unclear which to cache.|Cache each extracted path's parent individually. This is consistent: each path that was flagged gets its prefix recorded.|
-|Yolo mode interaction — session approval is redundant when yolo auto-approves.|No conflict: yolo mode short-circuits before the dialog is shown, so the cache is never consulted. No special handling needed.|
+| Risk                                                                                 | Mitigation                                                                                                                                                                                                                                                    |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Session approval silently weakens a permission by covering more paths than intended. | Prefix is derived from `dirname()` of the specific path, not the top-level external directory. Approving `~/other/src/foo.ts` covers `~/other/src/` but not `~/other/`. Users must approve broader prefixes explicitly via repeated prompts or policy config. |
+| `approved_for_session` state breaks callers that only expect three states.           | `isPermissionDecisionState()` is updated in the same commit. Only `src/index.ts` inspects `decision.state` for caching; all other callers check `decision.approved` (boolean).                                                                                |
+| Cache grows without bound during long sessions.                                      | External-directory prefixes are short strings; even hundreds of approvals are negligible. No eviction needed.                                                                                                                                                 |
+| Bash external-directory extracts multiple paths — unclear which to cache.            | Cache each extracted path's parent individually. This is consistent: each path that was flagged gets its prefix recorded.                                                                                                                                     |
+| Yolo mode interaction — session approval is redundant when yolo auto-approves.       | No conflict: yolo mode short-circuits before the dialog is shown, so the cache is never consulted. No special handling needed.                                                                                                                                |
 
 ## Open Questions
 

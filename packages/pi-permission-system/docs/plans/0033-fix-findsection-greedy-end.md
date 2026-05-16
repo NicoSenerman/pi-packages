@@ -29,10 +29,10 @@ Unit tests from #21 exposed the bug with a minimal prompt where `"Other content"
 
 ### Relevant modules
 
-|File|Role|
-|----|-----|
-|`src/system-prompt-sanitizer.ts`|Contains `findSection`, `removeLineSection`, `sanitizeAvailableToolsSection`, `sanitizeGuidelinesSection`|
-|`tests/system-prompt-sanitizer.test.ts`|Existing tests including the `test.fails` for #33|
+| File                                    | Role                                                                                                      |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `src/system-prompt-sanitizer.ts`        | Contains `findSection`, `removeLineSection`, `sanitizeAvailableToolsSection`, `sanitizeGuidelinesSection` |
+| `tests/system-prompt-sanitizer.test.ts` | Existing tests including the `test.fails` for #33                                                         |
 
 ### Permission surface
 
@@ -139,12 +139,12 @@ This ensures trailing blank lines between the section and the next non-section c
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|----|----------|
-|Could this silently weaken a permission?|No policy logic changes. The fix only affects system-prompt text manipulation. However, the bug itself weakens safety by silently removing user content; fixing it restores the intended behaviour.|
-|`isSectionBodyLine` is too conservative and leaves bullet lines outside the section|The heuristic mirrors the existing section format (header + bullets). Tests explicitly cover bullet-only and mixed content.|
-|`isSectionBodyLine` is too liberal and still eats non-section content|Non-blank, non-bullet, non-indented lines stop the scan. The reproducer from the issue (`"Other content"`) is the direct test.|
-|Guidelines section has the same latent bug|Same `findSection` is used — the fix applies to both. Added edge-case test confirms.|
+| Risk                                                                                | Mitigation                                                                                                                                                                                          |
+| ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Could this silently weaken a permission?                                            | No policy logic changes. The fix only affects system-prompt text manipulation. However, the bug itself weakens safety by silently removing user content; fixing it restores the intended behaviour. |
+| `isSectionBodyLine` is too conservative and leaves bullet lines outside the section | The heuristic mirrors the existing section format (header + bullets). Tests explicitly cover bullet-only and mixed content.                                                                         |
+| `isSectionBodyLine` is too liberal and still eats non-section content               | Non-blank, non-bullet, non-indented lines stop the scan. The reproducer from the issue (`"Other content"`) is the direct test.                                                                      |
+| Guidelines section has the same latent bug                                          | Same `findSection` is used — the fix applies to both. Added edge-case test confirms.                                                                                                                |
 
 ## Open Questions
 

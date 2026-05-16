@@ -90,11 +90,11 @@ Name the abstraction. Verify it reduces the field count of the parent interface 
 
 Summarize findings as a table:
 
-| Smell | Location | Evidence | Suggested fix |
-| --- | --- | --- | --- |
-| Wide interface | `FooOptions` (12 fields) | `doBar` uses 3 | Narrow per-call interface |
-| LoD violation | `module.ts:45` | `opts.config.repo.owner` | Accept `owner` directly or add helper |
-| Output argument | `handler.ts:88` | `state.result = parsed` | Return value instead |
+| Smell           | Location                 | Evidence                 | Suggested fix                         |
+| --------------- | ------------------------ | ------------------------ | ------------------------------------- |
+| Wide interface  | `FooOptions` (12 fields) | `doBar` uses 3           | Narrow per-call interface             |
+| LoD violation   | `module.ts:45`           | `opts.config.repo.owner` | Accept `owner` directly or add helper |
+| Output argument | `handler.ts:88`          | `state.result = parsed`  | Return value instead                  |
 
 Then recommend whether the fixes are:
 

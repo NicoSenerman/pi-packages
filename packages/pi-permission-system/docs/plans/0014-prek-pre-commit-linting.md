@@ -96,13 +96,13 @@ This issue is primarily a configuration/tooling change with no application logic
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-| --- | --- |
+| Risk                                                                 | Mitigation                                                                                                                                                                  |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | prek not installed on contributor's machine → `prepare` script fails | Document prek installation in README. The `prepare` script can use `prek install` with a guard (`command -v prek` or similar) so it warns but does not block `npm install`. |
-| Hook runs full-repo lint instead of staged-only → slow commits | Configure prek to pass only staged filenames to each command. Verify with a manual test. |
-| Could this silently weaken a permission? | No — this change is purely developer tooling. It adds a pre-commit gate; it does not touch any permission surface, policy file, or runtime code. |
-| markdownlint glob mismatch between hook and `npm run lint:md` | Use the same glob patterns in `.prek.yaml` as in `package.json`'s `lint:md` script. |
-| `npx biome` falls back to a global install if local is missing | `npx` resolves from `node_modules/.bin` first when run inside a project with a lockfile. Document that `npm install` must be run before committing. |
+| Hook runs full-repo lint instead of staged-only → slow commits       | Configure prek to pass only staged filenames to each command. Verify with a manual test.                                                                                    |
+| Could this silently weaken a permission?                             | No — this change is purely developer tooling. It adds a pre-commit gate; it does not touch any permission surface, policy file, or runtime code.                            |
+| markdownlint glob mismatch between hook and `npm run lint:md`        | Use the same glob patterns in `.prek.yaml` as in `package.json`'s `lint:md` script.                                                                                         |
+| `npx biome` falls back to a global install if local is missing       | `npx` resolves from `node_modules/.bin` first when run inside a project with a lockfile. Document that `npm install` must be run before committing.                         |
 
 ## Open Questions
 

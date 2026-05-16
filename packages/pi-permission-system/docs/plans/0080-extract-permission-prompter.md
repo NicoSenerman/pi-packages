@@ -32,14 +32,14 @@ This is a cross-cutting refactor that touches the **prompt delivery** mechanism 
 
 ### Relevant modules
 
-|File|Role today|
-|----|----------|
-|`src/handlers/types.ts`|Defines `HandlerDeps.promptPermission` and `PromptPermissionDetails`|
-|`src/runtime.ts`|`promptPermission()` free function: yolo check → review log → `confirmPermission()`|
-|`src/forwarded-permissions/polling.ts`|`confirmPermission()`: UI-present branch vs. subagent forwarding; `PermissionForwardingDeps` interface|
-|`src/index.ts`|Wires `forwardingDeps` and binds `promptPermission` into `HandlerDeps`|
-|`src/permission-dialog.ts`|`requestPermissionDecisionFromUi()` — shows the actual select dialog|
-|`src/yolo-mode.ts`|`shouldAutoApprovePermissionState()` — yolo-mode predicate|
+| File                                   | Role today                                                                                             |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `src/handlers/types.ts`                | Defines `HandlerDeps.promptPermission` and `PromptPermissionDetails`                                   |
+| `src/runtime.ts`                       | `promptPermission()` free function: yolo check → review log → `confirmPermission()`                    |
+| `src/forwarded-permissions/polling.ts` | `confirmPermission()`: UI-present branch vs. subagent forwarding; `PermissionForwardingDeps` interface |
+| `src/index.ts`                         | Wires `forwardingDeps` and binds `promptPermission` into `HandlerDeps`                                 |
+| `src/permission-dialog.ts`             | `requestPermissionDecisionFromUi()` — shows the actual select dialog                                   |
+| `src/yolo-mode.ts`                     | `shouldAutoApprovePermissionState()` — yolo-mode predicate                                             |
 
 ### Current call chain
 
@@ -126,17 +126,17 @@ The `PermissionForwardingDeps` interface narrows to only what `processForwardedP
 
 ## Module-Level Changes
 
-|File|Change|
-|----|------|
-|`src/permission-prompter.ts` (new)|`PermissionPrompterApi` interface, `PermissionPrompterDeps` interface, `PermissionPrompter` class|
-|`src/runtime.ts`|Remove `promptPermission()` free function and `reviewPermissionDecision()` helper (moved into class)|
-|`src/forwarded-permissions/polling.ts`|Narrow `PermissionForwardingDeps` — remove `requestPermissionDecisionFromUi` (kept only for `processForwardedPermissionRequests`); export `confirmPermission` as-is for the prompter to call|
-|`src/index.ts`|Instantiate `PermissionPrompter`, pass it to `HandlerDeps`; simplify `forwardingDeps` to forwarding-only subset|
-|`src/handlers/types.ts`|No signature change — `promptPermission` remains `(ctx, details) => Promise<PermissionPromptDecision>`|
-|`tests/unit/runtime.test.ts`|Remove tests for `promptPermission` free function|
-|`tests/unit/permission-prompter.test.ts` (new)|Unit tests for `PermissionPrompter` class|
-|`tests/unit/polling.test.ts`|Adjust `PermissionForwardingDeps` mock to match narrowed interface|
-|`docs/architecture/permission-prompter.md` (new)|Short architectural note explaining the class's responsibilities|
+| File                                             | Change                                                                                                                                                                                       |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/permission-prompter.ts` (new)               | `PermissionPrompterApi` interface, `PermissionPrompterDeps` interface, `PermissionPrompter` class                                                                                            |
+| `src/runtime.ts`                                 | Remove `promptPermission()` free function and `reviewPermissionDecision()` helper (moved into class)                                                                                         |
+| `src/forwarded-permissions/polling.ts`           | Narrow `PermissionForwardingDeps` — remove `requestPermissionDecisionFromUi` (kept only for `processForwardedPermissionRequests`); export `confirmPermission` as-is for the prompter to call |
+| `src/index.ts`                                   | Instantiate `PermissionPrompter`, pass it to `HandlerDeps`; simplify `forwardingDeps` to forwarding-only subset                                                                              |
+| `src/handlers/types.ts`                          | No signature change — `promptPermission` remains `(ctx, details) => Promise<PermissionPromptDecision>`                                                                                       |
+| `tests/unit/runtime.test.ts`                     | Remove tests for `promptPermission` free function                                                                                                                                            |
+| `tests/unit/permission-prompter.test.ts` (new)   | Unit tests for `PermissionPrompter` class                                                                                                                                                    |
+| `tests/unit/polling.test.ts`                     | Adjust `PermissionForwardingDeps` mock to match narrowed interface                                                                                                                           |
+| `docs/architecture/permission-prompter.md` (new) | Short architectural note explaining the class's responsibilities                                                                                                                             |
 
 ## TDD Order
 
@@ -157,12 +157,12 @@ The `PermissionForwardingDeps` interface narrows to only what `processForwardedP
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|----|----------|
-|Could this silently weaken a permission?|No — the class preserves identical decision logic (yolo check → log → confirm). Integration tests for each permission surface remain unchanged.|
-|Forwarding tests break due to narrowed deps|Step 4 explicitly updates the mock interface; CI catches regressions.|
-|Circular import between prompter and polling|`PermissionPrompter` imports `confirmPermission` from polling; polling does not import the prompter. One-way dependency, no cycle.|
-|Review log entry format drift|The class reuses the existing `reviewPermissionDecision` helper (moved into the class as a private method), preserving exact field names.|
+| Risk                                         | Mitigation                                                                                                                                      |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Could this silently weaken a permission?     | No — the class preserves identical decision logic (yolo check → log → confirm). Integration tests for each permission surface remain unchanged. |
+| Forwarding tests break due to narrowed deps  | Step 4 explicitly updates the mock interface; CI catches regressions.                                                                           |
+| Circular import between prompter and polling | `PermissionPrompter` imports `confirmPermission` from polling; polling does not import the prompter. One-way dependency, no cycle.              |
+| Review log entry format drift                | The class reuses the existing `reviewPermissionDecision` helper (moved into the class as a private method), preserving exact field names.       |
 
 ## Open Questions
 

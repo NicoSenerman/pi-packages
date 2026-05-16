@@ -96,15 +96,15 @@ There is no key collision — `permission:` is exclusively consumed by `pi-permi
 
 ## Permission Surfaces
 
-|Surface|Key|Value format|Description|
-|---|---|---|---|
-|Tools|`<tool_name>`|`"allow" \| "ask" \| "deny"`|Per-tool invocation policy|
-|Bash|`bash`|`{ pattern: decision }`|Pattern-matched bash commands (glob-style)|
-|MCP|`mcp`|`{ pattern: decision }`|MCP tool-level policy|
-|Skills|`skill`|`{ pattern: decision }`|Skill invocation policy|
-|External directories|`external_directory`|`{ pattern: decision }`|Path-based access outside the project|
-|Special|`special`|`{ pattern: decision }`|Special operations (e.g. `subagent_spawn`)|
-|Universal fallback|`"*"`|`"allow" \| "ask" \| "deny"`|Applies when no specific rule matches|
+| Surface              | Key                  | Value format                 | Description                                |
+| -------------------- | -------------------- | ---------------------------- | ------------------------------------------ |
+| Tools                | `<tool_name>`        | `"allow" \| "ask" \| "deny"` | Per-tool invocation policy                 |
+| Bash                 | `bash`               | `{ pattern: decision }`      | Pattern-matched bash commands (glob-style) |
+| MCP                  | `mcp`                | `{ pattern: decision }`      | MCP tool-level policy                      |
+| Skills               | `skill`              | `{ pattern: decision }`      | Skill invocation policy                    |
+| External directories | `external_directory` | `{ pattern: decision }`      | Path-based access outside the project      |
+| Special              | `special`            | `{ pattern: decision }`      | Special operations (e.g. `subagent_spawn`) |
+| Universal fallback   | `"*"`                | `"allow" \| "ask" \| "deny"` | Applies when no specific rule matches      |
 
 Pattern maps use last-match-wins ordering: put broad catch-alls first and specific overrides after.
 

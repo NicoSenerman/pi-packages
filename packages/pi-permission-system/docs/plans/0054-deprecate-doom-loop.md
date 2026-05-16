@@ -42,15 +42,15 @@ The key is dead code and should be deprecated.
 
 ### Relevant modules
 
-|File|Role|
-|---|---|
-|`src/types.ts`|`SpecialPermissionName` type union includes `"doom_loop"`|
-|`src/permission-manager.ts`|`SPECIAL_PERMISSION_KEYS` set includes `"doom_loop"`; `checkPermission()` routes it to the special surface|
-|`src/config-loader.ts`|`SPECIAL_PERMISSION_KEYS` set (duplicate) includes `"doom_loop"`|
-|`src/extension-config.ts`|`PERMISSION_POLICY_KEYS` set includes `"doom_loop"` for misplaced-key detection|
-|`schemas/permissions.schema.json`|`special.doom_loop` property definition|
-|`config/config.example.json`|`"doom_loop": "deny"` example entry|
-|`README.md`|Documents `doom_loop` in the special permissions table|
+| File                              | Role                                                                                                       |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `src/types.ts`                    | `SpecialPermissionName` type union includes `"doom_loop"`                                                  |
+| `src/permission-manager.ts`       | `SPECIAL_PERMISSION_KEYS` set includes `"doom_loop"`; `checkPermission()` routes it to the special surface |
+| `src/config-loader.ts`            | `SPECIAL_PERMISSION_KEYS` set (duplicate) includes `"doom_loop"`                                           |
+| `src/extension-config.ts`         | `PERMISSION_POLICY_KEYS` set includes `"doom_loop"` for misplaced-key detection                            |
+| `schemas/permissions.schema.json` | `special.doom_loop` property definition                                                                    |
+| `config/config.example.json`      | `"doom_loop": "deny"` example entry                                                                        |
+| `README.md`                       | Documents `doom_loop` in the special permissions table                                                     |
 
 ### Precedent
 
@@ -85,19 +85,19 @@ Add a deprecated note if desired, or simply remove (the loader tolerance handles
 
 ## Module-Level Changes
 
-|File|Change|
-|---|---|
-|`src/types.ts`|Remove `"doom_loop"` from `SpecialPermissionName` union|
-|`src/permission-manager.ts`|Move `"doom_loop"` from `SPECIAL_PERMISSION_KEYS` to `DEPRECATED_SPECIAL_KEYS`|
-|`src/config-loader.ts`|Remove `"doom_loop"` from `SPECIAL_PERMISSION_KEYS`|
-|`src/extension-config.ts`|Remove `"doom_loop"` from `PERMISSION_POLICY_KEYS`|
-|`schemas/permissions.schema.json`|Remove `doom_loop` property from `special`; update `special` description to mention only `external_directory`|
-|`config/config.example.json`|Remove `"doom_loop": "deny"` line|
-|`README.md`|Remove `doom_loop` row from special permissions table; update description text|
-|`docs/architecture/current-architecture.md`|Update example config snippet if it references `doom_loop`|
-|`tests/permission-system.test.ts`|Update tests: doom_loop should now emit a deprecation warning and be stripped; existing doom_loop resolution tests become deprecation-behavior tests|
-|`tests/config-loader.test.ts`|Update test that checks `special: { doom_loop: "deny" }` normalization|
-|`tests/extension-config.test.ts`|Remove `doom_loop` from misplaced-key test expectations|
+| File                                        | Change                                                                                                                                               |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/types.ts`                              | Remove `"doom_loop"` from `SpecialPermissionName` union                                                                                              |
+| `src/permission-manager.ts`                 | Move `"doom_loop"` from `SPECIAL_PERMISSION_KEYS` to `DEPRECATED_SPECIAL_KEYS`                                                                       |
+| `src/config-loader.ts`                      | Remove `"doom_loop"` from `SPECIAL_PERMISSION_KEYS`                                                                                                  |
+| `src/extension-config.ts`                   | Remove `"doom_loop"` from `PERMISSION_POLICY_KEYS`                                                                                                   |
+| `schemas/permissions.schema.json`           | Remove `doom_loop` property from `special`; update `special` description to mention only `external_directory`                                        |
+| `config/config.example.json`                | Remove `"doom_loop": "deny"` line                                                                                                                    |
+| `README.md`                                 | Remove `doom_loop` row from special permissions table; update description text                                                                       |
+| `docs/architecture/current-architecture.md` | Update example config snippet if it references `doom_loop`                                                                                           |
+| `tests/permission-system.test.ts`           | Update tests: doom_loop should now emit a deprecation warning and be stripped; existing doom_loop resolution tests become deprecation-behavior tests |
+| `tests/config-loader.test.ts`               | Update test that checks `special: { doom_loop: "deny" }` normalization                                                                               |
+| `tests/extension-config.test.ts`            | Remove `doom_loop` from misplaced-key test expectations                                                                                              |
 
 ## TDD Order
 
@@ -121,12 +121,12 @@ Add a deprecated note if desired, or simply remove (the loader tolerance handles
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|---|---|
-|Users with `doom_loop` in config see a new warning|Warning is non-fatal and actionable ("remove it from your policy file"). Same UX as `tool_call_limit` deprecation.|
-|Could this silently weaken a permission?|No — the key was already dead code. No runtime check ever fired `checkPermission("doom_loop")`, so removing it changes zero runtime decisions.|
-|Future Pi core doom_loop detection breaks|If Pi adds native detection that fires `checkPermission("doom_loop")`, we re-add the key. The deprecation warning tells users to remove it, so re-adding is non-breaking.|
-|`defaultPolicy.special` description references doom_loop|Update schema and README description text to mention only `external_directory`.|
+| Risk                                                     | Mitigation                                                                                                                                                                |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Users with `doom_loop` in config see a new warning       | Warning is non-fatal and actionable ("remove it from your policy file"). Same UX as `tool_call_limit` deprecation.                                                        |
+| Could this silently weaken a permission?                 | No — the key was already dead code. No runtime check ever fired `checkPermission("doom_loop")`, so removing it changes zero runtime decisions.                            |
+| Future Pi core doom_loop detection breaks                | If Pi adds native detection that fires `checkPermission("doom_loop")`, we re-add the key. The deprecation warning tells users to remove it, so re-adding is non-breaking. |
+| `defaultPolicy.special` description references doom_loop | Update schema and README description text to mention only `external_directory`.                                                                                           |
 
 ## Open Questions
 

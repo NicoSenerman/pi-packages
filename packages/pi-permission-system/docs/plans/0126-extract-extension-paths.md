@@ -37,13 +37,13 @@ It is a pure structural extraction of immutable path constants.
 
 ### Relevant modules
 
-|File|Role in this change|
-|---|---|
-|`src/runtime.ts`|Defines `ExtensionRuntime` interface and `createExtensionRuntime()`. Path fields are computed inline in the factory.|
-|`src/index.ts`|Composition root — reads `runtime.agentDir`, `runtime.subagentSessionsDir`, `runtime.forwardingDir` to wire `PermissionPrompter` and `PermissionForwardingDeps`.|
-|`src/handlers/types.ts`|`HandlerDeps` carries `piInfrastructureDirs` as a top-level field.|
-|`src/node-modules-discovery.ts`|Provides `discoverGlobalNodeModulesRoot()` used to build `piInfrastructureDirs`.|
-|`tests/runtime.test.ts`|Tests path derivation in `createExtensionRuntime` — these cover the exact logic being extracted.|
+| File                            | Role in this change                                                                                                                                              |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/runtime.ts`                | Defines `ExtensionRuntime` interface and `createExtensionRuntime()`. Path fields are computed inline in the factory.                                             |
+| `src/index.ts`                  | Composition root — reads `runtime.agentDir`, `runtime.subagentSessionsDir`, `runtime.forwardingDir` to wire `PermissionPrompter` and `PermissionForwardingDeps`. |
+| `src/handlers/types.ts`         | `HandlerDeps` carries `piInfrastructureDirs` as a top-level field.                                                                                               |
+| `src/node-modules-discovery.ts` | Provides `discoverGlobalNodeModulesRoot()` used to build `piInfrastructureDirs`.                                                                                 |
+| `tests/runtime.test.ts`         | Tests path derivation in `createExtensionRuntime` — these cover the exact logic being extracted.                                                                 |
 
 ### Current path computation (in `createExtensionRuntime`)
 
@@ -159,12 +159,12 @@ Callers that read `runtime.agentDir` or `runtime.piInfrastructureDirs` continue 
 
 ## Risks and mitigations
 
-|Risk|Mitigation|
-|---|---|
-|Could this silently weaken a permission?|No. Pure structural extraction — same path values computed from the same inputs. No gate logic, no policy evaluation, no config loading changes.|
-|`piInfrastructureDirs` type narrows from `string[]` to `readonly string[]`|`readonly string[]` is assignable to `string[]` consumers. If any caller mutates the array (none do today), the compiler will flag it. This is a safety improvement.|
-|`discoverGlobalNodeModulesRoot` mock in `runtime.test.ts` stops working after extraction|If `createExtensionRuntime` no longer calls `discoverGlobalNodeModulesRoot` directly (it delegates to `computeExtensionPaths`), the mock target shifts. Either mock `../src/extension-paths` in `runtime.test.ts`, or let the real `computeExtensionPaths` run and keep the existing mock on `../src/node-modules-discovery` which it transitively calls. The latter is simpler and tests the integration.|
-|Re-export needed for downstream consumers|`ExtensionPaths` should be re-exported from `src/runtime.ts` (or the package barrel if one exists) so `index.ts` and future consumers can import it without knowing the internal module.|
+| Risk                                                                                     | Mitigation                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Could this silently weaken a permission?                                                 | No. Pure structural extraction — same path values computed from the same inputs. No gate logic, no policy evaluation, no config loading changes.                                                                                                                                                                                                                                                           |
+| `piInfrastructureDirs` type narrows from `string[]` to `readonly string[]`               | `readonly string[]` is assignable to `string[]` consumers. If any caller mutates the array (none do today), the compiler will flag it. This is a safety improvement.                                                                                                                                                                                                                                       |
+| `discoverGlobalNodeModulesRoot` mock in `runtime.test.ts` stops working after extraction | If `createExtensionRuntime` no longer calls `discoverGlobalNodeModulesRoot` directly (it delegates to `computeExtensionPaths`), the mock target shifts. Either mock `../src/extension-paths` in `runtime.test.ts`, or let the real `computeExtensionPaths` run and keep the existing mock on `../src/node-modules-discovery` which it transitively calls. The latter is simpler and tests the integration. |
+| Re-export needed for downstream consumers                                                | `ExtensionPaths` should be re-exported from `src/runtime.ts` (or the package barrel if one exists) so `index.ts` and future consumers can import it without knowing the internal module.                                                                                                                                                                                                                   |
 
 ## Open questions
 

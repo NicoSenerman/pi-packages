@@ -46,10 +46,10 @@ No config, schema, or merge-precedence changes involved.
 
 ## Module-Level Changes
 
-|File|Change|
-|----|------|
-|`src/external-directory.ts`|Add `/^\/+$/` guard in `classifyTokenAsPathCandidate` before the `startsWith("/")` branch.|
-|`tests/bash-external-directory.test.ts`|Add a "bare-slash tokens" `describe` block with tests for `//`, `/`, `///`, and mixed commands.|
+| File                                    | Change                                                                                          |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `src/external-directory.ts`             | Add `/^\/+$/` guard in `classifyTokenAsPathCandidate` before the `startsWith("/")` branch.      |
+| `tests/bash-external-directory.test.ts` | Add a "bare-slash tokens" `describe` block with tests for `//`, `/`, `///`, and mixed commands. |
 
 ## TDD Order
 
@@ -72,11 +72,11 @@ No config, schema, or merge-precedence changes involved.
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|----|----------|
-|Could this silently weaken a permission?|No — bare-slash tokens resolve to `/` (root), which is never a meaningful path argument. Skipping them only removes false positives; real paths like `/etc/hosts` are unaffected because they contain non-slash characters.|
-|Regex too broad?|`/^\/+$/` only matches tokens that are *entirely* slashes. Any token with a non-slash character still goes through the existing path-candidate logic.|
-|Edge case: lone `/` as a real argument (e.g. `ls /`)?|`ls /` would list root. Skipping it means no external-directory prompt for root listing. This is acceptable — the bash permission gate itself still applies, and root-listing is a read-only operation. If a user wants to block `ls /` they can deny the bash command pattern.|
+| Risk                                                  | Mitigation                                                                                                                                                                                                                                                                      |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Could this silently weaken a permission?              | No — bare-slash tokens resolve to `/` (root), which is never a meaningful path argument. Skipping them only removes false positives; real paths like `/etc/hosts` are unaffected because they contain non-slash characters.                                                     |
+| Regex too broad?                                      | `/^\/+$/` only matches tokens that are *entirely* slashes. Any token with a non-slash character still goes through the existing path-candidate logic.                                                                                                                           |
+| Edge case: lone `/` as a real argument (e.g. `ls /`)? | `ls /` would list root. Skipping it means no external-directory prompt for root listing. This is acceptable — the bash permission gate itself still applies, and root-listing is a read-only operation. If a user wants to block `ls /` they can deny the bash command pattern. |
 
 ## Open Questions
 

@@ -38,24 +38,24 @@ Both formats express the same semantics (surface + pattern + action), but the fl
 
 ### Dependencies
 
-|Issue|Status|Relationship|
-|-----|------|------------|
-|#65|Closed|Synthesized defaults and unified evaluate path — prerequisite, landed|
-|#56|Closed|Unified Rule type and normalizeConfig — prerequisite, landed|
+| Issue | Status | Relationship                                                          |
+| ----- | ------ | --------------------------------------------------------------------- |
+| #65   | Closed | Synthesized defaults and unified evaluate path — prerequisite, landed |
+| #56   | Closed | Unified Rule type and normalizeConfig — prerequisite, landed          |
 
 ### Relevant modules
 
-|File|Role|
-|----|-----|
-|`src/config-loader.ts`|`UnifiedPermissionConfig`, `normalizeUnifiedConfig()`, `mergeUnifiedConfigs()`, `loadAndMergeConfigs()`|
-|`src/normalize.ts`|`NormalizableConfig`, `normalizeConfig()` — converts on-disk shape → Ruleset|
-|`src/synthesize.ts`|`synthesizeDefaults()`, `synthesizeOverrides()`, `synthesizeBaseline()`, `composeRuleset()`|
-|`src/permission-manager.ts`|`normalizeRawPermission()`, per-agent frontmatter parsing, `resolvePermissions()`|
-|`src/defaults.ts`|`mergeDefaults()`, `DEFAULT_POLICY`|
-|`src/types.ts`|`PermissionDefaultPolicy`, `ScopeConfig`|
-|`src/extension-config.ts`|`detectMisplacedPermissionKeys()` — detects policy keys in the extension config file|
-|`schemas/permissions.schema.json`|JSON Schema for config files|
-|`config/config.example.json`|Example config|
+| File                              | Role                                                                                                    |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `src/config-loader.ts`            | `UnifiedPermissionConfig`, `normalizeUnifiedConfig()`, `mergeUnifiedConfigs()`, `loadAndMergeConfigs()` |
+| `src/normalize.ts`                | `NormalizableConfig`, `normalizeConfig()` — converts on-disk shape → Ruleset                            |
+| `src/synthesize.ts`               | `synthesizeDefaults()`, `synthesizeOverrides()`, `synthesizeBaseline()`, `composeRuleset()`             |
+| `src/permission-manager.ts`       | `normalizeRawPermission()`, per-agent frontmatter parsing, `resolvePermissions()`                       |
+| `src/defaults.ts`                 | `mergeDefaults()`, `DEFAULT_POLICY`                                                                     |
+| `src/types.ts`                    | `PermissionDefaultPolicy`, `ScopeConfig`                                                                |
+| `src/extension-config.ts`         | `detectMisplacedPermissionKeys()` — detects policy keys in the extension config file                    |
+| `schemas/permissions.schema.json` | JSON Schema for config files                                                                            |
+| `config/config.example.json`      | Example config                                                                                          |
 
 ### Permission surfaces involved
 
@@ -451,16 +451,16 @@ The legacy keys should still be detected as misplaced — they indicate someone 
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|----|----------|
-|Breaking change for existing configs|Issue explicitly states no backward compatibility. Sole user. `detectMisplacedPermissionKeys()` warns on legacy keys.|
-|`tools.bash`/`tools.mcp` override semantics lost|In the flat format, users express this directly as `bash: { "*": "allow" }`. The override concept is unnecessary — the user controls catch-all placement.|
-|Per-surface defaults (e.g., `defaultPolicy.bash`) no longer expressible separately from `permission["*"]`|Users write `bash: { "*": "ask" }` to set a bash-specific default. The universal fallback `"*"` only applies when no surface-specific catch-all exists.|
-|Frontmatter YAML parsing of `"*"` key requires quoting|`parseSimpleYamlMap()` already strips quotes from keys. Document that `"*"` must be quoted in YAML frontmatter.|
-|Could this silently weaken a permission?|No — the flat format normalizes to the same `Rule[]` as the legacy format. `evaluate()` is unchanged. The universal default is `"ask"` (least privilege) when omitted.|
-|Merge semantics change subtly (object + string for same surface)|Define clearly: override replaces base entirely when types differ. Document in README.|
-|MCP baseline auto-allow breaks if config rules change shape|`synthesizeBaseline()` scans for `surface: "mcp" && action: "allow"` — this is independent of config format. `normalizeFlatConfig()` produces the same `Rule` shape.|
-|Fork-language update causes stale prompt template behavior|Changes to `.pi/prompts/` are cosmetic (removing upstream references). No behavioral impact on prompt execution.|
+| Risk                                                                                                      | Mitigation                                                                                                                                                             |
+| --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Breaking change for existing configs                                                                      | Issue explicitly states no backward compatibility. Sole user. `detectMisplacedPermissionKeys()` warns on legacy keys.                                                  |
+| `tools.bash`/`tools.mcp` override semantics lost                                                          | In the flat format, users express this directly as `bash: { "*": "allow" }`. The override concept is unnecessary — the user controls catch-all placement.              |
+| Per-surface defaults (e.g., `defaultPolicy.bash`) no longer expressible separately from `permission["*"]` | Users write `bash: { "*": "ask" }` to set a bash-specific default. The universal fallback `"*"` only applies when no surface-specific catch-all exists.                |
+| Frontmatter YAML parsing of `"*"` key requires quoting                                                    | `parseSimpleYamlMap()` already strips quotes from keys. Document that `"*"` must be quoted in YAML frontmatter.                                                        |
+| Could this silently weaken a permission?                                                                  | No — the flat format normalizes to the same `Rule[]` as the legacy format. `evaluate()` is unchanged. The universal default is `"ask"` (least privilege) when omitted. |
+| Merge semantics change subtly (object + string for same surface)                                          | Define clearly: override replaces base entirely when types differ. Document in README.                                                                                 |
+| MCP baseline auto-allow breaks if config rules change shape                                               | `synthesizeBaseline()` scans for `surface: "mcp" && action: "allow"` — this is independent of config format. `normalizeFlatConfig()` produces the same `Rule` shape.   |
+| Fork-language update causes stale prompt template behavior                                                | Changes to `.pi/prompts/` are cosmetic (removing upstream references). No behavioral impact on prompt execution.                                                       |
 
 ## Open Questions
 

@@ -60,14 +60,14 @@ Of these, `find`, `grep`, and `ls` have optional `path` — when omitted, the ex
 
 ### Existing test coverage
 
-| File | What it tests | Gap |
-| --- | --- | --- |
-| `tests/permission-system.test.ts` | `checkPermission("external_directory", ...)` | Policy only; no handler wiring |
-| `tests/handlers/gates/external-directory.test.ts` | `describeExternalDirectoryGate` pure function | Descriptor only; no runner/handler |
-| `tests/handlers/gates/runner.test.ts` | `runGateCheck` generic runner | Generic; not specific to external_directory |
-| `tests/handlers/tool-call.test.ts` | `handleToolCall` wiring | 1 external_directory test (deny only) |
-| `tests/handlers/tool-call-events.test.ts` | Decision event emissions | 1 infra auto-allowed test; no external_directory policy matrix |
-| `tests/handlers/external-directory-session-dedup.test.ts` | Session-approval deduplication | Stateful session mocks; complementary |
+| File                                                      | What it tests                                 | Gap                                                            |
+| --------------------------------------------------------- | --------------------------------------------- | -------------------------------------------------------------- |
+| `tests/permission-system.test.ts`                         | `checkPermission("external_directory", ...)`  | Policy only; no handler wiring                                 |
+| `tests/handlers/gates/external-directory.test.ts`         | `describeExternalDirectoryGate` pure function | Descriptor only; no runner/handler                             |
+| `tests/handlers/gates/runner.test.ts`                     | `runGateCheck` generic runner                 | Generic; not specific to external_directory                    |
+| `tests/handlers/tool-call.test.ts`                        | `handleToolCall` wiring                       | 1 external_directory test (deny only)                          |
+| `tests/handlers/tool-call-events.test.ts`                 | Decision event emissions                      | 1 infra auto-allowed test; no external_directory policy matrix |
+| `tests/handlers/external-directory-session-dedup.test.ts` | Session-approval deduplication                | Stateful session mocks; complementary                          |
 
 ### Test seam
 
@@ -196,7 +196,6 @@ Add tests verifying the external-directory gate is skipped or fired based on too
 - Non-path-bearing tool (`bash`) → not blocked.
 - Each `PATH_BEARING_TOOLS` member → blocked when policy is `deny` and path is external.
 - Optional-path tools without `path` → not blocked.
-
 - **Test surface**: `tests/handlers/external-directory-integration.test.ts`
 - **Covers**: Path scope — gate applicability matrix.
 - **Commit**: `test: add external_directory path-scope integration tests (#1)`
@@ -207,7 +206,6 @@ Add tests for `external_directory` policy states `allow` and `deny` with out-of-
 
 - `allow` → falls through to tool gate, no block.
 - `deny` → blocks with deny reason containing the path, review-log entry, decision event.
-
 - **Test surface**: `tests/handlers/external-directory-integration.test.ts`
 - **Covers**: Policy state — `allow` and `deny` paths.
 - **Commit**: `test: add external_directory allow/deny policy state tests (#1)`
@@ -220,7 +218,6 @@ Add tests for `external_directory: ask` with out-of-cwd paths:
 - User denies → block with user-denied reason, decision event.
 - User denies with `denialReason` → block reason includes the denial reason.
 - No UI available → block with `confirmation_unavailable`, review-log entry, decision event.
-
 - **Test surface**: `tests/handlers/external-directory-integration.test.ts`
 - **Covers**: Policy state — `ask` paths (all outcomes).
 - **Commit**: `test: add external_directory ask-state integration tests (#1)`
@@ -231,20 +228,19 @@ Add tests verifying:
 
 - Per-agent override of `external_directory` is honored (agent-specific `checkPermission` return).
 - Decision events emitted on the `external_directory` surface with correct `resolution` for each code path (consolidate any missing event assertions).
-
 - **Test surface**: `tests/handlers/external-directory-integration.test.ts`
 - **Covers**: Per-agent override; decision event emissions.
 - **Commit**: `test: add external_directory per-agent override and decision event tests (#1)`
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-| --- | --- |
-| Could this silently weaken a permission? | No. This is a test-only change; no production code is modified. |
-| Tests pass even when helpers are broken | Cycle 1 imports helpers directly — removing them fails the import. Cycles 3–4 assert on message content (deny reason text contains the path), so broken formatting is caught. |
-| Mock session diverges from real `PermissionSession` | Use the same mock pattern as existing `tool-call.test.ts` and `tool-call-events.test.ts`. If `PermissionSession` changes, all three files break together. |
-| `checkPermission` mock returns same state for all surfaces, hiding gate ordering bugs | The `makeCheckPermission` helper returns different states per surface, so the external-directory gate and tool gate are independently controllable. |
-| New test file adds maintenance burden | The file is focused on one gate; the mock factory is reusable. The test matrix matches the issue's acceptance criteria 1:1. |
+| Risk                                                                                  | Mitigation                                                                                                                                                                    |
+| ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Could this silently weaken a permission?                                              | No. This is a test-only change; no production code is modified.                                                                                                               |
+| Tests pass even when helpers are broken                                               | Cycle 1 imports helpers directly — removing them fails the import. Cycles 3–4 assert on message content (deny reason text contains the path), so broken formatting is caught. |
+| Mock session diverges from real `PermissionSession`                                   | Use the same mock pattern as existing `tool-call.test.ts` and `tool-call-events.test.ts`. If `PermissionSession` changes, all three files break together.                     |
+| `checkPermission` mock returns same state for all surfaces, hiding gate ordering bugs | The `makeCheckPermission` helper returns different states per surface, so the external-directory gate and tool gate are independently controllable.                           |
+| New test file adds maintenance burden                                                 | The file is focused on one gate; the mock factory is reusable. The test matrix matches the issue's acceptance criteria 1:1.                                                   |
 
 ## Open Questions
 

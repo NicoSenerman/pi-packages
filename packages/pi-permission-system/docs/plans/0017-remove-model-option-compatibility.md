@@ -34,10 +34,10 @@ This module is out of scope for a permission-enforcement extension:
 
 ### Relevant modules
 
-| File | Role |
-| --- | --- |
-| `src/model-option-compatibility.ts` | The module to delete. Exports `registerModelOptionCompatibilityGuard()` and helpers for temperature sanitization. |
-| `src/index.ts` | Extension entry point. Imports and calls `registerModelOptionCompatibilityGuard(pi)` at line 1341 during extension initialization. |
+| File                                | Role                                                                                                                               |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `src/model-option-compatibility.ts` | The module to delete. Exports `registerModelOptionCompatibilityGuard()` and helpers for temperature sanitization.                  |
+| `src/index.ts`                      | Extension entry point. Imports and calls `registerModelOptionCompatibilityGuard(pi)` at line 1341 during extension initialization. |
 
 ### Permission surface
 
@@ -107,12 +107,12 @@ No references to model-option-compatibility exist in `README.md`, `AGENTS.md`, o
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-| --- | --- |
-| **Could this silently weaken a permission?** | No. The deleted code has nothing to do with permission enforcement. It is a provider-level temperature shim with no connection to any permission surface. |
-| **Breaking change for users relying on the temperature shim.** | Acknowledged. The `feat!:` commit prefix signals the breaking change. Users who need the shim can extract it into a standalone extension. The shim was never documented as a feature of this extension. |
-| **`globalThis` state left behind.** | The `globalThis.__piPermissionSystem*` keys are set lazily by the deleted module. After removal, no code writes or reads them. If a previous version populated them, they are inert — no cleanup needed. |
-| **On-disk identity change.** | None. Config directory, log filenames, `/permission-system` slash command, and event channel names are untouched. |
+| Risk                                                           | Mitigation                                                                                                                                                                                               |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Could this silently weaken a permission?**                   | No. The deleted code has nothing to do with permission enforcement. It is a provider-level temperature shim with no connection to any permission surface.                                                |
+| **Breaking change for users relying on the temperature shim.** | Acknowledged. The `feat!:` commit prefix signals the breaking change. Users who need the shim can extract it into a standalone extension. The shim was never documented as a feature of this extension.  |
+| **`globalThis` state left behind.**                            | The `globalThis.__piPermissionSystem*` keys are set lazily by the deleted module. After removal, no code writes or reads them. If a previous version populated them, they are inert — no cleanup needed. |
+| **On-disk identity change.**                                   | None. Config directory, log filenames, `/permission-system` slash command, and event channel names are untouched.                                                                                        |
 
 ## Open Questions
 

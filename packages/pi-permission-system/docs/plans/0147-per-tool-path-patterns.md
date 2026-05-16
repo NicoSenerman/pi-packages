@@ -144,35 +144,35 @@ With per-tool path patterns:
 
 ### Changed files
 
-| File | Change |
-| --- | --- |
-| `src/input-normalizer.ts` | Add `PATH_BEARING_TOOLS` import; return `input.path` as the match value for path-bearing tools instead of `"*"`. |
-| `src/pattern-suggest.ts` | For path-bearing tools, derive a session approval pattern from the file path (e.g., directory prefix) instead of returning `"*"`. |
-| `src/handlers/gates/helpers.ts` | Update `deriveDecisionValue` to return the file path for path-bearing tools (currently returns `toolName`). |
-| `schemas/permissions.schema.json` | Update the `examples` array and the `"read"` example to show path patterns. Add `markdownDescription` noting path-pattern support for path-bearing tools. |
-| `config/config.example.json` | Add a `"read"` entry with path patterns (e.g., `"*.env": "deny"`) alongside the existing `"read": "allow"`. |
-| `README.md` | Document per-tool path patterns, show examples, note backward compatibility. |
-| `docs/architecture/architecture.md` | Update the input normalization section to reflect path-bearing tool changes. |
+| File                                | Change                                                                                                                                                    |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/input-normalizer.ts`           | Add `PATH_BEARING_TOOLS` import; return `input.path` as the match value for path-bearing tools instead of `"*"`.                                          |
+| `src/pattern-suggest.ts`            | For path-bearing tools, derive a session approval pattern from the file path (e.g., directory prefix) instead of returning `"*"`.                         |
+| `src/handlers/gates/helpers.ts`     | Update `deriveDecisionValue` to return the file path for path-bearing tools (currently returns `toolName`).                                               |
+| `schemas/permissions.schema.json`   | Update the `examples` array and the `"read"` example to show path patterns. Add `markdownDescription` noting path-pattern support for path-bearing tools. |
+| `config/config.example.json`        | Add a `"read"` entry with path patterns (e.g., `"*.env": "deny"`) alongside the existing `"read": "allow"`.                                               |
+| `README.md`                         | Document per-tool path patterns, show examples, note backward compatibility.                                                                              |
+| `docs/architecture/architecture.md` | Update the input normalization section to reflect path-bearing tool changes.                                                                              |
 
 ### Changed test files
 
-| File | Change |
-| --- | --- |
-| `tests/input-normalizer.test.ts` | Update "tool surfaces" tests: path-bearing tools now return file path from `input.path` instead of `"*"`. Add tests for missing/empty path fallback. |
-| `tests/permission-manager-unified.test.ts` | Add integration tests: path-pattern matching for `read`/`write`/`edit` tools (allow, deny, ask by path). |
-| `tests/handlers/gates/tool.test.ts` | Verify `describeToolGate` produces correct decision values when the check result includes path-specific patterns. |
-| `tests/pattern-suggest.test.ts` | Add tests for path-bearing tool session approval patterns. |
+| File                                       | Change                                                                                                                                               |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/input-normalizer.test.ts`           | Update "tool surfaces" tests: path-bearing tools now return file path from `input.path` instead of `"*"`. Add tests for missing/empty path fallback. |
+| `tests/permission-manager-unified.test.ts` | Add integration tests: path-pattern matching for `read`/`write`/`edit` tools (allow, deny, ask by path).                                             |
+| `tests/handlers/gates/tool.test.ts`        | Verify `describeToolGate` produces correct decision values when the check result includes path-specific patterns.                                    |
+| `tests/pattern-suggest.test.ts`            | Add tests for path-bearing tool session approval patterns.                                                                                           |
 
 ### Unchanged files
 
-| File | Reason |
-| --- | --- |
-| `src/permission-manager.ts` | `checkPermission` and `getToolPermission` are unchanged — the path-bearing logic is fully contained in `normalizeInput`. |
-| `src/rule.ts` | `evaluate` and `evaluateFirst` are unchanged — they already support arbitrary pattern matching. |
-| `src/normalize.ts` | `normalizeFlatConfig` already converts `{ "*.env": "deny" }` into rules correctly. |
-| `src/wildcard-matcher.ts` | Wildcard matching already handles path patterns. |
-| `src/handlers/gates/external-directory.ts` | External directory gate is unaffected — it has its own path evaluation. |
-| `src/handlers/gates/bash-external-directory.ts` | Bash path extraction is unaffected. |
+| File                                            | Reason                                                                                                                   |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `src/permission-manager.ts`                     | `checkPermission` and `getToolPermission` are unchanged — the path-bearing logic is fully contained in `normalizeInput`. |
+| `src/rule.ts`                                   | `evaluate` and `evaluateFirst` are unchanged — they already support arbitrary pattern matching.                          |
+| `src/normalize.ts`                              | `normalizeFlatConfig` already converts `{ "*.env": "deny" }` into rules correctly.                                       |
+| `src/wildcard-matcher.ts`                       | Wildcard matching already handles path patterns.                                                                         |
+| `src/handlers/gates/external-directory.ts`      | External directory gate is unaffected — it has its own path evaluation.                                                  |
+| `src/handlers/gates/bash-external-directory.ts` | Bash path extraction is unaffected.                                                                                      |
 
 ## Test Impact Analysis
 
@@ -253,13 +253,13 @@ Commit: `docs: document per-tool path patterns (#147)`
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-| --- | --- |
-| Could this silently weaken a permission? | No — existing configs use `"*"` patterns (surface-level catch-alls) which match any path value. The change only makes previously-inert path patterns active; it cannot make a deny rule stop matching. |
-| `getToolPermission` returns wrong state | `getToolPermission` evaluates with `"*"` pattern (unchanged), so `"read": { "*": "allow", "*.env": "deny" }` still returns `"allow"` for tool injection. This is correct — the tool is available; only specific paths are restricted. |
-| Session approvals become too narrow | Step 4 updates session approval patterns to be path-scoped. A "for this session" approval on `read /outside/file.txt` should approve that path, not all reads. The `deriveApprovalPattern` function already handles path-based patterns for `external_directory`. |
-| Path normalization inconsistency | `getPathBearingToolPath` returns the raw `input.path` string. Wildcard matching is case-sensitive on Unix. This is consistent with how `external_directory` path patterns work — no new normalization is introduced. |
-| Extension tools break | Extension tools are not in `PATH_BEARING_TOOLS` and continue to return `values: ["*"]`. No change. |
+| Risk                                     | Mitigation                                                                                                                                                                                                                                                        |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Could this silently weaken a permission? | No — existing configs use `"*"` patterns (surface-level catch-alls) which match any path value. The change only makes previously-inert path patterns active; it cannot make a deny rule stop matching.                                                            |
+| `getToolPermission` returns wrong state  | `getToolPermission` evaluates with `"*"` pattern (unchanged), so `"read": { "*": "allow", "*.env": "deny" }` still returns `"allow"` for tool injection. This is correct — the tool is available; only specific paths are restricted.                             |
+| Session approvals become too narrow      | Step 4 updates session approval patterns to be path-scoped. A "for this session" approval on `read /outside/file.txt` should approve that path, not all reads. The `deriveApprovalPattern` function already handles path-based patterns for `external_directory`. |
+| Path normalization inconsistency         | `getPathBearingToolPath` returns the raw `input.path` string. Wildcard matching is case-sensitive on Unix. This is consistent with how `external_directory` path patterns work — no new normalization is introduced.                                              |
+| Extension tools break                    | Extension tools are not in `PATH_BEARING_TOOLS` and continue to return `values: ["*"]`. No change.                                                                                                                                                                |
 
 ## Open Questions
 

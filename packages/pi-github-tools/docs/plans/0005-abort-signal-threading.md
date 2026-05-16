@@ -366,13 +366,13 @@ Add tests in `tests/lib/release.test.ts` for abort in `findReleasePR` and `watch
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-| ---- | ---------- |
-| Breaking change to `gh()`/`git()`/`ghJson()` signatures affects all internal call sites | All call sites are internal; update them all in Step 2/3. No external consumers. |
-| `AbortSignal` listener leak in `sleep()` if promise resolves normally before abort | `addEventListener("abort", …, { once: true })` + `clearTimeout` in both resolve and abort paths ensure cleanup. |
-| `sleep()` rejects with `AbortError` during a poll loop — polling function must catch and return a message, not throw | All polling functions wrap `await sleep()` in try/catch, checking for `AbortError` / `signal.aborted` to return a structured string. |
-| `ghJson()` / `git()` calls reject when subprocess is killed by signal — must propagate gracefully | `runCommand()` already rejects on `child.on("error")`. The polling `catch` block checks for abort and returns a message. For non-polling tools, the tool wrapper's `catch` already converts to `err()`. |
-| Test complexity from fake timers for abort | Use `vi.useFakeTimers()` only in `sleep()` abort tests (Step 1). Polling tests use mocked `sleep()` that rejects on demand, avoiding timer complexity. |
+| Risk                                                                                                                 | Mitigation                                                                                                                                                                                              |
+| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Breaking change to `gh()`/`git()`/`ghJson()` signatures affects all internal call sites                              | All call sites are internal; update them all in Step 2/3. No external consumers.                                                                                                                        |
+| `AbortSignal` listener leak in `sleep()` if promise resolves normally before abort                                   | `addEventListener("abort", …, { once: true })` + `clearTimeout` in both resolve and abort paths ensure cleanup.                                                                                         |
+| `sleep()` rejects with `AbortError` during a poll loop — polling function must catch and return a message, not throw | All polling functions wrap `await sleep()` in try/catch, checking for `AbortError` / `signal.aborted` to return a structured string.                                                                    |
+| `ghJson()` / `git()` calls reject when subprocess is killed by signal — must propagate gracefully                    | `runCommand()` already rejects on `child.on("error")`. The polling `catch` block checks for abort and returns a message. For non-polling tools, the tool wrapper's `catch` already converts to `err()`. |
+| Test complexity from fake timers for abort                                                                           | Use `vi.useFakeTimers()` only in `sleep()` abort tests (Step 1). Polling tests use mocked `sleep()` that rejects on demand, avoiding timer complexity.                                                  |
 
 ## Open Questions
 

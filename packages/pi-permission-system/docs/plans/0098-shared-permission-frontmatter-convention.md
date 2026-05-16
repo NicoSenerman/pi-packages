@@ -47,12 +47,12 @@ All surfaces are relevant to the guide since we're documenting the full capabili
 
 ### Prerequisites (all closed)
 
-|Issue|Status|Purpose|
-|---|---|---|
-|#78|Closed|Correct README flat format examples|
-|#29|Closed|Event bus API for runtime permission queries|
-|#96|Closed|Permission forwarding with CLI-spawned subagents|
-|#97|Closed|Coexistence documentation|
+| Issue | Status | Purpose                                          |
+| ----- | ------ | ------------------------------------------------ |
+| #78   | Closed | Correct README flat format examples              |
+| #29   | Closed | Event bus API for runtime permission queries     |
+| #96   | Closed | Permission forwarding with CLI-spawned subagents |
+| #97   | Closed | Coexistence documentation                        |
 
 ## Design Overview
 
@@ -84,12 +84,12 @@ type PatternMap = { [pattern: string]: Decision };
 
 ## Module-Level Changes
 
-|File|Action|Description|
-|---|---|---|
-|`docs/guides/permission-frontmatter-for-subagent-extensions.md`|Add|Main guide document for upstream authors|
-|`docs/guides/upstream-issue-template.md`|Add|Template text for issues to open on the three repos|
-|`docs/architecture/target-architecture.md`|Update|Note the guide under "External Integration" or equivalent section|
-|`README.md`|Update|Add a link to the guide in the documentation section|
+| File                                                            | Action | Description                                                       |
+| --------------------------------------------------------------- | ------ | ----------------------------------------------------------------- |
+| `docs/guides/permission-frontmatter-for-subagent-extensions.md` | Add    | Main guide document for upstream authors                          |
+| `docs/guides/upstream-issue-template.md`                        | Add    | Template text for issues to open on the three repos               |
+| `docs/architecture/target-architecture.md`                      | Update | Note the guide under "External Integration" or equivalent section |
+| `README.md`                                                     | Update | Add a link to the guide in the documentation section              |
 
 ## TDD Order
 
@@ -104,12 +104,12 @@ This is a docs-only change — no test cycles are needed.
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|---|---|
-|Upstream authors reject the convention as too complex|Guide emphasizes that adoption is purely documentation — no code dependency, no schema enforcement. Extensions can ignore `permission:` entirely.|
-|Flat format changes after guide is published|#78 is closed and the format is stable. Guide links to the schema for canonical reference.|
-|Could this silently weaken a permission?|No. This is a documentation-only change. No runtime behavior is modified.|
-|Users confused by two overlapping keys in frontmatter|Guide explicitly explains the two-layer model and includes examples showing both keys coexisting.|
+| Risk                                                  | Mitigation                                                                                                                                        |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Upstream authors reject the convention as too complex | Guide emphasizes that adoption is purely documentation — no code dependency, no schema enforcement. Extensions can ignore `permission:` entirely. |
+| Flat format changes after guide is published          | #78 is closed and the format is stable. Guide links to the schema for canonical reference.                                                        |
+| Could this silently weaken a permission?              | No. This is a documentation-only change. No runtime behavior is modified.                                                                         |
+| Users confused by two overlapping keys in frontmatter | Guide explicitly explains the two-layer model and includes examples showing both keys coexisting.                                                 |
 
 ## Open Questions
 

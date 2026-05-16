@@ -89,20 +89,20 @@ Both new modules export only pure functions with no module-scope state.
 
 ## Module-Level Changes
 
-|File|Change|
-|----|------|
-|`src/permission-merge.ts`|**New.** Contains `mergeFlatPermissions()`.|
-|`src/path-utils.ts`|**New.** Contains `normalizePathForComparison()` and `isPathWithinDirectory()`.|
-|`src/config-loader.ts`|Remove local `mergeFlatPermissions()`, add `import { mergeFlatPermissions } from "./permission-merge"`.|
-|`src/permission-manager.ts`|Remove local `mergeFlatPermissions()`, add `import { mergeFlatPermissions } from "./permission-merge"`.|
-|`src/external-directory.ts`|Remove local `normalizePathForComparison()` and `isPathWithinDirectory()`, add `import { normalizePathForComparison, isPathWithinDirectory } from "./path-utils"`. Keep re-exporting both so downstream barrel imports continue to work.|
-|`src/skill-prompt-sanitizer.ts`|Remove local `normalizePathForComparison()` and `isPathWithinDirectory()`, add `import { normalizePathForComparison, isPathWithinDirectory } from "./path-utils"`.|
-|`src/handlers/gates/external-directory.ts`|Update import of `normalizePathForComparison` — can remain importing from `../../external-directory` (barrel) or switch to `../../path-utils`; prefer the direct module.|
-|`src/handlers/gates/skill-read.ts`|Update import of `normalizePathForComparison` — same as above.|
-|`tests/path-utils.test.ts`|**New.** Move the `normalizePathForComparison` and `isPathWithinDirectory` describe blocks from `tests/external-directory.test.ts` here, importing from `../src/path-utils`.|
-|`tests/external-directory.test.ts`|Remove the moved describe blocks. Remaining tests continue importing from `../src/external-directory` (barrel re-export ensures no breakage).|
-|`tests/permission-merge.test.ts`|**New.** Unit tests for `mergeFlatPermissions()` covering: string-replaces-string, both-objects shallow-merge, object-replaces-string, string-replaces-object, empty override.|
-|`docs/architecture/target-architecture.md`|Add `permission-merge.ts` and `path-utils.ts` to the module list if present.|
+| File                                       | Change                                                                                                                                                                                                                                   |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/permission-merge.ts`                  | **New.** Contains `mergeFlatPermissions()`.                                                                                                                                                                                              |
+| `src/path-utils.ts`                        | **New.** Contains `normalizePathForComparison()` and `isPathWithinDirectory()`.                                                                                                                                                          |
+| `src/config-loader.ts`                     | Remove local `mergeFlatPermissions()`, add `import { mergeFlatPermissions } from "./permission-merge"`.                                                                                                                                  |
+| `src/permission-manager.ts`                | Remove local `mergeFlatPermissions()`, add `import { mergeFlatPermissions } from "./permission-merge"`.                                                                                                                                  |
+| `src/external-directory.ts`                | Remove local `normalizePathForComparison()` and `isPathWithinDirectory()`, add `import { normalizePathForComparison, isPathWithinDirectory } from "./path-utils"`. Keep re-exporting both so downstream barrel imports continue to work. |
+| `src/skill-prompt-sanitizer.ts`            | Remove local `normalizePathForComparison()` and `isPathWithinDirectory()`, add `import { normalizePathForComparison, isPathWithinDirectory } from "./path-utils"`.                                                                       |
+| `src/handlers/gates/external-directory.ts` | Update import of `normalizePathForComparison` — can remain importing from `../../external-directory` (barrel) or switch to `../../path-utils`; prefer the direct module.                                                                 |
+| `src/handlers/gates/skill-read.ts`         | Update import of `normalizePathForComparison` — same as above.                                                                                                                                                                           |
+| `tests/path-utils.test.ts`                 | **New.** Move the `normalizePathForComparison` and `isPathWithinDirectory` describe blocks from `tests/external-directory.test.ts` here, importing from `../src/path-utils`.                                                             |
+| `tests/external-directory.test.ts`         | Remove the moved describe blocks. Remaining tests continue importing from `../src/external-directory` (barrel re-export ensures no breakage).                                                                                            |
+| `tests/permission-merge.test.ts`           | **New.** Unit tests for `mergeFlatPermissions()` covering: string-replaces-string, both-objects shallow-merge, object-replaces-string, string-replaces-object, empty override.                                                           |
+| `docs/architecture/target-architecture.md` | Add `permission-merge.ts` and `path-utils.ts` to the module list if present.                                                                                                                                                             |
 
 ## Test Impact Analysis
 
@@ -144,12 +144,12 @@ Both new modules export only pure functions with no module-scope state.
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|----|----------|
-|Barrel re-export in `external-directory.ts` is missed, breaking downstream imports.|Step 4 explicitly keeps the re-export; the existing `external-directory.test.ts` tests serve as a regression gate.|
-|Could this silently weaken a permission?|No — pure extraction with zero logic changes. The same functions, same call sites, same behavior.|
-|#110 plan references path helpers in `external-directory.ts`.|#110's plan already anticipates #109 landing first and notes `path-utils.ts` as the canonical home. No conflict.|
-|`mergeFlatPermissions` copies have silently diverged.|Verified: the two copies are textually identical except for the `PermissionState` import style (inline `import("./types").PermissionState` vs. top-level import). Functionality is identical.|
+| Risk                                                                                | Mitigation                                                                                                                                                                                    |
+| ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Barrel re-export in `external-directory.ts` is missed, breaking downstream imports. | Step 4 explicitly keeps the re-export; the existing `external-directory.test.ts` tests serve as a regression gate.                                                                            |
+| Could this silently weaken a permission?                                            | No — pure extraction with zero logic changes. The same functions, same call sites, same behavior.                                                                                             |
+| #110 plan references path helpers in `external-directory.ts`.                       | #110's plan already anticipates #109 landing first and notes `path-utils.ts` as the canonical home. No conflict.                                                                              |
+| `mergeFlatPermissions` copies have silently diverged.                               | Verified: the two copies are textually identical except for the `PermissionState` import style (inline `import("./types").PermissionState` vs. top-level import). Functionality is identical. |
 
 ## Open Questions
 

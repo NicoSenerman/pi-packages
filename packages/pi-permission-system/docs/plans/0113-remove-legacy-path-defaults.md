@@ -131,12 +131,12 @@ Make the `logsDir` parameter of `ensurePermissionSystemLogsDirectory` required (
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-| --- | --- |
-| Could this silently weaken a permission? | No — this change only affects logging paths and config I/O helpers; no permission evaluation logic is touched. |
-| An external consumer imports a removed symbol | These are internal modules; the package is not published as a library. Tests are the only consumers. |
-| `config-reporter.test.ts` silently used the legacy `debugLogPath` default | Step 1 makes it required, forcing the test to provide an explicit value and exposing any latent bug. |
-| `config-modal.test.ts` refactoring introduces a subtle behavior change | The replacement uses the same underlying `normalizePermissionSystemConfig` function, preserving semantics. |
+| Risk                                                                      | Mitigation                                                                                                     |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Could this silently weaken a permission?                                  | No — this change only affects logging paths and config I/O helpers; no permission evaluation logic is touched. |
+| An external consumer imports a removed symbol                             | These are internal modules; the package is not published as a library. Tests are the only consumers.           |
+| `config-reporter.test.ts` silently used the legacy `debugLogPath` default | Step 1 makes it required, forcing the test to provide an explicit value and exposing any latent bug.           |
+| `config-modal.test.ts` refactoring introduces a subtle behavior change    | The replacement uses the same underlying `normalizePermissionSystemConfig` function, preserving semantics.     |
 
 ## Open Questions
 

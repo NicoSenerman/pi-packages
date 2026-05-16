@@ -263,16 +263,16 @@ This step is best done in a new session inside the monorepo, with all package fi
 
 ## What each package loses (moved to root)
 
-| File | Where it went |
-| ---- | ------------- |
-| `release-please-config.json` | Root `release-please-config.json` (monorepo mode) |
-| `.release-please-manifest.json` | Root `.release-please-manifest.json` |
-| `pnpm-workspace.yaml` | Root `pnpm-workspace.yaml` |
-| `pnpm-lock.yaml` | Root `pnpm-lock.yaml` (single lockfile) |
-| `prek.toml` | Root `prek.toml` |
-| `.markdownlint-cli2.yaml` | Root `.markdownlint-cli2.yaml` |
-| `.github/workflows/ci.yml` | Root `.github/workflows/ci.yml` |
-| `.gitignore` | Root `.gitignore` |
+| File                            | Where it went                                     |
+| ------------------------------- | ------------------------------------------------- |
+| `release-please-config.json`    | Root `release-please-config.json` (monorepo mode) |
+| `.release-please-manifest.json` | Root `.release-please-manifest.json`              |
+| `pnpm-workspace.yaml`           | Root `pnpm-workspace.yaml`                        |
+| `pnpm-lock.yaml`                | Root `pnpm-lock.yaml` (single lockfile)           |
+| `prek.toml`                     | Root `prek.toml`                                  |
+| `.markdownlint-cli2.yaml`       | Root `.markdownlint-cli2.yaml`                    |
+| `.github/workflows/ci.yml`      | Root `.github/workflows/ci.yml`                   |
+| `.gitignore`                    | Root `.gitignore`                                 |
 
 ## What each package keeps
 

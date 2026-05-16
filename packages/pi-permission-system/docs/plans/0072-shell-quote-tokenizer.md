@@ -92,11 +92,11 @@ This is the first runtime dependency for this package.
 
 ## Module-Level Changes
 
-|File|Change|
-|----|------|
-|`package.json`|Add `shell-quote` to `dependencies`, `@types/shell-quote` to `devDependencies`.|
-|`src/external-directory.ts`|Import `parse` from `shell-quote`. Replace `stripQuotedStrings` + `split()` in `extractExternalPathsFromBashCommand` with `parse()` + type filter. Remove `stripQuotedStrings` function.|
-|`tests/bash-external-directory.test.ts`|Add tests for: escaped quotes in double-quoted strings, shell comments containing paths, operators as typed tokens (not leaking into path stream). Verify existing tests still pass.|
+| File                                    | Change                                                                                                                                                                                   |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `package.json`                          | Add `shell-quote` to `dependencies`, `@types/shell-quote` to `devDependencies`.                                                                                                          |
+| `src/external-directory.ts`             | Import `parse` from `shell-quote`. Replace `stripQuotedStrings` + `split()` in `extractExternalPathsFromBashCommand` with `parse()` + type filter. Remove `stripQuotedStrings` function. |
+| `tests/bash-external-directory.test.ts` | Add tests for: escaped quotes in double-quoted strings, shell comments containing paths, operators as typed tokens (not leaking into path stream). Verify existing tests still pass.     |
 
 ## TDD Order
 
@@ -128,12 +128,12 @@ This is the first runtime dependency for this package.
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|----|----------|
-|Could this silently weaken a permission?|No — `shell-quote` produces *fewer* tokens than the regex tokenizer (comments and operators are filtered out as non-strings). Fewer tokens means fewer path candidates, which means fewer prompts, never fewer blocks. A path that was correctly detected before will still be a string token from `shell-quote`.|
-|`shell-quote` misparses a command and drops a real path argument?|`shell-quote` has 47M weekly downloads and handles standard POSIX quoting. Edge cases (heredocs, complex expansions) are no worse than the regex tokenizer. The bare-slash guard and `classifyTokenAsPathCandidate` provide additional filtering layers.|
-|First runtime dependency — supply chain risk?|`shell-quote` is zero-dependency, MIT, maintained by the `shell-quote` org. The `@types/shell-quote` package is DefinitelyTyped-sourced. Both are widely audited. Pin versions via lockfile.|
-|`shell-quote` handles `$VAR` expansion by default?|`parse(cmd)` with no `env` argument replaces `$VAR` with empty string. This is acceptable — we don't want environment variables expanded for path extraction. If a command uses `$HOME/foo`, the path candidate will be `/foo` (or empty), not `~/foo`. This is the same behavior as the regex tokenizer, which has no variable awareness.|
+| Risk                                                              | Mitigation                                                                                                                                                                                                                                                                                                                                 |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Could this silently weaken a permission?                          | No — `shell-quote` produces *fewer* tokens than the regex tokenizer (comments and operators are filtered out as non-strings). Fewer tokens means fewer path candidates, which means fewer prompts, never fewer blocks. A path that was correctly detected before will still be a string token from `shell-quote`.                          |
+| `shell-quote` misparses a command and drops a real path argument? | `shell-quote` has 47M weekly downloads and handles standard POSIX quoting. Edge cases (heredocs, complex expansions) are no worse than the regex tokenizer. The bare-slash guard and `classifyTokenAsPathCandidate` provide additional filtering layers.                                                                                   |
+| First runtime dependency — supply chain risk?                     | `shell-quote` is zero-dependency, MIT, maintained by the `shell-quote` org. The `@types/shell-quote` package is DefinitelyTyped-sourced. Both are widely audited. Pin versions via lockfile.                                                                                                                                               |
+| `shell-quote` handles `$VAR` expansion by default?                | `parse(cmd)` with no `env` argument replaces `$VAR` with empty string. This is acceptable — we don't want environment variables expanded for path extraction. If a command uses `$HOME/foo`, the path candidate will be `/foo` (or empty), not `~/foo`. This is the same behavior as the regex tokenizer, which has no variable awareness. |
 
 ## Open Questions
 

@@ -113,12 +113,12 @@ The `wildcardMatch` docblock should mention `?` alongside `*`:
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|---|---|
-|Could this silently weaken a permission?|No — `?` is currently escaped to `\?` (literal). No existing pattern uses `?` as a wildcard. The change is purely additive.|
-|Over-matching: `?` matching more than one character|The regex `.` matches exactly one character. Tests explicitly verify zero-char and multi-char non-matches.|
-|Interaction with trailing wildcard optionality|The `( .*)?` suffix only applies to trailing `*`. A trailing `?` is not `*` and won't trigger this path. A combined pattern like `git ?*` works correctly — `?` becomes `.`, `*` becomes `.*`.|
-|Breaking existing literal `?` in patterns|Unlikely in practice — `?` is not meaningful in tool names, bash commands, or file paths. If a user has a literal `?` in a pattern today, it would only match a literal `?` in the value — the new behavior matches any single character instead, which is strictly broader.|
+| Risk                                                | Mitigation                                                                                                                                                                                                                                                                   |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Could this silently weaken a permission?            | No — `?` is currently escaped to `\?` (literal). No existing pattern uses `?` as a wildcard. The change is purely additive.                                                                                                                                                  |
+| Over-matching: `?` matching more than one character | The regex `.` matches exactly one character. Tests explicitly verify zero-char and multi-char non-matches.                                                                                                                                                                   |
+| Interaction with trailing wildcard optionality      | The `( .*)?` suffix only applies to trailing `*`. A trailing `?` is not `*` and won't trigger this path. A combined pattern like `git ?*` works correctly — `?` becomes `.`, `*` becomes `.*`.                                                                               |
+| Breaking existing literal `?` in patterns           | Unlikely in practice — `?` is not meaningful in tool names, bash commands, or file paths. If a user has a literal `?` in a pattern today, it would only match a literal `?` in the value — the new behavior matches any single character instead, which is strictly broader. |
 
 ## Open Questions
 

@@ -51,11 +51,11 @@ interface PermissionsService {
 }
 ```
 
-| Parameter | Required | Description |
-| --- | --- | --- |
-| `surface` | Yes | Permission surface: `"bash"`, `"read"`, `"mcp"`, `"skill"`, `"external_directory"`, etc. |
-| `value` | No | Value to evaluate (command, name, path); defaults to `""` |
-| `agentName` | No | Agent name for per-agent policy resolution |
+| Parameter   | Required | Description                                                                              |
+| ----------- | -------- | ---------------------------------------------------------------------------------------- |
+| `surface`   | Yes      | Permission surface: `"bash"`, `"read"`, `"mcp"`, `"skill"`, `"external_directory"`, etc. |
+| `value`     | No       | Value to evaluate (command, name, path); defaults to `""`                                |
+| `agentName` | No       | Agent name for per-agent policy resolution                                               |
 
 The return type is `PermissionCheckResult` with fields `state`, `matchedPattern`, `source`, `origin`, etc.
 
@@ -86,14 +86,14 @@ The protocol version constant is exported from `src/permission-events.ts` and em
 
 ## Channel Reference
 
-|Channel|Direction|When|Payload type|
-|---|---|---|---|
-|`permissions:ready`|Broadcast|Once, immediately after load|`PermissionsReadyEvent`|
-|`permissions:decision`|Broadcast|After every gate resolution|`PermissionDecisionEvent`|
-|`permissions:rpc:check`|Request|On-demand|`PermissionsCheckRequest`|
-|`permissions:rpc:check:reply:<requestId>`|Reply|After each check request|`PermissionsRpcReply<PermissionsCheckReplyData>`|
-|`permissions:rpc:prompt`|Request|On-demand|`PermissionsPromptRequest`|
-|`permissions:rpc:prompt:reply:<requestId>`|Reply|After prompt is resolved|`PermissionsRpcReply<PermissionsPromptReplyData>`|
+| Channel                                    | Direction | When                         | Payload type                                      |
+| ------------------------------------------ | --------- | ---------------------------- | ------------------------------------------------- |
+| `permissions:ready`                        | Broadcast | Once, immediately after load | `PermissionsReadyEvent`                           |
+| `permissions:decision`                     | Broadcast | After every gate resolution  | `PermissionDecisionEvent`                         |
+| `permissions:rpc:check`                    | Request   | On-demand                    | `PermissionsCheckRequest`                         |
+| `permissions:rpc:check:reply:<requestId>`  | Reply     | After each check request     | `PermissionsRpcReply<PermissionsCheckReplyData>`  |
+| `permissions:rpc:prompt`                   | Request   | On-demand                    | `PermissionsPromptRequest`                        |
+| `permissions:rpc:prompt:reply:<requestId>` | Reply     | After prompt is resolved     | `PermissionsRpcReply<PermissionsPromptReplyData>` |
 
 ---
 
@@ -112,29 +112,29 @@ pi.events.on("permissions:decision", (raw) => {
 
 ### Payload Fields
 
-|Field|Type|Description|
-|---|---|---|
-|`surface`|`string`|Permission surface (`"bash"`, `"read"`, `"mcp"`, `"skill"`, `"external_directory"`, etc.)|
-|`value`|`string`|Value evaluated (command, tool name, skill name, path)|
-|`result`|`"allow" \| "deny"`|Final outcome|
-|`resolution`|`string`|How the outcome was reached (see table below)|
-|`origin`|`string \| null`|Config scope that contributed the winning rule|
-|`agentName`|`string \| null`|Active agent name when known|
-|`matchedPattern`|`string \| null`|Pattern from the winning rule|
+| Field            | Type                | Description                                                                               |
+| ---------------- | ------------------- | ----------------------------------------------------------------------------------------- |
+| `surface`        | `string`            | Permission surface (`"bash"`, `"read"`, `"mcp"`, `"skill"`, `"external_directory"`, etc.) |
+| `value`          | `string`            | Value evaluated (command, tool name, skill name, path)                                    |
+| `result`         | `"allow" \| "deny"` | Final outcome                                                                             |
+| `resolution`     | `string`            | How the outcome was reached (see table below)                                             |
+| `origin`         | `string \| null`    | Config scope that contributed the winning rule                                            |
+| `agentName`      | `string \| null`    | Active agent name when known                                                              |
+| `matchedPattern` | `string \| null`    | Pattern from the winning rule                                                             |
 
 ### Resolution Values
 
-|Value|Meaning|
-|---|---|
-|`policy_allow`|Config rule said allow — no prompt shown|
-|`policy_deny`|Config rule said deny — blocked immediately|
-|`session_approved`|Covered by a session-level approval from earlier in the same session|
-|`infrastructure_auto_allowed`|Read of a Pi infrastructure path — auto-allowed|
-|`user_approved`|User approved once via dialog|
-|`user_approved_for_session`|User approved for the rest of the session|
-|`user_denied`|User denied via dialog|
-|`auto_approved`|Yolo mode — approved automatically without dialog|
-|`confirmation_unavailable`|State was `ask` but no UI was available — blocked|
+| Value                         | Meaning                                                              |
+| ----------------------------- | -------------------------------------------------------------------- |
+| `policy_allow`                | Config rule said allow — no prompt shown                             |
+| `policy_deny`                 | Config rule said deny — blocked immediately                          |
+| `session_approved`            | Covered by a session-level approval from earlier in the same session |
+| `infrastructure_auto_allowed` | Read of a Pi infrastructure path — auto-allowed                      |
+| `user_approved`               | User approved once via dialog                                        |
+| `user_approved_for_session`   | User approved for the rest of the session                            |
+| `user_denied`                 | User denied via dialog                                               |
+| `auto_approved`               | Yolo mode — approved automatically without dialog                    |
+| `confirmation_unavailable`    | State was `ask` but no UI was available — blocked                    |
 
 ---
 
@@ -177,20 +177,20 @@ Callers should implement a timeout and treat no-reply as `deny` (graceful degrad
 
 ### Request Fields
 
-|Field|Required|Description|
-|---|---|---|
-|`requestId`|Yes|Unique string; scopes the reply channel|
-|`surface`|Yes|Permission surface to evaluate|
-|`value`|No|Value to evaluate (command, name, path); defaults to `"*"`|
-|`agentName`|No|Agent name for per-agent policy resolution|
+| Field       | Required | Description                                                |
+| ----------- | -------- | ---------------------------------------------------------- |
+| `requestId` | Yes      | Unique string; scopes the reply channel                    |
+| `surface`   | Yes      | Permission surface to evaluate                             |
+| `value`     | No       | Value to evaluate (command, name, path); defaults to `"*"` |
+| `agentName` | No       | Agent name for per-agent policy resolution                 |
 
 ### Reply Data Fields (`PermissionsCheckReplyData`)
 
-|Field|Type|Description|
-|---|---|---|
-|`result`|`"allow" \| "deny" \| "ask"`|Policy decision (including active session rules)|
-|`matchedPattern`|`string \| null`|Matched rule pattern|
-|`origin`|`string \| null`|Config scope of the winning rule|
+| Field            | Type                         | Description                                      |
+| ---------------- | ---------------------------- | ------------------------------------------------ |
+| `result`         | `"allow" \| "deny" \| "ask"` | Policy decision (including active session rules) |
+| `matchedPattern` | `string \| null`             | Matched rule pattern                             |
+| `origin`         | `string \| null`             | Config scope of the winning rule                 |
 
 ---
 
@@ -231,11 +231,11 @@ The handler replies with `{ success: false, error: "no_ui" }` when no interactiv
 
 ### Successful Reply Fields
 
-|Field|Type|Description|
-|---|---|---|
-|`approved`|`boolean`|Whether the user approved|
-|`state`|`string`|`"approved"`, `"approved_for_session"`, `"denied"`, or `"denied_with_reason"`|
-|`denialReason`|`string` (optional)|User-provided denial reason|
+| Field          | Type                | Description                                                                   |
+| -------------- | ------------------- | ----------------------------------------------------------------------------- |
+| `approved`     | `boolean`           | Whether the user approved                                                     |
+| `state`        | `string`            | `"approved"`, `"approved_for_session"`, `"denied"`, or `"denied_with_reason"` |
+| `denialReason` | `string` (optional) | User-provided denial reason                                                   |
 
 ---
 

@@ -54,17 +54,17 @@ No permission *semantics* change — the same `(policy, request) → decision` f
 
 ### Relevant modules
 
-|Module|Role today|
-|-|-|
-|`src/extension-config.ts`|Loads/saves runtime config from `<extension-root>/config.json`. Defines `CONFIG_PATH`, `LOGS_DIR`, log paths.|
-|`src/permission-manager.ts`|Loads policy from `~/.pi/agent/pi-permissions.jsonc` (global) and `<cwd>/.pi/agent/pi-permissions.jsonc` (project). Merges global → project → per-agent frontmatter. Compiles wildcard patterns.|
-|`src/logging.ts`|Writes debug and review logs to paths exported by `extension-config.ts`.|
-|`src/index.ts`|Orchestrator. Calls `loadPermissionSystemConfig()`, creates `PermissionManager`, wires events. Derives project paths in `derivePiProjectPaths()`.|
-|`src/config-reporter.ts`|Builds the `config.resolved` log entry listing all loaded paths.|
-|`src/config-modal.ts`|TUI modal for toggling runtime knobs; reads/writes via `extension-config.ts`.|
-|`src/types.ts`|TypeScript types for policy shapes.|
-|`schemas/permissions.schema.json`|JSON Schema for the policy file (currently policy-only).|
-|`config/config.example.json`|Example file (currently policy-only).|
+| Module                            | Role today                                                                                                                                                                                       |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/extension-config.ts`         | Loads/saves runtime config from `<extension-root>/config.json`. Defines `CONFIG_PATH`, `LOGS_DIR`, log paths.                                                                                    |
+| `src/permission-manager.ts`       | Loads policy from `~/.pi/agent/pi-permissions.jsonc` (global) and `<cwd>/.pi/agent/pi-permissions.jsonc` (project). Merges global → project → per-agent frontmatter. Compiles wildcard patterns. |
+| `src/logging.ts`                  | Writes debug and review logs to paths exported by `extension-config.ts`.                                                                                                                         |
+| `src/index.ts`                    | Orchestrator. Calls `loadPermissionSystemConfig()`, creates `PermissionManager`, wires events. Derives project paths in `derivePiProjectPaths()`.                                                |
+| `src/config-reporter.ts`          | Builds the `config.resolved` log entry listing all loaded paths.                                                                                                                                 |
+| `src/config-modal.ts`             | TUI modal for toggling runtime knobs; reads/writes via `extension-config.ts`.                                                                                                                    |
+| `src/types.ts`                    | TypeScript types for policy shapes.                                                                                                                                                              |
+| `schemas/permissions.schema.json` | JSON Schema for the policy file (currently policy-only).                                                                                                                                         |
+| `config/config.example.json`      | Example file (currently policy-only).                                                                                                                                                            |
 
 ## Design Overview
 
@@ -226,14 +226,14 @@ Unified loader replacing both the policy-loading logic in `permission-manager.ts
 
 ### Tests
 
-|File|Action|
-|-|-|
-|`tests/config-paths.test.ts`|New: path derivation for global, project, legacy.|
-|`tests/config-loader.test.ts`|New: loading, merging, JSONC stripping, legacy detection, issue collection.|
-|`tests/extension-config.test.ts`|Changed: remove tests for deleted functions; keep normalization tests.|
-|`tests/permission-system.test.ts`|Changed: update fixture paths to new layout.|
-|`tests/config-reporter.test.ts`|Changed: update expected log entry shape.|
-|`tests/session-start.test.ts`|Changed: update path expectations if any.|
+| File                              | Action                                                                      |
+| --------------------------------- | --------------------------------------------------------------------------- |
+| `tests/config-paths.test.ts`      | New: path derivation for global, project, legacy.                           |
+| `tests/config-loader.test.ts`     | New: loading, merging, JSONC stripping, legacy detection, issue collection. |
+| `tests/extension-config.test.ts`  | Changed: remove tests for deleted functions; keep normalization tests.      |
+| `tests/permission-system.test.ts` | Changed: update fixture paths to new layout.                                |
+| `tests/config-reporter.test.ts`   | Changed: update expected log entry shape.                                   |
+| `tests/session-start.test.ts`     | Changed: update path expectations if any.                                   |
 
 ## TDD Order
 
@@ -294,14 +294,14 @@ Unified loader replacing both the policy-loading logic in `permission-manager.ts
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|-|-|
-|Users lose their existing config silently after upgrade|Legacy-path detection reads old files, merges their values, and emits a TUI warning with a copy-pasteable `mv` command. Config continues to work during the migration window.|
-|Legacy detection is buggy and fails to find old files|Test legacy detection with fixtures for all three legacy paths (global policy, project policy, extension runtime config). Include a test for the case where the old extension-root path equals the new global path (no false positive).|
-|Could this silently weaken a permission?|No. The merge semantics are unchanged (spread merge, later source wins per-key). The same policy + same input produces the same decision. Legacy files are merged at the same precedence level they occupied before. Tests verify merge precedence end-to-end.|
-|Log files disappear after upgrade|Logs move to `~/.pi/agent/extensions/pi-permission-system/logs/`. Old logs in `<extension-root>/logs/` are not deleted or migrated — they remain readable but no new entries are appended. Document this in the migration section.|
-|`config-modal.ts` writes to wrong path|Test that the modal's save target matches the new global config path.|
-|Schema drift between unified shape and loader|Schema, example, and TypeScript types are updated in the same commit (step 11). CI builds (`tsc`) catch type mismatches.|
+| Risk                                                    | Mitigation                                                                                                                                                                                                                                                     |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Users lose their existing config silently after upgrade | Legacy-path detection reads old files, merges their values, and emits a TUI warning with a copy-pasteable `mv` command. Config continues to work during the migration window.                                                                                  |
+| Legacy detection is buggy and fails to find old files   | Test legacy detection with fixtures for all three legacy paths (global policy, project policy, extension runtime config). Include a test for the case where the old extension-root path equals the new global path (no false positive).                        |
+| Could this silently weaken a permission?                | No. The merge semantics are unchanged (spread merge, later source wins per-key). The same policy + same input produces the same decision. Legacy files are merged at the same precedence level they occupied before. Tests verify merge precedence end-to-end. |
+| Log files disappear after upgrade                       | Logs move to `~/.pi/agent/extensions/pi-permission-system/logs/`. Old logs in `<extension-root>/logs/` are not deleted or migrated — they remain readable but no new entries are appended. Document this in the migration section.                             |
+| `config-modal.ts` writes to wrong path                  | Test that the modal's save target matches the new global config path.                                                                                                                                                                                          |
+| Schema drift between unified shape and loader           | Schema, example, and TypeScript types are updated in the same commit (step 11). CI builds (`tsc`) catch type mismatches.                                                                                                                                       |
 
 ## Open Questions
 

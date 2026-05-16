@@ -50,12 +50,12 @@ This diverges from pi-mono's base config, which is acceptable — this repo alre
 
 ## Module-Level Changes
 
-|File|Change|
-|----|------|
-|`tsconfig.json`|Set `target: "ES2023"` (lib inherits automatically).|
-|`AGENTS.md`|Update lines 47–48: replace ES2022 floor with ES2023; list newly allowed APIs.|
-|`src/wildcard-matcher.ts`|Replace manual reverse loop in `findCompiledWildcardMatch` with `findLast` if applicable.|
-|`src/rule.ts`|Replace manual reverse loop in `evaluate()` with `findLast` if applicable.|
+| File                      | Change                                                                                    |
+| ------------------------- | ----------------------------------------------------------------------------------------- |
+| `tsconfig.json`           | Set `target: "ES2023"` (lib inherits automatically).                                      |
+| `AGENTS.md`               | Update lines 47–48: replace ES2022 floor with ES2023; list newly allowed APIs.            |
+| `src/wildcard-matcher.ts` | Replace manual reverse loop in `findCompiledWildcardMatch` with `findLast` if applicable. |
+| `src/rule.ts`             | Replace manual reverse loop in `evaluate()` with `findLast` if applicable.                |
 
 ## TDD Order
 
@@ -65,11 +65,11 @@ This diverges from pi-mono's base config, which is acceptable — this repo alre
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|----|----------|
-|Could this silently weaken a permission?|No — purely a type-checking change; no permission logic is altered.|
-|Diverging from pi-mono tsconfig|Acceptable — this repo already maintains its own tsconfig. Document the divergence in a code comment.|
-|`findLast` not available at runtime|Node ≥ 20 is required by `engines.node`; `findLast` shipped in Node 18.0. No risk.|
+| Risk                                     | Mitigation                                                                                            |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Could this silently weaken a permission? | No — purely a type-checking change; no permission logic is altered.                                   |
+| Diverging from pi-mono tsconfig          | Acceptable — this repo already maintains its own tsconfig. Document the divergence in a code comment. |
+| `findLast` not available at runtime      | Node ≥ 20 is required by `engines.node`; `findLast` shipped in Node 18.0. No risk.                    |
 
 ## Open Questions
 

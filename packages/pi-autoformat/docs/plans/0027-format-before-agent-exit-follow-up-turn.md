@@ -45,17 +45,17 @@ Since nobody outside the project uses this extension yet, we can make a clean br
 
 ### Relevant modules
 
-| Module | Role |
-| --- | --- |
-| `src/extension.ts` | Extension entrypoint. Registers lifecycle handlers (`session_start`, `tool_result`, `agent_end`, `session_shutdown`). Owns `queueFlush()` and result reporting. Has `formatMode` branching in `tool_result` and `agent_end` handlers. |
-| `src/formatter-config.ts` | Defines `FormatMode` type, `AutoformatConfig`, `UserFormatterConfig`, defaults, `createFormatterConfig()`. |
-| `src/config-loader.ts` | Loads/merges global+project config, validates `formatMode` values, produces `LoadConfigResult`. |
-| `src/prompt-autoformatter.ts` | `PromptAutoformatter` class. Tracks touched files, runs formatter chains, returns `PromptAutoformatterResult`. |
-| `src/formatter-executor.ts` | `BatchRun` type — includes `stdout`, `stderr`, `exitCode` for each formatter invocation. |
-| `schemas/pi-autoformat.schema.json` | JSON Schema for config validation. Includes `formatMode` enum. |
-| `docs/configuration.md` | User-facing config documentation. Documents `formatMode` and its three values. |
-| `test/extension.test.ts` | Extension lifecycle tests with `TestPi` harness. Tests for `"tool"`, `"prompt"`, `"session"` modes. |
-| `test/config-loader.test.ts` | Config validation and merge tests. |
+| Module                              | Role                                                                                                                                                                                                                                  |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/extension.ts`                  | Extension entrypoint. Registers lifecycle handlers (`session_start`, `tool_result`, `agent_end`, `session_shutdown`). Owns `queueFlush()` and result reporting. Has `formatMode` branching in `tool_result` and `agent_end` handlers. |
+| `src/formatter-config.ts`           | Defines `FormatMode` type, `AutoformatConfig`, `UserFormatterConfig`, defaults, `createFormatterConfig()`.                                                                                                                            |
+| `src/config-loader.ts`              | Loads/merges global+project config, validates `formatMode` values, produces `LoadConfigResult`.                                                                                                                                       |
+| `src/prompt-autoformatter.ts`       | `PromptAutoformatter` class. Tracks touched files, runs formatter chains, returns `PromptAutoformatterResult`.                                                                                                                        |
+| `src/formatter-executor.ts`         | `BatchRun` type — includes `stdout`, `stderr`, `exitCode` for each formatter invocation.                                                                                                                                              |
+| `schemas/pi-autoformat.schema.json` | JSON Schema for config validation. Includes `formatMode` enum.                                                                                                                                                                        |
+| `docs/configuration.md`             | User-facing config documentation. Documents `formatMode` and its three values.                                                                                                                                                        |
+| `test/extension.test.ts`            | Extension lifecycle tests with `TestPi` harness. Tests for `"tool"`, `"prompt"`, `"session"` modes.                                                                                                                                   |
+| `test/config-loader.test.ts`        | Config validation and merge tests.                                                                                                                                                                                                    |
 
 ### Pi extension API surface
 

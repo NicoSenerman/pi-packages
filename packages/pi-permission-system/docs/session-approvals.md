@@ -15,16 +15,16 @@ Session approvals are ephemeral — they are never persisted to disk and are cle
 
 The suggested pattern is surface-specific:
 
-|Surface|Example request|Suggested session pattern|
-|---|---|---|
-|bash|`git status --short`|`git status *`|
-|mcp (qualified)|`exa:search`|`exa:*`|
-|mcp (munged)|`exa_search`|`exa_*`|
-|skill|`librarian`|`librarian`|
-|path|`src/.env`|`src/*`|
-|tool with path (read, write, …)|`read` for `src/foo.ts`|`src/*`|
-|tool catch-all|`read` (no extractable path)|`*`|
-|external_directory|`/other/project/src/foo.ts`|`/other/project/src/*`|
+| Surface                         | Example request              | Suggested session pattern |
+| ------------------------------- | ---------------------------- | ------------------------- |
+| bash                            | `git status --short`         | `git status *`            |
+| mcp (qualified)                 | `exa:search`                 | `exa:*`                   |
+| mcp (munged)                    | `exa_search`                 | `exa_*`                   |
+| skill                           | `librarian`                  | `librarian`               |
+| path                            | `src/.env`                   | `src/*`                   |
+| tool with path (read, write, …) | `read` for `src/foo.ts`      | `src/*`                   |
+| tool catch-all                  | `read` (no extractable path) | `*`                       |
+| external_directory              | `/other/project/src/foo.ts`  | `/other/project/src/*`    |
 
 ## Bash Arity Table
 
@@ -32,14 +32,14 @@ Bash pattern suggestions use a curated arity dictionary (`src/bash-arity.ts`) to
 Longest matching prefix wins, so `npm run` (arity 3) takes precedence over `npm` (arity 2).
 Unknown commands default to arity 1 (first word only).
 
-|Example command|Arity entry matched|Suggested pattern|
-|---|---|---|
-|`git checkout main`|`git` → 2|`git checkout *`|
-|`npm run dev`|`npm run` → 3|`npm run dev*`|
-|`npm install lodash`|`npm` → 2|`npm install *`|
-|`docker compose up`|`docker compose` → 3|`docker compose up *`|
-|`rm -rf node_modules`|`rm` → 1|`rm *`|
-|`mytool --verbose`|(unknown) → 1|`mytool *`|
+| Example command       | Arity entry matched  | Suggested pattern     |
+| --------------------- | -------------------- | --------------------- |
+| `git checkout main`   | `git` → 2            | `git checkout *`      |
+| `npm run dev`         | `npm run` → 3        | `npm run dev*`        |
+| `npm install lodash`  | `npm` → 2            | `npm install *`       |
+| `docker compose up`   | `docker compose` → 3 | `docker compose up *` |
+| `rm -rf node_modules` | `rm` → 1             | `rm *`                |
+| `mytool --verbose`    | (unknown) → 1        | `mytool *`            |
 
 The arity table covers common CLI tools including git, npm/pnpm/yarn/bun, docker, cargo, go, kubectl, gh, and others.
 To add an entry, open `src/bash-arity.ts` and add a key/arity pair to the `ARITY` object.

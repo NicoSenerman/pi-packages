@@ -140,66 +140,66 @@ LLM calls ci_find(workflow, expected_sha, timeout)
 
 #### `ci_find`
 
-| Field | Value |
-| --- | --- |
-| Parameters | `workflow: string`, `expected_sha: string`, `timeout?: number` (default 120) |
-| Behavior | Exponential backoff polling (5 s base, 30 s cap). Polls `gh run list` until a run matching `expected_sha` appears. |
-| Success | Returns `run_id`, `url`, `status`, `sha`, `title`, and job list. |
-| Timeout | Returns structured timeout message with last-seen SHA and retry count. |
-| Progress | Emits `awaiting <workflow> run for <short_sha>... (attempt N, Ns elapsed)` |
+| Field      | Value                                                                                                              |
+| ---------- | ------------------------------------------------------------------------------------------------------------------ |
+| Parameters | `workflow: string`, `expected_sha: string`, `timeout?: number` (default 120)                                       |
+| Behavior   | Exponential backoff polling (5 s base, 30 s cap). Polls `gh run list` until a run matching `expected_sha` appears. |
+| Success    | Returns `run_id`, `url`, `status`, `sha`, `title`, and job list.                                                   |
+| Timeout    | Returns structured timeout message with last-seen SHA and retry count.                                             |
+| Progress   | Emits `awaiting <workflow> run for <short_sha>... (attempt N, Ns elapsed)`                                         |
 
 #### `ci_watch`
 
-| Field | Value |
-| --- | --- |
+| Field      | Value                                                                  |
+| ---------- | ---------------------------------------------------------------------- |
 | Parameters | `workflow: string`, `run_id: number`, `timeout?: number` (default 300) |
-| Behavior | 15 s poll interval. Polls `gh run view` by run ID. |
-| Success | Returns full progress log and final status. |
-| Timeout | Returns progress log with timeout line. |
-| Progress | Emits `[completed/total] active_job — in_progress (Ns)` per cycle |
+| Behavior   | 15 s poll interval. Polls `gh run view` by run ID.                     |
+| Success    | Returns full progress log and final status.                            |
+| Timeout    | Returns progress log with timeout line.                                |
+| Progress   | Emits `[completed/total] active_job — in_progress (Ns)` per cycle      |
 
 #### `ci_list`
 
-| Field | Value |
-| --- | --- |
+| Field      | Value                                            |
+| ---------- | ------------------------------------------------ |
 | Parameters | `workflow: string`, `limit?: number` (default 5) |
-| Behavior | Single `gh run list` call. |
-| Returns | Status, name, SHA, run ID, URL per run. |
+| Behavior   | Single `gh run list` call.                       |
+| Returns    | Status, name, SHA, run ID, URL per run.          |
 
 #### `release_pr_find`
 
-| Field | Value |
-| --- | --- |
-| Parameters | `timeout?: number` (default 120) |
-| Behavior | Polls `gh pr list` filtering for release-please PRs until one appears or timeout. Uses exponential backoff. |
-| Success | Returns PR number, title, head branch, mergeable status, URL. |
-| Timeout | Structured timeout with retry count. |
+| Field      | Value                                                                                                       |
+| ---------- | ----------------------------------------------------------------------------------------------------------- |
+| Parameters | `timeout?: number` (default 120)                                                                            |
+| Behavior   | Polls `gh pr list` filtering for release-please PRs until one appears or timeout. Uses exponential backoff. |
+| Success    | Returns PR number, title, head branch, mergeable status, URL.                                               |
+| Timeout    | Structured timeout with retry count.                                                                        |
 
 #### `release_pr_merge`
 
-| Field | Value |
-| --- | --- |
-| Parameters | `pr_number: number` |
-| Behavior | Checks PR is `MERGEABLE` + `CLEAN`. Merges with `--rebase`. Runs `git pull --ff-only`. |
-| Success | Returns merge confirmation with new HEAD SHA. |
-| Error | Structured error if not mergeable (with reason). |
+| Field      | Value                                                                                  |
+| ---------- | -------------------------------------------------------------------------------------- |
+| Parameters | `pr_number: number`                                                                    |
+| Behavior   | Checks PR is `MERGEABLE` + `CLEAN`. Merges with `--rebase`. Runs `git pull --ff-only`. |
+| Success    | Returns merge confirmation with new HEAD SHA.                                          |
+| Error      | Structured error if not mergeable (with reason).                                       |
 
 #### `release_watch`
 
-| Field | Value |
-| --- | --- |
-| Parameters | `expected_sha?: string`, `timeout?: number` (default 180) |
-| Behavior | Polls for a new git tag on HEAD or watches the release workflow run. |
-| Success | Returns version, tag name, tag SHA. |
-| Timeout | Structured timeout. |
+| Field      | Value                                                                |
+| ---------- | -------------------------------------------------------------------- |
+| Parameters | `expected_sha?: string`, `timeout?: number` (default 180)            |
+| Behavior   | Polls for a new git tag on HEAD or watches the release workflow run. |
+| Success    | Returns version, tag name, tag SHA.                                  |
+| Timeout    | Structured timeout.                                                  |
 
 #### `issue_close`
 
-| Field | Value |
-| --- | --- |
-| Parameters | `issue_number: number`, `comment?: string`, `reason?: string` (default "completed") |
-| Behavior | `gh issue close` with optional comment. Validates reason is `completed` or `not_planned`. |
-| Returns | Confirmation message. |
+| Field      | Value                                                                                     |
+| ---------- | ----------------------------------------------------------------------------------------- |
+| Parameters | `issue_number: number`, `comment?: string`, `reason?: string` (default "completed")       |
+| Behavior   | `gh issue close` with optional comment. Validates reason is `completed` or `not_planned`. |
+| Returns    | Confirmation message.                                                                     |
 
 ### Progress mapping
 

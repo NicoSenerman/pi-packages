@@ -30,11 +30,11 @@ Keeping the fallback creates a fragile coupling and a confusing second source of
 
 ### Relevant modules
 
-| File | Role |
-| --- | --- |
-| `src/permission-manager.ts` | Contains `defaultLegacyGlobalSettingsPath()`, the `legacyGlobalSettingsPath` field, and uses it in `getConfiguredMcpServerNames()`. This is the only file that references the legacy path. |
-| `src/index.ts` | Constructs `PermissionManager` — does not pass `legacyGlobalSettingsPath`, so it gets the default. No changes needed. |
-| `tests/permission-system.test.ts` | Tests use the `mcpServerNames` override, not the file-based lookup. No existing tests exercise the legacy path. |
+| File                              | Role                                                                                                                                                                                       |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/permission-manager.ts`       | Contains `defaultLegacyGlobalSettingsPath()`, the `legacyGlobalSettingsPath` field, and uses it in `getConfiguredMcpServerNames()`. This is the only file that references the legacy path. |
+| `src/index.ts`                    | Constructs `PermissionManager` — does not pass `legacyGlobalSettingsPath`, so it gets the default. No changes needed.                                                                      |
+| `tests/permission-system.test.ts` | Tests use the `mcpServerNames` override, not the file-based lookup. No existing tests exercise the legacy path.                                                                            |
 
 ### Permission surface
 
@@ -113,12 +113,12 @@ This is a pure removal — no new types, no new config fields, no merge-preceden
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-| --- | --- |
-| **Could this silently weaken a permission?** | No. Removing a server-name source can only make derivation *less* permissive — a bare tool name that previously matched a server-qualified allow rule would now fall through to the default MCP policy (`ask`). This is stricter, not weaker. |
-| **Users relying on `settings.json` for MCP server name derivation.** | This was never documented. Users who configure MCP servers in `settings.json` can add the same entries to `mcp.json` or use explicit `server:tool` patterns in their permission policy. |
-| **On-disk identity change.** | None. No config directory, log filename, slash command, or event channel name is affected. |
-| **Breaking change?** | Non-breaking. The constructor option `legacyGlobalSettingsPath` was internal and not part of any public API contract. No policy file format changes. |
+| Risk                                                                 | Mitigation                                                                                                                                                                                                                                    |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Could this silently weaken a permission?**                         | No. Removing a server-name source can only make derivation *less* permissive — a bare tool name that previously matched a server-qualified allow rule would now fall through to the default MCP policy (`ask`). This is stricter, not weaker. |
+| **Users relying on `settings.json` for MCP server name derivation.** | This was never documented. Users who configure MCP servers in `settings.json` can add the same entries to `mcp.json` or use explicit `server:tool` patterns in their permission policy.                                                       |
+| **On-disk identity change.**                                         | None. No config directory, log filename, slash command, or event channel name is affected.                                                                                                                                                    |
+| **Breaking change?**                                                 | Non-breaking. The constructor option `legacyGlobalSettingsPath` was internal and not part of any public API contract. No policy file format changes.                                                                                          |
 
 ## Open Questions
 

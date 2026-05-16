@@ -85,29 +85,29 @@ No code changes, no new dependency, no schema enforcement.
 
 ### nicobailon/pi-subagents
 
-|Placeholder|Value|
-|---|---|
-|`{{your-extension}}`|`pi-subagents`|
-|`{{your-key}}`|`tools`|
-|`{{example-value}}`|`bash,read_file,write_file`|
+| Placeholder          | Value                       |
+| -------------------- | --------------------------- |
+| `{{your-extension}}` | `pi-subagents`              |
+| `{{your-key}}`       | `tools`                     |
+| `{{example-value}}`  | `bash,read_file,write_file` |
 
 ### tintinweb/pi-subagents
 
-|Placeholder|Value|
-|---|---|
-|`{{your-extension}}`|`pi-subagents`|
-|`{{your-key}}`|`disallowed_tools`|
-|`{{example-value}}`|`write_file,bash`|
+| Placeholder          | Value              |
+| -------------------- | ------------------ |
+| `{{your-extension}}` | `pi-subagents`     |
+| `{{your-key}}`       | `disallowed_tools` |
+| `{{example-value}}`  | `write_file,bash`  |
 
 Additional note for tintinweb: since this extension runs subagents in-process via `createAgentSession()`, mention the [Event Bus RPC](https://github.com/gotgenes/pi-permission-system/blob/main/docs/cross-extension-api.md#policy-query-rpc-deprecated) as an optional runtime integration path for querying or forwarding permission prompts without spawning a subprocess.
 
 ### HazAT/pi-interactive-subagents
 
-|Placeholder|Value|
-|---|---|
-|`{{your-extension}}`|`pi-interactive-subagents`|
-|`{{your-key}}`|`deny-tools`|
-|`{{example-value}}`|`write_file,bash`|
+| Placeholder          | Value                      |
+| -------------------- | -------------------------- |
+| `{{your-extension}}` | `pi-interactive-subagents` |
+| `{{your-key}}`       | `deny-tools`               |
+| `{{example-value}}`  | `write_file,bash`          |
 
 Additional note for HazAT: this extension already uses `PI_DENY_TOOLS` env var for subprocess tool denial.
 The `permission:` frontmatter provides the same effect via `tool_name: deny` but adds `ask` as an intermediate option and covers surfaces beyond tools.

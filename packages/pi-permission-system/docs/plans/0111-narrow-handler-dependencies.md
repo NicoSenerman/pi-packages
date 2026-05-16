@@ -42,12 +42,12 @@ The pain shows up concretely in tests:
 
 ### What each gate actually calls (leaf methods)
 
-|Gate|Leaf methods used|
-|---|---|
-|`evaluateToolGate`|`checkPermission`, `getSessionRuleset`, `approveSessionRule`, `writeReviewLog`, `emitDecision`, `canConfirm`, `promptPermission`|
-|`evaluateExternalDirectoryGate`|`checkPermission`, `getSessionRuleset`, `approveSessionRule`, `writeReviewLog`, `emitDecision`, `canConfirm`, `promptPermission`, `getPiInfrastructureDirs`|
-|`evaluateBashExternalDirectoryGate`|`checkPermission`, `getSessionRuleset`, `approveSessionRule`, `writeReviewLog`, `canConfirm`, `promptPermission`|
-|`evaluateSkillReadGate`|`getActiveSkillEntries`, `writeReviewLog`, `emitDecision`, `canConfirm`, `promptPermission`, `createRequestId`|
+| Gate                                | Leaf methods used                                                                                                                                           |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `evaluateToolGate`                  | `checkPermission`, `getSessionRuleset`, `approveSessionRule`, `writeReviewLog`, `emitDecision`, `canConfirm`, `promptPermission`                            |
+| `evaluateExternalDirectoryGate`     | `checkPermission`, `getSessionRuleset`, `approveSessionRule`, `writeReviewLog`, `emitDecision`, `canConfirm`, `promptPermission`, `getPiInfrastructureDirs` |
+| `evaluateBashExternalDirectoryGate` | `checkPermission`, `getSessionRuleset`, `approveSessionRule`, `writeReviewLog`, `canConfirm`, `promptPermission`                                            |
+| `evaluateSkillReadGate`             | `getActiveSkillEntries`, `writeReviewLog`, `emitDecision`, `canConfirm`, `promptPermission`, `createRequestId`                                              |
 
 Note: `canConfirm` and `promptPermission` in the narrow interface do NOT take `ctx` — the adapter closure captures it.
 
@@ -273,31 +273,31 @@ function makeSession(overrides: Partial<SessionState> = {}): SessionState {
 
 ## Module-Level Changes
 
-|File|Change|
-|---|---|
-|`src/handlers/gates/types.ts`|Add `ToolGateDeps`, `ExternalDirectoryGateDeps`, `BashExternalDirectoryGateDeps`, `SkillReadGateDeps`|
-|`src/handlers/gates/tool.ts`|Accept `ToolGateDeps`; replace `deps.runtime.*` with flat method calls; drop `HandlerDeps` import|
-|`src/handlers/gates/external-directory.ts`|Accept `ExternalDirectoryGateDeps`; use `deps.getInfrastructureDirs()`|
-|`src/handlers/gates/bash-external-directory.ts`|Accept `BashExternalDirectoryGateDeps`|
-|`src/handlers/gates/skill-read.ts`|Accept `SkillReadGateDeps`; use `deps.getActiveSkillEntries()`|
-|`src/handlers/types.ts`|Replace `runtime: ExtensionRuntime` with `session: SessionState`; promote logging/paths|
-|`src/handlers/tool-call.ts`|Build per-gate adapter objects from `deps` + `ctx`; pass narrow deps to each gate|
-|`src/handlers/before-agent-start.ts`|Use `deps.session.*` instead of `deps.runtime.*`|
-|`src/handlers/lifecycle.ts`|Use `deps.session.*` + `deps.writeDebugLog`|
-|`src/handlers/input.ts`|Use `deps.session.*` + `deps.writeReviewLog`|
-|`src/runtime.ts`|Export `SessionState` interface; `ExtensionRuntime` extends it|
-|`src/index.ts`|Wire `HandlerDeps.session` from runtime; promote logging + paths|
-|`tests/handlers/gates/tool.test.ts`|New file — gate tests with `makeToolGateDeps()`|
-|`tests/handlers/gates/external-directory.test.ts`|New file|
-|`tests/handlers/gates/bash-external-directory.test.ts`|New file|
-|`tests/handlers/gates/skill-read.test.ts`|New file|
-|`tests/handlers/tool-call.test.ts`|Simplify — remove `makeRuntime()`, use `makeSession()`|
-|`tests/handlers/tool-call-events.test.ts`|Same simplification|
-|`tests/handlers/before-agent-start.test.ts`|Replace `makeRuntime()` with `makeSession()`|
-|`tests/handlers/lifecycle.test.ts`|Same|
-|`tests/handlers/input.test.ts`|Same|
-|`tests/handlers/input-events.test.ts`|Same|
-|`docs/architecture/target-architecture.md`|Update handler/gate architecture section|
+| File                                                   | Change                                                                                                |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `src/handlers/gates/types.ts`                          | Add `ToolGateDeps`, `ExternalDirectoryGateDeps`, `BashExternalDirectoryGateDeps`, `SkillReadGateDeps` |
+| `src/handlers/gates/tool.ts`                           | Accept `ToolGateDeps`; replace `deps.runtime.*` with flat method calls; drop `HandlerDeps` import     |
+| `src/handlers/gates/external-directory.ts`             | Accept `ExternalDirectoryGateDeps`; use `deps.getInfrastructureDirs()`                                |
+| `src/handlers/gates/bash-external-directory.ts`        | Accept `BashExternalDirectoryGateDeps`                                                                |
+| `src/handlers/gates/skill-read.ts`                     | Accept `SkillReadGateDeps`; use `deps.getActiveSkillEntries()`                                        |
+| `src/handlers/types.ts`                                | Replace `runtime: ExtensionRuntime` with `session: SessionState`; promote logging/paths               |
+| `src/handlers/tool-call.ts`                            | Build per-gate adapter objects from `deps` + `ctx`; pass narrow deps to each gate                     |
+| `src/handlers/before-agent-start.ts`                   | Use `deps.session.*` instead of `deps.runtime.*`                                                      |
+| `src/handlers/lifecycle.ts`                            | Use `deps.session.*` + `deps.writeDebugLog`                                                           |
+| `src/handlers/input.ts`                                | Use `deps.session.*` + `deps.writeReviewLog`                                                          |
+| `src/runtime.ts`                                       | Export `SessionState` interface; `ExtensionRuntime` extends it                                        |
+| `src/index.ts`                                         | Wire `HandlerDeps.session` from runtime; promote logging + paths                                      |
+| `tests/handlers/gates/tool.test.ts`                    | New file — gate tests with `makeToolGateDeps()`                                                       |
+| `tests/handlers/gates/external-directory.test.ts`      | New file                                                                                              |
+| `tests/handlers/gates/bash-external-directory.test.ts` | New file                                                                                              |
+| `tests/handlers/gates/skill-read.test.ts`              | New file                                                                                              |
+| `tests/handlers/tool-call.test.ts`                     | Simplify — remove `makeRuntime()`, use `makeSession()`                                                |
+| `tests/handlers/tool-call-events.test.ts`              | Same simplification                                                                                   |
+| `tests/handlers/before-agent-start.test.ts`            | Replace `makeRuntime()` with `makeSession()`                                                          |
+| `tests/handlers/lifecycle.test.ts`                     | Same                                                                                                  |
+| `tests/handlers/input.test.ts`                         | Same                                                                                                  |
+| `tests/handlers/input-events.test.ts`                  | Same                                                                                                  |
+| `docs/architecture/target-architecture.md`             | Update handler/gate architecture section                                                              |
 
 ## Test Impact Analysis
 
@@ -342,36 +342,36 @@ function makeSession(overrides: Partial<SessionState> = {}): SessionState {
    - `refactor: handleToolCall adapters use deps.session (#111)`
 
 4. Migrate `handleBeforeAgentStart` to `deps.session.*`.
-    - `refactor: handleBeforeAgentStart uses deps.session (#111)`
+   - `refactor: handleBeforeAgentStart uses deps.session (#111)`
 
 5. Migrate lifecycle handlers to `deps.session.*` + `deps.writeDebugLog`.
-    - `refactor: lifecycle handlers use deps.session (#111)`
+   - `refactor: lifecycle handlers use deps.session (#111)`
 
 6. Migrate `handleInput` to `deps.session.*` + `deps.writeReviewLog`.
-    - `refactor: handleInput uses deps.session (#111)`
+   - `refactor: handleInput uses deps.session (#111)`
 
 ### Phase 3: Test cleanup
 
 1. Replace `makeRuntime()` with `makeSession()` across all handler test files. Remove `ExtensionRuntime` imports.
-    - `test: handler tests use makeSession instead of makeRuntime (#111)`
+   - `test: handler tests use makeSession instead of makeRuntime (#111)`
 
 2. Migrate gate-level assertions from handler test files to dedicated gate test files where they test more clearly in isolation.
-    - `test: consolidate gate tests in dedicated files (#111)`
+   - `test: consolidate gate tests in dedicated files (#111)`
 
 ### Phase 4: Docs
 
 1. Update `docs/architecture/target-architecture.md` to reflect per-gate interfaces and SessionState.
-    - `docs: update target architecture for gate interfaces (#111)`
+   - `docs: update target architecture for gate interfaces (#111)`
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|---|---|
-|Could this silently weaken a permission?|No — pure refactor. Same `checkPermission` calls, same parameters, same gate evaluation order. Integration test validates end-to-end.|
-|Adapter construction in `handleToolCall` adds overhead|Adapter objects are cheap (function references + one closure for `ctx`). No allocation pressure vs. current path.|
-|Gate interface drift — someone adds a dep to a gate without updating the interface|TypeScript enforces it: if the gate calls `deps.newMethod()` and the interface lacks it, compilation fails.|
-|Large blast radius across 6 test files|Phase 1 (gates) lands independently and creates new test files without touching existing ones. Phase 2+3 migrates existing tests incrementally.|
-|Shared method signatures across gate interfaces feel DRY-violating|Intentional: each gate's interface documents exactly what it uses. A shared base type would re-introduce coupling and baggy mocks. Composition via `extends` can be applied later if a real shared subset emerges.|
+| Risk                                                                               | Mitigation                                                                                                                                                                                                         |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Could this silently weaken a permission?                                           | No — pure refactor. Same `checkPermission` calls, same parameters, same gate evaluation order. Integration test validates end-to-end.                                                                              |
+| Adapter construction in `handleToolCall` adds overhead                             | Adapter objects are cheap (function references + one closure for `ctx`). No allocation pressure vs. current path.                                                                                                  |
+| Gate interface drift — someone adds a dep to a gate without updating the interface | TypeScript enforces it: if the gate calls `deps.newMethod()` and the interface lacks it, compilation fails.                                                                                                        |
+| Large blast radius across 6 test files                                             | Phase 1 (gates) lands independently and creates new test files without touching existing ones. Phase 2+3 migrates existing tests incrementally.                                                                    |
+| Shared method signatures across gate interfaces feel DRY-violating                 | Intentional: each gate's interface documents exactly what it uses. A shared base type would re-introduce coupling and baggy mocks. Composition via `extends` can be applied later if a real shared subset emerges. |
 
 ## Open Questions
 

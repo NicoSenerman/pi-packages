@@ -204,13 +204,13 @@ per tool-call:
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|----|----------|
-|Over-broad node_modules match allows reads from unrelated packages|The check requires the path to be within a *Pi infrastructure* directory, not arbitrary node_modules paths. The discovered root is the same one Pi itself uses.|
-|Could silently weaken external_directory permission for writes|The check is gated on `READ_ONLY_PATH_BEARING_TOOLS` — writes are never auto-allowed. Explicit test coverage for this case.|
-|`import.meta.url` walk finds wrong node_modules in nested installs|Walk upward from our own file; the first `node_modules` ancestor is necessarily the one containing us. Nested node_modules deeper in the tree won't be ancestors.|
-|Config `piInfrastructureReadPaths` used to bypass security for arbitrary dirs|Document clearly that these are read-only auto-allow paths. The field name includes "Read" to signal intent. Review log entry makes bypasses visible.|
-|Symlinked paths don't match resolved paths|Both sides use `normalizePathForComparison()` which calls `resolve()` — symlinks are handled consistently with existing external-directory logic.|
+| Risk                                                                          | Mitigation                                                                                                                                                        |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Over-broad node_modules match allows reads from unrelated packages            | The check requires the path to be within a *Pi infrastructure* directory, not arbitrary node_modules paths. The discovered root is the same one Pi itself uses.   |
+| Could silently weaken external_directory permission for writes                | The check is gated on `READ_ONLY_PATH_BEARING_TOOLS` — writes are never auto-allowed. Explicit test coverage for this case.                                       |
+| `import.meta.url` walk finds wrong node_modules in nested installs            | Walk upward from our own file; the first `node_modules` ancestor is necessarily the one containing us. Nested node_modules deeper in the tree won't be ancestors. |
+| Config `piInfrastructureReadPaths` used to bypass security for arbitrary dirs | Document clearly that these are read-only auto-allow paths. The field name includes "Read" to signal intent. Review log entry makes bypasses visible.             |
+| Symlinked paths don't match resolved paths                                    | Both sides use `normalizePathForComparison()` which calls `resolve()` — symlinks are handled consistently with existing external-directory logic.                 |
 
 ## Open Questions
 

@@ -11,26 +11,26 @@ If you are familiar with OpenCode's permission system, most concepts transfer di
 
 The following concepts are shared between OpenCode and this extension:
 
-|Concept|Description|
-|---|---|
-|Three actions|`allow` / `ask` / `deny` — identical semantics|
-|Flat `permission` object|Top-level key in config; surface names as keys|
-|`"*"` universal fallback|Sets the default action when no surface-specific rule matches|
-|Granular object syntax|Surface key → string (catch-all) or `{ pattern: action }` map|
-|Last-match-wins|When multiple patterns match, the last one in config order wins|
-|`*` wildcard|Matches zero or more of any character (including path separators)|
-|`?` wildcard|Matches exactly one character|
-|Home directory expansion|`~/` and `$HOME/` expand to the OS home directory in patterns|
-|`external_directory` surface|Gates access to paths outside the working directory|
-|`bash` surface|Command patterns matched against shell commands|
-|`skill` surface|Skill name patterns matched against skill invocations|
-|`task` surface|Gates subagent/delegation tool calls|
-|Session-scoped approvals|`once` / `always` / `reject` from the ask dialog; `always` adds a session rule|
-|Per-agent overrides|Override global permissions for specific agents|
-|Tool hiding|Denied tools are removed before the agent starts (no wasted turns probing)|
-|Bash path extraction|Tree-sitter AST parsing to detect external paths in shell commands (see [details below](#bash-path-extraction))|
-|Bash arity table|Generates smart approval pattern suggestions (e.g., `git checkout *` not `git *`)|
-|Trailing wildcard optionality|`"ls *"` matches bare `"ls"` — the trailing `*` is optional|
+| Concept                       | Description                                                                                                     |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Three actions                 | `allow` / `ask` / `deny` — identical semantics                                                                  |
+| Flat `permission` object      | Top-level key in config; surface names as keys                                                                  |
+| `"*"` universal fallback      | Sets the default action when no surface-specific rule matches                                                   |
+| Granular object syntax        | Surface key → string (catch-all) or `{ pattern: action }` map                                                   |
+| Last-match-wins               | When multiple patterns match, the last one in config order wins                                                 |
+| `*` wildcard                  | Matches zero or more of any character (including path separators)                                               |
+| `?` wildcard                  | Matches exactly one character                                                                                   |
+| Home directory expansion      | `~/` and `$HOME/` expand to the OS home directory in patterns                                                   |
+| `external_directory` surface  | Gates access to paths outside the working directory                                                             |
+| `bash` surface                | Command patterns matched against shell commands                                                                 |
+| `skill` surface               | Skill name patterns matched against skill invocations                                                           |
+| `task` surface                | Gates subagent/delegation tool calls                                                                            |
+| Session-scoped approvals      | `once` / `always` / `reject` from the ask dialog; `always` adds a session rule                                  |
+| Per-agent overrides           | Override global permissions for specific agents                                                                 |
+| Tool hiding                   | Denied tools are removed before the agent starts (no wasted turns probing)                                      |
+| Bash path extraction          | Tree-sitter AST parsing to detect external paths in shell commands (see [details below](#bash-path-extraction)) |
+| Bash arity table              | Generates smart approval pattern suggestions (e.g., `git checkout *` not `git *`)                               |
+| Trailing wildcard optionality | `"ls *"` matches bare `"ls"` — the trailing `*` is optional                                                     |
 
 If your OpenCode config uses these features, the equivalent works in this extension with minimal translation (see [Porting Guide](#porting-an-opencode-config) below).
 
@@ -38,22 +38,21 @@ If your OpenCode config uses these features, the equivalent works in this extens
 
 ### Summary Table
 
-|Area|OpenCode|This extension|
-|---|---|---|
-|Default fallback|`"*": "allow"` (permissive)|`"*": "ask"` (least privilege)|
-|`.env` file protection|Built-in `read` rules deny/ask `.env` files|No built-in rules; user configures with the cross-cutting `path` surface or per-tool path patterns (see [porting guide](#porting-an-opencode-config))|
-|Cross-cutting `path` gate|No equivalent — `.env` protection is per-tool only|`path` surface denies/asks across all tools and bash at once; a `path` deny cannot be overridden by a per-tool allow|
-|OpenCode-only surfaces|`lsp`, `question`, `webfetch`, `websearch`, `todowrite`, `doom_loop`|Not applicable — Pi does not expose these tools or events|
-|File mutation surfaces|`edit` covers `edit`, `write`, `apply_patch`|Separate `write` and `edit` surfaces|
-|Search/discovery surfaces|`glob`, `grep`, `list`|`find`, `grep`, `ls` (Pi tool names)|
-
-|`mcp` surface|Not a documented permission surface|First-class with server/tool-level granularity|
-|Top-level string shorthand|`"permission": "allow"` sets all surfaces|Not supported; must use an object|
-|Per-agent config location|`agent` key in config JSON or YAML frontmatter|YAML frontmatter in agent `.md` files only|
-|Config file paths|`~/.config/opencode/opencode.json`|`~/.pi/agent/extensions/pi-permission-system/config.json`|
-|Subagent prompt forwarding|Not documented|`ask` policies work in non-UI subagent contexts|
-|Infrastructure auto-allow|N/A|Read-only tools to Pi infra dirs bypass the gate|
-|Permission review log|No equivalent documented|Writes decisions to a JSONL audit log|
+| Area                       | OpenCode                                                             | This extension                                                                                                                                        |
+| -------------------------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Default fallback           | `"*": "allow"` (permissive)                                          | `"*": "ask"` (least privilege)                                                                                                                        |
+| `.env` file protection     | Built-in `read` rules deny/ask `.env` files                          | No built-in rules; user configures with the cross-cutting `path` surface or per-tool path patterns (see [porting guide](#porting-an-opencode-config)) |
+| Cross-cutting `path` gate  | No equivalent — `.env` protection is per-tool only                   | `path` surface denies/asks across all tools and bash at once; a `path` deny cannot be overridden by a per-tool allow                                  |
+| OpenCode-only surfaces     | `lsp`, `question`, `webfetch`, `websearch`, `todowrite`, `doom_loop` | Not applicable — Pi does not expose these tools or events                                                                                             |
+| File mutation surfaces     | `edit` covers `edit`, `write`, `apply_patch`                         | Separate `write` and `edit` surfaces                                                                                                                  |
+| Search/discovery surfaces  | `glob`, `grep`, `list`                                               | `find`, `grep`, `ls` (Pi tool names)                                                                                                                  |
+| `mcp` surface              | Not a documented permission surface                                  | First-class with server/tool-level granularity                                                                                                        |
+| Top-level string shorthand | `"permission": "allow"` sets all surfaces                            | Not supported; must use an object                                                                                                                     |
+| Per-agent config location  | `agent` key in config JSON or YAML frontmatter                       | YAML frontmatter in agent `.md` files only                                                                                                            |
+| Config file paths          | `~/.config/opencode/opencode.json`                                   | `~/.pi/agent/extensions/pi-permission-system/config.json`                                                                                             |
+| Subagent prompt forwarding | Not documented                                                       | `ask` policies work in non-UI subagent contexts                                                                                                       |
+| Infrastructure auto-allow  | N/A                                                                  | Read-only tools to Pi infra dirs bypass the gate                                                                                                      |
+| Permission review log      | No equivalent documented                                             | Writes decisions to a JSONL audit log                                                                                                                 |
 
 ### Notable Differences Explained
 

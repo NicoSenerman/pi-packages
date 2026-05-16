@@ -34,12 +34,12 @@ A user who sets `special.external_directory: "ask"` still has external paths sil
 
 ### Existing modules
 
-| File | Role |
-| ---- | ---- |
+| File                        | Role                                                                          |
+| --------------------------- | ----------------------------------------------------------------------------- |
 | `src/external-directory.ts` | `isPathOutsideWorkingDirectory`, `normalizePathForComparison`, format helpers |
-| `src/index.ts` | Tool-call interceptor; currently gates file tools at line ~822 |
-| `src/permission-manager.ts` | `checkPermission("external_directory", ...)` resolution |
-| `src/bash-filter.ts` | Wildcard pattern matching for bash commands |
+| `src/index.ts`              | Tool-call interceptor; currently gates file tools at line ~822                |
+| `src/permission-manager.ts` | `checkPermission("external_directory", ...)` resolution                       |
+| `src/bash-filter.ts`        | Wildcard pattern matching for bash commands                                   |
 
 ### Flow today (file tools)
 
@@ -109,12 +109,12 @@ No change — `special.external_directory` resolves via the standard global → 
 
 ## Module-Level Changes
 
-| File | Change |
-| ---- | ------ |
-| `src/external-directory.ts` | Add `extractExternalPathsFromBashCommand`, `formatBashExternalDirectoryAskPrompt`, `formatBashExternalDirectoryDenyReason` |
-| `src/index.ts` | Add bash external-directory gate block before normal `checkPermission` |
-| `tests/external-directory.test.ts` | Unit tests for `extractExternalPathsFromBashCommand` |
-| `tests/bash-external-directory.test.ts` | Integration tests for the gate in the tool-call interceptor |
+| File                                    | Change                                                                                                                     |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `src/external-directory.ts`             | Add `extractExternalPathsFromBashCommand`, `formatBashExternalDirectoryAskPrompt`, `formatBashExternalDirectoryDenyReason` |
+| `src/index.ts`                          | Add bash external-directory gate block before normal `checkPermission`                                                     |
+| `tests/external-directory.test.ts`      | Unit tests for `extractExternalPathsFromBashCommand`                                                                       |
+| `tests/bash-external-directory.test.ts` | Integration tests for the gate in the tool-call interceptor                                                                |
 
 ## TDD Order
 
@@ -141,13 +141,13 @@ No change — `special.external_directory` resolves via the standard global → 
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-| ---- | ---------- |
-| False positives on non-path tokens (regex `/etc/.*`, package `@foo/bar`) | Skip tokens starting with `@`, skip tokens matching URL patterns, skip tokens without `/` unless they contain `..` |
-| Agent bypasses via variable expansion (`$HOME/secret`) | Acknowledged as out of scope — defense-in-depth, not sandbox. Document limitation. |
-| Could this silently weaken a permission? | No — this only *adds* a check. If `external_directory` is `allow`, the new code is a no-op (falls through). Existing bash pattern permissions still apply after. |
-| Performance on long commands | Token extraction is O(n) string splitting; negligible for realistic command lengths. |
-| Pipe chains with mixed internal/external paths (`ls src/ \| xargs cat /etc/passwd`) | Tokenization catches `/etc/passwd` as external regardless of pipe position. |
+| Risk                                                                                | Mitigation                                                                                                                                                       |
+| ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| False positives on non-path tokens (regex `/etc/.*`, package `@foo/bar`)            | Skip tokens starting with `@`, skip tokens matching URL patterns, skip tokens without `/` unless they contain `..`                                               |
+| Agent bypasses via variable expansion (`$HOME/secret`)                              | Acknowledged as out of scope — defense-in-depth, not sandbox. Document limitation.                                                                               |
+| Could this silently weaken a permission?                                            | No — this only *adds* a check. If `external_directory` is `allow`, the new code is a no-op (falls through). Existing bash pattern permissions still apply after. |
+| Performance on long commands                                                        | Token extraction is O(n) string splitting; negligible for realistic command lengths.                                                                             |
+| Pipe chains with mixed internal/external paths (`ls src/ \| xargs cat /etc/passwd`) | Tokenization catches `/etc/passwd` as external regardless of pipe position.                                                                                      |
 
 ## Open Questions
 

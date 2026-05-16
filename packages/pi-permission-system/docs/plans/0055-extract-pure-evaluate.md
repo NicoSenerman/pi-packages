@@ -38,13 +38,13 @@ All: tools, bash, mcp, skills, special, external_directory.
 
 ### Relevant modules
 
-|Module|Role|
-|---|---|
-|`src/permission-manager.ts`|Owns `checkPermission()` — the method being refactored|
-|`src/wildcard-matcher.ts`|`findCompiledWildcardMatch` / `findCompiledWildcardMatchForNames` — used for pattern matching|
-|`src/bash-filter.ts`|`BashFilter.check()` — wraps wildcard matching for bash commands|
-|`src/types.ts`|`PermissionState`, `PermissionCheckResult`, `GlobalPermissionConfig`, `AgentPermissions`|
-|`docs/architecture/target-architecture.md`|Defines the target `Rule`/`Ruleset`/`evaluate()` shape|
+| Module                                     | Role                                                                                          |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| `src/permission-manager.ts`                | Owns `checkPermission()` — the method being refactored                                        |
+| `src/wildcard-matcher.ts`                  | `findCompiledWildcardMatch` / `findCompiledWildcardMatchForNames` — used for pattern matching |
+| `src/bash-filter.ts`                       | `BashFilter.check()` — wraps wildcard matching for bash commands                              |
+| `src/types.ts`                             | `PermissionState`, `PermissionCheckResult`, `GlobalPermissionConfig`, `AgentPermissions`      |
+| `docs/architecture/target-architecture.md` | Defines the target `Rule`/`Ruleset`/`evaluate()` shape                                        |
 
 ### Current flow
 
@@ -268,13 +268,13 @@ The `PermissionCheckResult` return type and `source` field remain unchanged.
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|---|---|
-|Semantic drift during refactor (different match result)|Each surface branch is wired one at a time with full test suite between steps. `evaluate()` uses the same `wildcardMatch` logic as the existing `findCompiledWildcardMatch`.|
-|Could this silently weaken a permission?|No new `"allow"` path is introduced. `evaluate()` falls back to `getDefaultAction()` which returns `"ask"` (least privilege). Each `checkPermission()` call site still applies its own default from `merged.defaultPolicy` as before.|
-|Performance regression from `compiledToRuleset()` array allocation|Negligible — called once per `checkPermission()` invocation, patterns are already in memory. Profiling deferred to #56 which removes the intermediate step entirely.|
-|MCP baseline auto-allow logic could be accidentally removed|The MCP branch is the most complex; it retains its bespoke logic **after** the `evaluate()` call fails to match. Existing MCP tests explicitly cover the baseline auto-allow path.|
-|`wildcardMatch` convenience function compiles a regex per call|Only used by `evaluate()` for small rulesets. Once #56 normalizes config into pre-compiled rulesets, this path is optimized away. For now the per-call cost is acceptable (< 1μs per pattern).|
+| Risk                                                               | Mitigation                                                                                                                                                                                                                            |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Semantic drift during refactor (different match result)            | Each surface branch is wired one at a time with full test suite between steps. `evaluate()` uses the same `wildcardMatch` logic as the existing `findCompiledWildcardMatch`.                                                          |
+| Could this silently weaken a permission?                           | No new `"allow"` path is introduced. `evaluate()` falls back to `getDefaultAction()` which returns `"ask"` (least privilege). Each `checkPermission()` call site still applies its own default from `merged.defaultPolicy` as before. |
+| Performance regression from `compiledToRuleset()` array allocation | Negligible — called once per `checkPermission()` invocation, patterns are already in memory. Profiling deferred to #56 which removes the intermediate step entirely.                                                                  |
+| MCP baseline auto-allow logic could be accidentally removed        | The MCP branch is the most complex; it retains its bespoke logic **after** the `evaluate()` call fails to match. Existing MCP tests explicitly cover the baseline auto-allow path.                                                    |
+| `wildcardMatch` convenience function compiles a regex per call     | Only used by `evaluate()` for small rulesets. Once #56 normalizes config into pre-compiled rulesets, this path is optimized away. For now the per-call cost is acceptable (< 1μs per pattern).                                        |
 
 ## Open Questions
 

@@ -41,15 +41,15 @@ All: tools (read, write, edit, bash, grep, find, ls, plus extension tools), bash
 
 ### Relevant modules
 
-|Module|Role|
-|---|---|
-|`src/permission-manager.ts`|Config loading, merge, `checkPermission()`, `getToolPermission()`|
-|`src/rule.ts`|`Rule`, `Ruleset`, `evaluate()`, `getDefaultAction()` — introduced in #55|
-|`src/wildcard-matcher.ts`|`wildcardMatch()`, compiled pattern infrastructure|
-|`src/bash-filter.ts`|`BashFilter` class — already unused in `checkPermission()` post-#55|
-|`src/config-loader.ts`|`UnifiedPermissionConfig`, `loadUnifiedConfig()`, `normalizeUnifiedConfig()`|
-|`src/types.ts`|Per-surface type aliases, `AgentPermissions`, `GlobalPermissionConfig`|
-|`docs/architecture/target-architecture.md`|Target `normalizeConfig()` shape and module layout|
+| Module                                     | Role                                                                         |
+| ------------------------------------------ | ---------------------------------------------------------------------------- |
+| `src/permission-manager.ts`                | Config loading, merge, `checkPermission()`, `getToolPermission()`            |
+| `src/rule.ts`                              | `Rule`, `Ruleset`, `evaluate()`, `getDefaultAction()` — introduced in #55    |
+| `src/wildcard-matcher.ts`                  | `wildcardMatch()`, compiled pattern infrastructure                           |
+| `src/bash-filter.ts`                       | `BashFilter` class — already unused in `checkPermission()` post-#55          |
+| `src/config-loader.ts`                     | `UnifiedPermissionConfig`, `loadUnifiedConfig()`, `normalizeUnifiedConfig()` |
+| `src/types.ts`                             | Per-surface type aliases, `AgentPermissions`, `GlobalPermissionConfig`       |
+| `docs/architecture/target-architecture.md` | Target `normalizeConfig()` shape and module layout                           |
 
 ### Current flow (post-#55)
 
@@ -377,14 +377,14 @@ Conversely, if `bash: { "*": "deny" }`, the tool is hidden — which is better U
 
 ### Tests
 
-|File|Change|
-|---|---|
-|`tests/normalize.test.ts` (new)|Unit tests for `normalizeConfig()`: per-surface conversion, ordering, edge cases|
-|`tests/defaults.test.ts` (new)|Unit tests for `getSurfaceDefault()`, `mergeDefaults()`|
-|`tests/rule.test.ts` (modified)|Update `evaluate()` tests for optional `defaultAction` parameter; remove `getDefaultAction` tests (moved to defaults.test.ts)|
-|`tests/permission-system.test.ts` (modified)|Update to remove `GlobalPermissionConfig`/`AgentPermissions` references; remove `BashFilter` test; adapt helper functions|
-|`tests/bash-filter.test.ts` (removed)|Covered by `normalize.test.ts` + `rule.test.ts` + `permission-system.test.ts`|
-|`tests/session-start.test.ts` (modified)|Update `GlobalPermissionConfig` references|
+| File                                         | Change                                                                                                                        |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `tests/normalize.test.ts` (new)              | Unit tests for `normalizeConfig()`: per-surface conversion, ordering, edge cases                                              |
+| `tests/defaults.test.ts` (new)               | Unit tests for `getSurfaceDefault()`, `mergeDefaults()`                                                                       |
+| `tests/rule.test.ts` (modified)              | Update `evaluate()` tests for optional `defaultAction` parameter; remove `getDefaultAction` tests (moved to defaults.test.ts) |
+| `tests/permission-system.test.ts` (modified) | Update to remove `GlobalPermissionConfig`/`AgentPermissions` references; remove `BashFilter` test; adapt helper functions     |
+| `tests/bash-filter.test.ts` (removed)        | Covered by `normalize.test.ts` + `rule.test.ts` + `permission-system.test.ts`                                                 |
+| `tests/session-start.test.ts` (modified)     | Update `GlobalPermissionConfig` references                                                                                    |
 
 ## TDD Order
 
@@ -437,90 +437,90 @@ Conversely, if `bash: { "*": "deny" }`, the tool is hidden — which is better U
    `test: evaluate with optional defaultAction parameter`
 
 2. **feat: evaluate() accepts optional defaultAction**
-    Change `evaluate()` signature to accept `defaultAction?: PermissionState`.
-    When no rule matches, use `defaultAction ?? "ask"` instead of `getDefaultAction(surface)`.
-    Remove `getDefaultAction()` and `SURFACE_DEFAULTS` from `src/rule.ts`.
-    `feat: evaluate accepts optional defaultAction parameter`
+   Change `evaluate()` signature to accept `defaultAction?: PermissionState`.
+   When no rule matches, use `defaultAction ?? "ask"` instead of `getDefaultAction(surface)`.
+   Remove `getDefaultAction()` and `SURFACE_DEFAULTS` from `src/rule.ts`.
+   `feat: evaluate accepts optional defaultAction parameter`
 
 ### Phase 3: Refactor PermissionManager internals
 
 1. **refactor: update permission-system.test.ts helpers for new types**
-    Update test helper functions that construct `GlobalPermissionConfig` / `AgentPermissions` to use `UnifiedPermissionConfig` or inline `Record<string, PermissionState>`.
-    Remove the `BashFilter` test from `permission-system.test.ts`.
-    All tests should still pass (helpers produce equivalent data).
-    `test: update permission-system test helpers for new types`
+   Update test helper functions that construct `GlobalPermissionConfig` / `AgentPermissions` to use `UnifiedPermissionConfig` or inline `Record<string, PermissionState>`.
+   Remove the `BashFilter` test from `permission-system.test.ts`.
+   All tests should still pass (helpers produce equivalent data).
+   `test: update permission-system test helpers for new types`
 
 2. **refactor: resolvePermissions uses normalizeConfig and array concat**
-    Replace per-surface compiled pattern arrays with `normalizeConfig()` per scope.
-    Replace `mergePermissions()` with array concatenation.
-    Replace per-scope `GlobalPermissionConfig` / `AgentPermissions` caches with `Ruleset` + defaults.
-    Simplify `ResolvedPermissions` type.
-    Run full test suite.
-    `refactor: resolvePermissions uses normalizeConfig and array concat`
+   Replace per-surface compiled pattern arrays with `normalizeConfig()` per scope.
+   Replace `mergePermissions()` with array concatenation.
+   Replace per-scope `GlobalPermissionConfig` / `AgentPermissions` caches with `Ruleset` + defaults.
+   Simplify `ResolvedPermissions` type.
+   Run full test suite.
+   `refactor: resolvePermissions uses normalizeConfig and array concat`
 
 3. **refactor: checkPermission uses merged Ruleset directly**
-    Remove `compiledToRuleset()`.
-    Each surface branch calls `evaluate()` against the merged ruleset.
-    Fallback uses `getSurfaceDefault()`.
-    MCP baseline auto-allow logic preserved (uses `hasAnyMcpAllowRule`).
-    Run full test suite.
-    `refactor: checkPermission uses merged Ruleset directly`
+   Remove `compiledToRuleset()`.
+   Each surface branch calls `evaluate()` against the merged ruleset.
+   Fallback uses `getSurfaceDefault()`.
+   MCP baseline auto-allow logic preserved (uses `hasAnyMcpAllowRule`).
+   Run full test suite.
+   `refactor: checkPermission uses merged Ruleset directly`
 
 4. **refactor: getToolPermission uses evaluate**
-    Replace the per-surface `if/else if` chain with a single `evaluate()` call + `getSurfaceDefault()` fallback.
-    Run full test suite.
-    `refactor: getToolPermission uses evaluate`
+   Replace the per-surface `if/else if` chain with a single `evaluate()` call + `getSurfaceDefault()` fallback.
+   Run full test suite.
+   `refactor: getToolPermission uses evaluate`
 
 ### Phase 4: Remove dead code
 
 1. **refactor: remove BashFilter class**
-    Delete `src/bash-filter.ts`.
-    Delete `tests/bash-filter.test.ts`.
-    Remove import from `permission-manager.ts`.
-    Run full test suite.
-    `refactor: remove BashFilter class`
+   Delete `src/bash-filter.ts`.
+   Delete `tests/bash-filter.test.ts`.
+   Remove import from `permission-manager.ts`.
+   Run full test suite.
+   `refactor: remove BashFilter class`
 
 2. **refactor: remove per-surface type aliases**
-    Remove `ToolPermissions`, `BashPermissions`, `SkillPermissions`, `SpecialPermissions` from `src/types.ts`.
-    Remove `AgentPermissions`, `GlobalPermissionConfig` from `src/types.ts`.
-    Update all remaining imports (tests, other modules).
-    Run `pnpm run build` (typecheck).
-    `refactor: remove per-surface type aliases and wrapper interfaces`
+   Remove `ToolPermissions`, `BashPermissions`, `SkillPermissions`, `SpecialPermissions` from `src/types.ts`.
+   Remove `AgentPermissions`, `GlobalPermissionConfig` from `src/types.ts`.
+   Update all remaining imports (tests, other modules).
+   Run `pnpm run build` (typecheck).
+   `refactor: remove per-surface type aliases and wrapper interfaces`
 
 3. **refactor: remove getBashPermissions dead method**
-    Remove `getBashPermissions()` from `PermissionManager` (no callers).
-    Run full test suite.
-    `refactor: remove getBashPermissions dead method`
+   Remove `getBashPermissions()` from `PermissionManager` (no callers).
+   Run full test suite.
+   `refactor: remove getBashPermissions dead method`
 
 4. **refactor: remove unused compiled-pattern helpers**
-    If `compilePermissionPatternsFromSources()`, `findCompiledPermissionMatch()`, `findCompiledPermissionMatchForNames()` are now unused, remove them.
-    Check whether `compileWildcardPatternEntries()`, `compileWildcardPatterns()`, `findCompiledWildcardMatch()`, `findCompiledWildcardMatchForNames()` in `wildcard-matcher.ts` still have callers.
-    Remove any that are dead.
-    Run full test suite + `pnpm run build`.
-    `refactor: remove unused compiled-pattern helpers`
+   If `compilePermissionPatternsFromSources()`, `findCompiledPermissionMatch()`, `findCompiledPermissionMatchForNames()` are now unused, remove them.
+   Check whether `compileWildcardPatternEntries()`, `compileWildcardPatterns()`, `findCompiledWildcardMatch()`, `findCompiledWildcardMatchForNames()` in `wildcard-matcher.ts` still have callers.
+   Remove any that are dead.
+   Run full test suite + `pnpm run build`.
+   `refactor: remove unused compiled-pattern helpers`
 
 ### Phase 5: Docs and verification
 
 1. **docs: update target architecture to mark #56 complete**
-    Update `docs/architecture/target-architecture.md` refactoring sequence to mark #56 as done.
-    `docs: mark #56 complete in target architecture`
+   Update `docs/architecture/target-architecture.md` refactoring sequence to mark #56 as done.
+   `docs: mark #56 complete in target architecture`
 
 2. **verify: full build and test suite**
-    Run `pnpm run build` and `npx vitest run`.
-    Confirm no regressions.
-    `chore: verify clean build after config normalization refactor`
+   Run `pnpm run build` and `npx vitest run`.
+   Confirm no regressions.
+   `chore: verify clean build after config normalization refactor`
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|---|---|
-|Could this silently weaken a permission?|No new `"allow"` path is introduced. When no rule matches, `getSurfaceDefault()` consults the merged `defaultPolicy` which defaults to `"ask"` (least privilege). The `evaluate()` fallback is `"ask"`. Each refactor step runs the full test suite.|
-|Semantic change: `getToolPermission()` now considers command-level catch-alls|With tool-name-as-surface, `getToolPermission("bash")` can match `bash: { "*": "allow" }`. This is more consistent (don't expose a tool if all commands are denied) and strictly tighter or equivalent. Covered by existing tests + new normalize tests.|
-|MCP baseline auto-allow could be bypassed|`defaultPolicy` is NOT included in the ruleset, so `evaluate("mcp", target, rules)` returns synthetic default when no explicit/tools.mcp rule matches — baseline heuristic fires as before. Explicit test coverage for this path.|
-|`tools.bash` dual-purpose semantic drift|`tools.bash: "allow"` normalizes to `{ surface: "bash", pattern: "*", action: "allow" }` — a bash catch-all. This naturally preserves both tool exposure and command fallback. Edge case: `tools.bash: "deny"` + `bash: { "*": "allow" }` now exposes the tool (bash catch-all overrides tools entry). Previously, `tools.bash: "deny"` always hid the tool. This contradictory config is likely a user error, and the new behavior is arguable. Add explicit test.|
-|Large test file churn in permission-system.test.ts|Step 11 updates test helpers BEFORE refactoring production code. Changes are mechanical (type alias replacement). Intermediate commits keep the suite green.|
-|Performance regression from losing compiled regex cache|`wildcardMatch()` compiles a regex per call (~1μs). For typical rulesets (< 50 rules), total overhead is < 50μs per permission check. Acceptable. Pre-compiled rules deferred to follow-up if needed.|
-|`normalizeRawPermission()` (frontmatter) diverges from `normalizeConfig()`|Both share the same input shape (`NormalizableConfig`). `normalizeRawPermission()` handles raw YAML parsing + deprecated keys, then passes the validated shape to `normalizeConfig()`. Tested explicitly.|
+| Risk                                                                          | Mitigation                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Could this silently weaken a permission?                                      | No new `"allow"` path is introduced. When no rule matches, `getSurfaceDefault()` consults the merged `defaultPolicy` which defaults to `"ask"` (least privilege). The `evaluate()` fallback is `"ask"`. Each refactor step runs the full test suite.                                                                                                                                                                                                                |
+| Semantic change: `getToolPermission()` now considers command-level catch-alls | With tool-name-as-surface, `getToolPermission("bash")` can match `bash: { "*": "allow" }`. This is more consistent (don't expose a tool if all commands are denied) and strictly tighter or equivalent. Covered by existing tests + new normalize tests.                                                                                                                                                                                                            |
+| MCP baseline auto-allow could be bypassed                                     | `defaultPolicy` is NOT included in the ruleset, so `evaluate("mcp", target, rules)` returns synthetic default when no explicit/tools.mcp rule matches — baseline heuristic fires as before. Explicit test coverage for this path.                                                                                                                                                                                                                                   |
+| `tools.bash` dual-purpose semantic drift                                      | `tools.bash: "allow"` normalizes to `{ surface: "bash", pattern: "*", action: "allow" }` — a bash catch-all. This naturally preserves both tool exposure and command fallback. Edge case: `tools.bash: "deny"` + `bash: { "*": "allow" }` now exposes the tool (bash catch-all overrides tools entry). Previously, `tools.bash: "deny"` always hid the tool. This contradictory config is likely a user error, and the new behavior is arguable. Add explicit test. |
+| Large test file churn in permission-system.test.ts                            | Step 11 updates test helpers BEFORE refactoring production code. Changes are mechanical (type alias replacement). Intermediate commits keep the suite green.                                                                                                                                                                                                                                                                                                        |
+| Performance regression from losing compiled regex cache                       | `wildcardMatch()` compiles a regex per call (~1μs). For typical rulesets (< 50 rules), total overhead is < 50μs per permission check. Acceptable. Pre-compiled rules deferred to follow-up if needed.                                                                                                                                                                                                                                                               |
+| `normalizeRawPermission()` (frontmatter) diverges from `normalizeConfig()`    | Both share the same input shape (`NormalizableConfig`). `normalizeRawPermission()` handles raw YAML parsing + deprecated keys, then passes the validated shape to `normalizeConfig()`. Tested explicitly.                                                                                                                                                                                                                                                           |
 
 ## Open Questions
 

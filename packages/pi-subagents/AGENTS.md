@@ -71,52 +71,52 @@ index.ts ──wires──> agent-manager.ts ──calls──> agent-runner.ts
 
 #### Core engine
 
-| Module | Responsibility |
-| --- | --- |
-| `index.ts` | Extension entry point. Registers tools, the `/agents` command, lifecycle hooks, the agent widget, the scheduler, notification rendering, batch grouping, RPC handlers, and settings persistence. |
-| `agent-manager.ts` | Manages agent lifecycle: spawn, resume, abort. Enforces a configurable concurrency limit (default 4) by queuing excess background agents. |
-| `agent-runner.ts` | Core execution engine. Creates agent sessions, assembles system prompts, binds extensions, applies active-tool filtering (Patch 2), injects `<active_agent>` tag (Patch 3), runs the agent loop, and collects results. |
-| `types.ts` | Shared type definitions: `AgentConfig`, `AgentRecord`, `SubagentType`, `JoinMode`, `MemoryScope`, `IsolationMode`, etc. |
+| Module             | Responsibility                                                                                                                                                                                                         |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `index.ts`         | Extension entry point. Registers tools, the `/agents` command, lifecycle hooks, the agent widget, the scheduler, notification rendering, batch grouping, RPC handlers, and settings persistence.                       |
+| `agent-manager.ts` | Manages agent lifecycle: spawn, resume, abort. Enforces a configurable concurrency limit (default 4) by queuing excess background agents.                                                                              |
+| `agent-runner.ts`  | Core execution engine. Creates agent sessions, assembles system prompts, binds extensions, applies active-tool filtering (Patch 2), injects `<active_agent>` tag (Patch 3), runs the agent loop, and collects results. |
+| `types.ts`         | Shared type definitions: `AgentConfig`, `AgentRecord`, `SubagentType`, `JoinMode`, `MemoryScope`, `IsolationMode`, etc.                                                                                                |
 
 #### Agent configuration
 
-| Module | Responsibility |
-| --- | --- |
-| `agent-types.ts` | Unified agent type registry. Merges embedded defaults with user-defined agents from `.pi/agents/*.md`. |
-| `default-agents.ts` | Embedded default agent configurations (`general-purpose`, `Explore`, `Plan`). |
-| `custom-agents.ts` | Loads user-defined agent `.md` files from project and global directories. Parses frontmatter for config overrides. |
+| Module              | Responsibility                                                                                                     |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `agent-types.ts`    | Unified agent type registry. Merges embedded defaults with user-defined agents from `.pi/agents/*.md`.             |
+| `default-agents.ts` | Embedded default agent configurations (`general-purpose`, `Explore`, `Plan`).                                      |
+| `custom-agents.ts`  | Loads user-defined agent `.md` files from project and global directories. Parses frontmatter for config overrides. |
 
 #### Prompt assembly
 
-| Module | Responsibility |
-| --- | --- |
-| `prompts.ts` | Builds the system prompt for each agent from its config. Supports `replace` and `append` modes. |
-| `context.ts` | Extracts parent conversation history for `inherit_context` mode. |
-| `memory.ts` | Manages persistent per-agent `MEMORY.md` files scoped to user, project, or local directories. |
-| `skill-loader.ts` | Preloads named skills from `.pi/skills`, `.agents/skills`, and global directories. |
-| `env.ts` | Detects environment info (git repo, branch, platform) for agent system prompts. |
+| Module            | Responsibility                                                                                  |
+| ----------------- | ----------------------------------------------------------------------------------------------- |
+| `prompts.ts`      | Builds the system prompt for each agent from its config. Supports `replace` and `append` modes. |
+| `context.ts`      | Extracts parent conversation history for `inherit_context` mode.                                |
+| `memory.ts`       | Manages persistent per-agent `MEMORY.md` files scoped to user, project, or local directories.   |
+| `skill-loader.ts` | Preloads named skills from `.pi/skills`, `.agents/skills`, and global directories.              |
+| `env.ts`          | Detects environment info (git repo, branch, platform) for agent system prompts.                 |
 
 #### Execution support
 
-| Module | Responsibility |
-| --- | --- |
-| `worktree.ts` | Git worktree isolation. Creates temporary worktrees so agents work on isolated repo copies. |
-| `usage.ts` | Token usage tracking. Defines `LifetimeUsage` shape and provides accumulator operators. |
-| `model-resolver.ts` | Resolves model strings to model instances. Tries exact match first, then fuzzy match. |
+| Module                 | Responsibility                                                                              |
+| ---------------------- | ------------------------------------------------------------------------------------------- |
+| `worktree.ts`          | Git worktree isolation. Creates temporary worktrees so agents work on isolated repo copies. |
+| `usage.ts`             | Token usage tracking. Defines `LifetimeUsage` shape and provides accumulator operators.     |
+| `model-resolver.ts`    | Resolves model strings to model instances. Tries exact match first, then fuzzy match.       |
 | `invocation-config.ts` | Merges per-call tool parameters with agent config defaults for the final invocation config. |
-| `output-file.ts` | Streaming JSONL output file for agent transcripts. |
+| `output-file.ts`       | Streaming JSONL output file for agent transcripts.                                          |
 
 #### Scheduling
 
-| Module | Responsibility |
-| --- | --- |
-| `schedule.ts` | Timer-driven dispatcher for scheduled subagents. Supports cron, interval, and one-shot formats. |
-| `schedule-store.ts` | File-backed persistence for scheduled jobs. Session-scoped, PID-locked, atomic writes. |
+| Module              | Responsibility                                                                                  |
+| ------------------- | ----------------------------------------------------------------------------------------------- |
+| `schedule.ts`       | Timer-driven dispatcher for scheduled subagents. Supports cron, interval, and one-shot formats. |
+| `schedule-store.ts` | File-backed persistence for scheduled jobs. Session-scoped, PID-locked, atomic writes.          |
 
 #### UI
 
-| Module | Responsibility |
-| --- | --- |
-| `ui/agent-widget.ts` | Persistent widget showing running/completed agents with animated spinners and live stats. |
-| `ui/conversation-viewer.ts` | Live conversation overlay for viewing an agent's full session. |
-| `ui/schedule-menu.ts` | `/agents → Scheduled jobs` submenu for listing and cancelling scheduled jobs. |
+| Module                      | Responsibility                                                                            |
+| --------------------------- | ----------------------------------------------------------------------------------------- |
+| `ui/agent-widget.ts`        | Persistent widget showing running/completed agents with animated spinners and live stats. |
+| `ui/conversation-viewer.ts` | Live conversation overlay for viewing an agent's full session.                            |
+| `ui/schedule-menu.ts`       | `/agents → Scheduled jobs` submenu for listing and cancelling scheduled jobs.             |

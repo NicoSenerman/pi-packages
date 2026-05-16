@@ -33,12 +33,12 @@ This plan re-introduces the channel with a proper public contract: exported type
 
 ### Dependency status
 
-|Issue|Description|Status|
-|---|---|---|
-|#20|Deleted the original undocumented channel|✅ Closed|
-|#96|Env var broadening for CLI-spawned subagents|✅ Closed|
-|#97|Coexistence documentation|✅ Closed|
-|#98|Adoption by subagent maintainers|Open — depends on this plan|
+| Issue | Description                                  | Status                      |
+| ----- | -------------------------------------------- | --------------------------- |
+| #20   | Deleted the original undocumented channel    | ✅ Closed                   |
+| #96   | Env var broadening for CLI-spawned subagents | ✅ Closed                   |
+| #97   | Coexistence documentation                    | ✅ Closed                   |
+| #98   | Adoption by subagent maintainers             | Open — depends on this plan |
 
 All hard prerequisites are resolved.
 This plan unblocks #98.
@@ -74,14 +74,14 @@ Both paths coexist — they serve different transport needs.
 
 ### Channel taxonomy
 
-|Channel|Direction|Purpose|
-|---|---|---|
-|`permissions:ready`|Broadcast|Emitted once on extension load; consumers detect presence|
-|`permissions:decision`|Broadcast|Emitted after every permission gate resolution|
-|`permissions:rpc:check`|Request|Query the permission policy (no prompting)|
-|`permissions:rpc:check:reply:<requestId>`|Reply|Response to a check request|
-|`permissions:rpc:prompt`|Request|Forward a permission prompt to the parent's UI|
-|`permissions:rpc:prompt:reply:<requestId>`|Reply|Response to a prompt request|
+| Channel                                    | Direction | Purpose                                                   |
+| ------------------------------------------ | --------- | --------------------------------------------------------- |
+| `permissions:ready`                        | Broadcast | Emitted once on extension load; consumers detect presence |
+| `permissions:decision`                     | Broadcast | Emitted after every permission gate resolution            |
+| `permissions:rpc:check`                    | Request   | Query the permission policy (no prompting)                |
+| `permissions:rpc:check:reply:<requestId>`  | Reply     | Response to a check request                               |
+| `permissions:rpc:prompt`                   | Request   | Forward a permission prompt to the parent's UI            |
+| `permissions:rpc:prompt:reply:<requestId>` | Reply     | Response to a prompt request                              |
 
 ### Envelope shapes
 
@@ -136,15 +136,15 @@ export interface PermissionDecisionEvent {
 Each handler site calls a shared `emitDecisionEvent(events, payload)` helper after the gate resolves.
 The helper is thin — it constructs the channel name and calls `events.emit()`.
 
-|Handler|Gate/check|Resolution mapped|
-|---|---|---|
-|`tool-call.ts` — session-hit fast path|`checkPermission` returns `source: "session"`|`session_approved`|
-|`tool-call.ts` — infrastructure read bypass|`isPiInfrastructureRead` returns `true`|`infrastructure_auto_allowed`|
-|`tool-call.ts` — skill-read gate|`applyPermissionGate` result|`policy_allow`, `policy_deny`, `user_*`, `confirmation_unavailable`|
-|`tool-call.ts` — external-directory gate|`applyPermissionGate` result|Same set|
-|`tool-call.ts` — bash external-directory gate|`applyPermissionGate` result|Same set|
-|`tool-call.ts` — normal tool gate|`applyPermissionGate` result|Same set|
-|`input.ts` — skill input gate|`applyPermissionGate` result|Same set|
+| Handler                                       | Gate/check                                    | Resolution mapped                                                   |
+| --------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------- |
+| `tool-call.ts` — session-hit fast path        | `checkPermission` returns `source: "session"` | `session_approved`                                                  |
+| `tool-call.ts` — infrastructure read bypass   | `isPiInfrastructureRead` returns `true`       | `infrastructure_auto_allowed`                                       |
+| `tool-call.ts` — skill-read gate              | `applyPermissionGate` result                  | `policy_allow`, `policy_deny`, `user_*`, `confirmation_unavailable` |
+| `tool-call.ts` — external-directory gate      | `applyPermissionGate` result                  | Same set                                                            |
+| `tool-call.ts` — bash external-directory gate | `applyPermissionGate` result                  | Same set                                                            |
+| `tool-call.ts` — normal tool gate             | `applyPermissionGate` result                  | Same set                                                            |
+| `input.ts` — skill input gate                 | `applyPermissionGate` result                  | Same set                                                            |
 
 #### Mapping gate outcomes to resolution
 
@@ -260,23 +260,23 @@ The `HandlerDeps` interface gains an `events` field (the `EventBus` reference) s
 
 ## Module-Level Changes
 
-|File|Action|Detail|
-|---|---|---|
-|`src/permission-events.ts`|**new**|Channel name constants, protocol version, all event/request/reply TypeScript types, `emitDecisionEvent()` helper, `emitReadyEvent()` helper|
-|`src/permission-event-rpc.ts`|**new**|`registerPermissionRpcHandlers(events, deps)` — wires `permissions:rpc:check` and `permissions:rpc:prompt` handlers; returns unsubscribe functions|
-|`src/index.ts`|changed|Pass `pi.events` to RPC registration and handler deps; emit `permissions:ready`; store unsubscribe handles for cleanup in `session_shutdown`|
-|`src/handlers/types.ts`|changed|Add `events: EventBus` (or `emitDecision: (event) => void`) to `HandlerDeps`|
-|`src/handlers/tool-call.ts`|changed|Call `emitDecisionEvent()` after each gate resolution and session/infrastructure fast path|
-|`src/handlers/input.ts`|changed|Call `emitDecisionEvent()` after skill input gate resolution|
-|`src/handlers/before-agent-start.ts`|unchanged|Tool filtering is a pre-start phase, not an individual decision event (no emission here)|
-|`src/permission-gate.ts`|unchanged|Gate remains a pure decision function; emission stays at the handler layer|
-|`src/permission-prompter.ts`|changed|Add optional `onAutoApprove` callback or return metadata so handlers can distinguish yolo auto-approve from user approval for the decision event|
-|`tests/permission-events.test.ts`|**new**|Payload-shape assertions for `PermissionDecisionEvent`, `PermissionsReadyEvent`, all RPC request/reply shapes|
-|`tests/permission-event-rpc.test.ts`|**new**|RPC handler tests: check returns correct result, prompt shows dialog and returns decision, error replies for missing UI, unknown surface|
-|`tests/handlers/tool-call-events.test.ts`|**new** or merged into existing|Verify `permissions:decision` emitted with correct payload for allow, deny, ask→approved, session-approved, infrastructure-bypass paths|
-|`tests/handlers/input-events.test.ts`|**new** or merged into existing|Verify `permissions:decision` emitted for skill input gate|
-|`README.md`|changed|Add "Event API" section: channel names, payload fields, RPC protocol, stability guarantees, worked examples|
-|`docs/architecture/target-architecture.md`|changed|Add `src/permission-events.ts` and `src/permission-event-rpc.ts` to module structure; add event bus section to architecture overview|
+| File                                       | Action                          | Detail                                                                                                                                             |
+| ------------------------------------------ | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/permission-events.ts`                 | **new**                         | Channel name constants, protocol version, all event/request/reply TypeScript types, `emitDecisionEvent()` helper, `emitReadyEvent()` helper        |
+| `src/permission-event-rpc.ts`              | **new**                         | `registerPermissionRpcHandlers(events, deps)` — wires `permissions:rpc:check` and `permissions:rpc:prompt` handlers; returns unsubscribe functions |
+| `src/index.ts`                             | changed                         | Pass `pi.events` to RPC registration and handler deps; emit `permissions:ready`; store unsubscribe handles for cleanup in `session_shutdown`       |
+| `src/handlers/types.ts`                    | changed                         | Add `events: EventBus` (or `emitDecision: (event) => void`) to `HandlerDeps`                                                                       |
+| `src/handlers/tool-call.ts`                | changed                         | Call `emitDecisionEvent()` after each gate resolution and session/infrastructure fast path                                                         |
+| `src/handlers/input.ts`                    | changed                         | Call `emitDecisionEvent()` after skill input gate resolution                                                                                       |
+| `src/handlers/before-agent-start.ts`       | unchanged                       | Tool filtering is a pre-start phase, not an individual decision event (no emission here)                                                           |
+| `src/permission-gate.ts`                   | unchanged                       | Gate remains a pure decision function; emission stays at the handler layer                                                                         |
+| `src/permission-prompter.ts`               | changed                         | Add optional `onAutoApprove` callback or return metadata so handlers can distinguish yolo auto-approve from user approval for the decision event   |
+| `tests/permission-events.test.ts`          | **new**                         | Payload-shape assertions for `PermissionDecisionEvent`, `PermissionsReadyEvent`, all RPC request/reply shapes                                      |
+| `tests/permission-event-rpc.test.ts`       | **new**                         | RPC handler tests: check returns correct result, prompt shows dialog and returns decision, error replies for missing UI, unknown surface           |
+| `tests/handlers/tool-call-events.test.ts`  | **new** or merged into existing | Verify `permissions:decision` emitted with correct payload for allow, deny, ask→approved, session-approved, infrastructure-bypass paths            |
+| `tests/handlers/input-events.test.ts`      | **new** or merged into existing | Verify `permissions:decision` emitted for skill input gate                                                                                         |
+| `README.md`                                | changed                         | Add "Event API" section: channel names, payload fields, RPC protocol, stability guarantees, worked examples                                        |
+| `docs/architecture/target-architecture.md` | changed                         | Add `src/permission-events.ts` and `src/permission-event-rpc.ts` to module structure; add event bus section to architecture overview               |
 
 ## TDD Order
 
@@ -358,14 +358,14 @@ Update `docs/architecture/target-architecture.md` module list.
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|---|---|
-|Could this silently weaken a permission?|No. Event emission is fire-and-forget; it does not alter any allow/deny/ask decision path. The gate logic is unchanged.|
-|RPC prompt handler could be exploited by a malicious extension to show unwanted dialogs|`pi.events` is process-scoped — any loaded extension already has full access to the UI. The prompt handler adds no new attack surface beyond what `pi.events.emit("input", ...)` already provides. The handler also requires `hasUI` to respond.|
-|Multiple extension instances register duplicate RPC handlers on the same event bus|In-process subagent child sessions (tintinweb) do not reload extensions — only the parent instance is active. CLI-spawned subagents run in separate processes with separate event buses. The plan adds a `hasUI` guard so even if duplicates exist, only the instance with UI responds.|
-|Decision event payload bloat slows down the event bus|Payloads are small (<500 bytes). The event bus is synchronous in-process `emit()` — no serialization overhead.|
-|Breaking change to channel names after adoption|Channel names are constants exported from `src/permission-events.ts`. Versioning policy: no renames without semver-major. `protocolVersion` in RPC replies enables forward-compatible negotiation.|
-|Existing tests break when `HandlerDeps` gains an `events` field|Step 6 explicitly folds in the type change and mock updates for existing test files before adding emission logic.|
+| Risk                                                                                    | Mitigation                                                                                                                                                                                                                                                                              |
+| --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Could this silently weaken a permission?                                                | No. Event emission is fire-and-forget; it does not alter any allow/deny/ask decision path. The gate logic is unchanged.                                                                                                                                                                 |
+| RPC prompt handler could be exploited by a malicious extension to show unwanted dialogs | `pi.events` is process-scoped — any loaded extension already has full access to the UI. The prompt handler adds no new attack surface beyond what `pi.events.emit("input", ...)` already provides. The handler also requires `hasUI` to respond.                                        |
+| Multiple extension instances register duplicate RPC handlers on the same event bus      | In-process subagent child sessions (tintinweb) do not reload extensions — only the parent instance is active. CLI-spawned subagents run in separate processes with separate event buses. The plan adds a `hasUI` guard so even if duplicates exist, only the instance with UI responds. |
+| Decision event payload bloat slows down the event bus                                   | Payloads are small (<500 bytes). The event bus is synchronous in-process `emit()` — no serialization overhead.                                                                                                                                                                          |
+| Breaking change to channel names after adoption                                         | Channel names are constants exported from `src/permission-events.ts`. Versioning policy: no renames without semver-major. `protocolVersion` in RPC replies enables forward-compatible negotiation.                                                                                      |
+| Existing tests break when `HandlerDeps` gains an `events` field                         | Step 6 explicitly folds in the type change and mock updates for existing test files before adding emission logic.                                                                                                                                                                       |
 
 ## Open Questions
 

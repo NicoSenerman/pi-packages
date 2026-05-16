@@ -34,15 +34,15 @@ The remaining work is to wire session approvals into all permission surfaces and
 
 ### Current state
 
-|File|Role|
-|---|---|
-|`src/session-rules.ts`|`SessionRules` class with `approve(surface, pattern)` + `deriveApprovalPattern()` for paths|
-|`src/rule.ts`|`Rule`, `Ruleset`, `evaluate()` — pure last-match-wins decision engine|
-|`src/permission-manager.ts`|`checkPermission()` — accepts `sessionRules` param but only checks them for `external_directory`|
-|`src/permission-gate.ts`|`applyPermissionGate()` — deny/ask/allow branching via callbacks|
-|`src/permission-dialog.ts`|Dialog options including "Yes, for this session" → `approved_for_session` state|
-|`src/permission-prompts.ts`|User-facing message formatting per surface|
-|`src/handlers/tool-call.ts`|Consumes gates; has session pre-check and approval recording for `external_directory` only|
+| File                        | Role                                                                                             |
+| --------------------------- | ------------------------------------------------------------------------------------------------ |
+| `src/session-rules.ts`      | `SessionRules` class with `approve(surface, pattern)` + `deriveApprovalPattern()` for paths      |
+| `src/rule.ts`               | `Rule`, `Ruleset`, `evaluate()` — pure last-match-wins decision engine                           |
+| `src/permission-manager.ts` | `checkPermission()` — accepts `sessionRules` param but only checks them for `external_directory` |
+| `src/permission-gate.ts`    | `applyPermissionGate()` — deny/ask/allow branching via callbacks                                 |
+| `src/permission-dialog.ts`  | Dialog options including "Yes, for this session" → `approved_for_session` state                  |
+| `src/permission-prompts.ts` | User-facing message formatting per surface                                                       |
+| `src/handlers/tool-call.ts` | Consumes gates; has session pre-check and approval recording for `external_directory` only       |
 
 ### What's already working
 
@@ -106,16 +106,16 @@ export function suggestSessionPattern(
 
 #### Per-surface heuristics
 
-|Surface|Input|Suggested pattern|Example|
-|---|---|---|---|
-|bash|`git status --short`|`git *`|First word + `*`|
-|bash (no args)|`ls`|`ls`|Exact command|
-|mcp (qualified)|`exa:search`|`exa:*`|Server prefix + `:*`|
-|mcp (munged)|`exa_search`|`exa_*`|Server prefix + `_*`|
-|mcp (bare)|`mcp`|`*`|Wildcard|
-|skill|`librarian`|`librarian`|Exact skill name|
-|tool (read, write, etc.)|`read`|`*`|All uses of this tool surface|
-|external_directory|`/tmp/foo.txt`|`/tmp/*`|`deriveApprovalPattern()`|
+| Surface                  | Input                | Suggested pattern | Example                       |
+| ------------------------ | -------------------- | ----------------- | ----------------------------- |
+| bash                     | `git status --short` | `git *`           | First word + `*`              |
+| bash (no args)           | `ls`                 | `ls`              | Exact command                 |
+| mcp (qualified)          | `exa:search`         | `exa:*`           | Server prefix + `:*`          |
+| mcp (munged)             | `exa_search`         | `exa_*`           | Server prefix + `_*`          |
+| mcp (bare)               | `mcp`                | `*`               | Wildcard                      |
+| skill                    | `librarian`          | `librarian`       | Exact skill name              |
+| tool (read, write, etc.) | `read`               | `*`               | All uses of this tool surface |
+| external_directory       | `/tmp/foo.txt`       | `/tmp/*`          | `deriveApprovalPattern()`     |
 
 Bash heuristic: split on first space → `<command> *`.
 This is intentionally conservative — `git *` is broader than ideal but visible in the dialog.
@@ -275,13 +275,13 @@ The caller inspects it and records into `SessionRules`.
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|---|---|
-|Bash pattern too broad (`git *` allows `git push --force`)|Pattern is shown in dialog label. User sees what they approve. #52 refines with arity table.|
-|MCP server-level pattern (`exa:*`) allows all tools on server|Shown in dialog. Users can decline for per-tool prompting.|
-|Session allow overrides a config deny|Session rules use `evaluate()` where last-match-wins. Session rules should NOT override explicit deny. Fix: in `checkPermission()`, only check session rules when config result is `ask` (not `deny`).|
-|Could this silently weaken a permission?|No. Every session rule requires explicit user approval via dialog. Pattern is visible in the label. No rule added without user action. Deny rules are not overridable by session.|
-|Tool surface `*` pattern too permissive|For tools like `write`/`edit`, approving `*` means "allow all writes." This matches the granularity of the tool-level config. Path-specific patterns are a follow-up.|
+| Risk                                                          | Mitigation                                                                                                                                                                                             |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Bash pattern too broad (`git *` allows `git push --force`)    | Pattern is shown in dialog label. User sees what they approve. #52 refines with arity table.                                                                                                           |
+| MCP server-level pattern (`exa:*`) allows all tools on server | Shown in dialog. Users can decline for per-tool prompting.                                                                                                                                             |
+| Session allow overrides a config deny                         | Session rules use `evaluate()` where last-match-wins. Session rules should NOT override explicit deny. Fix: in `checkPermission()`, only check session rules when config result is `ask` (not `deny`). |
+| Could this silently weaken a permission?                      | No. Every session rule requires explicit user approval via dialog. Pattern is visible in the label. No rule added without user action. Deny rules are not overridable by session.                      |
+| Tool surface `*` pattern too permissive                       | For tools like `write`/`edit`, approving `*` means "allow all writes." This matches the granularity of the tool-level config. Path-specific patterns are a follow-up.                                  |
 
 ## Open Questions
 

@@ -33,11 +33,11 @@ Our extension hooks into Pi's tool lifecycle at two points:
 
 Subagent extensions operate at a different layer:
 
-|Extension|Mechanism|Effect|
-|----|----------|----------|
-|nicobailon/pi-subagents|`--tools` CLI allowlist|Only listed tools are registered in the subprocess|
-|tintinweb/pi-subagents|`session.setActiveToolsByName()`|Filters the active tool set in-process|
-|HazAT/pi-interactive-subagents|`PI_DENY_TOOLS` env var + `--tools` CLI|Combines denylist env var with CLI allowlist|
+| Extension                      | Mechanism                               | Effect                                             |
+| ------------------------------ | --------------------------------------- | -------------------------------------------------- |
+| nicobailon/pi-subagents        | `--tools` CLI allowlist                 | Only listed tools are registered in the subprocess |
+| tintinweb/pi-subagents         | `session.setActiveToolsByName()`        | Filters the active tool set in-process             |
+| HazAT/pi-interactive-subagents | `PI_DENY_TOOLS` env var + `--tools` CLI | Combines denylist env var with CLI allowlist       |
 
 The two layers do not conflict:
 
@@ -58,9 +58,9 @@ No code, schema, or config changes are required.
 
 ## Module-Level Changes
 
-|File|Change|
-|----|------|
-|`README.md`|Add `### Coexistence with Subagent Extensions` under `## Technical Details`|
+| File        | Change                                                                      |
+| ----------- | --------------------------------------------------------------------------- |
+| `README.md` | Add `### Coexistence with Subagent Extensions` under `## Technical Details` |
 
 No changes to `src/`, `schemas/`, `config/`, `tests/`, or `docs/architecture/`.
 
@@ -70,11 +70,11 @@ No changes to `src/`, `schemas/`, `config/`, `tests/`, or `docs/architecture/`.
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|----|----------|
-|Documentation becomes stale if subagent extensions change their mechanisms|Keep the section descriptive of the general two-layer model; specific extension details are secondary and link to upstream repos|
-|Could this silently weaken a permission?|No — this change is documentation only; no runtime behavior is altered|
-|Users might misread the section as endorsing a specific subagent extension|Use neutral language; describe mechanism, not recommendation|
+| Risk                                                                       | Mitigation                                                                                                                       |
+| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Documentation becomes stale if subagent extensions change their mechanisms | Keep the section descriptive of the general two-layer model; specific extension details are secondary and link to upstream repos |
+| Could this silently weaken a permission?                                   | No — this change is documentation only; no runtime behavior is altered                                                           |
+| Users might misread the section as endorsing a specific subagent extension | Use neutral language; describe mechanism, not recommendation                                                                     |
 
 ## Open Questions
 

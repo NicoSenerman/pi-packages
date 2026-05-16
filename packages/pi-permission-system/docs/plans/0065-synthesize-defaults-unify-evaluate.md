@@ -39,24 +39,24 @@ This means:
 
 ### Dependencies
 
-|Issue|Status|Relationship|
-|-----|------|------------|
-|#55|Closed|Extracted `evaluate()` — prerequisite, landed|
-|#56|Closed|Unified Rule type and normalizeConfig — prerequisite, landed|
-|#57|Closed|Replaced SessionApprovalCache with SessionRules — prerequisite, landed|
-|#51|Open|Generalize session approvals — **blocked on this issue**|
+| Issue | Status | Relationship                                                           |
+| ----- | ------ | ---------------------------------------------------------------------- |
+| #55   | Closed | Extracted `evaluate()` — prerequisite, landed                          |
+| #56   | Closed | Unified Rule type and normalizeConfig — prerequisite, landed           |
+| #57   | Closed | Replaced SessionApprovalCache with SessionRules — prerequisite, landed |
+| #51   | Open   | Generalize session approvals — **blocked on this issue**               |
 
 ### Relevant modules
 
-|File|Role|
-|----|-----|
-|`src/permission-manager.ts`|`resolvePermissions()` builds rules + side-channels; `checkPermission()` uses per-surface branching|
-|`src/rule.ts`|`Rule`, `Ruleset`, `evaluate()` — the target sole decision engine|
-|`src/normalize.ts`|`normalizeConfig()` converts on-disk config → Ruleset (excludes tools.bash/mcp)|
-|`src/defaults.ts`|`mergeDefaults()`, `getSurfaceDefault()`, `DEFAULT_POLICY`|
-|`src/session-rules.ts`|`SessionRules` class wrapping a Ruleset|
-|`src/handlers/tool-call.ts`|Separate session-rule pre-check for external_directory, normal permission gate|
-|`src/types.ts`|`PermissionCheckResult` (source field), `PermissionDefaultPolicy`|
+| File                        | Role                                                                                                |
+| --------------------------- | --------------------------------------------------------------------------------------------------- |
+| `src/permission-manager.ts` | `resolvePermissions()` builds rules + side-channels; `checkPermission()` uses per-surface branching |
+| `src/rule.ts`               | `Rule`, `Ruleset`, `evaluate()` — the target sole decision engine                                   |
+| `src/normalize.ts`          | `normalizeConfig()` converts on-disk config → Ruleset (excludes tools.bash/mcp)                     |
+| `src/defaults.ts`           | `mergeDefaults()`, `getSurfaceDefault()`, `DEFAULT_POLICY`                                          |
+| `src/session-rules.ts`      | `SessionRules` class wrapping a Ruleset                                                             |
+| `src/handlers/tool-call.ts` | Separate session-rule pre-check for external_directory, normal permission gate                      |
+| `src/types.ts`              | `PermissionCheckResult` (source field), `PermissionDefaultPolicy`                                   |
 
 ### Permission surfaces involved
 
@@ -158,13 +158,13 @@ export interface Rule {
 
 `evaluate()` ignores this field. Post-evaluation, `checkPermission()` derives `PermissionCheckResult.source`:
 
-|`rule.layer`|Derived `source`|
-|------------|----------------|
-|`"default"`|`"default"` for extension tools; `"tool"` for built-in tools; surface name for bash/mcp/skill/special|
-|`"override"`|`"tool"` (preserves current `tools.bash`/`tools.mcp` → `source: "tool"` behavior)|
-|`"baseline"`|`"mcp"`|
-|`"config"` or undefined|Derived from `rule.surface`: bash→"bash", mcp→"mcp", skill→"skill", special→"special", else→"tool"|
-|`"session"`|`"session"` (new value)|
+| `rule.layer`            | Derived `source`                                                                                      |
+| ----------------------- | ----------------------------------------------------------------------------------------------------- |
+| `"default"`             | `"default"` for extension tools; `"tool"` for built-in tools; surface name for bash/mcp/skill/special |
+| `"override"`            | `"tool"` (preserves current `tools.bash`/`tools.mcp` → `source: "tool"` behavior)                     |
+| `"baseline"`            | `"mcp"`                                                                                               |
+| `"config"` or undefined | Derived from `rule.surface`: bash→"bash", mcp→"mcp", skill→"skill", special→"special", else→"tool"    |
+| `"session"`             | `"session"` (new value)                                                                               |
 
 ### Threading session rules into `checkPermission()`
 
@@ -374,15 +374,15 @@ When called without path info (e.g., to get the general policy for tool filterin
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|----|----------|
-|MCP baseline auto-allow semantics change subtly when expressed as rules|Synthesized baseline rules are placed BEFORE config rules, so explicit deny rules override them. Condition matches exactly: `configRules.some(r => r.surface === "mcp" && r.action === "allow")`. Existing MCP baseline tests verify behavior.|
-|`source` field derivation changes for edge cases, breaking tests|Explicit derivation table with per-built-in-tool handling. Run full test suite at each step.|
-|tools.bash/tools.mcp override rules accidentally override explicit patterns from lower-priority scopes|Override rules use pattern `"*"` and are placed BEFORE config rules. Any specific pattern in config sits at higher index and wins via last-match-wins. Explicit test for this case.|
-|Session rules appended at call-time cause cache invalidation thrash|Session rules are NOT part of `resolvedPermissionsCache` — they're appended fresh on each `checkPermission()` call. The composed config rules remain cached.|
-|Could this silently weaken a permission?|No — the change is purely structural. Every decision path is verified against existing tests. Synthesized defaults use the same values as the current hardcoded fallbacks. Session rules remain allow-only and user-approved.|
-|Performance regression from larger rule arrays|Rule arrays are small (typically <50 entries). `evaluate()` is a linear scan from end. No measurable impact.|
-|`normalizeConfig()` layer tagging changes existing rule objects|Layer is added during composition, not in `normalizeConfig()`. Existing callers of `normalizeConfig()` see rules without layer tags — no behavioral change.|
+| Risk                                                                                                   | Mitigation                                                                                                                                                                                                                                     |
+| ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MCP baseline auto-allow semantics change subtly when expressed as rules                                | Synthesized baseline rules are placed BEFORE config rules, so explicit deny rules override them. Condition matches exactly: `configRules.some(r => r.surface === "mcp" && r.action === "allow")`. Existing MCP baseline tests verify behavior. |
+| `source` field derivation changes for edge cases, breaking tests                                       | Explicit derivation table with per-built-in-tool handling. Run full test suite at each step.                                                                                                                                                   |
+| tools.bash/tools.mcp override rules accidentally override explicit patterns from lower-priority scopes | Override rules use pattern `"*"` and are placed BEFORE config rules. Any specific pattern in config sits at higher index and wins via last-match-wins. Explicit test for this case.                                                            |
+| Session rules appended at call-time cause cache invalidation thrash                                    | Session rules are NOT part of `resolvedPermissionsCache` — they're appended fresh on each `checkPermission()` call. The composed config rules remain cached.                                                                                   |
+| Could this silently weaken a permission?                                                               | No — the change is purely structural. Every decision path is verified against existing tests. Synthesized defaults use the same values as the current hardcoded fallbacks. Session rules remain allow-only and user-approved.                  |
+| Performance regression from larger rule arrays                                                         | Rule arrays are small (typically <50 entries). `evaluate()` is a linear scan from end. No measurable impact.                                                                                                                                   |
+| `normalizeConfig()` layer tagging changes existing rule objects                                        | Layer is added during composition, not in `normalizeConfig()`. Existing callers of `normalizeConfig()` see rules without layer tags — no behavioral change.                                                                                    |
 
 ## Open Questions
 

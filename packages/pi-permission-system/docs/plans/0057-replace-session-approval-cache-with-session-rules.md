@@ -29,16 +29,16 @@ This duplication blocks #51 (generalize session approvals to all permission surf
 
 ### Relevant modules
 
-|File|Role|
-|----|-----|
-|`src/session-approval-cache.ts`|Current `SessionApprovalCache` class + `deriveApprovalPrefix()`|
-|`src/rule.ts`|`Rule`, `Ruleset`, `evaluate()` — the unified permission engine|
-|`src/wildcard-matcher.ts`|`wildcardMatch()` used by `evaluate()`|
-|`src/normalize.ts`|Config → Ruleset normalization|
-|`src/runtime.ts`|Creates `sessionApprovalCache` on the `ExtensionRuntime`|
-|`src/handlers/tool-call.ts`|Consumes `sessionApprovalCache` in 5 places for external_directory gates|
-|`src/handlers/lifecycle.ts`|Calls `sessionApprovalCache.clear()` on shutdown|
-|`src/permission-manager.ts`|`resolvePermissions()` builds the config Ruleset; `checkPermission()` calls `evaluate()`|
+| File                            | Role                                                                                     |
+| ------------------------------- | ---------------------------------------------------------------------------------------- |
+| `src/session-approval-cache.ts` | Current `SessionApprovalCache` class + `deriveApprovalPrefix()`                          |
+| `src/rule.ts`                   | `Rule`, `Ruleset`, `evaluate()` — the unified permission engine                          |
+| `src/wildcard-matcher.ts`       | `wildcardMatch()` used by `evaluate()`                                                   |
+| `src/normalize.ts`              | Config → Ruleset normalization                                                           |
+| `src/runtime.ts`                | Creates `sessionApprovalCache` on the `ExtensionRuntime`                                 |
+| `src/handlers/tool-call.ts`     | Consumes `sessionApprovalCache` in 5 places for external_directory gates                 |
+| `src/handlers/lifecycle.ts`     | Calls `sessionApprovalCache.clear()` on shutdown                                         |
+| `src/permission-manager.ts`     | `resolvePermissions()` builds the config Ruleset; `checkPermission()` calls `evaluate()` |
 
 ### Permission surface
 
@@ -203,12 +203,12 @@ This preserves the current behavior.
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|----|----------|
-|Wildcard semantics differ from prefix semantics, silently widening approval scope|`wildcardMatch` is anchored (`^...$`); `/dir/*` cannot match `/dir-sibling/file`. Explicit test for sibling directory false positive.|
-|`*` in `wildcardMatch` matches empty string, so `/dir/*` matches `/dir/` — is this intended?|Yes, this preserves current behavior where approving `/dir/` covers `isPathWithinDirectory(path, "/dir/")`.|
-|Changing `runtime.sessionApprovalCache` to `runtime.sessionRules` breaks any external consumers|`ExtensionRuntime` is internal; no public API contract. Only our own handlers consume it.|
-|Could this silently weaken a permission?|No — session rules are `allow`-only and only apply to paths the user has already explicitly approved via the dialog. The `evaluate()` last-match-wins semantics mean session rules override config rules, which is the intended behavior (user said "yes for this session").|
+| Risk                                                                                            | Mitigation                                                                                                                                                                                                                                                                   |
+| ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Wildcard semantics differ from prefix semantics, silently widening approval scope               | `wildcardMatch` is anchored (`^...$`); `/dir/*` cannot match `/dir-sibling/file`. Explicit test for sibling directory false positive.                                                                                                                                        |
+| `*` in `wildcardMatch` matches empty string, so `/dir/*` matches `/dir/` — is this intended?    | Yes, this preserves current behavior where approving `/dir/` covers `isPathWithinDirectory(path, "/dir/")`.                                                                                                                                                                  |
+| Changing `runtime.sessionApprovalCache` to `runtime.sessionRules` breaks any external consumers | `ExtensionRuntime` is internal; no public API contract. Only our own handlers consume it.                                                                                                                                                                                    |
+| Could this silently weaken a permission?                                                        | No — session rules are `allow`-only and only apply to paths the user has already explicitly approved via the dialog. The `evaluate()` last-match-wins semantics mean session rules override config rules, which is the intended behavior (user said "yes for this session"). |
 
 ## Open Questions
 

@@ -104,11 +104,11 @@ This matches user intent and is consistent with the principle that `deny` should
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|---|---|
-|Broadens existing `deny` patterns (e.g., `"rm *": "deny"` now blocks bare `rm`)|This matches user intent — bare `rm` is also dangerous. Aligns with least-privilege principle.|
-|Could silently weaken a permission?|No — the change only broadens what a pattern *matches*, not what decision it produces. A `deny` pattern matching more commands is *more* restrictive, not less. An `allow` pattern matching bare commands is what users expect.|
-|Breaks users who rely on `"cmd *"` NOT matching bare `"cmd"`|Unlikely — the current behavior is unintuitive and requires a workaround. The workaround (`"cmd": "allow"` alongside `"cmd *": "allow"`) still works after the change.|
+| Risk                                                                            | Mitigation                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Broadens existing `deny` patterns (e.g., `"rm *": "deny"` now blocks bare `rm`) | This matches user intent — bare `rm` is also dangerous. Aligns with least-privilege principle.                                                                                                                                  |
+| Could silently weaken a permission?                                             | No — the change only broadens what a pattern *matches*, not what decision it produces. A `deny` pattern matching more commands is *more* restrictive, not less. An `allow` pattern matching bare commands is what users expect. |
+| Breaks users who rely on `"cmd *"` NOT matching bare `"cmd"`                    | Unlikely — the current behavior is unintuitive and requires a workaround. The workaround (`"cmd": "allow"` alongside `"cmd *": "allow"`) still works after the change.                                                          |
 
 ## Open Questions
 

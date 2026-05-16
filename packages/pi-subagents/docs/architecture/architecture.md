@@ -144,12 +144,12 @@ but it is undocumented and untyped.
 ### Estimated impact
 
 | Subsystem removed | LOC removed | LOC removed from index.ts |
-| --- | --- | --- |
-| Scheduling | 612 | ~200 |
-| Ad-hoc RPC | 80 | ~50 |
-| Group join | 141 | ~100 |
-| Output file | 83 | ~50 |
-| **Total** | **~916** | **~400** |
+| ----------------- | ----------- | ------------------------- |
+| Scheduling        | 612         | ~200                      |
+| Ad-hoc RPC        | 80          | ~50                       |
+| Group join        | 141         | ~100                      |
+| Output file       | 83          | ~50                       |
+| **Total**         | **~916**    | **~400**                  |
 
 After removal and `index.ts` decomposition, the core shrinks from ~6,300
 to ~5,400 LOC, and `index.ts` shrinks from ~1,894 to ~1,300 LOC.
@@ -257,11 +257,11 @@ accessors can be updated to delegate to `pi.registerService()` /
 
 The core emits events on `pi.events` that any extension can observe:
 
-| Channel | Payload | When |
-| --- | --- | --- |
-| `subagents:started` | `{ id, type, description }` | Agent begins running |
-| `subagents:completed` | `{ id, type, status, result?, error? }` | Agent finishes |
-| `subagents:activity` | `{ id, toolName?, textDelta?, turnCount? }` | Streaming progress |
+| Channel               | Payload                                     | When                 |
+| --------------------- | ------------------------------------------- | -------------------- |
+| `subagents:started`   | `{ id, type, description }`                 | Agent begins running |
+| `subagents:completed` | `{ id, type, status, result?, error? }`     | Agent finishes       |
+| `subagents:activity`  | `{ id, toolName?, textDelta?, turnCount? }` | Streaming progress   |
 
 These replace the ad-hoc RPC channels. They are fire-and-forget broadcast
 events — no request IDs, no reply channels.

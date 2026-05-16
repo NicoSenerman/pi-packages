@@ -4,10 +4,10 @@
 
 One unified config file per scope:
 
-|Scope|Path|
-|---|---|
-|Global|`~/.pi/agent/extensions/pi-permission-system/config.json` (respects `PI_CODING_AGENT_DIR`)|
-|Project|`<cwd>/.pi/extensions/pi-permission-system/config.json`|
+| Scope   | Path                                                                                       |
+| ------- | ------------------------------------------------------------------------------------------ |
+| Global  | `~/.pi/agent/extensions/pi-permission-system/config.json` (respects `PI_CODING_AGENT_DIR`) |
+| Project | `<cwd>/.pi/extensions/pi-permission-system/config.json`                                    |
 
 Project config overrides global config; per-agent frontmatter overrides both.
 
@@ -69,12 +69,12 @@ Scalar fields (`debugLog`, `permissionReviewLog`, `yoloMode`) use simple replace
 
 ## Runtime Knobs
 
-|Key|Default|Description|
-|---|---|---|
-|`debugLog`|`false`|Enables verbose diagnostic logging to `logs/pi-permission-system-debug.jsonl`|
-|`permissionReviewLog`|`true`|Enables the permission request/denial review log at `logs/pi-permission-system-permission-review.jsonl`|
-|`yoloMode`|`false`|Auto-approves `ask` results instead of prompting when yolo mode is enabled|
-|`piInfrastructureReadPaths`|`[]`|Extra directories to auto-allow for reads, bypassing the `external_directory` gate (supports `~`)|
+| Key                         | Default | Description                                                                                             |
+| --------------------------- | ------- | ------------------------------------------------------------------------------------------------------- |
+| `debugLog`                  | `false` | Enables verbose diagnostic logging to `logs/pi-permission-system-debug.jsonl`                           |
+| `permissionReviewLog`       | `true`  | Enables the permission request/denial review log at `logs/pi-permission-system-permission-review.jsonl` |
+| `yoloMode`                  | `false` | Auto-approves `ask` results instead of prompting when yolo mode is enabled                              |
+| `piInfrastructureReadPaths` | `[]`    | Extra directories to auto-allow for reads, bypassing the `external_directory` gate (supports `~`)       |
 
 Both logs write to `~/.pi/agent/extensions/pi-permission-system/logs/`.
 No debug output is printed to the terminal.
@@ -102,13 +102,13 @@ Omitting `"*"` defaults to `"ask"` (least privilege).
 Any registered tool name can be a surface key.
 A string value is a catch-all for that surface.
 
-|Surface example|Description|
-|---|---|
-|`read`, `write`, `edit`, `grep`, `find`, `ls`|Canonical Pi built-in file tools|
-|`bash`|Shell command execution|
-|`mcp`|Registered MCP proxy tool|
-|`task`|Delegation tool|
-|`third_party_tool`|Any other registered extension tool|
+| Surface example                               | Description                         |
+| --------------------------------------------- | ----------------------------------- |
+| `read`, `write`, `edit`, `grep`, `find`, `ls` | Canonical Pi built-in file tools    |
+| `bash`                                        | Shell command execution             |
+| `mcp`                                         | Registered MCP proxy tool           |
+| `task`                                        | Delegation tool                     |
+| `third_party_tool`                            | Any other registered extension tool |
 
 ```jsonc
 {
@@ -194,12 +194,12 @@ String shorthand sets a catch-all for all bash commands:
 
 MCP permissions match against derived targets from tool input:
 
-|Target type|Examples|
-|---|---|
-|Baseline ops|`mcp_status`, `mcp_list`, `mcp_search`, `mcp_describe`, `mcp_connect`|
-|Server name|`myServer`|
-|Server/tool combo|`myServer:search`, `myServer_search`|
-|Generic|`mcp_call`|
+| Target type       | Examples                                                              |
+| ----------------- | --------------------------------------------------------------------- |
+| Baseline ops      | `mcp_status`, `mcp_list`, `mcp_search`, `mcp_describe`, `mcp_connect` |
+| Server name       | `myServer`                                                            |
+| Server/tool combo | `myServer:search`, `myServer_search`                                  |
+| Generic           | `mcp_call`                                                            |
 
 ```jsonc
 {
@@ -271,12 +271,12 @@ The most restrictive result across all tokens determines the outcome.
 
 Four orthogonal layers compose with most-restrictive-wins:
 
-|Layer|Question|Applies to|
-|---|---|---|
-|`path`|Is this specific path pattern allowed?|All tools + bash|
-|`external_directory`|Is accessing outside CWD ok?|All tools + bash|
-|Per-tool patterns|Is this path ok for this specific tool?|Individual tools|
-|`bash` command patterns|Is this command ok?|Bash only|
+| Layer                   | Question                                | Applies to       |
+| ----------------------- | --------------------------------------- | ---------------- |
+| `path`                  | Is this specific path pattern allowed?  | All tools + bash |
+| `external_directory`    | Is accessing outside CWD ok?            | All tools + bash |
+| Per-tool patterns       | Is this path ok for this specific tool? | Individual tools |
+| `bash` command patterns | Is this command ok?                     | Bash only        |
 
 Configs without a `path` key behave identically to before — the gate does not fire.
 When no `path` key is present, the universal fallback (`permission["*"]`) applies: `"*": "allow"` keeps the gate transparent, while `"*": "deny"` would deny all file access via every surface including `path`.
@@ -509,11 +509,11 @@ permission:
 
 The extension integrates via Pi's lifecycle hooks:
 
-|Hook|Behavior|
-|---|---|
-|`before_agent_start`|Filters active tools, removes denied tool entries from the system prompt, and hides denied skills|
-|`tool_call`|Enforces permissions for every tool invocation|
-|`input`|Intercepts `/skill:<name>` requests and enforces skill policy|
+| Hook                 | Behavior                                                                                          |
+| -------------------- | ------------------------------------------------------------------------------------------------- |
+| `before_agent_start` | Filters active tools, removes denied tool entries from the system prompt, and hides denied skills |
+| `tool_call`          | Enforces permissions for every tool invocation                                                    |
+| `input`              | Intercepts `/skill:<name>` requests and enforces skill policy                                     |
 
 Additional behaviors:
 

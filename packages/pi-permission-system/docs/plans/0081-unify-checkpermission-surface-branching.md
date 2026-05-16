@@ -31,10 +31,10 @@ The target architecture envisions a single code path where surface-specific logi
 
 ### Related issues
 
-|Issue|Title|State|Relevance|
-|----|-----|-----|---------|
-|#65|Synthesize defaults into ruleset and unify the evaluate path|Closed|Unified `evaluate()` but left per-surface branching in `checkPermission()`|
-|#57|Replace SessionApprovalCache with session Ruleset|Closed|Changed session storage to `Ruleset` but did not concatenate into composed rules|
+| Issue | Title                                                        | State  | Relevance                                                                        |
+| ----- | ------------------------------------------------------------ | ------ | -------------------------------------------------------------------------------- |
+| #65   | Synthesize defaults into ruleset and unify the evaluate path | Closed | Unified `evaluate()` but left per-surface branching in `checkPermission()`       |
+| #57   | Replace SessionApprovalCache with session Ruleset            | Closed | Changed session storage to `Ruleset` but did not concatenate into composed rules |
 
 ### Relevant modules
 
@@ -143,19 +143,19 @@ This is purely a file-move with re-export.
 
 ## Module-Level Changes
 
-|File|Action|
-|----|------|
-|`src/mcp-targets.ts`|**New** — MCP target derivation helpers extracted from `permission-manager.ts`|
-|`src/input-normalizer.ts`|**New** — `normalizeInput()` pure function + `NormalizedInput` type|
-|`src/permission-manager.ts`|**Changed** — `checkPermission()` reduced to ~30 lines; MCP helpers removed; imports from new modules|
-|`src/synthesize.ts`|**Unchanged** — `composeRuleset()` signature stays the same; session concatenation happens at call site|
-|`src/rule.ts`|**Unchanged**|
-|`tests/mcp-targets.test.ts`|**New** — unit tests for extracted MCP helpers|
-|`tests/input-normalizer.test.ts`|**New** — unit tests for input normalization|
-|`tests/permission-manager-unified.test.ts`|**New** — integration tests verifying identical decisions before/after refactor|
-|`tests/session-rules.test.ts`|**Unchanged** — existing tests continue to pass|
-|`tests/handlers/tool-call.test.ts`|**Verify** — existing handler tests pass without modification|
-|`docs/architecture/target-architecture.md`|**Updated** — mark session concatenation as ✅ implemented|
+| File                                       | Action                                                                                                  |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `src/mcp-targets.ts`                       | **New** — MCP target derivation helpers extracted from `permission-manager.ts`                          |
+| `src/input-normalizer.ts`                  | **New** — `normalizeInput()` pure function + `NormalizedInput` type                                     |
+| `src/permission-manager.ts`                | **Changed** — `checkPermission()` reduced to ~30 lines; MCP helpers removed; imports from new modules   |
+| `src/synthesize.ts`                        | **Unchanged** — `composeRuleset()` signature stays the same; session concatenation happens at call site |
+| `src/rule.ts`                              | **Unchanged**                                                                                           |
+| `tests/mcp-targets.test.ts`                | **New** — unit tests for extracted MCP helpers                                                          |
+| `tests/input-normalizer.test.ts`           | **New** — unit tests for input normalization                                                            |
+| `tests/permission-manager-unified.test.ts` | **New** — integration tests verifying identical decisions before/after refactor                         |
+| `tests/session-rules.test.ts`              | **Unchanged** — existing tests continue to pass                                                         |
+| `tests/handlers/tool-call.test.ts`         | **Verify** — existing handler tests pass without modification                                           |
+| `docs/architecture/target-architecture.md` | **Updated** — mark session concatenation as ✅ implemented                                              |
 
 ## TDD Order
 
@@ -209,12 +209,12 @@ This is purely a file-move with re-export.
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|----|----------|
-|Session rule concatenation changes evaluation order, silently weakening a permission|Step 5 includes snapshot tests comparing old vs. new decisions for a matrix of inputs. Session rules go last (highest priority) — same semantics as the current separate pre-check.|
-|MCP multi-candidate logic subtly differs after refactor|Step 3 tests `createMcpPermissionTargets` output directly; Step 6 runs MCP permission checks through the unified path and compares results.|
-|`source` field in `PermissionCheckResult` changes for some edge case|Step 6 explicitly tests `source` derivation for each layer type. The `deriveSource()` function is unit-testable.|
-|Extracting MCP helpers breaks imports elsewhere|Grep for all import sites before extracting; re-export from `permission-manager.ts` if needed during transition.|
+| Risk                                                                                 | Mitigation                                                                                                                                                                          |
+| ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Session rule concatenation changes evaluation order, silently weakening a permission | Step 5 includes snapshot tests comparing old vs. new decisions for a matrix of inputs. Session rules go last (highest priority) — same semantics as the current separate pre-check. |
+| MCP multi-candidate logic subtly differs after refactor                              | Step 3 tests `createMcpPermissionTargets` output directly; Step 6 runs MCP permission checks through the unified path and compares results.                                         |
+| `source` field in `PermissionCheckResult` changes for some edge case                 | Step 6 explicitly tests `source` derivation for each layer type. The `deriveSource()` function is unit-testable.                                                                    |
+| Extracting MCP helpers breaks imports elsewhere                                      | Grep for all import sites before extracting; re-export from `permission-manager.ts` if needed during transition.                                                                    |
 
 ## Open Questions
 

@@ -40,12 +40,12 @@ Issue #10 will later consolidate config paths, but the toggle UI remains useful 
 
 ### Relevant modules
 
-| File | Role |
-| --- | --- |
-| `src/zellij-modal.ts` | Vendored modal framework (~1,117 lines). Wraps `pi-tui` `SettingsList`, `Container`, `Box`, `Text` to add border rendering, overlay sizing, title bar, and key handling. |
-| `src/config-modal.ts` | Slash command handler. Registers `/permission-system`, dispatches subcommands, and calls `openSettingsModal()` for no-args invocation. |
-| `src/extension-config.ts` | Loads/saves `config.json` (the 3-boolean runtime config). No changes needed. |
-| `tests/config-modal.test.ts` | Mocks `pi-tui` and `pi-coding-agent` exports; tests completions, subcommands, headless guard, and custom-modal call count. |
+| File                         | Role                                                                                                                                                                     |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/zellij-modal.ts`        | Vendored modal framework (~1,117 lines). Wraps `pi-tui` `SettingsList`, `Container`, `Box`, `Text` to add border rendering, overlay sizing, title bar, and key handling. |
+| `src/config-modal.ts`        | Slash command handler. Registers `/permission-system`, dispatches subcommands, and calls `openSettingsModal()` for no-args invocation.                                   |
+| `src/extension-config.ts`    | Loads/saves `config.json` (the 3-boolean runtime config). No changes needed.                                                                                             |
+| `tests/config-modal.test.ts` | Mocks `pi-tui` and `pi-coding-agent` exports; tests completions, subcommands, headless guard, and custom-modal call count.                                               |
 
 ### Permission surface
 
@@ -151,13 +151,13 @@ Entire file removed.
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-| --- | --- |
-| **Could this silently weaken a permission?** | No. This change is purely UI/DX for the `/permission-system` settings command. No permission decision logic is touched. |
-| **`SettingsList` constructor signature mismatch.** | Verified from `pi-tui` type declarations above. The vendored code already uses `SettingsList` internally with the same constructor shape. |
+| Risk                                                                                                         | Mitigation                                                                                                                                                                                       |
+| ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Could this silently weaken a permission?**                                                                 | No. This change is purely UI/DX for the `/permission-system` settings command. No permission decision logic is touched.                                                                          |
+| **`SettingsList` constructor signature mismatch.**                                                           | Verified from `pi-tui` type declarations above. The vendored code already uses `SettingsList` internally with the same constructor shape.                                                        |
 | **Visual regression.** Losing the `ZellijModal` border chrome (title bar, rounded corners, help undertitle). | Acceptable. `SettingsList` renders its own hint line and item descriptions. With only 3 items the chrome was decorative, not functional. If needed later, `Box` can add a border in a few lines. |
-| **Test mock drift.** | The `pi-tui` mock already stubs `SettingsList`. TDD step 2 verifies mocks before committing. |
-| **On-disk identity change.** | None. Command name stays `/permission-system`; config directory, log filenames, and event channels are untouched. |
+| **Test mock drift.**                                                                                         | The `pi-tui` mock already stubs `SettingsList`. TDD step 2 verifies mocks before committing.                                                                                                     |
+| **On-disk identity change.**                                                                                 | None. Command name stays `/permission-system`; config directory, log filenames, and event channels are untouched.                                                                                |
 
 ## Open Questions
 

@@ -46,24 +46,24 @@ index.ts (composition root)
 
 ### Law of Demeter violations eliminated
 
-|Before|After|
-|---|---|
-|`deps.session.permissionManager.checkPermission(...)`|`session.checkPermission(...)`|
-|`deps.session.permissionManager.getConfigIssues(...)`|`session.getConfigIssues(...)`|
-|`deps.session.permissionManager.getToolPermission(...)`|`session.getToolPermission(...)`|
-|`deps.session.sessionRules.getRuleset()`|`session.getSessionRuleset()`|
-|`deps.session.sessionRules.approve(s, p)`|`session.approveSessionRule(s, p)`|
-|`deps.session.sessionRules.clear()`|`session.shutdown()` (encapsulated)|
+| Before                                                  | After                               |
+| ------------------------------------------------------- | ----------------------------------- |
+| `deps.session.permissionManager.checkPermission(...)`   | `session.checkPermission(...)`      |
+| `deps.session.permissionManager.getConfigIssues(...)`   | `session.getConfigIssues(...)`      |
+| `deps.session.permissionManager.getToolPermission(...)` | `session.getToolPermission(...)`    |
+| `deps.session.sessionRules.getRuleset()`                | `session.getSessionRuleset()`       |
+| `deps.session.sessionRules.approve(s, p)`               | `session.approveSessionRule(s, p)`  |
+| `deps.session.sessionRules.clear()`                     | `session.shutdown()` (encapsulated) |
 
 ### Output arguments eliminated
 
-|Before|After|
-|---|---|
-|`deps.session.runtimeContext = ctx` (4 sites)|`session.activate(ctx)` (encapsulated)|
-|`deps.session.activeSkillEntries = []` (3 sites)|`session.resetForNewSession()` / `session.shutdown()`|
-|`deps.session.lastActiveToolsCacheKey = null` (3 sites)|Same|
-|`deps.session.lastPromptStateCacheKey = null` (3 sites)|Same|
-|`deps.session.permissionManager = deps.createPermissionManagerForCwd(cwd)` (2 sites)|`session.resetForNewSession(ctx)` (encapsulated)|
+| Before                                                                               | After                                                 |
+| ------------------------------------------------------------------------------------ | ----------------------------------------------------- |
+| `deps.session.runtimeContext = ctx` (4 sites)                                        | `session.activate(ctx)` (encapsulated)                |
+| `deps.session.activeSkillEntries = []` (3 sites)                                     | `session.resetForNewSession()` / `session.shutdown()` |
+| `deps.session.lastActiveToolsCacheKey = null` (3 sites)                              | Same                                                  |
+| `deps.session.lastPromptStateCacheKey = null` (3 sites)                              | Same                                                  |
+| `deps.session.permissionManager = deps.createPermissionManagerForCwd(cwd)` (2 sites) | `session.resetForNewSession(ctx)` (encapsulated)      |
 
 ## Issue sequence
 
@@ -105,10 +105,10 @@ Recommended order: #126 → #127 → #128 (increasing complexity).
 
 ## Risks and mitigations
 
-|Risk|Mitigation|
-|---|---|
-|Could silently weaken a permission?|Pure refactor — same `checkPermission` calls, same parameters, same gate evaluation order. Integration tests validate end-to-end.|
-|Large blast radius in phase 2 (PermissionSession)|Phase 1 extractions land first, shrinking the diff. PermissionSession can be introduced alongside existing code and migrated handler-by-handler.|
-|Handler class constructor changes are breaking for tests|Each handler class is in its own file with its own test file. Migration is per-handler, not all-at-once.|
-|`PermissionSession` becomes a god object|It encapsulates state that is already coupled (permissionManager + sessionRules + caches + skillEntries all reset together). The operations it exposes are the same ones handlers already perform — just without LoD violations.|
-|Shared `PermissionSession` mock across handler tests re-introduces the bag problem|Handler tests mock only the session methods they call. TypeScript enforces that the mock satisfies the interface. Unlike `HandlerDeps`, the session mock is a single object with meaningful methods, not 20 unrelated fields.|
+| Risk                                                                               | Mitigation                                                                                                                                                                                                                       |
+| ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Could silently weaken a permission?                                                | Pure refactor — same `checkPermission` calls, same parameters, same gate evaluation order. Integration tests validate end-to-end.                                                                                                |
+| Large blast radius in phase 2 (PermissionSession)                                  | Phase 1 extractions land first, shrinking the diff. PermissionSession can be introduced alongside existing code and migrated handler-by-handler.                                                                                 |
+| Handler class constructor changes are breaking for tests                           | Each handler class is in its own file with its own test file. Migration is per-handler, not all-at-once.                                                                                                                         |
+| `PermissionSession` becomes a god object                                           | It encapsulates state that is already coupled (permissionManager + sessionRules + caches + skillEntries all reset together). The operations it exposes are the same ones handlers already perform — just without LoD violations. |
+| Shared `PermissionSession` mock across handler tests re-introduces the bag problem | Handler tests mock only the session methods they call. TypeScript enforces that the mock satisfies the interface. Unlike `HandlerDeps`, the session mock is a single object with meaningful methods, not 20 unrelated fields.    |

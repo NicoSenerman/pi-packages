@@ -39,17 +39,17 @@ The `deriveSource()` function still has a branch for `layer === "override"` that
 
 ### Relevant modules
 
-|File|Role|
-|----|----|
-|`src/rule.ts`|`Rule` interface, `Ruleset`, `evaluate()`, `evaluateFirst()`|
-|`src/types.ts`|`PermissionCheckResult`, `FlatPermissionConfig`, `ScopeConfig`|
-|`src/normalize.ts`|`normalizeFlatConfig()` — converts flat config to `Ruleset`|
-|`src/synthesize.ts`|`synthesizeDefaults()`, `synthesizeBaseline()`, `composeRuleset()`|
-|`src/permission-manager.ts`|`PermissionManager` — `resolvePermissions()`, `checkPermission()`, `deriveSource()`|
-|`src/permission-prompter.ts`|`PermissionPrompter` — writes review log entries with permission details|
-|`src/logging.ts`|`createPermissionSystemLogger()` — writes review and debug log lines|
-|`src/config-modal.ts`|`/permission-system` slash command handler|
-|`docs/architecture/target-architecture.md`|Living architecture doc with `Rule` type definition|
+| File                                       | Role                                                                                |
+| ------------------------------------------ | ----------------------------------------------------------------------------------- |
+| `src/rule.ts`                              | `Rule` interface, `Ruleset`, `evaluate()`, `evaluateFirst()`                        |
+| `src/types.ts`                             | `PermissionCheckResult`, `FlatPermissionConfig`, `ScopeConfig`                      |
+| `src/normalize.ts`                         | `normalizeFlatConfig()` — converts flat config to `Ruleset`                         |
+| `src/synthesize.ts`                        | `synthesizeDefaults()`, `synthesizeBaseline()`, `composeRuleset()`                  |
+| `src/permission-manager.ts`                | `PermissionManager` — `resolvePermissions()`, `checkPermission()`, `deriveSource()` |
+| `src/permission-prompter.ts`               | `PermissionPrompter` — writes review log entries with permission details            |
+| `src/logging.ts`                           | `createPermissionSystemLogger()` — writes review and debug log lines                |
+| `src/config-modal.ts`                      | `/permission-system` slash command handler                                          |
+| `docs/architecture/target-architecture.md` | Living architecture doc with `Rule` type definition                                 |
 
 ### Permission surfaces involved
 
@@ -312,13 +312,13 @@ This requires `config-modal.ts` to accept a function that returns the composed r
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|----|----------|
-|Origin tracking diverges from merge semantics, causing incorrect attribution.|The origin map mirrors `mergeFlatPermissions()` case-by-case (both-objects, string-replaces, object-replaces). Unit tests cover all three merge modes.|
-|Adding `origin` to `Rule` or `PermissionCheckResult` breaks deep-equality assertions in existing tests.|`origin` is optional and only set for config rules. Existing tests that use `makeManager()` with no config will see rules without `origin`, preserving deep equality. Tests with config fixtures may need `origin` in expected values — addressed in step 3.|
-|Could this silently weaken a permission?|No. `origin` is read-only metadata. It is not consumed by `evaluate()`, does not appear in any guard condition, and does not alter any allow/deny/ask decision. The `evaluate()` function's behavior is unchanged.|
-|Removing `"override"` layer breaks a runtime path.|No code path creates a rule with `layer: "override"`. The `deriveSource()` branch is unreachable. Removing both is safe. `pnpm run build` confirms no type errors.|
-|`/permission-system show` output becomes noisy with many rules.|Keep the display compact (one line per rule, abbreviated origin labels). If the rule count exceeds a threshold, truncate with a count summary.|
+| Risk                                                                                                    | Mitigation                                                                                                                                                                                                                                                   |
+| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Origin tracking diverges from merge semantics, causing incorrect attribution.                           | The origin map mirrors `mergeFlatPermissions()` case-by-case (both-objects, string-replaces, object-replaces). Unit tests cover all three merge modes.                                                                                                       |
+| Adding `origin` to `Rule` or `PermissionCheckResult` breaks deep-equality assertions in existing tests. | `origin` is optional and only set for config rules. Existing tests that use `makeManager()` with no config will see rules without `origin`, preserving deep equality. Tests with config fixtures may need `origin` in expected values — addressed in step 3. |
+| Could this silently weaken a permission?                                                                | No. `origin` is read-only metadata. It is not consumed by `evaluate()`, does not appear in any guard condition, and does not alter any allow/deny/ask decision. The `evaluate()` function's behavior is unchanged.                                           |
+| Removing `"override"` layer breaks a runtime path.                                                      | No code path creates a rule with `layer: "override"`. The `deriveSource()` branch is unreachable. Removing both is safe. `pnpm run build` confirms no type errors.                                                                                           |
+| `/permission-system show` output becomes noisy with many rules.                                         | Keep the display compact (one line per rule, abbreviated origin labels). If the rule count exceeds a threshold, truncate with a count summary.                                                                                                               |
 
 ## Open Questions
 

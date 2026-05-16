@@ -58,11 +58,11 @@ New tests for the additional keys go in the same file.
 
 ### Extension env var inventory
 
-|Extension|Child-process env vars|Parent-session env var|
-|---|---|---|
-|nicobailon/pi-subagents|`PI_SUBAGENT_CHILD`, `PI_SUBAGENT_RUN_ID`, `PI_SUBAGENT_CHILD_AGENT`, `PI_SUBAGENT_DEPTH`|none set (no mechanism today)|
-|tintinweb/pi-subagents|none (in-process, deferred)|n/a|
-|HazAT/pi-interactive-subagents|`PI_SUBAGENT_NAME`, `PI_SUBAGENT_ID`, `PI_SUBAGENT_SESSION`, `PI_SUBAGENT_ACTIVITY_FILE`|none set (no mechanism today)|
+| Extension                      | Child-process env vars                                                                    | Parent-session env var        |
+| ------------------------------ | ----------------------------------------------------------------------------------------- | ----------------------------- |
+| nicobailon/pi-subagents        | `PI_SUBAGENT_CHILD`, `PI_SUBAGENT_RUN_ID`, `PI_SUBAGENT_CHILD_AGENT`, `PI_SUBAGENT_DEPTH` | none set (no mechanism today) |
+| tintinweb/pi-subagents         | none (in-process, deferred)                                                               | n/a                           |
+| HazAT/pi-interactive-subagents | `PI_SUBAGENT_NAME`, `PI_SUBAGENT_ID`, `PI_SUBAGENT_SESSION`, `PI_SUBAGENT_ACTIVITY_FILE`  | none set (no mechanism today) |
 
 Neither extension currently sets a parent-session env var.
 Parent-session resolution for these extensions will fail at the `SUBAGENT_PARENT_SESSION_ENV_CANDIDATES` lookup.
@@ -265,13 +265,13 @@ Commit: `docs: update target-architecture subagent detection for #96`
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|---|---|
-|New env hint keys over-match — a non-subagent process happens to have one of these vars set and is wrongly treated as headless|`PI_SUBAGENT_DEPTH=0` and similar are specific to these extensions; over-match risk is low. The consequence of a false positive is that the extension tries to forward rather than silently allow, which still prompts the user — not a silent bypass.|
-|Could this silently weaken a permission?|No. Broadening detection makes more sessions *attempt* forwarding rather than silently denying. The only failure mode is a forwarding attempt that cannot resolve a parent session, which already emits a denial — not an allow.|
-|`SUBAGENT_PARENT_SESSION_ENV_KEY` removal breaks external callers|Kept as a deprecated alias for at least one release.|
-|Parent-session resolution still fails for nicobailon and HazAT (no parent-session env var)|The improved error message makes this explicit and points to #98. The silent-denial behavior is unchanged for this specific sub-case until #98 lands.|
-|`PI_SUBAGENT_SESSION` from HazAT is the *child's* session ID, not the parent's|It is added to `SUBAGENT_ENV_HINT_KEYS` (detection only), not to `SUBAGENT_PARENT_SESSION_ENV_CANDIDATES` (resolution). No confusion possible.|
+| Risk                                                                                                                           | Mitigation                                                                                                                                                                                                                                             |
+| ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| New env hint keys over-match — a non-subagent process happens to have one of these vars set and is wrongly treated as headless | `PI_SUBAGENT_DEPTH=0` and similar are specific to these extensions; over-match risk is low. The consequence of a false positive is that the extension tries to forward rather than silently allow, which still prompts the user — not a silent bypass. |
+| Could this silently weaken a permission?                                                                                       | No. Broadening detection makes more sessions *attempt* forwarding rather than silently denying. The only failure mode is a forwarding attempt that cannot resolve a parent session, which already emits a denial — not an allow.                       |
+| `SUBAGENT_PARENT_SESSION_ENV_KEY` removal breaks external callers                                                              | Kept as a deprecated alias for at least one release.                                                                                                                                                                                                   |
+| Parent-session resolution still fails for nicobailon and HazAT (no parent-session env var)                                     | The improved error message makes this explicit and points to #98. The silent-denial behavior is unchanged for this specific sub-case until #98 lands.                                                                                                  |
+| `PI_SUBAGENT_SESSION` from HazAT is the *child's* session ID, not the parent's                                                 | It is added to `SUBAGENT_ENV_HINT_KEYS` (detection only), not to `SUBAGENT_PARENT_SESSION_ENV_CANDIDATES` (resolution). No confusion possible.                                                                                                         |
 
 ## Open Questions
 

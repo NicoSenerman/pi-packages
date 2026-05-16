@@ -51,16 +51,16 @@ All surfaces (tools, bash, mcp, skills, special, external_directory) are exercis
 
 `HandlerDeps` has 8 fields:
 
-|Field|Used by|
-|---|---|
-|`session: PermissionSession`|all handlers|
-|`events: PermissionEventBus`|tool-call, input (for emitDecisionEvent)|
-|`canRequestPermissionConfirmation(ctx)`|tool-call, input|
-|`promptPermission(ctx, details)`|tool-call, input|
-|`createPermissionRequestId(prefix)`|input only|
-|`stopPermissionRpcHandlers()`|lifecycle shutdown only|
-|`getAllTools()`|before-agent-start, tool-call|
-|`setActiveTools(names)`|before-agent-start only|
+| Field                                   | Used by                                  |
+| --------------------------------------- | ---------------------------------------- |
+| `session: PermissionSession`            | all handlers                             |
+| `events: PermissionEventBus`            | tool-call, input (for emitDecisionEvent) |
+| `canRequestPermissionConfirmation(ctx)` | tool-call, input                         |
+| `promptPermission(ctx, details)`        | tool-call, input                         |
+| `createPermissionRequestId(prefix)`     | input only                               |
+| `stopPermissionRpcHandlers()`           | lifecycle shutdown only                  |
+| `getAllTools()`                         | before-agent-start, tool-call            |
+| `setActiveTools(names)`                 | before-agent-start only                  |
 
 Each handler uses a different subset:
 
@@ -213,27 +213,27 @@ Tests for these pure helpers do not change.
 
 ## Module-level changes
 
-|File|Change|
-|---|---|
-|`src/permission-session.ts`|Add `canPrompt(ctx)`, `prompt(ctx, details)`, `createPermissionRequestId(prefix)`. Expand `PermissionSessionRuntimeDeps` with two new delegates.|
-|`src/permission-prompter.ts`|Receives `PromptPermissionDetails` and `PermissionReviewSource` type definitions (moved from `src/handlers/types.ts`).|
-|`src/tool-registry.ts`|Add `ToolRegistry` interface (alongside existing exports).|
-|`src/handlers/types.ts`|**Deleted.** Types moved; `HandlerDeps` removed.|
-|`src/handlers/lifecycle.ts`|Free functions → `SessionLifecycleHandler` class. Constructor takes `(session, cleanupRpc)`. Methods unchanged in logic.|
-|`src/handlers/before-agent-start.ts`|Free function → `AgentPrepHandler` class. Constructor takes `(session, toolRegistry)`. `shouldExposeTool` stays as exported free function.|
-|`src/handlers/tool-call.ts`|`handleToolCall` free function → `PermissionGateHandler.handleToolCall` method. Constructor takes `(session, events, toolRegistry)`. `getEventInput` stays as exported free function. Prompt closures use `this.session.canPrompt(ctx)` / `this.session.prompt(ctx, details)`. Tool registration check uses `this.toolRegistry.getAll()`.|
-|`src/handlers/input.ts`|`handleInput` free function → `PermissionGateHandler.handleInput` method (same class as tool-call). `extractSkillNameFromInput` stays as exported free function. Uses `this.session.canPrompt(ctx)` / `this.session.prompt(ctx, details)` / `this.session.createPermissionRequestId(prefix)`.|
-|`src/handlers/index.ts`|Update re-exports: export classes + pure helpers. Remove `HandlerDeps`, `PromptPermissionDetails`, `PermissionReviewSource` re-exports.|
-|`src/handlers/gates/descriptor.ts`|Update `PromptPermissionDetails` import path to `src/permission-prompter.ts`.|
-|`src/index.ts`|Replace `deps: HandlerDeps` construction with handler class instantiation. Wire events to class methods. Expand `PermissionSessionRuntimeDeps` construction with `canRequestPermissionConfirmation` and `promptPermission`.|
-|`tests/permission-session.test.ts`|Add tests for `canPrompt`, `prompt`, `createPermissionRequestId`.|
-|`tests/handlers/lifecycle.test.ts`|Replace `makeDeps()` with `new SessionLifecycleHandler(mockSession, mockCleanup)`. Remove unused fields from factory.|
-|`tests/handlers/before-agent-start.test.ts`|Replace `makeDeps()` with `new AgentPrepHandler(mockSession, mockToolRegistry)`. Remove unused fields.|
-|`tests/handlers/tool-call.test.ts`|Replace `makeDeps()` with `new PermissionGateHandler(mockSession, mockEvents, mockToolRegistry)`. Remove unused fields. Add `canPrompt`/`prompt` to session mock.|
-|`tests/handlers/tool-call-events.test.ts`|Same pattern as `tool-call.test.ts`.|
-|`tests/handlers/input.test.ts`|Replace `makeDeps()` with `new PermissionGateHandler(mockSession, mockEvents, mockToolRegistry)`. Add `canPrompt`/`prompt`/`createPermissionRequestId` to session mock.|
-|`tests/handlers/input-events.test.ts`|Same pattern as `input.test.ts`.|
-|`docs/architecture/architecture.md`|Update module listing: remove `types.ts` entry, update handler file descriptions to mention classes, add `ToolRegistry` to `tool-registry.ts` description.|
+| File                                        | Change                                                                                                                                                                                                                                                                                                                                    |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/permission-session.ts`                 | Add `canPrompt(ctx)`, `prompt(ctx, details)`, `createPermissionRequestId(prefix)`. Expand `PermissionSessionRuntimeDeps` with two new delegates.                                                                                                                                                                                          |
+| `src/permission-prompter.ts`                | Receives `PromptPermissionDetails` and `PermissionReviewSource` type definitions (moved from `src/handlers/types.ts`).                                                                                                                                                                                                                    |
+| `src/tool-registry.ts`                      | Add `ToolRegistry` interface (alongside existing exports).                                                                                                                                                                                                                                                                                |
+| `src/handlers/types.ts`                     | **Deleted.** Types moved; `HandlerDeps` removed.                                                                                                                                                                                                                                                                                          |
+| `src/handlers/lifecycle.ts`                 | Free functions → `SessionLifecycleHandler` class. Constructor takes `(session, cleanupRpc)`. Methods unchanged in logic.                                                                                                                                                                                                                  |
+| `src/handlers/before-agent-start.ts`        | Free function → `AgentPrepHandler` class. Constructor takes `(session, toolRegistry)`. `shouldExposeTool` stays as exported free function.                                                                                                                                                                                                |
+| `src/handlers/tool-call.ts`                 | `handleToolCall` free function → `PermissionGateHandler.handleToolCall` method. Constructor takes `(session, events, toolRegistry)`. `getEventInput` stays as exported free function. Prompt closures use `this.session.canPrompt(ctx)` / `this.session.prompt(ctx, details)`. Tool registration check uses `this.toolRegistry.getAll()`. |
+| `src/handlers/input.ts`                     | `handleInput` free function → `PermissionGateHandler.handleInput` method (same class as tool-call). `extractSkillNameFromInput` stays as exported free function. Uses `this.session.canPrompt(ctx)` / `this.session.prompt(ctx, details)` / `this.session.createPermissionRequestId(prefix)`.                                             |
+| `src/handlers/index.ts`                     | Update re-exports: export classes + pure helpers. Remove `HandlerDeps`, `PromptPermissionDetails`, `PermissionReviewSource` re-exports.                                                                                                                                                                                                   |
+| `src/handlers/gates/descriptor.ts`          | Update `PromptPermissionDetails` import path to `src/permission-prompter.ts`.                                                                                                                                                                                                                                                             |
+| `src/index.ts`                              | Replace `deps: HandlerDeps` construction with handler class instantiation. Wire events to class methods. Expand `PermissionSessionRuntimeDeps` construction with `canRequestPermissionConfirmation` and `promptPermission`.                                                                                                               |
+| `tests/permission-session.test.ts`          | Add tests for `canPrompt`, `prompt`, `createPermissionRequestId`.                                                                                                                                                                                                                                                                         |
+| `tests/handlers/lifecycle.test.ts`          | Replace `makeDeps()` with `new SessionLifecycleHandler(mockSession, mockCleanup)`. Remove unused fields from factory.                                                                                                                                                                                                                     |
+| `tests/handlers/before-agent-start.test.ts` | Replace `makeDeps()` with `new AgentPrepHandler(mockSession, mockToolRegistry)`. Remove unused fields.                                                                                                                                                                                                                                    |
+| `tests/handlers/tool-call.test.ts`          | Replace `makeDeps()` with `new PermissionGateHandler(mockSession, mockEvents, mockToolRegistry)`. Remove unused fields. Add `canPrompt`/`prompt` to session mock.                                                                                                                                                                         |
+| `tests/handlers/tool-call-events.test.ts`   | Same pattern as `tool-call.test.ts`.                                                                                                                                                                                                                                                                                                      |
+| `tests/handlers/input.test.ts`              | Replace `makeDeps()` with `new PermissionGateHandler(mockSession, mockEvents, mockToolRegistry)`. Add `canPrompt`/`prompt`/`createPermissionRequestId` to session mock.                                                                                                                                                                   |
+| `tests/handlers/input-events.test.ts`       | Same pattern as `input.test.ts`.                                                                                                                                                                                                                                                                                                          |
+| `docs/architecture/architecture.md`         | Update module listing: remove `types.ts` entry, update handler file descriptions to mention classes, add `ToolRegistry` to `tool-registry.ts` description.                                                                                                                                                                                |
 
 ## Test impact analysis
 
@@ -322,15 +322,15 @@ Update `docs/architecture/architecture.md` module listing:
 
 ## Risks and mitigations
 
-|Risk|Mitigation|
-|---|---|
-|Could this silently weaken a permission?|Pure refactor — same `checkPermission` calls, same parameters, same gate evaluation order. `PermissionGateHandler.handleToolCall` produces identical `GateRunnerDeps`. Integration tests validate end-to-end.|
-|Handler class constructor changes could break test compilation|Each handler class is in its own file (or a new shared file for `PermissionGateHandler`). Migration is per-handler, not all-at-once. Each step leaves the repo green.|
-|`PermissionSession` grows by 3 methods — risk of god object?|The 3 new methods (`canPrompt`, `prompt`, `createPermissionRequestId`) are thin delegates. The session already coordinates prompting conceptually (it owns the `PermissionPrompter`'s caller-side interface). Total method count stays reasonable.|
-|`PromptPermissionDetails` relocation could break external consumers|No external consumers — it's an internal type. All import paths are updated mechanically.|
-|`ToolRegistry` interface could be too narrow or too wide|It mirrors exactly `pi.getAllTools()` and `pi.setActiveTools()` — the only two Pi API methods handlers need. If more are needed later, the interface can grow.|
-|`createPermissionRequestId` on `PermissionSession` may feel out of place|It's a trivial ID generator that only handlers call. Alternative: a free function or a private method on `PermissionGateHandler`. Placing it on `PermissionSession` keeps the handler class constructors exactly as specified in the issue (3 deps). If it feels wrong during implementation, it can be extracted to a free utility in the same step.|
-|Steps 4–6 each partially consume `HandlerDeps` while it still exists|Each step updates `index.ts` wiring for the converted handler while leaving `HandlerDeps` in place for the remaining free functions. Step 7 is the final deletion. This incremental approach avoids a big-bang change.|
+| Risk                                                                     | Mitigation                                                                                                                                                                                                                                                                                                                                            |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Could this silently weaken a permission?                                 | Pure refactor — same `checkPermission` calls, same parameters, same gate evaluation order. `PermissionGateHandler.handleToolCall` produces identical `GateRunnerDeps`. Integration tests validate end-to-end.                                                                                                                                         |
+| Handler class constructor changes could break test compilation           | Each handler class is in its own file (or a new shared file for `PermissionGateHandler`). Migration is per-handler, not all-at-once. Each step leaves the repo green.                                                                                                                                                                                 |
+| `PermissionSession` grows by 3 methods — risk of god object?             | The 3 new methods (`canPrompt`, `prompt`, `createPermissionRequestId`) are thin delegates. The session already coordinates prompting conceptually (it owns the `PermissionPrompter`'s caller-side interface). Total method count stays reasonable.                                                                                                    |
+| `PromptPermissionDetails` relocation could break external consumers      | No external consumers — it's an internal type. All import paths are updated mechanically.                                                                                                                                                                                                                                                             |
+| `ToolRegistry` interface could be too narrow or too wide                 | It mirrors exactly `pi.getAllTools()` and `pi.setActiveTools()` — the only two Pi API methods handlers need. If more are needed later, the interface can grow.                                                                                                                                                                                        |
+| `createPermissionRequestId` on `PermissionSession` may feel out of place | It's a trivial ID generator that only handlers call. Alternative: a free function or a private method on `PermissionGateHandler`. Placing it on `PermissionSession` keeps the handler class constructors exactly as specified in the issue (3 deps). If it feels wrong during implementation, it can be extracted to a free utility in the same step. |
+| Steps 4–6 each partially consume `HandlerDeps` while it still exists     | Each step updates `index.ts` wiring for the converted handler while leaving `HandlerDeps` in place for the remaining free functions. Step 7 is the final deletion. This incremental approach avoids a big-bang change.                                                                                                                                |
 
 ## Open questions
 

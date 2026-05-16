@@ -33,10 +33,10 @@ A service object stored on `globalThis` via `Symbol.for()` enables direct, type-
 
 ### Dependency status
 
-|Issue|Description|Status|
-|---|---|---|
-|#29|Permission event channel with RPC|✅ Implemented|
-|earendil-works/pi#4207|Upstream registerService/getService|Open — independent; this plan works without it|
+| Issue                  | Description                         | Status                                         |
+| ---------------------- | ----------------------------------- | ---------------------------------------------- |
+| #29                    | Permission event channel with RPC   | ✅ Implemented                                 |
+| earendil-works/pi#4207 | Upstream registerService/getService | Open — independent; this plan works without it |
 
 ### jiti isolation model
 
@@ -165,19 +165,19 @@ No build step is required.
 
 ## Module-Level Changes
 
-|File|Action|Detail|
-|---|---|---|
-|`src/service.ts`|**new**|`PermissionsService` interface, `SERVICE_KEY` constant, `publishPermissionsService()`, `getPermissionsService()`, `unpublishPermissionsService()`. Re-exports `PermissionCheckResult` and `PermissionState` from `src/types.ts`.|
-|`src/input-normalizer.ts`|changed|Export new `buildInputForSurface(surface, value)` function (moved from `src/permission-event-rpc.ts`).|
-|`src/permission-event-rpc.ts`|changed|Remove local `buildInputForSurface`; import from `src/input-normalizer.ts`.|
-|`src/permission-events.ts`|changed|Add `@deprecated` JSDoc to `PERMISSIONS_RPC_CHECK_CHANNEL`, `PermissionsCheckRequest`, `PermissionsCheckReplyData`.|
-|`src/index.ts`|changed|Build service adapter object, call `publishPermissionsService()` after RPC registration. Pass `unpublishPermissionsService` to `SessionLifecycleHandler` cleanup.|
-|`src/handlers/lifecycle.ts`|changed|Call the additional cleanup function (unpublish) alongside `cleanupRpc()`.|
-|`package.json`|changed|Add `"exports": { ".": "./src/service.ts" }`.|
-|`tests/service.test.ts`|**new**|Unit tests for accessor functions and service delegation.|
-|`tests/permission-event-rpc.test.ts`|unchanged|Existing RPC tests remain valid — the handler still works.|
-|`docs/architecture/architecture.md`|changed|Add "Cross-extension service accessor" section describing the `Symbol.for()` pattern.|
-|`README.md`|changed|Add "Service API" section; mark RPC check as deprecated in the event API section.|
+| File                                 | Action    | Detail                                                                                                                                                                                                                           |
+| ------------------------------------ | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/service.ts`                     | **new**   | `PermissionsService` interface, `SERVICE_KEY` constant, `publishPermissionsService()`, `getPermissionsService()`, `unpublishPermissionsService()`. Re-exports `PermissionCheckResult` and `PermissionState` from `src/types.ts`. |
+| `src/input-normalizer.ts`            | changed   | Export new `buildInputForSurface(surface, value)` function (moved from `src/permission-event-rpc.ts`).                                                                                                                           |
+| `src/permission-event-rpc.ts`        | changed   | Remove local `buildInputForSurface`; import from `src/input-normalizer.ts`.                                                                                                                                                      |
+| `src/permission-events.ts`           | changed   | Add `@deprecated` JSDoc to `PERMISSIONS_RPC_CHECK_CHANNEL`, `PermissionsCheckRequest`, `PermissionsCheckReplyData`.                                                                                                              |
+| `src/index.ts`                       | changed   | Build service adapter object, call `publishPermissionsService()` after RPC registration. Pass `unpublishPermissionsService` to `SessionLifecycleHandler` cleanup.                                                                |
+| `src/handlers/lifecycle.ts`          | changed   | Call the additional cleanup function (unpublish) alongside `cleanupRpc()`.                                                                                                                                                       |
+| `package.json`                       | changed   | Add `"exports": { ".": "./src/service.ts" }`.                                                                                                                                                                                    |
+| `tests/service.test.ts`              | **new**   | Unit tests for accessor functions and service delegation.                                                                                                                                                                        |
+| `tests/permission-event-rpc.test.ts` | unchanged | Existing RPC tests remain valid — the handler still works.                                                                                                                                                                       |
+| `docs/architecture/architecture.md`  | changed   | Add "Cross-extension service accessor" section describing the `Symbol.for()` pattern.                                                                                                                                            |
+| `README.md`                          | changed   | Add "Service API" section; mark RPC check as deprecated in the event API section.                                                                                                                                                |
 
 ## Test Impact Analysis
 
@@ -226,14 +226,14 @@ No build step is required.
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|---|---|
-|Could this silently weaken a permission?|No. The service delegates to the same `PermissionManager.checkPermission()` and `SessionRules` that the event-bus RPC and tool-call handler use. No decision logic changes.|
-|Stale service reference after `/reload`|Both provider and consumer re-initialize during reload. Document "call per use, don't cache" as best practice. `unpublishPermissionsService()` on shutdown clears the slot as extra safety.|
-|`exports` field breaks Pi's jiti loader resolution|Pi's loader uses `pi.extensions` (not `exports`) to find the extension factory. The `exports` field only affects bare-specifier `import()` from other extensions. Verify with `pnpm run build` + smoke test.|
-|Consumer calls `getPermissionsService()` before provider has loaded|Returns `undefined` — the consumer's `if (permissions) { ... }` guard handles this. Same as the RPC fallback path's timeout. Document load-order independence.|
-|`buildInputForSurface` extraction breaks RPC handler|The function body is unchanged; only its location moves. Existing `permission-event-rpc.test.ts` tests pass as-is.|
-|`globalThis` pollution across unrelated processes|`Symbol.for()` keys are scoped by the full string name (`"@gotgenes/pi-permission-system:service"`). Collision with other packages is infeasible. Cleanup on shutdown removes the slot.|
+| Risk                                                                | Mitigation                                                                                                                                                                                                   |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Could this silently weaken a permission?                            | No. The service delegates to the same `PermissionManager.checkPermission()` and `SessionRules` that the event-bus RPC and tool-call handler use. No decision logic changes.                                  |
+| Stale service reference after `/reload`                             | Both provider and consumer re-initialize during reload. Document "call per use, don't cache" as best practice. `unpublishPermissionsService()` on shutdown clears the slot as extra safety.                  |
+| `exports` field breaks Pi's jiti loader resolution                  | Pi's loader uses `pi.extensions` (not `exports`) to find the extension factory. The `exports` field only affects bare-specifier `import()` from other extensions. Verify with `pnpm run build` + smoke test. |
+| Consumer calls `getPermissionsService()` before provider has loaded | Returns `undefined` — the consumer's `if (permissions) { ... }` guard handles this. Same as the RPC fallback path's timeout. Document load-order independence.                                               |
+| `buildInputForSurface` extraction breaks RPC handler                | The function body is unchanged; only its location moves. Existing `permission-event-rpc.test.ts` tests pass as-is.                                                                                           |
+| `globalThis` pollution across unrelated processes                   | `Symbol.for()` keys are scoped by the full string name (`"@gotgenes/pi-permission-system:service"`). Collision with other packages is infeasible. Cleanup on shutdown removes the slot.                      |
 
 ## Open Questions
 

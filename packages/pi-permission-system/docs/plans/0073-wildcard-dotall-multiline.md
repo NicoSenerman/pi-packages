@@ -45,11 +45,11 @@ No new types, no data-shape changes, no config changes.
 
 ## Module-Level Changes
 
-|File|Change|
-|----|------|
-|`src/wildcard-matcher.ts`|Add `"s"` flag to `new RegExp(...)` in `compileWildcardPattern()`.|
-|`tests/wildcard-matcher.test.ts`|Add test cases for multiline values matching `*` and literal-prefix-`*` patterns.|
-|`tests/permission-manager.test.ts`|Add integration test: multiline bash command with `"*": "allow"` returns allow.|
+| File                               | Change                                                                            |
+| ---------------------------------- | --------------------------------------------------------------------------------- |
+| `src/wildcard-matcher.ts`          | Add `"s"` flag to `new RegExp(...)` in `compileWildcardPattern()`.                |
+| `tests/wildcard-matcher.test.ts`   | Add test cases for multiline values matching `*` and literal-prefix-`*` patterns. |
+| `tests/permission-manager.test.ts` | Add integration test: multiline bash command with `"*": "allow"` returns allow.   |
 
 ## TDD Order
 
@@ -76,11 +76,11 @@ No new types, no data-shape changes, no config changes.
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|----|----------|
-|Could this silently weaken a permission?|No. The `s` flag only makes `*` match what users already expect it to match. A pattern like `rm -rf *` still only matches strings starting with `rm -rf` — it does not gain the ability to match unrelated multiline strings because the literal prefix anchors it.|
-|Over-broad match for patterns containing literal newlines|No user would put literal `\n` in a pattern string in JSON config. The patterns are single-line strings; only values (commands) can be multiline.|
-|Breaks existing tests|Existing tests use single-line values. Adding `s` has no effect on strings without newlines.|
+| Risk                                                      | Mitigation                                                                                                                                                                                                                                                          |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Could this silently weaken a permission?                  | No. The `s` flag only makes `*` match what users already expect it to match. A pattern like `rm -rf *` still only matches strings starting with `rm -rf` — it does not gain the ability to match unrelated multiline strings because the literal prefix anchors it. |
+| Over-broad match for patterns containing literal newlines | No user would put literal `\n` in a pattern string in JSON config. The patterns are single-line strings; only values (commands) can be multiline.                                                                                                                   |
+| Breaks existing tests                                     | Existing tests use single-line values. Adding `s` has no effect on strings without newlines.                                                                                                                                                                        |
 
 ## Open Questions
 

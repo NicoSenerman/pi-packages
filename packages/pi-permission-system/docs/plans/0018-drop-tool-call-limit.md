@@ -30,13 +30,13 @@ The field also appears in the `README.md` special-permissions table with the not
 
 ### Relevant modules
 
-| File | Role |
-| --- | --- |
-| `schemas/permissions.schema.json` | Declares `special.tool_call_limit` — the field to remove. |
-| `src/permission-manager.ts` | `normalizePermissionRecord()` already silently discards integer values (they fail the `isPermissionState` check). If the user writes `"tool_call_limit": "allow"`, it would survive normalization but is never read by `SPECIAL_PERMISSION_KEYS`. The deprecation warning needs to fire *before* the value is discarded. |
-| `src/types.ts` | `SpecialPermissionName` does not include `tool_call_limit` — no change needed. |
-| `config/config.example.json` | Does not reference `tool_call_limit` — no change needed. |
-| `README.md` | Contains one row in the special-permissions table for `tool_call_limit` marked as *schema only, not enforced yet*. |
+| File                              | Role                                                                                                                                                                                                                                                                                                                     |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `schemas/permissions.schema.json` | Declares `special.tool_call_limit` — the field to remove.                                                                                                                                                                                                                                                                |
+| `src/permission-manager.ts`       | `normalizePermissionRecord()` already silently discards integer values (they fail the `isPermissionState` check). If the user writes `"tool_call_limit": "allow"`, it would survive normalization but is never read by `SPECIAL_PERMISSION_KEYS`. The deprecation warning needs to fire *before* the value is discarded. |
+| `src/types.ts`                    | `SpecialPermissionName` does not include `tool_call_limit` — no change needed.                                                                                                                                                                                                                                           |
+| `config/config.example.json`      | Does not reference `tool_call_limit` — no change needed.                                                                                                                                                                                                                                                                 |
+| `README.md`                       | Contains one row in the special-permissions table for `tool_call_limit` marked as *schema only, not enforced yet*.                                                                                                                                                                                                       |
 
 ### Permission surface
 
@@ -143,12 +143,12 @@ Remove the `tool_call_limit` property (and its `oneOf` definition) from the `spe
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-| --- | --- |
-| **Could this silently weaken a permission?** | No. `tool_call_limit` was never enforced — removing it changes zero runtime decisions. The deprecation warning makes the removal *more* visible, not less. |
+| Risk                                                                            | Mitigation                                                                                                                                                                                  |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Could this silently weaken a permission?**                                    | No. `tool_call_limit` was never enforced — removing it changes zero runtime decisions. The deprecation warning makes the removal *more* visible, not less.                                  |
 | **Users with `tool_call_limit` in their config get a schema-validation error.** | The schema drops the field, but the loader remains tolerant: it parses with `stripJsonComments` + `JSON.parse`, not schema validation. The deprecation warning tells the user to remove it. |
-| **On-disk identity change.** | None. Config directory, log filenames, `/permission-system` slash command, and event channel names are untouched. |
-| **`normalizeRawPermission` return-type change ripples through callers.** | The change is internal to `permission-manager.ts`. All call sites are in the same file. The public API gains only an additive `getConfigIssues()` method. |
+| **On-disk identity change.**                                                    | None. Config directory, log filenames, `/permission-system` slash command, and event channel names are untouched.                                                                           |
+| **`normalizeRawPermission` return-type change ripples through callers.**        | The change is internal to `permission-manager.ts`. All call sites are in the same file. The public API gains only an additive `getConfigIssues()` method.                                   |
 
 ## Open Questions
 

@@ -10,12 +10,12 @@
     "prepare": "command -v prek >/dev/null 2>&1 && prek install || echo 'prek not found — skipping hook install (see README)'",
     "check": "pnpm -r run check",
     "test": "pnpm -r run test",
-    "lint": "biome check . && markdownlint-cli2 '**/*.md'",
-    "lint:fix": "biome check --write . && markdownlint-cli2 --fix '**/*.md'",
+    "lint": "biome check . && rumdl check '**/*.md'",
+    "lint:fix": "biome check --write . && rumdl fmt '**/*.md'",
     "format": "biome format --write ."
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
-    "markdownlint-cli2": "^0.22.1"
+    "rumdl": "^0.1.93"
   }
 }

@@ -2,14 +2,14 @@
 
 ## Common Issues
 
-|Problem|Cause|Solution|
-|---|---|---|
-|Config not applied (everything asks)|File not found or parse error|Verify the global config at `~/.pi/agent/extensions/pi-permission-system/config.json` (respects `PI_CODING_AGENT_DIR`); check for trailing commas|
-|Per-agent override not applied|Frontmatter parsing issue|Ensure `---` delimiters at file top; keep YAML simple; restart session|
-|Tool blocked as unregistered|Unknown tool name|Use a registered `mcp` tool for server tools: `{ "tool": "server:tool" }`|
-|`/skill:<name>` blocked|Deny policy or confirmation unavailable|Check merged `skill` policy (global/project/agent layers). `ask` still requires UI or forwarded confirmation.|
-|External file path blocked|`external_directory` is `ask` without UI or `deny`|Allow/ask the permission or keep file tools inside the active working directory.|
-|Permission prompt is too verbose|Generic extension tool input is large|Built-in file tools are summarized automatically; third-party tools are capped to a bounded one-line JSON preview.|
+| Problem                              | Cause                                              | Solution                                                                                                                                          |
+| ------------------------------------ | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Config not applied (everything asks) | File not found or parse error                      | Verify the global config at `~/.pi/agent/extensions/pi-permission-system/config.json` (respects `PI_CODING_AGENT_DIR`); check for trailing commas |
+| Per-agent override not applied       | Frontmatter parsing issue                          | Ensure `---` delimiters at file top; keep YAML simple; restart session                                                                            |
+| Tool blocked as unregistered         | Unknown tool name                                  | Use a registered `mcp` tool for server tools: `{ "tool": "server:tool" }`                                                                         |
+| `/skill:<name>` blocked              | Deny policy or confirmation unavailable            | Check merged `skill` policy (global/project/agent layers). `ask` still requires UI or forwarded confirmation.                                     |
+| External file path blocked           | `external_directory` is `ask` without UI or `deny` | Allow/ask the permission or keep file tools inside the active working directory.                                                                  |
+| Permission prompt is too verbose     | Generic extension tool input is large              | Built-in file tools are summarized automatically; third-party tools are capped to a bounded one-line JSON preview.                                |
 
 ## Diagnostic Logging
 

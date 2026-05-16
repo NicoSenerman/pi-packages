@@ -34,14 +34,14 @@ The [target architecture](../architecture/target-architecture.md) identifies thi
 
 The six handlers currently live as anonymous closures inside `piPermissionSystemExtension()`:
 
-|Handler|Approx lines|Concern|
-|----|----|---|
-|`session_start`|~20|Init runtime state, start forwarding, log config|
-|`resources_discover`|~12|Re-create permission manager on reload|
-|`session_shutdown`|~8|Teardown|
-|`before_agent_start`|~80|Tool filtering + prompt sanitization|
-|`input`|~50|Skill input permission gate|
-|`tool_call`|~250|Skill-read, external-directory, and tool permission gates|
+| Handler              | Approx lines | Concern                                                   |
+| -------------------- | ------------ | --------------------------------------------------------- |
+| `session_start`      | ~20          | Init runtime state, start forwarding, log config          |
+| `resources_discover` | ~12          | Re-create permission manager on reload                    |
+| `session_shutdown`   | ~8           | Teardown                                                  |
+| `before_agent_start` | ~80          | Tool filtering + prompt sanitization                      |
+| `input`              | ~50          | Skill input permission gate                               |
+| `tool_call`          | ~250         | Skill-read, external-directory, and tool permission gates |
 
 All handlers share closure state: `permissionManager`, `extensionConfig`, `runtimeContext`, `activeSkillEntries`, `sessionApprovalCache`, `lastKnownActiveAgentName`, and several inner helper functions (`resolveAgentName`, `shouldExposeTool`, `promptPermission`, `canRequestPermissionConfirmation`, `reviewPermissionDecision`, `createPermissionRequestId`, etc.).
 
@@ -170,29 +170,29 @@ Issue #43 will lift them into `ExtensionRuntime` (see `src/runtime.ts` in the [t
 
 ### New files
 
-|File|Contents|
-|----|--------|
-|`src/handlers/types.ts`|`HandlerDeps` interface, `PromptPermissionDetails` type|
-|`src/handlers/lifecycle.ts`|`handleSessionStart`, `handleResourcesDiscover`, `handleSessionShutdown`|
-|`src/handlers/before-agent-start.ts`|`handleBeforeAgentStart`|
-|`src/handlers/input.ts`|`handleInput`|
-|`src/handlers/tool-call.ts`|`handleToolCall`|
-|`src/handlers/index.ts`|Barrel re-export|
+| File                                 | Contents                                                                 |
+| ------------------------------------ | ------------------------------------------------------------------------ |
+| `src/handlers/types.ts`              | `HandlerDeps` interface, `PromptPermissionDetails` type                  |
+| `src/handlers/lifecycle.ts`          | `handleSessionStart`, `handleResourcesDiscover`, `handleSessionShutdown` |
+| `src/handlers/before-agent-start.ts` | `handleBeforeAgentStart`                                                 |
+| `src/handlers/input.ts`              | `handleInput`                                                            |
+| `src/handlers/tool-call.ts`          | `handleToolCall`                                                         |
+| `src/handlers/index.ts`              | Barrel re-export                                                         |
 
 ### Modified files
 
-|File|Change|
-|----|------|
-|`src/index.ts`|Remove inline handler bodies; build `HandlerDeps`; register handlers via one-liner calls. Extract `extractSkillNameFromInput`, `getEventToolName`, `getEventInput` to a utility or into the handler that uses them.|
+| File           | Change                                                                                                                                                                                                              |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/index.ts` | Remove inline handler bodies; build `HandlerDeps`; register handlers via one-liner calls. Extract `extractSkillNameFromInput`, `getEventToolName`, `getEventInput` to a utility or into the handler that uses them. |
 
 ### Test files
 
-|File|Contents|
-|----|--------|
-|`tests/handlers/lifecycle.test.ts`|Session start init, reload path, resources_discover reload, shutdown cleanup|
-|`tests/handlers/before-agent-start.test.ts`|Tool filtering, prompt sanitization, cache key logic|
-|`tests/handlers/input.test.ts`|Skill input gate: allow, deny, ask paths|
-|`tests/handlers/tool-call.test.ts`|Skill-read gate, external-directory (file + bash), normal tool permission gate|
+| File                                        | Contents                                                                       |
+| ------------------------------------------- | ------------------------------------------------------------------------------ |
+| `tests/handlers/lifecycle.test.ts`          | Session start init, reload path, resources_discover reload, shutdown cleanup   |
+| `tests/handlers/before-agent-start.test.ts` | Tool filtering, prompt sanitization, cache key logic                           |
+| `tests/handlers/input.test.ts`              | Skill input gate: allow, deny, ask paths                                       |
+| `tests/handlers/tool-call.test.ts`          | Skill-read gate, external-directory (file + bash), normal tool permission gate |
 
 ## TDD Order
 
@@ -234,13 +234,13 @@ Each cycle is red → green → commit.
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|----|----------|
-|Could this silently weaken a permission?|No — this is a pure structural refactor. Handler logic moves verbatim. Tests verify identical gate behavior with mocked deps. The full existing test suite (`npx vitest run`) must pass at every commit.|
-|Closure state semantics change when accessed via deps|The deps bag uses getter/setter pairs for mutable state, preserving the same "always read latest" semantics as closures. Tests verify state mutations propagate correctly.|
-|`HandlerDeps` interface becomes a god object|Start minimal — only include what handlers actually consume. If any field is unused, remove it. The interface can be narrowed per-handler via `Pick<HandlerDeps, ...>` if it grows unwieldy.|
-|Event type signatures are not exported by the Pi SDK|Use `Parameters<...>` inference or define minimal event shapes in `src/handlers/types.ts`. If the SDK changes, type errors surface at compile time.|
-|Existing integration tests break during incremental extraction|Steps 2–5 keep old inline handlers working in parallel until step 6 swaps them out. This avoids a big-bang rewrite.|
+| Risk                                                           | Mitigation                                                                                                                                                                                               |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Could this silently weaken a permission?                       | No — this is a pure structural refactor. Handler logic moves verbatim. Tests verify identical gate behavior with mocked deps. The full existing test suite (`npx vitest run`) must pass at every commit. |
+| Closure state semantics change when accessed via deps          | The deps bag uses getter/setter pairs for mutable state, preserving the same "always read latest" semantics as closures. Tests verify state mutations propagate correctly.                               |
+| `HandlerDeps` interface becomes a god object                   | Start minimal — only include what handlers actually consume. If any field is unused, remove it. The interface can be narrowed per-handler via `Pick<HandlerDeps, ...>` if it grows unwieldy.             |
+| Event type signatures are not exported by the Pi SDK           | Use `Parameters<...>` inference or define minimal event shapes in `src/handlers/types.ts`. If the SDK changes, type errors surface at compile time.                                                      |
+| Existing integration tests break during incremental extraction | Steps 2–5 keep old inline handlers working in parallel until step 6 swaps them out. This avoids a big-bang rewrite.                                                                                      |
 
 ## Implementation Notes
 

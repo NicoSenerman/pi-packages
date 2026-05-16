@@ -33,10 +33,10 @@ The same applies to `/dev/stdin`, `/dev/stdout`, and `/dev/stderr`, which are OS
 
 ### Existing modules
 
-|File|Role|
-|----|----|
-|`src/external-directory.ts`|`isPathOutsideWorkingDirectory`, `extractExternalPathsFromBashCommand`, `getPathBearingToolPath`, format helpers|
-|`src/index.ts`|Tool-call interceptor; file-tool external-directory gate (~line 828), bash external-directory gate (~line 904)|
+| File                        | Role                                                                                                             |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `src/external-directory.ts` | `isPathOutsideWorkingDirectory`, `extractExternalPathsFromBashCommand`, `getPathBearingToolPath`, format helpers |
+| `src/index.ts`              | Tool-call interceptor; file-tool external-directory gate (~line 828), bash external-directory gate (~line 904)   |
 
 ### Flow today (file tools)
 
@@ -104,10 +104,10 @@ No change — no new policy fields.
 
 ## Module-Level Changes
 
-|File|Change|
-|----|----|
-|`src/external-directory.ts`|Add `SAFE_SYSTEM_PATHS` constant, `isSafeSystemPath` helper. Update `isPathOutsideWorkingDirectory` and `extractExternalPathsFromBashCommand` to skip safe paths.|
-|`tests/external-directory.test.ts`|Add unit tests for `isSafeSystemPath`, and tests confirming `/dev/null` et al. are excluded from external-directory checks in both file-tool and bash paths.|
+| File                               | Change                                                                                                                                                            |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/external-directory.ts`        | Add `SAFE_SYSTEM_PATHS` constant, `isSafeSystemPath` helper. Update `isPathOutsideWorkingDirectory` and `extractExternalPathsFromBashCommand` to skip safe paths. |
+| `tests/external-directory.test.ts` | Add unit tests for `isSafeSystemPath`, and tests confirming `/dev/null` et al. are excluded from external-directory checks in both file-tool and bash paths.      |
 
 ## TDD Order
 
@@ -134,14 +134,14 @@ No change — no new policy fields.
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|----|----|
-|Could this silently weaken a permission?|No — the allowlisted paths are OS device files that cannot leak or modify user data. `/dev/null` discards writes and returns EOF on read. The others map to the process's own stdio streams.|
-|`cat /dev/null > important_file` truncates a file inside CWD|The destructive action is the `>` redirect to `important_file`, not the read from `/dev/null`. `extractExternalPathsFromBashCommand` splits on `>` (it is in the metacharacter regex `[\|;&><\s]+`), so`important_file` and `/dev/null` become separate tokens. `important_file` is a bare relative name — `classifyTokenAsPathCandidate` skips it (no leading `/`,`~/`, or`..`). The external-directory gate was never designed to catch in-CWD truncation via bash redirects; that is the bash pattern filter's responsibility. Filtering`/dev/null` changes nothing about this path.|
-|`cat /dev/null > /etc/passwd` truncates an out-of-CWD file|`/dev/null` is filtered by the allowlist, but `/etc/passwd` is a separate token, is an absolute path outside CWD, and still triggers the external-directory check normally. No protection is lost.|
-|Path traversal via `/dev/null/../etc/passwd`|`normalizePathForComparison` resolves `..` before comparison, so this normalizes to `/etc/passwd` which is not in `SAFE_SYSTEM_PATHS`.|
-|Symlink to real file at `/dev/null`|On any POSIX system `/dev/null` is a kernel device node, not a symlink. If an attacker can replace `/dev/null` they already have root. Out of scope.|
-|Windows `NUL` device not covered|Deferred — no Windows user request yet. The `SAFE_SYSTEM_PATHS` set can be extended later.|
+| Risk                                                         | Mitigation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Could this silently weaken a permission?                     | No — the allowlisted paths are OS device files that cannot leak or modify user data. `/dev/null` discards writes and returns EOF on read. The others map to the process's own stdio streams.                                                                                                                                                                                                                                                                                                                                                                                            |
+| `cat /dev/null > important_file` truncates a file inside CWD | The destructive action is the `>` redirect to `important_file`, not the read from `/dev/null`. `extractExternalPathsFromBashCommand` splits on `>` (it is in the metacharacter regex `[\|;&><\s]+`), so`important_file` and `/dev/null` become separate tokens. `important_file` is a bare relative name — `classifyTokenAsPathCandidate` skips it (no leading `/`,`~/`, or`..`). The external-directory gate was never designed to catch in-CWD truncation via bash redirects; that is the bash pattern filter's responsibility. Filtering`/dev/null` changes nothing about this path. |
+| `cat /dev/null > /etc/passwd` truncates an out-of-CWD file   | `/dev/null` is filtered by the allowlist, but `/etc/passwd` is a separate token, is an absolute path outside CWD, and still triggers the external-directory check normally. No protection is lost.                                                                                                                                                                                                                                                                                                                                                                                      |
+| Path traversal via `/dev/null/../etc/passwd`                 | `normalizePathForComparison` resolves `..` before comparison, so this normalizes to `/etc/passwd` which is not in `SAFE_SYSTEM_PATHS`.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Symlink to real file at `/dev/null`                          | On any POSIX system `/dev/null` is a kernel device node, not a symlink. If an attacker can replace `/dev/null` they already have root. Out of scope.                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Windows `NUL` device not covered                             | Deferred — no Windows user request yet. The `SAFE_SYSTEM_PATHS` set can be extended later.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 ## Open Questions
 

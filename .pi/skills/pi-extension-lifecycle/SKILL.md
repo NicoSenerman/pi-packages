@@ -83,23 +83,23 @@ agent_end
 
 ## Event handler capabilities
 
-| Event | Awaited? | Can return result? | Result capabilities |
-| --- | --- | --- | --- |
-| `session_start` | yes | no | — |
-| `turn_start` | yes | no | — |
-| `context` | yes | yes | inject/modify messages before LLM call |
-| `before_provider_request` | yes | yes | inspect or replace API payload |
-| `after_provider_response` | yes | no | — |
-| `message_start` | yes | no | — |
-| `message_end` | yes | yes | replace message content |
-| `tool_call` | yes | yes | `{ block?: boolean, reason?: string }` |
-| `tool_execution_start` | yes | no | notification only |
-| `tool_execution_update` | yes | no | notification only |
-| `tool_execution_end` | yes | no | notification only |
-| `tool_result` | yes | yes | `{ content?, details?, isError? }` |
-| `turn_end` | yes | no | — |
-| `agent_end` | yes | no | — |
-| `session_shutdown` | yes | no | — |
+| Event                     | Awaited? | Can return result? | Result capabilities                    |
+| ------------------------- | -------- | ------------------ | -------------------------------------- |
+| `session_start`           | yes      | no                 | —                                      |
+| `turn_start`              | yes      | no                 | —                                      |
+| `context`                 | yes      | yes                | inject/modify messages before LLM call |
+| `before_provider_request` | yes      | yes                | inspect or replace API payload         |
+| `after_provider_response` | yes      | no                 | —                                      |
+| `message_start`           | yes      | no                 | —                                      |
+| `message_end`             | yes      | yes                | replace message content                |
+| `tool_call`               | yes      | yes                | `{ block?: boolean, reason?: string }` |
+| `tool_execution_start`    | yes      | no                 | notification only                      |
+| `tool_execution_update`   | yes      | no                 | notification only                      |
+| `tool_execution_end`      | yes      | no                 | notification only                      |
+| `tool_result`             | yes      | yes                | `{ content?, details?, isError? }`     |
+| `turn_end`                | yes      | no                 | —                                      |
+| `agent_end`               | yes      | no                 | —                                      |
+| `session_shutdown`        | yes      | no                 | —                                      |
 
 ## Tool call sequencing within a turn
 
@@ -114,10 +114,10 @@ This means an extension's `tool_result` handler for tool N runs before `tool_cal
 During the agent loop, `isStreaming` is `true` (set at start, cleared in `finishRun` after `agent_end`).
 This affects `sendMessage` behavior:
 
-| State | `sendMessage()` default | `deliverAs: "steer"` | `deliverAs: "followUp"` | `triggerTurn: true` |
-| --- | --- | --- | --- | --- |
-| Streaming (during turns) | `agent.steer()` | `agent.steer()` | `agent.followUp()` | N/A (streaming) |
-| Not streaming (between prompts) | append to session | — | — | `agent.prompt()` — starts new turn |
+| State                           | `sendMessage()` default | `deliverAs: "steer"` | `deliverAs: "followUp"` | `triggerTurn: true`                |
+| ------------------------------- | ----------------------- | -------------------- | ----------------------- | ---------------------------------- |
+| Streaming (during turns)        | `agent.steer()`         | `agent.steer()`      | `agent.followUp()`      | N/A (streaming)                    |
+| Not streaming (between prompts) | append to session       | —                    | —                       | `agent.prompt()` — starts new turn |
 
 ### Steering messages
 
@@ -211,14 +211,14 @@ Returning `{ block: true, reason: "..." }` from a `tool_call` handler:
 
 Analysis of 4,925 tool-using turns across multiple projects (pi-autoformat, pi-permission-system, and others):
 
-| Pattern | Count | % |
-| --- | --- | --- |
-| Single-tool turns | 4,515 | 91.7% |
-| Multi-tool turns | 410 | 8.3% |
-| Same-file edits within one turn | 0 | 0% |
-| Read-after-write to same file in one turn | 0 | 0% |
-| Write + git commit in same turn | 0 | 0% |
-| Average mutation-turn streak length | 4.6 | — |
+| Pattern                                   | Count | %     |
+| ----------------------------------------- | ----- | ----- |
+| Single-tool turns                         | 4,515 | 91.7% |
+| Multi-tool turns                          | 410   | 8.3%  |
+| Same-file edits within one turn           | 0     | 0%    |
+| Read-after-write to same file in one turn | 0     | 0%    |
+| Write + git commit in same turn           | 0     | 0%    |
+| Average mutation-turn streak length       | 4.6   | —     |
 
 ### What multi-tool turns look like
 

@@ -310,14 +310,14 @@ The dialog determines **persistence** - where the rule lives:
 When prompting, each surface suggests a **pattern** for the "for session" option.
 The pattern determines what class of future requests auto-approve:
 
-|Surface|Input value|Suggested session pattern|Mechanism|
-|---|---|---|---|
-|bash|`git checkout main`|`git checkout *`|Arity table|
-|bash|`npm run dev`|`npm run dev`|Arity table|
-|tool (read/write/etc.)|tool surface itself|`*` (all uses of that tool)|Tool-level|
-|mcp|`exa:search`|`exa:*`|Server-level wildcard|
-|skill|`librarian`|`librarian`|Exact name|
-|external_directory|`/other/project/src/foo.ts`|`/other/project/*`|Directory prefix as glob|
+| Surface                | Input value                 | Suggested session pattern   | Mechanism                |
+| ---------------------- | --------------------------- | --------------------------- | ------------------------ |
+| bash                   | `git checkout main`         | `git checkout *`            | Arity table              |
+| bash                   | `npm run dev`               | `npm run dev`               | Arity table              |
+| tool (read/write/etc.) | tool surface itself         | `*` (all uses of that tool) | Tool-level               |
+| mcp                    | `exa:search`                | `exa:*`                     | Server-level wildcard    |
+| skill                  | `librarian`                 | `librarian`                 | Exact name               |
+| external_directory     | `/other/project/src/foo.ts` | `/other/project/*`          | Directory prefix as glob |
 
 The suggestion is shown in the dialog text so the user sees what they're approving:
 
@@ -395,12 +395,12 @@ This requires two detections:
 
 ### Known extension env var inventory
 
-|Extension|Child-process env vars|Parent-session env var|
-|---|---|---|
-|pi-agent-router (original)|`PI_IS_SUBAGENT`, `PI_SUBAGENT_SESSION_ID`, `PI_AGENT_ROUTER_SUBAGENT`|`PI_AGENT_ROUTER_PARENT_SESSION_ID`|
-|[nicobailon/pi-subagents](https://github.com/nicobailon/pi-subagents)|`PI_SUBAGENT_CHILD`, `PI_SUBAGENT_RUN_ID`, `PI_SUBAGENT_CHILD_AGENT`, `PI_SUBAGENT_DEPTH`|none set (see #98)|
-|[tintinweb/pi-subagents](https://github.com/tintinweb/pi-subagents)|none — runs fully in-process via `createAgentSession()`|n/a — deferred to #29|
-|[HazAT/pi-interactive-subagents](https://github.com/HazAT/pi-interactive-subagents)|`PI_SUBAGENT_NAME`, `PI_SUBAGENT_ID`, `PI_SUBAGENT_SESSION`, `PI_SUBAGENT_ACTIVITY_FILE`|none set (see #98)|
+| Extension                                                                           | Child-process env vars                                                                    | Parent-session env var              |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------- |
+| pi-agent-router (original)                                                          | `PI_IS_SUBAGENT`, `PI_SUBAGENT_SESSION_ID`, `PI_AGENT_ROUTER_SUBAGENT`                    | `PI_AGENT_ROUTER_PARENT_SESSION_ID` |
+| [nicobailon/pi-subagents](https://github.com/nicobailon/pi-subagents)               | `PI_SUBAGENT_CHILD`, `PI_SUBAGENT_RUN_ID`, `PI_SUBAGENT_CHILD_AGENT`, `PI_SUBAGENT_DEPTH` | none set (see #98)                  |
+| [tintinweb/pi-subagents](https://github.com/tintinweb/pi-subagents)                 | none — runs fully in-process via `createAgentSession()`                                   | n/a — deferred to #29               |
+| [HazAT/pi-interactive-subagents](https://github.com/HazAT/pi-interactive-subagents) | `PI_SUBAGENT_NAME`, `PI_SUBAGENT_ID`, `PI_SUBAGENT_SESSION`, `PI_SUBAGENT_ACTIVITY_FILE`  | none set (see #98)                  |
 
 ### Detection (`SUBAGENT_ENV_HINT_KEYS`)
 

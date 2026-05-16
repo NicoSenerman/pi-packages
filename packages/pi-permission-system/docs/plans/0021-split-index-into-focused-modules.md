@@ -26,10 +26,10 @@ AGENTS.md requires "one concern per file in `src/`" — `index.ts` is the last m
 
 ### Dependency status
 
-|Issue|Title|Status|Relevance|
-|-|-|-|-|
-|#10|Consolidate config layout|Closed/implemented|Was a prerequisite — no longer blocks.|
-|#20|Delete permission-request event channel|Closed/implemented|Removed `emitPermissionRequestEvent` and related types, reducing `index.ts` slightly.|
+| Issue | Title                                   | Status             | Relevance                                                                             |
+| ----- | --------------------------------------- | ------------------ | ------------------------------------------------------------------------------------- |
+| #10   | Consolidate config layout               | Closed/implemented | Was a prerequisite — no longer blocks.                                                |
+| #20   | Delete permission-request event channel | Closed/implemented | Removed `emitPermissionRequestEvent` and related types, reducing `index.ts` slightly. |
 
 ### What was in src/index.ts (~1,973 lines)
 
@@ -52,10 +52,10 @@ None — pure refactor.
 
 Before this issue, the entire `src/index.ts` — and every pre-existing focused module that was *already* extracted (`bash-filter.ts`, `wildcard-matcher.ts`, `system-prompt-sanitizer.ts`, `skill-prompt-sanitizer.ts`, `permission-manager.ts`, etc.) — was tested exclusively through 2 integration test files:
 
-|File|Tests|Lines|
-|-|-|-|
-|`tests/permission-system.test.ts`|68|2,490|
-|`tests/session-start.test.ts`|2|114|
+| File                              | Tests | Lines |
+| --------------------------------- | ----- | ----- |
+| `tests/permission-system.test.ts` | 68    | 2,490 |
+| `tests/session-start.test.ts`     | 2     | 114   |
 
 These are flat lists of `test()` calls (no `describe()` grouping) that exercise the full `piPermissionSystemExtension` factory end-to-end via a mock `ExtensionAPI`.
 The modules listed below have **no dedicated unit test file** at all:
@@ -100,15 +100,15 @@ Addressing these is out of scope for this issue (pure refactor) but would be the
 
 ### New module layout (implemented)
 
-|New file|Concern|Actual lines|
-|-|-|-|
-|`src/active-agent.ts`|Agent name extraction from session metadata and system prompt|58|
-|`src/external-directory.ts`|Path normalization, outside-cwd detection, `PATH_BEARING_TOOLS`, external-directory format helpers|113|
-|`src/permission-prompts.ts`|All `format*` helpers for ask/deny/user-denied prompts|131|
-|`src/tool-input-preview.ts`|Text utilities and tool-input formatting for prompts and logs|206|
-|`src/subagent-context.ts`|`isSubagentExecutionContext`, `normalizeFilesystemPath`|52|
-|`src/forwarded-permissions/io.ts`|Atomic JSON write, request/response read, directory ensure/cleanup, error helpers, logger setter|328|
-|`src/forwarded-permissions/polling.ts`|`waitForForwardedPermissionApproval`, `processForwardedPermissionRequests`, `confirmPermission`, `getSessionId`, `getContextSystemPrompt`, `formatForwardedPermissionPrompt`, `PermissionForwardingDeps`|334|
+| New file                               | Concern                                                                                                                                                                                                  | Actual lines |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| `src/active-agent.ts`                  | Agent name extraction from session metadata and system prompt                                                                                                                                            | 58           |
+| `src/external-directory.ts`            | Path normalization, outside-cwd detection, `PATH_BEARING_TOOLS`, external-directory format helpers                                                                                                       | 113          |
+| `src/permission-prompts.ts`            | All `format*` helpers for ask/deny/user-denied prompts                                                                                                                                                   | 131          |
+| `src/tool-input-preview.ts`            | Text utilities and tool-input formatting for prompts and logs                                                                                                                                            | 206          |
+| `src/subagent-context.ts`              | `isSubagentExecutionContext`, `normalizeFilesystemPath`                                                                                                                                                  | 52           |
+| `src/forwarded-permissions/io.ts`      | Atomic JSON write, request/response read, directory ensure/cleanup, error helpers, logger setter                                                                                                         | 328          |
+| `src/forwarded-permissions/polling.ts` | `waitForForwardedPermissionApproval`, `processForwardedPermissionRequests`, `confirmPermission`, `getSessionId`, `getContextSystemPrompt`, `formatForwardedPermissionPrompt`, `PermissionForwardingDeps` | 334          |
 
 `src/index.ts` retains (~970 lines):
 
@@ -202,21 +202,21 @@ Constants like `ACTIVE_AGENT_TAG_REGEX`, `PATH_BEARING_TOOLS`, and length limits
 
 ### Added
 
-|File|Content|
-|-|-|
-|`src/active-agent.ts`|`ACTIVE_AGENT_TAG_REGEX`, `normalizeAgentName`, `getActiveAgentName`, `getActiveAgentNameFromSystemPrompt`|
-|`src/external-directory.ts`|`PATH_BEARING_TOOLS`, `normalizePathForComparison`, `isPathWithinDirectory`, `getPathBearingToolPath`, `isPathOutsideWorkingDirectory`, `formatExternalDirectoryHardStopHint`, `formatExternalDirectoryAskPrompt`, `formatExternalDirectoryDenyReason`, `formatExternalDirectoryUserDeniedReason`|
-|`src/permission-prompts.ts`|`formatMissingToolNameReason`, `formatUnknownToolReason`, `formatPermissionHardStopHint`, `formatDenyReason`, `formatUserDeniedReason`, `formatAskPrompt`, `formatSkillAskPrompt`, `formatSkillPathAskPrompt`, `formatSkillPathDenyReason`|
-|`src/tool-input-preview.ts`|`truncateInlineText`, `sanitizeInlineText`, `countTextLines`, `formatCount`, `getPromptPath`, `formatEditInputForPrompt`, `formatWriteInputForPrompt`, `formatReadInputForPrompt`, `formatSearchInputForPrompt`, `serializeToolInputPreview`, `formatJsonInputForPrompt`, `formatToolInputForPrompt`, `formatGenericToolInputForLog`, `getToolInputPreviewForLog`, `getPermissionLogContext`, length constants|
-|`src/subagent-context.ts`|`normalizeFilesystemPath`, `isSubagentExecutionContext`|
-|`src/forwarded-permissions/io.ts`|`sleep`, `formatUnknownErrorMessage`, `isErrnoCode`, `logPermissionForwardingWarning`, `logPermissionForwardingError`, `ensureDirectoryExists`, `getPermissionForwardingLocationForSession`, `ensurePermissionForwardingLocation`, `getExistingPermissionForwardingLocation`, `tryRemoveDirectoryIfEmpty`, `cleanupPermissionForwardingLocationIfEmpty`, `safeDeleteFile`, `writeJsonFileAtomic`, `readForwardedPermissionRequest`, `readForwardedPermissionResponse`, `listRequestFiles`, `setForwardedPermissionLogger`, `ForwardedPermissionLogger`|
-|`src/forwarded-permissions/polling.ts`|`getSessionId`, `getContextSystemPrompt`, `formatForwardedPermissionPrompt`, `waitForForwardedPermissionApproval`, `processForwardedPermissionRequests`, `confirmPermission`, `PermissionForwardingDeps`|
+| File                                   | Content                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/active-agent.ts`                  | `ACTIVE_AGENT_TAG_REGEX`, `normalizeAgentName`, `getActiveAgentName`, `getActiveAgentNameFromSystemPrompt`                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `src/external-directory.ts`            | `PATH_BEARING_TOOLS`, `normalizePathForComparison`, `isPathWithinDirectory`, `getPathBearingToolPath`, `isPathOutsideWorkingDirectory`, `formatExternalDirectoryHardStopHint`, `formatExternalDirectoryAskPrompt`, `formatExternalDirectoryDenyReason`, `formatExternalDirectoryUserDeniedReason`                                                                                                                                                                                                                                                      |
+| `src/permission-prompts.ts`            | `formatMissingToolNameReason`, `formatUnknownToolReason`, `formatPermissionHardStopHint`, `formatDenyReason`, `formatUserDeniedReason`, `formatAskPrompt`, `formatSkillAskPrompt`, `formatSkillPathAskPrompt`, `formatSkillPathDenyReason`                                                                                                                                                                                                                                                                                                             |
+| `src/tool-input-preview.ts`            | `truncateInlineText`, `sanitizeInlineText`, `countTextLines`, `formatCount`, `getPromptPath`, `formatEditInputForPrompt`, `formatWriteInputForPrompt`, `formatReadInputForPrompt`, `formatSearchInputForPrompt`, `serializeToolInputPreview`, `formatJsonInputForPrompt`, `formatToolInputForPrompt`, `formatGenericToolInputForLog`, `getToolInputPreviewForLog`, `getPermissionLogContext`, length constants                                                                                                                                         |
+| `src/subagent-context.ts`              | `normalizeFilesystemPath`, `isSubagentExecutionContext`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `src/forwarded-permissions/io.ts`      | `sleep`, `formatUnknownErrorMessage`, `isErrnoCode`, `logPermissionForwardingWarning`, `logPermissionForwardingError`, `ensureDirectoryExists`, `getPermissionForwardingLocationForSession`, `ensurePermissionForwardingLocation`, `getExistingPermissionForwardingLocation`, `tryRemoveDirectoryIfEmpty`, `cleanupPermissionForwardingLocationIfEmpty`, `safeDeleteFile`, `writeJsonFileAtomic`, `readForwardedPermissionRequest`, `readForwardedPermissionResponse`, `listRequestFiles`, `setForwardedPermissionLogger`, `ForwardedPermissionLogger` |
+| `src/forwarded-permissions/polling.ts` | `getSessionId`, `getContextSystemPrompt`, `formatForwardedPermissionPrompt`, `waitForForwardedPermissionApproval`, `processForwardedPermissionRequests`, `confirmPermission`, `PermissionForwardingDeps`                                                                                                                                                                                                                                                                                                                                               |
 
 ### Changed
 
-|File|Change|
-|-|-|
-|`src/index.ts`|Removed extracted functions/constants; added imports from new modules; reduced from ~1,973 to ~970 lines|
+| File           | Change                                                                                                   |
+| -------------- | -------------------------------------------------------------------------------------------------------- |
+| `src/index.ts` | Removed extracted functions/constants; added imports from new modules; reduced from ~1,973 to ~970 lines |
 
 ### Unchanged
 
@@ -267,45 +267,45 @@ Every test file should use `describe()` blocks to group tests by exported functi
    Commit: `test: add unit tests for wildcard-matcher (#21)`
 
 2. **`tests/common.test.ts`** — test `toRecord`, `getNonEmptyString`, `isPermissionState`, `extractFrontmatter`, `parseSimpleYamlMap`.
-    No collaborators to mock (pure functions).
-    Cover: non-object inputs to `toRecord`, whitespace-only strings, all three permission states, malformed frontmatter delimiters, empty YAML map, multi-line values.
-    Commit: `test: add unit tests for common (#21)`
+   No collaborators to mock (pure functions).
+   Cover: non-object inputs to `toRecord`, whitespace-only strings, all three permission states, malformed frontmatter delimiters, empty YAML map, multi-line values.
+   Commit: `test: add unit tests for common (#21)`
 
 3. **`tests/bash-filter.test.ts`** — test `BashFilter.check`.
-    Mock: `vi.mock("./wildcard-matcher.js")` to verify `BashFilter` delegates pattern matching to the wildcard-matcher and applies the default fallback correctly.
-    Cover: exact match, glob patterns, last-match-wins, default fallback for unmatched commands, empty command, whitespace normalization.
-    Commit: `test: add unit tests for bash-filter (#21)`
+   Mock: `vi.mock("./wildcard-matcher.js")` to verify `BashFilter` delegates pattern matching to the wildcard-matcher and applies the default fallback correctly.
+   Cover: exact match, glob patterns, last-match-wins, default fallback for unmatched commands, empty command, whitespace normalization.
+   Commit: `test: add unit tests for bash-filter (#21)`
 
 4. **`tests/yolo-mode.test.ts`** — test `shouldAutoApprovePermissionState`, `canResolveAskPermissionRequest`.
-    No collaborators to mock (pure functions taking config/flags).
-    Cover: yolo on/off × ask/allow/deny, subagent with no UI and yolo off, subagent with no UI and yolo on.
-    Commit: `test: add unit tests for yolo-mode (#21)`
+   No collaborators to mock (pure functions taking config/flags).
+   Cover: yolo on/off × ask/allow/deny, subagent with no UI and yolo off, subagent with no UI and yolo on.
+   Commit: `test: add unit tests for yolo-mode (#21)`
 
 5. **`tests/tool-input-preview.test.ts`** — test all exported formatters and `getPermissionLogContext`.
-    Mock: `vi.mock("./logging.js")` so `safeJsonStringify` returns controlled output — verifies the module delegates serialization to its collaborator and handles the result.
-    Cover: truncation at exact boundary, multi-line content, empty input, edit with multiple replacements, path-bearing vs non-path-bearing tools in `getPermissionLogContext`.
-    Commit: `test: add unit tests for tool-input-preview (#21)`
+   Mock: `vi.mock("./logging.js")` so `safeJsonStringify` returns controlled output — verifies the module delegates serialization to its collaborator and handles the result.
+   Cover: truncation at exact boundary, multi-line content, empty input, edit with multiple replacements, path-bearing vs non-path-bearing tools in `getPermissionLogContext`.
+   Commit: `test: add unit tests for tool-input-preview (#21)`
 
 6. **`tests/external-directory.test.ts`** — test `normalizePathForComparison`, `isPathWithinDirectory`, `isPathOutsideWorkingDirectory`, `getPathBearingToolPath`, and format helpers.
-    Mock: `vi.mock("node:os", () => ({ homedir: vi.fn(() => "/mock/home") }))` so tilde-expansion tests are deterministic and platform-independent.
-    Cover: tilde expansion, relative paths, path-bearing vs non-path-bearing tools, empty strings, quoted paths, `@`-prefixed paths, format helpers with/without agent name.
-    Commit: `test: add unit tests for external-directory (#21)`
+   Mock: `vi.mock("node:os", () => ({ homedir: vi.fn(() => "/mock/home") }))` so tilde-expansion tests are deterministic and platform-independent.
+   Cover: tilde expansion, relative paths, path-bearing vs non-path-bearing tools, empty strings, quoted paths, `@`-prefixed paths, format helpers with/without agent name.
+   Commit: `test: add unit tests for external-directory (#21)`
 
 7. **`tests/permission-prompts.test.ts`** — test all `format*` exported functions.
-    Mock: `vi.mock("./tool-input-preview.js")` so `formatToolInputForPrompt` returns controlled strings — verifies `formatAskPrompt` calls the collaborator with the right tool name and input and incorporates the preview into the prompt string.
-    Cover: with/without agent name, MCP target, bash command with/without matched pattern, denial reason, skill path deny/ask.
-    Commit: `test: add unit tests for permission-prompts (#21)`
+   Mock: `vi.mock("./tool-input-preview.js")` so `formatToolInputForPrompt` returns controlled strings — verifies `formatAskPrompt` calls the collaborator with the right tool name and input and incorporates the preview into the prompt string.
+   Cover: with/without agent name, MCP target, bash command with/without matched pattern, denial reason, skill path deny/ask.
+   Commit: `test: add unit tests for permission-prompts (#21)`
 
 8. **`tests/active-agent.test.ts`** — test `normalizeAgentName`, `getActiveAgentName`, `getActiveAgentNameFromSystemPrompt`.
-    Mock `ExtensionContext` as a plain object: `{ sessionManager: { getEntries: vi.fn(() => [...]) } }`.
-    Cover: whitespace-only name, null, tag variations in system prompt, missing tag, session entries with `active_agent` custom type, last-entry-wins when multiple entries exist, entry with `name: null` resets.
-    Commit: `test: add unit tests for active-agent (#21)`
+   Mock `ExtensionContext` as a plain object: `{ sessionManager: { getEntries: vi.fn(() => [...]) } }`.
+   Cover: whitespace-only name, null, tag variations in system prompt, missing tag, session entries with `active_agent` custom type, last-entry-wins when multiple entries exist, entry with `name: null` resets.
+   Commit: `test: add unit tests for active-agent (#21)`
 
 9. **`tests/subagent-context.test.ts`** — test `isSubagentExecutionContext`, `normalizeFilesystemPath`.
-    Mock `ExtensionContext` as a plain object: `{ sessionManager: { getSessionDir: vi.fn() } }`.
-    Use `vi.stubEnv()` / `vi.unstubAllEnvs()` to control `SUBAGENT_ENV_HINT_KEYS` without leaking across tests.
-    Cover: env variable detection (each of the 3 hint keys), session dir within/outside subagent root, missing session dir, empty env values.
-    Commit: `test: add unit tests for subagent-context (#21)`
+   Mock `ExtensionContext` as a plain object: `{ sessionManager: { getSessionDir: vi.fn() } }`.
+   Use `vi.stubEnv()` / `vi.unstubAllEnvs()` to control `SUBAGENT_ENV_HINT_KEYS` without leaking across tests.
+   Cover: env variable detection (each of the 3 hint keys), session dir within/outside subagent root, missing session dir, empty env values.
+   Commit: `test: add unit tests for subagent-context (#21)`
 
 10. **`tests/tool-registry.test.ts`** — test `checkRequestedToolRegistration`, `getToolNameFromValue`.
     Mock: `vi.mock("./common.js")` to control `getNonEmptyString` / `toRecord` return values — verifies the registry delegates input parsing to its collaborators.
@@ -324,15 +324,15 @@ Every test file should use `describe()` blocks to group tests by exported functi
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|-|-|
-|Could this silently weaken a permission?|No — pure refactor moves functions without changing logic. Every step verifies `npm test` passes, and the test suite covers tool/bash/mcp/skill/special/external-directory permission decisions.|
-|Circular dependency between new modules|Dependency flows one way (index → modules → shared types). No module imports from `index.ts`. `tool-input-preview.ts` is imported by `permission-prompts.ts` only.|
-|Module-scope caching of `getAgentDir()`|Extracted modules receive directory paths as parameters. `getAgentDir()` is called only in `index.ts` closures at invocation time, matching the existing pattern and the AGENTS.md rule. Note: `index.ts` itself still caches `PI_AGENT_DIR` at module scope — this is a pre-existing violation, not introduced by this change.|
-|Import path breaks in tests|Only two test files import from `index.ts` (`tests/permission-system.test.ts`, `tests/session-start.test.ts`), both importing only the default export `piPermissionSystemExtension`, which remains in `index.ts`.|
-|Forwarded-permission closures depend on logger state|`forwarded-permissions/io.ts` uses a setter-injected logger (`setForwardedPermissionLogger`). The setter must be called before any IO function that logs. This is wired up in the factory before `refreshExtensionConfig()`.|
-|Mocked unit tests could drift from real module contracts|Unit tests verify each module's contract with its collaborators (correct arguments passed, return values used). Integration tests in `permission-system.test.ts` continue to verify end-to-end wiring with real collaborators. Both must pass — mocks catch contract violations early, integration tests catch wiring mistakes.|
-|Over-mocking hides real bugs|Mock only direct collaborators (one level deep). Never mock the module under test. If a test needs to mock more than 2–3 collaborators, that is a signal the module has too many responsibilities and should be split further.|
+| Risk                                                     | Mitigation                                                                                                                                                                                                                                                                                                                      |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Could this silently weaken a permission?                 | No — pure refactor moves functions without changing logic. Every step verifies `npm test` passes, and the test suite covers tool/bash/mcp/skill/special/external-directory permission decisions.                                                                                                                                |
+| Circular dependency between new modules                  | Dependency flows one way (index → modules → shared types). No module imports from `index.ts`. `tool-input-preview.ts` is imported by `permission-prompts.ts` only.                                                                                                                                                              |
+| Module-scope caching of `getAgentDir()`                  | Extracted modules receive directory paths as parameters. `getAgentDir()` is called only in `index.ts` closures at invocation time, matching the existing pattern and the AGENTS.md rule. Note: `index.ts` itself still caches `PI_AGENT_DIR` at module scope — this is a pre-existing violation, not introduced by this change. |
+| Import path breaks in tests                              | Only two test files import from `index.ts` (`tests/permission-system.test.ts`, `tests/session-start.test.ts`), both importing only the default export `piPermissionSystemExtension`, which remains in `index.ts`.                                                                                                               |
+| Forwarded-permission closures depend on logger state     | `forwarded-permissions/io.ts` uses a setter-injected logger (`setForwardedPermissionLogger`). The setter must be called before any IO function that logs. This is wired up in the factory before `refreshExtensionConfig()`.                                                                                                    |
+| Mocked unit tests could drift from real module contracts | Unit tests verify each module's contract with its collaborators (correct arguments passed, return values used). Integration tests in `permission-system.test.ts` continue to verify end-to-end wiring with real collaborators. Both must pass — mocks catch contract violations early, integration tests catch wiring mistakes. |
+| Over-mocking hides real bugs                             | Mock only direct collaborators (one level deep). Never mock the module under test. If a test needs to mock more than 2–3 collaborators, that is a signal the module has too many responsibilities and should be split further.                                                                                                  |
 
 ## Open Questions
 

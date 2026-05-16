@@ -42,11 +42,11 @@ This is a pure internal refactoring of the handler dependency shape.
 
 The three logging fields in `HandlerDeps` are consumed by:
 
-|Field|Handlers|
-|---|---|
-|`writeDebugLog`|`lifecycle.ts` (2 sites)|
-|`writeReviewLog`|`tool-call.ts` (4 sites), `input.ts` (1 site), `gates/runner.ts` (2 sites)|
-|`notifyWarning`|`lifecycle.ts` (1 site)|
+| Field            | Handlers                                                                   |
+| ---------------- | -------------------------------------------------------------------------- |
+| `writeDebugLog`  | `lifecycle.ts` (2 sites)                                                   |
+| `writeReviewLog` | `tool-call.ts` (4 sites), `input.ts` (1 site), `gates/runner.ts` (2 sites) |
+| `notifyWarning`  | `lifecycle.ts` (1 site)                                                    |
 
 The composition root (`src/index.ts`) wires all three from `runtime.writeDebugLog`/`writeReviewLog` and `runtime.runtimeContext?.ui.notify`.
 
@@ -96,12 +96,12 @@ export interface HandlerDeps {
 
 ### Handler migration (mechanical)
 
-|Before|After|
-|---|---|
-|`deps.writeDebugLog(event, details)`|`deps.logger.debug(event, details)`|
-|`deps.writeReviewLog(event, details)`|`deps.logger.review(event, details)`|
-|`deps.notifyWarning(message)`|`deps.logger.warn(message)`|
-|`const { writeReviewLog } = deps;`|`const { review: writeReviewLog } = deps.logger;`|
+| Before                                | After                                             |
+| ------------------------------------- | ------------------------------------------------- |
+| `deps.writeDebugLog(event, details)`  | `deps.logger.debug(event, details)`               |
+| `deps.writeReviewLog(event, details)` | `deps.logger.review(event, details)`              |
+| `deps.notifyWarning(message)`         | `deps.logger.warn(message)`                       |
+| `const { writeReviewLog } = deps;`    | `const { review: writeReviewLog } = deps.logger;` |
 
 The tool-call handler destructures `writeReviewLog` from `deps` and passes it into `GateRunnerDeps`.
 After this change the destructuring reads from `deps.logger` instead — `GateRunnerDeps` is unaware of the change.
@@ -133,38 +133,38 @@ Test assertions change from `deps.writeDebugLog` to `deps.logger.debug`, etc.
 
 ### New files
 
-|File|Purpose|
-|---|---|
-|`src/session-logger.ts`|`SessionLogger` interface + `createSessionLogger()` factory|
-|`tests/session-logger.test.ts`|Unit tests for `createSessionLogger()`|
+| File                           | Purpose                                                     |
+| ------------------------------ | ----------------------------------------------------------- |
+| `src/session-logger.ts`        | `SessionLogger` interface + `createSessionLogger()` factory |
+| `tests/session-logger.test.ts` | Unit tests for `createSessionLogger()`                      |
 
 ### Changed files — source
 
-|File|Change|
-|---|---|
-|`src/handlers/types.ts`|Replace 3 fields with `readonly logger: SessionLogger`; add import|
-|`src/handlers/lifecycle.ts`|`deps.writeDebugLog` → `deps.logger.debug`; `deps.notifyWarning` → `deps.logger.warn`|
-|`src/handlers/tool-call.ts`|`const { writeReviewLog } = deps` → `const { review: writeReviewLog } = deps.logger`|
-|`src/handlers/input.ts`|`deps.writeReviewLog` → `deps.logger.review`|
-|`src/handlers/gates/runner.ts`|`deps.writeReviewLog` → `deps.logger.review` (2 sites: session-approved log + `writeLog` param)|
-|`src/index.ts`|Replace 3 inline closures with `logger: createSessionLogger(runtime)`; add import|
+| File                           | Change                                                                                          |
+| ------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `src/handlers/types.ts`        | Replace 3 fields with `readonly logger: SessionLogger`; add import                              |
+| `src/handlers/lifecycle.ts`    | `deps.writeDebugLog` → `deps.logger.debug`; `deps.notifyWarning` → `deps.logger.warn`           |
+| `src/handlers/tool-call.ts`    | `const { writeReviewLog } = deps` → `const { review: writeReviewLog } = deps.logger`            |
+| `src/handlers/input.ts`        | `deps.writeReviewLog` → `deps.logger.review`                                                    |
+| `src/handlers/gates/runner.ts` | `deps.writeReviewLog` → `deps.logger.review` (2 sites: session-approved log + `writeLog` param) |
+| `src/index.ts`                 | Replace 3 inline closures with `logger: createSessionLogger(runtime)`; add import               |
 
 ### Changed files — tests
 
-|File|Change|
-|---|---|
-|`tests/handlers/lifecycle.test.ts`|`makeDeps` factory + assertions|
-|`tests/handlers/tool-call.test.ts`|`makeDeps` factory + assertions|
-|`tests/handlers/tool-call-events.test.ts`|`makeDeps` factory|
-|`tests/handlers/input.test.ts`|`makeDeps` factory + assertions|
-|`tests/handlers/input-events.test.ts`|`makeDeps` factory|
-|`tests/handlers/before-agent-start.test.ts`|`makeDeps` factory (no logging assertions to update)|
+| File                                        | Change                                               |
+| ------------------------------------------- | ---------------------------------------------------- |
+| `tests/handlers/lifecycle.test.ts`          | `makeDeps` factory + assertions                      |
+| `tests/handlers/tool-call.test.ts`          | `makeDeps` factory + assertions                      |
+| `tests/handlers/tool-call-events.test.ts`   | `makeDeps` factory                                   |
+| `tests/handlers/input.test.ts`              | `makeDeps` factory + assertions                      |
+| `tests/handlers/input-events.test.ts`       | `makeDeps` factory                                   |
+| `tests/handlers/before-agent-start.test.ts` | `makeDeps` factory (no logging assertions to update) |
 
 ### Changed files — docs
 
-|File|Change|
-|---|---|
-|`docs/architecture/architecture.md`|Update `types.ts` line in module tree to mention `SessionLogger`|
+| File                                | Change                                                           |
+| ----------------------------------- | ---------------------------------------------------------------- |
+| `docs/architecture/architecture.md` | Update `types.ts` line in module tree to mention `SessionLogger` |
 
 ### Unchanged
 
@@ -210,12 +210,12 @@ Test assertions change from `deps.writeDebugLog` to `deps.logger.debug`, etc.
 
 ## Risks and mitigations
 
-|Risk|Mitigation|
-|---|---|
-|Could silently weaken a permission?|No. Same `checkPermission` calls, same parameters, same gate evaluation order. Only logging/notification wiring changes. Integration test (`permission-system.test.ts`) is unaffected.|
-|Large blast radius across test files|All 6 handler test file changes are mechanical find-and-replace. Each `makeDeps()` factory is self-contained. Steps 2 and 3 are separated so source changes compile before test changes land.|
-|`GateRunnerDeps.writeReviewLog` type mismatch after rename|`GateRunnerDeps` is unchanged. The tool-call handler destructures `const { review: writeReviewLog } = deps.logger` and passes the function to `GateRunnerDeps` — no type-level change at the boundary.|
-|`createSessionLogger` captures `runtime` by reference — stale state?|Same pattern as the existing inline closures in `index.ts`. `warn` reads `runtime.runtimeContext` at call time (not capture time), matching current behavior.|
+| Risk                                                                 | Mitigation                                                                                                                                                                                             |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Could silently weaken a permission?                                  | No. Same `checkPermission` calls, same parameters, same gate evaluation order. Only logging/notification wiring changes. Integration test (`permission-system.test.ts`) is unaffected.                 |
+| Large blast radius across test files                                 | All 6 handler test file changes are mechanical find-and-replace. Each `makeDeps()` factory is self-contained. Steps 2 and 3 are separated so source changes compile before test changes land.          |
+| `GateRunnerDeps.writeReviewLog` type mismatch after rename           | `GateRunnerDeps` is unchanged. The tool-call handler destructures `const { review: writeReviewLog } = deps.logger` and passes the function to `GateRunnerDeps` — no type-level change at the boundary. |
+| `createSessionLogger` captures `runtime` by reference — stale state? | Same pattern as the existing inline closures in `index.ts`. `warn` reads `runtime.runtimeContext` at call time (not capture time), matching current behavior.                                          |
 
 ## Open questions
 

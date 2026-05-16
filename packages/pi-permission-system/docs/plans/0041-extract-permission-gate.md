@@ -29,13 +29,13 @@ This duplication inflates the tool_call handler by ~170 lines and makes every fu
 
 The repeated pattern lives inside two event handlers registered by `piPermissionSystemExtension()` in `src/index.ts`:
 
-| Handler | Surface | Approx lines |
-| ---- | ---- | ---- |
-| `input` (skill) | skill input gate | 676–717 |
-| `tool_call` | skill-read path | 762–822 |
-| `tool_call` | external-directory (file tools) | 843–894 |
-| `tool_call` | external-directory (bash) | 921–978 |
-| `tool_call` | normal tool permission | 1000–1053 |
+| Handler         | Surface                         | Approx lines |
+| --------------- | ------------------------------- | ------------ |
+| `input` (skill) | skill input gate                | 676–717      |
+| `tool_call`     | skill-read path                 | 762–822      |
+| `tool_call`     | external-directory (file tools) | 843–894      |
+| `tool_call`     | external-directory (bash)       | 921–978      |
+| `tool_call`     | normal tool permission          | 1000–1053    |
 
 Key dependencies consumed inside the branches:
 
@@ -171,12 +171,12 @@ That notification stays at the call site (before calling the gate or after inspe
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-| ---- | ---------- |
-| Subtle semantic drift during extraction (e.g. missing a log field) | Each call site is converted one at a time with the full test suite run after each batch. The gate's own unit tests cover every branch. |
-| Could this silently weaken a permission? | No — the gate is a strict refactor. The deny and ask branches produce identical block results. The allow path is unchanged. No new `"allow"` path is introduced. |
-| Skill-input handler returns `{ action: "handled" }` not `{ block, reason }` | The gate returns its own `PermissionGateResult`; each call site maps it. The skill-input site discards `reason` and returns `{ action: "handled" }` as before. |
-| `promptForApproval` closure captures stale variables | Each closure is constructed fresh inside the event handler per invocation — same lifetime as the current inline code. |
+| Risk                                                                        | Mitigation                                                                                                                                                       |
+| --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Subtle semantic drift during extraction (e.g. missing a log field)          | Each call site is converted one at a time with the full test suite run after each batch. The gate's own unit tests cover every branch.                           |
+| Could this silently weaken a permission?                                    | No — the gate is a strict refactor. The deny and ask branches produce identical block results. The allow path is unchanged. No new `"allow"` path is introduced. |
+| Skill-input handler returns `{ action: "handled" }` not `{ block, reason }` | The gate returns its own `PermissionGateResult`; each call site maps it. The skill-input site discards `reason` and returns `{ action: "handled" }` as before.   |
+| `promptForApproval` closure captures stale variables                        | Each closure is constructed fresh inside the event handler per invocation — same lifetime as the current inline code.                                            |
 
 ## Open Questions
 

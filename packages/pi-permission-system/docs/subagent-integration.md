@@ -32,11 +32,11 @@ These compose correctly with the permission system because the two operate at di
 
 ### Known Subagent Extensions
 
-|Extension|Mechanism|Frontmatter key|
-|---|---|---|
-|[nicobailon/pi-subagents](https://github.com/nicobailon/pi-subagents)|`--tools` CLI allowlist passed to subprocess|`tools:` (CSV allowlist)|
-|[tintinweb/pi-subagents](https://github.com/tintinweb/pi-subagents)|`session.setActiveToolsByName()` in-process filter|`disallowed_tools:` (CSV denylist)|
-|[HazAT/pi-interactive-subagents](https://github.com/HazAT/pi-interactive-subagents)|`PI_DENY_TOOLS` env var + `--tools` CLI allowlist|`deny-tools:` (CSV denylist), `spawning:` (bool)|
+| Extension                                                                           | Mechanism                                          | Frontmatter key                                  |
+| ----------------------------------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------ |
+| [nicobailon/pi-subagents](https://github.com/nicobailon/pi-subagents)               | `--tools` CLI allowlist passed to subprocess       | `tools:` (CSV allowlist)                         |
+| [tintinweb/pi-subagents](https://github.com/tintinweb/pi-subagents)                 | `session.setActiveToolsByName()` in-process filter | `disallowed_tools:` (CSV denylist)               |
+| [HazAT/pi-interactive-subagents](https://github.com/HazAT/pi-interactive-subagents) | `PI_DENY_TOOLS` env var + `--tools` CLI allowlist  | `deny-tools:` (CSV denylist), `spawning:` (bool) |
 
 ### Interaction Rules
 

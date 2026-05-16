@@ -29,13 +29,13 @@ Issue #109 already extracted `normalizePathForComparison` and `isPathWithinDirec
 The file touches the `external_directory` permission surface.
 Current consumers of `src/external-directory.ts`:
 
-|Consumer|Imports used|
-|---|---|
-|`src/runtime.ts`|`discoverGlobalNodeModulesRoot`|
-|`src/handlers/gates/external-directory.ts`|`formatExternalDirectoryAskPrompt`, `formatExternalDirectoryDenyReason`, `formatExternalDirectoryUserDeniedReason`, `getPathBearingToolPath`, `isPathOutsideWorkingDirectory`, `isPiInfrastructureRead` (note: `normalizePathForComparison` already imports from `path-utils`)|
-|`src/handlers/gates/bash-external-directory.ts`|`extractExternalPathsFromBashCommand`, `formatBashExternalDirectoryAskPrompt`, `formatBashExternalDirectoryDenyReason`, `formatExternalDirectoryHardStopHint`|
-|`src/handlers/gates/tool.ts`|`PATH_BEARING_TOOLS`|
-|`src/handlers/gates/skill-read.ts`|`normalizePathForComparison` (already imports from `path-utils`)|
+| Consumer                                        | Imports used                                                                                                                                                                                                                                                                   |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/runtime.ts`                                | `discoverGlobalNodeModulesRoot`                                                                                                                                                                                                                                                |
+| `src/handlers/gates/external-directory.ts`      | `formatExternalDirectoryAskPrompt`, `formatExternalDirectoryDenyReason`, `formatExternalDirectoryUserDeniedReason`, `getPathBearingToolPath`, `isPathOutsideWorkingDirectory`, `isPiInfrastructureRead` (note: `normalizePathForComparison` already imports from `path-utils`) |
+| `src/handlers/gates/bash-external-directory.ts` | `extractExternalPathsFromBashCommand`, `formatBashExternalDirectoryAskPrompt`, `formatBashExternalDirectoryDenyReason`, `formatExternalDirectoryHardStopHint`                                                                                                                  |
+| `src/handlers/gates/tool.ts`                    | `PATH_BEARING_TOOLS`                                                                                                                                                                                                                                                           |
+| `src/handlers/gates/skill-read.ts`              | `normalizePathForComparison` (already imports from `path-utils`)                                                                                                                                                                                                               |
 
 Test files:
 
@@ -104,50 +104,50 @@ Downstream consumers can optionally migrate to direct imports in follow-up work.
 
 ### New files
 
-|File|Contents|
-|---|---|
-|`src/node-modules-discovery.ts`|Global node_modules resolution|
-|`src/external-directory-messages.ts`|6 `format*` pure string builders|
-|`src/bash-path-extractor.ts`|Tree-sitter parser, AST walker, `extractExternalPathsFromBashCommand`|
+| File                                 | Contents                                                              |
+| ------------------------------------ | --------------------------------------------------------------------- |
+| `src/node-modules-discovery.ts`      | Global node_modules resolution                                        |
+| `src/external-directory-messages.ts` | 6 `format*` pure string builders                                      |
+| `src/bash-path-extractor.ts`         | Tree-sitter parser, AST walker, `extractExternalPathsFromBashCommand` |
 
 ### Changed files
 
-|File|Change|
-|---|---|
-|`src/path-utils.ts`|Add remaining path-classification helpers (`isPathOutsideWorkingDirectory`, `getPathBearingToolPath`, `isPiInfrastructureRead`, `isSafeSystemPath`, `SAFE_SYSTEM_PATHS`, `PATH_BEARING_TOOLS`, `READ_ONLY_PATH_BEARING_TOOLS`)|
-|`src/external-directory.ts`|Replace implementation with barrel re-exports from three new modules plus `path-utils`|
+| File                        | Change                                                                                                                                                                                                                         |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/path-utils.ts`         | Add remaining path-classification helpers (`isPathOutsideWorkingDirectory`, `getPathBearingToolPath`, `isPiInfrastructureRead`, `isSafeSystemPath`, `SAFE_SYSTEM_PATHS`, `PATH_BEARING_TOOLS`, `READ_ONLY_PATH_BEARING_TOOLS`) |
+| `src/external-directory.ts` | Replace implementation with barrel re-exports from three new modules plus `path-utils`                                                                                                                                         |
 
 ### New test files
 
-|File|Contents|
-|---|---|
-|`tests/node-modules-discovery.test.ts`|Extracted from `tests/external-directory.test.ts` — discovery tests|
-|`tests/external-directory-messages.test.ts`|Extracted from `tests/external-directory.test.ts` — message format tests|
+| File                                        | Contents                                                                 |
+| ------------------------------------------- | ------------------------------------------------------------------------ |
+| `tests/node-modules-discovery.test.ts`      | Extracted from `tests/external-directory.test.ts` — discovery tests      |
+| `tests/external-directory-messages.test.ts` | Extracted from `tests/external-directory.test.ts` — message format tests |
 
 ### Changed test files
 
-|File|Change|
-|---|---|
-|`tests/path-utils.test.ts`|Add tests for newly moved helpers (`isPathOutsideWorkingDirectory`, `getPathBearingToolPath`, `isPiInfrastructureRead`, `isSafeSystemPath`, constants)|
-|`tests/external-directory.test.ts`|Reduced to a thin smoke test verifying the barrel re-exports work, or deleted entirely if all tests migrate|
-|`tests/bash-external-directory.test.ts`|Update import from `../src/external-directory` to `../src/bash-path-extractor` (or keep barrel import)|
+| File                                    | Change                                                                                                                                                 |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `tests/path-utils.test.ts`              | Add tests for newly moved helpers (`isPathOutsideWorkingDirectory`, `getPathBearingToolPath`, `isPiInfrastructureRead`, `isSafeSystemPath`, constants) |
+| `tests/external-directory.test.ts`      | Reduced to a thin smoke test verifying the barrel re-exports work, or deleted entirely if all tests migrate                                            |
+| `tests/bash-external-directory.test.ts` | Update import from `../src/external-directory` to `../src/bash-path-extractor` (or keep barrel import)                                                 |
 
 ### No changes needed
 
-|File|Reason|
-|---|---|
-|`tests/handlers/gates/external-directory.test.ts`|Imports from gate module, not from `external-directory.ts` directly|
-|`tests/handlers/gates/bash-external-directory.test.ts`|Same — imports from gate module|
-|`src/handlers/gates/*`|All import from `../../external-directory` barrel, which continues to work|
-|`src/runtime.ts`|Imports `discoverGlobalNodeModulesRoot` from barrel|
-|`schemas/permissions.schema.json`|No schema changes|
-|`config/config.example.json`|No config changes|
+| File                                                   | Reason                                                                     |
+| ------------------------------------------------------ | -------------------------------------------------------------------------- |
+| `tests/handlers/gates/external-directory.test.ts`      | Imports from gate module, not from `external-directory.ts` directly        |
+| `tests/handlers/gates/bash-external-directory.test.ts` | Same — imports from gate module                                            |
+| `src/handlers/gates/*`                                 | All import from `../../external-directory` barrel, which continues to work |
+| `src/runtime.ts`                                       | Imports `discoverGlobalNodeModulesRoot` from barrel                        |
+| `schemas/permissions.schema.json`                      | No schema changes                                                          |
+| `config/config.example.json`                           | No config changes                                                          |
 
 ### Architecture docs
 
-|File|Action|
-|---|---|
-|`docs/architecture/target-architecture.md`|Check if it references `external-directory.ts` and update to reflect the split|
+| File                                       | Action                                                                         |
+| ------------------------------------------ | ------------------------------------------------------------------------------ |
+| `docs/architecture/target-architecture.md` | Check if it references `external-directory.ts` and update to reflect the split |
 
 ## Test Impact Analysis
 
@@ -222,12 +222,12 @@ Commit: `docs: update architecture for external-directory split (#110)`
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|---|---|
-|Could this silently weaken a permission?|No — pure extraction refactoring; no logic changes; barrel preserves all exports.|
-|Circular dependency between `bash-path-extractor` and `path-utils`|`bash-path-extractor` imports from `path-utils`; no reverse dependency. Barrel re-exports both without creating a cycle.|
-|Tree-sitter WASM loading breaks after move|`bash-path-extractor.ts` preserves the same `createRequire(import.meta.url)` pattern — `import.meta.url` resolves to the new file's location, but WASM resolution uses `require.resolve` which walks `node_modules`, so it works from any file in `src/`.|
-|Test mocks leak across modules|Each new test file has its own `vi.mock()` scope. Discovery tests mock `child_process`/`fs`; path tests mock `os`; message tests need no mocks.|
+| Risk                                                               | Mitigation                                                                                                                                                                                                                                                |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Could this silently weaken a permission?                           | No — pure extraction refactoring; no logic changes; barrel preserves all exports.                                                                                                                                                                         |
+| Circular dependency between `bash-path-extractor` and `path-utils` | `bash-path-extractor` imports from `path-utils`; no reverse dependency. Barrel re-exports both without creating a cycle.                                                                                                                                  |
+| Tree-sitter WASM loading breaks after move                         | `bash-path-extractor.ts` preserves the same `createRequire(import.meta.url)` pattern — `import.meta.url` resolves to the new file's location, but WASM resolution uses `require.resolve` which walks `node_modules`, so it works from any file in `src/`. |
+| Test mocks leak across modules                                     | Each new test file has its own `vi.mock()` scope. Discovery tests mock `child_process`/`fs`; path tests mock `os`; message tests need no mocks.                                                                                                           |
 
 ## Open Questions
 

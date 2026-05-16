@@ -64,10 +64,10 @@ Tests follow existing patterns in `tests/permission-system.test.ts`.
 
 ## Module-Level Changes
 
-|File|Change|
-|----|------|
-|`README.md`|Fix the YAML example at line ~172: remove nested `tools:` wrapper, rename `skills:` → `skill:`, fix MCP behavior note to reference `permission.mcp`|
-|`tests/permission-system.test.ts`|Add 4–5 tests near the existing frontmatter/precedence block (~line 1800)|
+| File                              | Change                                                                                                                                              |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `README.md`                       | Fix the YAML example at line ~172: remove nested `tools:` wrapper, rename `skills:` → `skill:`, fix MCP behavior note to reference `permission.mcp` |
+| `tests/permission-system.test.ts` | Add 4–5 tests near the existing frontmatter/precedence block (~line 1800)                                                                           |
 
 No schema, config, or architecture doc changes needed — this issue is docs + tests only.
 
@@ -96,11 +96,11 @@ Since all tests exercise existing runtime behavior (no code changes), steps 2–
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|----|----------|
-|README fix introduces a subtly wrong example|Compare against `config/config.example.json` and `schemas/permissions.schema.json` to verify surface names|
-|Tests pass trivially without actually exercising the code path|Each test should assert both the `state` and `source`/`matchedPattern` to confirm the right resolution path|
-|Could this silently weaken a permission?|No — no runtime changes, docs + tests only|
+| Risk                                                           | Mitigation                                                                                                  |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| README fix introduces a subtly wrong example                   | Compare against `config/config.example.json` and `schemas/permissions.schema.json` to verify surface names  |
+| Tests pass trivially without actually exercising the code path | Each test should assert both the `state` and `source`/`matchedPattern` to confirm the right resolution path |
+| Could this silently weaken a permission?                       | No — no runtime changes, docs + tests only                                                                  |
 
 ## Open Questions
 

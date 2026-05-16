@@ -39,16 +39,16 @@ All surfaces are touched indirectly: the tool gate handles `tools / bash / mcp /
 
 ### Key modules
 
-|File|Role|
-|----|-----|
-|`src/handlers/tool-call.ts`|The monolith being decomposed|
-|`src/handlers/types.ts`|`HandlerDeps` and `PromptPermissionDetails` types|
-|`src/permission-gate.ts`|`applyPermissionGate()` — the generic deny/ask/allow gate|
-|`src/permission-events.ts`|`emitDecisionEvent()` — the broadcast event emitter|
-|`src/session-rules.ts`|`deriveApprovalPattern()` — session-rule recording|
-|`src/external-directory.ts`|Path-bearing-tool helpers, Pi infrastructure read detection|
-|`src/skill-prompt-sanitizer.ts`|`findSkillPathMatch()` — skill-file matching|
-|`tests/handlers/tool-call.test.ts`|812-line test file exercising the full handler|
+| File                               | Role                                                        |
+| ---------------------------------- | ----------------------------------------------------------- |
+| `src/handlers/tool-call.ts`        | The monolith being decomposed                               |
+| `src/handlers/types.ts`            | `HandlerDeps` and `PromptPermissionDetails` types           |
+| `src/permission-gate.ts`           | `applyPermissionGate()` — the generic deny/ask/allow gate   |
+| `src/permission-events.ts`         | `emitDecisionEvent()` — the broadcast event emitter         |
+| `src/session-rules.ts`             | `deriveApprovalPattern()` — session-rule recording          |
+| `src/external-directory.ts`        | Path-bearing-tool helpers, Pi infrastructure read detection |
+| `src/skill-prompt-sanitizer.ts`    | `findSkillPathMatch()` — skill-file matching                |
+| `tests/handlers/tool-call.test.ts` | 812-line test file exercising the full handler              |
 
 ### Current structure
 
@@ -94,14 +94,14 @@ interface ToolCallContext {
 
 New files under `src/handlers/gates/`:
 
-|File|Exports|
-|----|-------|
-|`types.ts`|`GateOutcome`, `ToolCallContext`|
-|`skill-read.ts`|`evaluateSkillReadGate(ctx, tcc, deps) → Promise<GateOutcome \| null>`|
-|`external-directory.ts`|`evaluateExternalDirectoryGate(ctx, tcc, deps) → Promise<GateOutcome \| null>`|
-|`bash-external-directory.ts`|`evaluateBashExternalDirectoryGate(ctx, tcc, deps) → Promise<GateOutcome \| null>`|
-|`tool.ts`|`evaluateToolGate(ctx, tcc, deps) → Promise<GateOutcome>`|
-|`index.ts`|Re-exports|
+| File                         | Exports                                                                            |
+| ---------------------------- | ---------------------------------------------------------------------------------- |
+| `types.ts`                   | `GateOutcome`, `ToolCallContext`                                                   |
+| `skill-read.ts`              | `evaluateSkillReadGate(ctx, tcc, deps) → Promise<GateOutcome \| null>`             |
+| `external-directory.ts`      | `evaluateExternalDirectoryGate(ctx, tcc, deps) → Promise<GateOutcome \| null>`     |
+| `bash-external-directory.ts` | `evaluateBashExternalDirectoryGate(ctx, tcc, deps) → Promise<GateOutcome \| null>` |
+| `tool.ts`                    | `evaluateToolGate(ctx, tcc, deps) → Promise<GateOutcome>`                          |
+| `index.ts`                   | Re-exports                                                                         |
 
 Gates that may not apply (skill-read, external-directory, bash-external-directory) return `null` when they are not relevant (e.g., tool is not `read`, path is not outside CWD), signaling "no opinion — continue to next gate."
 
@@ -356,13 +356,13 @@ Commit: `docs: update architecture for gate extraction (#107)`
 
 ## Risks and Mitigations
 
-|Risk|Mitigation|
-|----|----------|
-|Behavioral regression during extraction|All existing integration tests in `tool-call.test.ts` run after each step; the orchestrator's public contract is unchanged.|
-|Could this silently weaken a permission?|No — the refactor moves code without changing logic. Gate ordering is preserved. Short-circuit semantics are preserved. No new `"allow"` paths are introduced.|
-|Gate functions may need `HandlerDeps` fields that change|Gates use the same `HandlerDeps` interface; no interface changes are planned.|
-|Over-decomposition makes the call chain harder to follow|Each gate file is self-contained; the orchestrator is a linear chain. The overall structure is easier to follow than the monolith.|
-|Test mocking complexity increases|Gate unit tests construct narrow mocks for their specific gate; existing integration tests continue exercising the full pipeline.|
+| Risk                                                     | Mitigation                                                                                                                                                     |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Behavioral regression during extraction                  | All existing integration tests in `tool-call.test.ts` run after each step; the orchestrator's public contract is unchanged.                                    |
+| Could this silently weaken a permission?                 | No — the refactor moves code without changing logic. Gate ordering is preserved. Short-circuit semantics are preserved. No new `"allow"` paths are introduced. |
+| Gate functions may need `HandlerDeps` fields that change | Gates use the same `HandlerDeps` interface; no interface changes are planned.                                                                                  |
+| Over-decomposition makes the call chain harder to follow | Each gate file is self-contained; the orchestrator is a linear chain. The overall structure is easier to follow than the monolith.                             |
+| Test mocking complexity increases                        | Gate unit tests construct narrow mocks for their specific gate; existing integration tests continue exercising the full pipeline.                              |
 
 ## Open Questions
 

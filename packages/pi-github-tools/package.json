@@ -13,7 +13,7 @@
     "check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint:md": "markdownlint-cli2 --config ../../.markdownlint-cli2.yaml '*.md' 'docs/**/*.md'",
+    "lint:md": "rumdl check '*.md' 'docs/**/*.md'",
     "lint": "biome check . && pnpm run lint:md"
   },
   "keywords": [
@@ -59,6 +59,6 @@
     "typebox": "^1.1.38",
     "typescript": "catalog:",
     "vitest": "catalog:",
-    "markdownlint-cli2": "catalog:"
+    "rumdl": "catalog:"
   }
 }

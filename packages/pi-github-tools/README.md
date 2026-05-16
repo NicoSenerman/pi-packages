@@ -30,11 +30,11 @@ Add to your Pi settings (`~/.pi/agent/settings.json`):
 Wait for a GitHub Actions run matching a specific commit SHA to appear.
 Uses exponential backoff (5 s base, 30 s cap) until the run appears or the timeout expires.
 
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `workflow` | string | yes | Workflow filename without extension (e.g., `"ci"` for `ci.yml`) |
-| `expected_sha` | string | yes | Full 40-char SHA of the commit |
-| `timeout` | number | no | Seconds to wait (default: 120) |
+| Parameter      | Type   | Required | Description                                                     |
+| -------------- | ------ | -------- | --------------------------------------------------------------- |
+| `workflow`     | string | yes      | Workflow filename without extension (e.g., `"ci"` for `ci.yml`) |
+| `expected_sha` | string | yes      | Full 40-char SHA of the commit                                  |
+| `timeout`      | number | no       | Seconds to wait (default: 120)                                  |
 
 Returns `run_id`, `url`, `status`, `sha`, `title`, and job list on success.
 Returns a structured timeout message (not an error) if the run does not appear.
@@ -44,21 +44,21 @@ Returns a structured timeout message (not an error) if the run does not appear.
 Poll a GitHub Actions run by run ID until it completes or times out.
 Streams compact job-level progress lines (e.g., `[2/5] deploy — in_progress (120s)`).
 
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `workflow` | string | yes | Workflow filename without extension |
-| `run_id` | number | yes | Run ID from `ci_find` |
-| `timeout` | number | no | Seconds to wait (default: 300) |
+| Parameter  | Type   | Required | Description                         |
+| ---------- | ------ | -------- | ----------------------------------- |
+| `workflow` | string | yes      | Workflow filename without extension |
+| `run_id`   | number | yes      | Run ID from `ci_find`               |
+| `timeout`  | number | no       | Seconds to wait (default: 300)      |
 
 #### `ci_list`
 
 List recent GitHub Actions runs for a workflow.
 Useful for diagnostics without constructing `gh` invocations.
 
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `workflow` | string | yes | Workflow filename without extension |
-| `limit` | number | no | Number of runs to return (default: 5) |
+| Parameter  | Type   | Required | Description                           |
+| ---------- | ------ | -------- | ------------------------------------- |
+| `workflow` | string | yes      | Workflow filename without extension   |
+| `limit`    | number | no       | Number of runs to return (default: 5) |
 
 ### Release tools
 
@@ -67,9 +67,9 @@ Useful for diagnostics without constructing `gh` invocations.
 Find the release-please PR after a push to `main`.
 Polls until an open release-please PR appears or the timeout expires.
 
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `timeout` | number | no | Seconds to wait (default: 120) |
+| Parameter | Type   | Required | Description                    |
+| --------- | ------ | -------- | ------------------------------ |
+| `timeout` | number | no       | Seconds to wait (default: 120) |
 
 Returns PR number, title, head branch, mergeable status, and URL.
 
@@ -78,10 +78,10 @@ Returns PR number, title, head branch, mergeable status, and URL.
 Merge a release-please PR after confirming it is clean.
 Checks `MERGEABLE` + `CLEAN` status, merges, and runs `git pull --ff-only`.
 
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `pr_number` | number | yes | The PR number to merge |
-| `method` | string | no | Merge strategy: `"rebase"`, `"squash"`, or `"merge"` |
+| Parameter   | Type   | Required | Description                                          |
+| ----------- | ------ | -------- | ---------------------------------------------------- |
+| `pr_number` | number | yes      | The PR number to merge                               |
+| `method`    | string | no       | Merge strategy: `"rebase"`, `"squash"`, or `"merge"` |
 
 Merge method precedence (highest to lowest):
 
@@ -96,9 +96,9 @@ Returns merge confirmation with new HEAD SHA, or a structured error if not merge
 Wait for a release tag to appear on HEAD after merging a release-please PR.
 Polls every 10 s until a tag appears or the timeout expires.
 
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `timeout` | number | no | Seconds to wait (default: 180) |
+| Parameter | Type   | Required | Description                    |
+| --------- | ------ | -------- | ------------------------------ |
+| `timeout` | number | no       | Seconds to wait (default: 180) |
 
 Returns the tag name, version, and SHA.
 
@@ -108,11 +108,11 @@ Returns the tag name, version, and SHA.
 
 Close a GitHub issue with an optional comment.
 
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `issue_number` | number | yes | The issue number to close |
-| `comment` | string | no | Comment to add when closing |
-| `reason` | string | no | `"completed"` (default) or `"not_planned"` |
+| Parameter      | Type   | Required | Description                                |
+| -------------- | ------ | -------- | ------------------------------------------ |
+| `issue_number` | number | yes      | The issue number to close                  |
+| `comment`      | string | no       | Comment to add when closing                |
+| `reason`       | string | no       | `"completed"` (default) or `"not_planned"` |
 
 ## Usage example
 
@@ -134,15 +134,15 @@ A typical CI + release flow using these tools:
 Optional JSON config files control default behavior.
 Two locations are supported — project config takes precedence over global:
 
-| Scope | Path |
-| --- | --- |
-| Global | `~/.pi/agent/extensions/pi-github-tools/config.json` |
-| Project | `.pi/extensions/pi-github-tools/config.json` |
+| Scope   | Path                                                 |
+| ------- | ---------------------------------------------------- |
+| Global  | `~/.pi/agent/extensions/pi-github-tools/config.json` |
+| Project | `.pi/extensions/pi-github-tools/config.json`         |
 
 ### Options
 
-| Key | Type | Default | Description |
-| --- | --- | --- | --- |
+| Key                  | Type                                  | Default    | Description                                   |
+| -------------------- | ------------------------------------- | ---------- | --------------------------------------------- |
 | `defaultMergeMethod` | `"rebase"` \| `"squash"` \| `"merge"` | `"rebase"` | Default merge strategy for `release_pr_merge` |
 
 ### Example

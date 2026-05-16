@@ -180,13 +180,13 @@ In `index.ts`, after `permissionManager` is (re)created in the `session_start` h
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-| ---- | ---------- |
-| `existsSync` on every `session_start` adds latency | Five synchronous `stat` calls are negligible; no mitigation needed. |
-| Could this silently weaken a permission? | No — this change only *adds* a diagnostic log entry. Permission resolution logic is untouched. |
-| Log entry leaks sensitive path information | Paths are already visible in the debug log and are user-controlled config locations; no new exposure. |
-| `getResolvedPolicyPaths` exposes internal paths of `PermissionManager` | The paths are user-configured inputs, not secrets. Exposing them is the explicit goal. |
-| Multiple `session_start` handlers already exist in `index.ts` | The log call will be added to the existing handler, not a new duplicate. |
+| Risk                                                                   | Mitigation                                                                                            |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `existsSync` on every `session_start` adds latency                     | Five synchronous `stat` calls are negligible; no mitigation needed.                                   |
+| Could this silently weaken a permission?                               | No — this change only *adds* a diagnostic log entry. Permission resolution logic is untouched.        |
+| Log entry leaks sensitive path information                             | Paths are already visible in the debug log and are user-controlled config locations; no new exposure. |
+| `getResolvedPolicyPaths` exposes internal paths of `PermissionManager` | The paths are user-configured inputs, not secrets. Exposing them is the explicit goal.                |
+| Multiple `session_start` handlers already exist in `index.ts`          | The log call will be added to the existing handler, not a new duplicate.                              |
 
 ## Open Questions
 

@@ -105,12 +105,12 @@ The `path` surface is a standard permission map — same format as every other s
 
 Four orthogonal layers, most restrictive wins:
 
-| Layer | Question | Applies to |
-| --- | --- | --- |
-| `path` (new) | Is this specific path pattern allowed? | All tools + bash |
-| `external_directory` | Is accessing outside CWD ok? | All tools + bash |
+| Layer                    | Question                                | Applies to       |
+| ------------------------ | --------------------------------------- | ---------------- |
+| `path` (new)             | Is this specific path pattern allowed?  | All tools + bash |
+| `external_directory`     | Is accessing outside CWD ok?            | All tools + bash |
 | Per-tool patterns (#147) | Is this path ok for this specific tool? | Individual tools |
-| `bash` command patterns | Is this command ok? | Bash only |
+| `bash` command patterns  | Is this command ok?                     | Bash only        |
 
 A `path` deny cannot be overridden by a per-tool allow.
 This is consistent with AGENTS.md's "default to least privilege."
@@ -234,52 +234,52 @@ The `path` key merges like any other surface: both-objects → shallow-merge pat
 
 ### New files
 
-| File | Purpose |
-| --- | --- |
-| `src/handlers/gates/path.ts` | `describePathGate()` — sync gate for path-bearing tools against `path` rules. |
-| `src/handlers/gates/bash-path.ts` | `describeBashPathGate()` — async gate for bash against `path` rules. |
-| `tests/handlers/gates/path.test.ts` | Unit tests for the tool path gate. |
-| `tests/handlers/gates/bash-path.test.ts` | Unit tests for the bash path gate. |
+| File                                     | Purpose                                                                       |
+| ---------------------------------------- | ----------------------------------------------------------------------------- |
+| `src/handlers/gates/path.ts`             | `describePathGate()` — sync gate for path-bearing tools against `path` rules. |
+| `src/handlers/gates/bash-path.ts`        | `describeBashPathGate()` — async gate for bash against `path` rules.          |
+| `tests/handlers/gates/path.test.ts`      | Unit tests for the tool path gate.                                            |
+| `tests/handlers/gates/bash-path.test.ts` | Unit tests for the bash path gate.                                            |
 
 ### Changed files
 
-| File | Change |
-| --- | --- |
-| `src/input-normalizer.ts` | Add `"path"` to `SPECIAL_PERMISSION_KEYS`. |
-| `src/rule.ts` | Add `evaluateMostRestrictive()` helper (aggregates `evaluate()` over multiple values). |
-| `src/handlers/gates/bash-path-extractor.ts` | Add `classifyTokenAsRuleCandidate()` (broader filter) and `extractTokensForPathRules()`. |
-| `src/handlers/gates/index.ts` | Export new gate functions. |
-| `src/handlers/permission-gate-handler.ts` | Insert path gate (tools) and bash path gate into the chain. |
-| `src/permission-prompts.ts` | Add `formatPathDenyReason()`, `formatPathAskPrompt()` for the `path` surface. |
-| `src/permission-manager.ts` | Add `"path"` to `SPECIAL_PERMISSION_KEYS` (duplicated from `input-normalizer.ts` — both sets must agree). |
-| `schemas/permissions.schema.json` | Add `path` to the examples. Add `markdownDescription` noting the cross-cutting semantics. |
-| `config/config.example.json` | Add a `"path"` entry with `*.env` deny example. |
-| `README.md` | Document the `path` surface, composition model, and examples. |
-| `docs/architecture/architecture.md` | Add the `path` surface to the evaluation flow description. |
+| File                                        | Change                                                                                                    |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `src/input-normalizer.ts`                   | Add `"path"` to `SPECIAL_PERMISSION_KEYS`.                                                                |
+| `src/rule.ts`                               | Add `evaluateMostRestrictive()` helper (aggregates `evaluate()` over multiple values).                    |
+| `src/handlers/gates/bash-path-extractor.ts` | Add `classifyTokenAsRuleCandidate()` (broader filter) and `extractTokensForPathRules()`.                  |
+| `src/handlers/gates/index.ts`               | Export new gate functions.                                                                                |
+| `src/handlers/permission-gate-handler.ts`   | Insert path gate (tools) and bash path gate into the chain.                                               |
+| `src/permission-prompts.ts`                 | Add `formatPathDenyReason()`, `formatPathAskPrompt()` for the `path` surface.                             |
+| `src/permission-manager.ts`                 | Add `"path"` to `SPECIAL_PERMISSION_KEYS` (duplicated from `input-normalizer.ts` — both sets must agree). |
+| `schemas/permissions.schema.json`           | Add `path` to the examples. Add `markdownDescription` noting the cross-cutting semantics.                 |
+| `config/config.example.json`                | Add a `"path"` entry with `*.env` deny example.                                                           |
+| `README.md`                                 | Document the `path` surface, composition model, and examples.                                             |
+| `docs/architecture/architecture.md`         | Add the `path` surface to the evaluation flow description.                                                |
 
 ### Changed test files
 
-| File | Change |
-| --- | --- |
-| `tests/input-normalizer.test.ts` | Add tests: `"path"` is a special key; `normalizeInput("path", { path: ".env" })` returns `values: [".env"]`. |
-| `tests/rule.test.ts` | Add tests for `evaluateMostRestrictive()`: deny short-circuits, ask accumulates, all-allow returns null. |
-| `tests/bash-external-directory.test.ts` | Add tests for `extractTokensForPathRules()`: broader filter accepts `.env`, `src/foo.ts`, rejects flags/URLs. |
-| `tests/permission-manager-unified.test.ts` | Add integration tests: `path` surface denies `.env` for tool calls; `path` + per-tool compose (most restrictive wins); session approval on `path` surface. |
-| `tests/handlers/permission-gate-handler.test.ts` | Add tests for path gate and bash path gate integration in the chain. |
+| File                                             | Change                                                                                                                                                     |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/input-normalizer.test.ts`                 | Add tests: `"path"` is a special key; `normalizeInput("path", { path: ".env" })` returns `values: [".env"]`.                                               |
+| `tests/rule.test.ts`                             | Add tests for `evaluateMostRestrictive()`: deny short-circuits, ask accumulates, all-allow returns null.                                                   |
+| `tests/bash-external-directory.test.ts`          | Add tests for `extractTokensForPathRules()`: broader filter accepts `.env`, `src/foo.ts`, rejects flags/URLs.                                              |
+| `tests/permission-manager-unified.test.ts`       | Add integration tests: `path` surface denies `.env` for tool calls; `path` + per-tool compose (most restrictive wins); session approval on `path` surface. |
+| `tests/handlers/permission-gate-handler.test.ts` | Add tests for path gate and bash path gate integration in the chain.                                                                                       |
 
 ### Unchanged files
 
-| File | Reason |
-| --- | --- |
-| `src/rule.ts` (`evaluate`, `evaluateFirst`) | Core evaluation unchanged — `evaluateMostRestrictive` is additive, not a replacement. |
-| `src/types.ts` | `FlatPermissionConfig` type unchanged — `path` is a regular surface with a standard pattern map. |
-| `src/normalize.ts` | `normalizeFlatConfig` handles `path` naturally (standard surface). |
-| `src/permission-merge.ts` | Merge handles `path` naturally (standard surface). |
-| `src/wildcard-matcher.ts` | Wildcard matching unchanged. |
-| `src/pattern-suggest.ts` | Session patterns for `path` use existing `deriveApprovalPattern()`. The `suggestSessionPattern` function already handles non-bash, non-mcp surfaces via the `PATH_BEARING_TOOLS` branch and the default `"*"` branch. |
-| `src/handlers/gates/external-directory.ts` | External-directory gate unchanged. |
-| `src/handlers/gates/bash-external-directory.ts` | Bash external-directory gate unchanged. |
-| `src/handlers/gates/tool.ts` | Tool gate unchanged. |
+| File                                            | Reason                                                                                                                                                                                                                |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/rule.ts` (`evaluate`, `evaluateFirst`)     | Core evaluation unchanged — `evaluateMostRestrictive` is additive, not a replacement.                                                                                                                                 |
+| `src/types.ts`                                  | `FlatPermissionConfig` type unchanged — `path` is a regular surface with a standard pattern map.                                                                                                                      |
+| `src/normalize.ts`                              | `normalizeFlatConfig` handles `path` naturally (standard surface).                                                                                                                                                    |
+| `src/permission-merge.ts`                       | Merge handles `path` naturally (standard surface).                                                                                                                                                                    |
+| `src/wildcard-matcher.ts`                       | Wildcard matching unchanged.                                                                                                                                                                                          |
+| `src/pattern-suggest.ts`                        | Session patterns for `path` use existing `deriveApprovalPattern()`. The `suggestSessionPattern` function already handles non-bash, non-mcp surfaces via the `PATH_BEARING_TOOLS` branch and the default `"*"` branch. |
+| `src/handlers/gates/external-directory.ts`      | External-directory gate unchanged.                                                                                                                                                                                    |
+| `src/handlers/gates/bash-external-directory.ts` | Bash external-directory gate unchanged.                                                                                                                                                                               |
+| `src/handlers/gates/tool.ts`                    | Tool gate unchanged.                                                                                                                                                                                                  |
 
 ## Test Impact Analysis
 
@@ -512,14 +512,14 @@ A session approval on the `path` surface applies to both tool and bash access to
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-| --- | --- |
-| Could this silently weaken a permission? | No — `path` is additive. Configs without a `path` key are unaffected. The `path` gate only restricts; it cannot override a deny from another gate. |
-| `getToolPermission("path")` hides tools | No — `path` is in `SPECIAL_PERMISSION_KEYS`, not a tool name. `getToolPermission` is called for tool names, not special keys. And `evaluate("path", "*", rules)` returns the catch-all action (typically "allow"). |
-| Per-tool path allows override `path` denies | By design, they cannot. The `path` gate runs first. If it denies, the tool gate is not reached. |
-| Double prompt for external + path rules | Possible for external paths where both gates ask. User can align configs to avoid it. See Scenario C analysis. |
-| Performance: tree-sitter runs twice for bash | Parser is a lazy singleton. Parsing the same command twice is negligible (~1ms). Can be merged in a follow-up if profiling shows impact. |
-| Broader token extraction causes false-positive denies | The broader filter only accepts tokens starting with `.` or containing `/`. Non-path tokens that slip through match `"*" → allow` unless the user configured a deny pattern that happens to match. |
+| Risk                                                  | Mitigation                                                                                                                                                                                                         |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Could this silently weaken a permission?              | No — `path` is additive. Configs without a `path` key are unaffected. The `path` gate only restricts; it cannot override a deny from another gate.                                                                 |
+| `getToolPermission("path")` hides tools               | No — `path` is in `SPECIAL_PERMISSION_KEYS`, not a tool name. `getToolPermission` is called for tool names, not special keys. And `evaluate("path", "*", rules)` returns the catch-all action (typically "allow"). |
+| Per-tool path allows override `path` denies           | By design, they cannot. The `path` gate runs first. If it denies, the tool gate is not reached.                                                                                                                    |
+| Double prompt for external + path rules               | Possible for external paths where both gates ask. User can align configs to avoid it. See Scenario C analysis.                                                                                                     |
+| Performance: tree-sitter runs twice for bash          | Parser is a lazy singleton. Parsing the same command twice is negligible (~1ms). Can be merged in a follow-up if profiling shows impact.                                                                           |
+| Broader token extraction causes false-positive denies | The broader filter only accepts tokens starting with `.` or containing `/`. Non-path tokens that slip through match `"*" → allow` unless the user configured a deny pattern that happens to match.                 |
 
 ## Open Questions
 

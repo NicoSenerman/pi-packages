@@ -45,14 +45,14 @@ Zero instances of same-file edits within a single turn were found across all ses
 
 ### Session data analysis
 
-| Metric | Count | % |
-| --- | --- | --- |
-| Total turns with tools | 4,925 | 100% |
-| Single-tool turns | 4,515 | 91.7% |
-| Multi-tool turns | 410 | 8.3% |
-| Same-file edits in same turn | 0 | 0% |
-| Read-after-write to same file in same turn | 0 | 0% |
-| Write + git commit in same turn | 0 | 0% |
+| Metric                                     | Count | %     |
+| ------------------------------------------ | ----- | ----- |
+| Total turns with tools                     | 4,925 | 100%  |
+| Single-tool turns                          | 4,515 | 91.7% |
+| Multi-tool turns                           | 410   | 8.3%  |
+| Same-file edits in same turn               | 0     | 0%    |
+| Read-after-write to same file in same turn | 0     | 0%    |
+| Write + git commit in same turn            | 0     | 0%    |
 
 The original argument against per-turn formatting was that it could corrupt `Edit` tool `oldText` matching or `Read` tool `offset`/`limit` when a formatter changes a file between two tool calls targeting the same file within a turn.
 The session data shows this scenario has never occurred.
@@ -71,7 +71,7 @@ OUTER LOOP:
       shouldStopAfterTurn? (not used by coding-agent)
       pendingMessages = getSteeringMessages()  ← PICKS UP OUR MESSAGE
   END INNER LOOP
-  
+
   followUpMessages = getFollowUpMessages()
   if followUp → continue outer loop
   else → break
@@ -87,16 +87,16 @@ Key properties:
 
 ### Relevant modules
 
-| Module | Role |
-| --- | --- |
-| `src/extension.ts` | Extension entrypoint. Lifecycle handlers for `session_start`, `tool_call`, `tool_result`, `agent_end`, `session_shutdown`. Owns `queueFlush()` and reporting. |
-| `src/prompt-autoformatter.ts` | `PromptAutoformatter` class. `flushPrompt()` drains the touched-file queue and runs formatter chains. |
-| `src/formatter-executor.ts` | `BatchRun` type with `stdout`, `stderr`, `exitCode`. Runs formatter commands. |
-| `src/formatter-config.ts` | `AutoformatConfig` with `notifyAgent` boolean (to be removed). `UserFormatterConfig`. |
-| `src/config-loader.ts` | Loads/merges config, validates fields. |
-| `schemas/pi-autoformat.schema.json` | JSON Schema for config validation. |
-| `docs/configuration.md` | User-facing config documentation. |
-| `test/extension.test.ts` | Extension lifecycle tests with `TestPi` harness. |
+| Module                              | Role                                                                                                                                                          |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/extension.ts`                  | Extension entrypoint. Lifecycle handlers for `session_start`, `tool_call`, `tool_result`, `agent_end`, `session_shutdown`. Owns `queueFlush()` and reporting. |
+| `src/prompt-autoformatter.ts`       | `PromptAutoformatter` class. `flushPrompt()` drains the touched-file queue and runs formatter chains.                                                         |
+| `src/formatter-executor.ts`         | `BatchRun` type with `stdout`, `stderr`, `exitCode`. Runs formatter commands.                                                                                 |
+| `src/formatter-config.ts`           | `AutoformatConfig` with `notifyAgent` boolean (to be removed). `UserFormatterConfig`.                                                                         |
+| `src/config-loader.ts`              | Loads/merges config, validates fields.                                                                                                                        |
+| `schemas/pi-autoformat.schema.json` | JSON Schema for config validation.                                                                                                                            |
+| `docs/configuration.md`             | User-facing config documentation.                                                                                                                             |
+| `test/extension.test.ts`            | Extension lifecycle tests with `TestPi` harness.                                                                                                              |
 
 ### Relationship to plan 0027
 

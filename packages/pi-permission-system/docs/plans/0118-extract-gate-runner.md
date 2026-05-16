@@ -42,11 +42,11 @@ The dep surface is still too large: a gate that only needs to say "check `bash` 
 
 ### Prerequisite issues
 
-| Issue | Status | Relationship |
-| ----- | ------ | ------------ |
-| #107 | Closed (implemented) | Extracted gate functions into `src/handlers/gates/` |
-| #111 | Closed (implemented) | Narrowed handler deps; introduced per-gate interfaces |
-| #112 | Closed (subsumed) | Centralize decision-event emission — achieved by the runner |
+| Issue | Status               | Relationship                                                |
+| ----- | -------------------- | ----------------------------------------------------------- |
+| #107  | Closed (implemented) | Extracted gate functions into `src/handlers/gates/`         |
+| #111  | Closed (implemented) | Narrowed handler deps; introduced per-gate interfaces       |
+| #112  | Closed (subsumed)    | Centralize decision-event emission — achieved by the runner |
 
 ### Permission surfaces involved
 
@@ -54,18 +54,18 @@ All surfaces flow through the gates being refactored: `tools`, `bash`, `mcp`, `s
 
 ### Key modules
 
-| File | Role |
-| ---- | ---- |
-| `src/handlers/gates/types.ts` | `GateOutcome`, `ToolCallContext`, per-gate dep interfaces |
-| `src/handlers/gates/tool.ts` | Normal tool permission gate (~130 lines) |
-| `src/handlers/gates/external-directory.ts` | External-directory gate (~130 lines) |
-| `src/handlers/gates/bash-external-directory.ts` | Bash external-directory gate (~100 lines) |
-| `src/handlers/gates/skill-read.ts` | Skill-read gate (~80 lines) |
-| `src/handlers/gates/helpers.ts` | `deriveDecisionValue`, `deriveResolution` |
-| `src/handlers/gates/index.ts` | Barrel re-exports |
-| `src/handlers/tool-call.ts` | Orchestrator that builds per-gate adapter objects |
-| `src/permission-gate.ts` | `applyPermissionGate()` — the generic deny/ask/allow gate |
-| `src/permission-events.ts` | `emitDecisionEvent()`, `PermissionDecisionEvent` |
+| File                                            | Role                                                      |
+| ----------------------------------------------- | --------------------------------------------------------- |
+| `src/handlers/gates/types.ts`                   | `GateOutcome`, `ToolCallContext`, per-gate dep interfaces |
+| `src/handlers/gates/tool.ts`                    | Normal tool permission gate (~130 lines)                  |
+| `src/handlers/gates/external-directory.ts`      | External-directory gate (~130 lines)                      |
+| `src/handlers/gates/bash-external-directory.ts` | Bash external-directory gate (~100 lines)                 |
+| `src/handlers/gates/skill-read.ts`              | Skill-read gate (~80 lines)                               |
+| `src/handlers/gates/helpers.ts`                 | `deriveDecisionValue`, `deriveResolution`                 |
+| `src/handlers/gates/index.ts`                   | Barrel re-exports                                         |
+| `src/handlers/tool-call.ts`                     | Orchestrator that builds per-gate adapter objects         |
+| `src/permission-gate.ts`                        | `applyPermissionGate()` — the generic deny/ask/allow gate |
+| `src/permission-events.ts`                      | `emitDecisionEvent()`, `PermissionDecisionEvent`          |
 
 ### Current gate structure (example: tool.ts)
 
@@ -350,37 +350,37 @@ No mocks. No async. No deps. Pure input → output.
 
 ### New files
 
-| File | Contents |
-| ---- | -------- |
-| `src/handlers/gates/descriptor.ts` | `GateDescriptor`, `GateBypass`, `GateResult`, `GateRunnerDeps` types |
-| `src/handlers/gates/runner.ts` | `runGateCheck()` function |
-| `tests/handlers/gates/runner.test.ts` | Tests for `runGateCheck()` |
+| File                                  | Contents                                                             |
+| ------------------------------------- | -------------------------------------------------------------------- |
+| `src/handlers/gates/descriptor.ts`    | `GateDescriptor`, `GateBypass`, `GateResult`, `GateRunnerDeps` types |
+| `src/handlers/gates/runner.ts`        | `runGateCheck()` function                                            |
+| `tests/handlers/gates/runner.test.ts` | Tests for `runGateCheck()`                                           |
 
 ### Changed files
 
-| File | Change |
-| ---- | ------ |
-| `src/handlers/gates/types.ts` | Remove `ToolGateDeps`, `ExternalDirectoryGateDeps`, `BashExternalDirectoryGateDeps`, `SkillReadGateDeps`. Keep `GateOutcome` and `ToolCallContext`. |
-| `src/handlers/gates/tool.ts` | Rename to pure descriptor factory `describeToolGate(tcc): GateDescriptor`. Remove deps parameter, `applyPermissionGate` call, event emission, session recording. |
-| `src/handlers/gates/external-directory.ts` | Rename to `describeExternalDirectoryGate(tcc, infraDirs): GateResult`. Remove deps, keep infrastructure bypass as `GateBypass`. |
-| `src/handlers/gates/bash-external-directory.ts` | Rename to `describeBashExternalDirectoryGate(tcc, checkPermission, getSessionRuleset): Promise<GateResult>`. Remove deps except the two read functions. |
-| `src/handlers/gates/skill-read.ts` | Rename to `describeSkillReadGate(tcc, getActiveSkillEntries): GateResult`. Return `GateDescriptor` with `preResolved` state from matched skill entry. |
-| `src/handlers/gates/helpers.ts` | `deriveDecisionValue`, `deriveResolution` remain (used by runner). |
-| `src/handlers/gates/index.ts` | Update barrel exports to new function names and types. |
-| `src/handlers/tool-call.ts` | Build `GateRunnerDeps` once; call descriptor factories; pass descriptors to `runGateCheck()`; handle `GateBypass` inline. |
-| `tests/handlers/gates/tool.test.ts` | Rewrite to pure input→output assertions (no mocks). |
-| `tests/handlers/gates/external-directory.test.ts` | Split: pure descriptor tests + a few integration tests for bypass. |
-| `tests/handlers/gates/bash-external-directory.test.ts` | Split: descriptor tests (need `checkPermission`/`getSessionRuleset` stubs only) + runner integration. |
-| `tests/handlers/gates/skill-read.test.ts` | Rewrite to pure input→output assertions. |
-| `docs/architecture/target-architecture.md` | Update gates section to reflect descriptor + runner architecture. |
+| File                                                   | Change                                                                                                                                                           |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/handlers/gates/types.ts`                          | Remove `ToolGateDeps`, `ExternalDirectoryGateDeps`, `BashExternalDirectoryGateDeps`, `SkillReadGateDeps`. Keep `GateOutcome` and `ToolCallContext`.              |
+| `src/handlers/gates/tool.ts`                           | Rename to pure descriptor factory `describeToolGate(tcc): GateDescriptor`. Remove deps parameter, `applyPermissionGate` call, event emission, session recording. |
+| `src/handlers/gates/external-directory.ts`             | Rename to `describeExternalDirectoryGate(tcc, infraDirs): GateResult`. Remove deps, keep infrastructure bypass as `GateBypass`.                                  |
+| `src/handlers/gates/bash-external-directory.ts`        | Rename to `describeBashExternalDirectoryGate(tcc, checkPermission, getSessionRuleset): Promise<GateResult>`. Remove deps except the two read functions.          |
+| `src/handlers/gates/skill-read.ts`                     | Rename to `describeSkillReadGate(tcc, getActiveSkillEntries): GateResult`. Return `GateDescriptor` with `preResolved` state from matched skill entry.            |
+| `src/handlers/gates/helpers.ts`                        | `deriveDecisionValue`, `deriveResolution` remain (used by runner).                                                                                               |
+| `src/handlers/gates/index.ts`                          | Update barrel exports to new function names and types.                                                                                                           |
+| `src/handlers/tool-call.ts`                            | Build `GateRunnerDeps` once; call descriptor factories; pass descriptors to `runGateCheck()`; handle `GateBypass` inline.                                        |
+| `tests/handlers/gates/tool.test.ts`                    | Rewrite to pure input→output assertions (no mocks).                                                                                                              |
+| `tests/handlers/gates/external-directory.test.ts`      | Split: pure descriptor tests + a few integration tests for bypass.                                                                                               |
+| `tests/handlers/gates/bash-external-directory.test.ts` | Split: descriptor tests (need `checkPermission`/`getSessionRuleset` stubs only) + runner integration.                                                            |
+| `tests/handlers/gates/skill-read.test.ts`              | Rewrite to pure input→output assertions.                                                                                                                         |
+| `docs/architecture/target-architecture.md`             | Update gates section to reflect descriptor + runner architecture.                                                                                                |
 
 ### Unchanged files
 
-| File | Reason |
-| ---- | ------ |
-| `src/permission-gate.ts` | Used inside `runGateCheck` — no interface change. |
-| `src/permission-events.ts` | Used by runner — no interface change. |
-| `src/handlers/input.ts` | Skill-input gate is out of scope — follow-up. |
+| File                               | Reason                                                  |
+| ---------------------------------- | ------------------------------------------------------- |
+| `src/permission-gate.ts`           | Used inside `runGateCheck` — no interface change.       |
+| `src/permission-events.ts`         | Used by runner — no interface change.                   |
+| `src/handlers/input.ts`            | Skill-input gate is out of scope — follow-up.           |
 | `tests/handlers/tool-call.test.ts` | Orchestrator integration tests — should pass unchanged. |
 
 ## Test Impact Analysis
@@ -536,14 +536,14 @@ Commit: `docs: update target architecture for gate runner (#118)`
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-| ---- | ---------- |
-| Could this silently weaken a permission? | No — the runner executes the same `applyPermissionGate` with the same parameters. Gate ordering is preserved. The refactor moves logic without changing it. Integration tests in `tool-call.test.ts` and `permission-system.test.ts` validate end-to-end. |
-| Descriptor type may not cover all gate variations | The plan explicitly models three variations (pre-resolved state for skill-read, bypass for infrastructure reads, multi-pattern session approval for bash). Each is tested. |
-| `describeToolGate` needs `PermissionCheckResult` for message formatting | Addressed by passing the check result as a parameter. The orchestrator calls `checkPermission` and passes the result to both the descriptor factory and the runner. The runner re-uses the same check result. |
-| Bash external-directory gate needs `checkPermission` to filter covered paths | Addressed by keeping `checkPermission` and `getSessionRuleset` as explicit function parameters (reads, not side effects). |
-| Large blast radius across gate test files | Steps 3–6 migrate one gate at a time. Each step leaves the full test suite green. Step 8 simplifies tests only after the runner is proven. |
-| `handleInput`'s inline resolution logic is left inconsistent | Explicitly deferred as a non-goal. The `deriveResolution` function in `helpers.ts` already exists for future migration. |
+| Risk                                                                         | Mitigation                                                                                                                                                                                                                                                |
+| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Could this silently weaken a permission?                                     | No — the runner executes the same `applyPermissionGate` with the same parameters. Gate ordering is preserved. The refactor moves logic without changing it. Integration tests in `tool-call.test.ts` and `permission-system.test.ts` validate end-to-end. |
+| Descriptor type may not cover all gate variations                            | The plan explicitly models three variations (pre-resolved state for skill-read, bypass for infrastructure reads, multi-pattern session approval for bash). Each is tested.                                                                                |
+| `describeToolGate` needs `PermissionCheckResult` for message formatting      | Addressed by passing the check result as a parameter. The orchestrator calls `checkPermission` and passes the result to both the descriptor factory and the runner. The runner re-uses the same check result.                                             |
+| Bash external-directory gate needs `checkPermission` to filter covered paths | Addressed by keeping `checkPermission` and `getSessionRuleset` as explicit function parameters (reads, not side effects).                                                                                                                                 |
+| Large blast radius across gate test files                                    | Steps 3–6 migrate one gate at a time. Each step leaves the full test suite green. Step 8 simplifies tests only after the runner is proven.                                                                                                                |
+| `handleInput`'s inline resolution logic is left inconsistent                 | Explicitly deferred as a non-goal. The `deriveResolution` function in `helpers.ts` already exists for future migration.                                                                                                                                   |
 
 ## Open Questions
 
