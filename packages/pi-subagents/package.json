@@ -33,7 +33,6 @@
   },
   "dependencies": {
     "@sinclair/typebox": "^0.34.49",
-    "croner": "^10.0.1",
     "nanoid": "^5.0.0"
   },
   "engines": {
