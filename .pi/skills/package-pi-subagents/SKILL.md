@@ -26,7 +26,7 @@ Upstream PRs for these patches ([#71](https://github.com/tintinweb/pi-subagents/
 - Follow the phased plan in `docs/architecture/architecture.md`.
 - Narrow core — the extension owns agent spawning, execution, and result retrieval; everything else is a consumer.
 - Typed API boundary — export `SubagentsAPI` via `Symbol.for()` accessors so other extensions can spawn agents without importing this package directly.
-- Remove scheduling, ad-hoc RPC, group-join, and output-file subsystems (see architecture doc for phase plan).
+- Remove scheduling subsystem (done); ad-hoc RPC and group-join (done); output-file porting to Pi session format tracked in #61.
 - Cherry-pick upstream fixes when they align with this fork's scope; do not track upstream as a merge target.
 
 ## Code Style
@@ -66,8 +66,6 @@ index.ts ──wires──> agent-manager.ts ──calls──> agent-runner.ts
     │   └── conversation-viewer.ts
     ├── agent-types.ts ──uses──> default-agents.ts, custom-agents.ts
     ├── settings.ts
-    ├── cross-extension-rpc.ts
-    ├── group-join.ts
     ├── model-resolver.ts
     ├── invocation-config.ts
     ├── types.ts
@@ -80,10 +78,10 @@ index.ts ──wires──> agent-manager.ts ──calls──> agent-runner.ts
 
 | Module             | Responsibility                                                                                                                                                                                                         |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `index.ts`         | Extension entry point. Registers tools, the `/agents` command, lifecycle hooks, the agent widget, notification rendering, batch grouping, RPC handlers, and settings persistence.                                      |
+| `index.ts`         | Extension entry point. Registers tools, the `/agents` command, lifecycle hooks, the agent widget, notification rendering, and settings persistence.                                                                    |
 | `agent-manager.ts` | Manages agent lifecycle: spawn, resume, abort. Enforces a configurable concurrency limit (default 4) by queuing excess background agents.                                                                              |
 | `agent-runner.ts`  | Core execution engine. Creates agent sessions, assembles system prompts, binds extensions, applies active-tool filtering (Patch 2), injects `<active_agent>` tag (Patch 3), runs the agent loop, and collects results. |
-| `types.ts`         | Shared type definitions: `AgentConfig`, `AgentRecord`, `SubagentType`, `JoinMode`, `MemoryScope`, `IsolationMode`, etc.                                                                                                |
+| `types.ts`         | Shared type definitions: `AgentConfig`, `AgentRecord`, `SubagentType`, `MemoryScope`, `IsolationMode`, etc.                                                                                                            |
 
 #### Agent configuration
 

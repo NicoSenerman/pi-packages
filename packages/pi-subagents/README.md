@@ -17,7 +17,7 @@ https://github.com/user-attachments/assets/8685261b-9338-4fea-8dfe-1c590d5df543
 ## Features
 
 - **Claude Code look & feel** — same tool names, calling conventions, and UI patterns (`Agent`, `get_subagent_result`, `steer_subagent`) — feels native
-- **Parallel background agents** — spawn multiple agents that run concurrently with automatic queuing (configurable concurrency limit, default 4) and smart group join (consolidated notifications)
+- **Parallel background agents** — spawn multiple agents that run concurrently with automatic queuing (configurable concurrency limit, default 4) and individual completion notifications
 - **Live widget UI** — persistent above-editor widget with animated spinners, live tool activity, token counts, and colored status icons
 - **Conversation viewer** — select any agent in `/agents` to open a live-scrolling overlay of its full conversation (auto-follows new content, scroll up to pause)
 - **Custom agent types** — define agents in `.pi/agents/<name>.md` with YAML frontmatter: custom system prompts, model selection, thinking levels, tool restrictions
@@ -31,9 +31,9 @@ https://github.com/user-attachments/assets/8685261b-9338-4fea-8dfe-1c590d5df543
 - **Git worktree isolation** — run agents in isolated repo copies; changes auto-committed to branches on completion
 - **Skill preloading** — inject named skills into agent system prompts, discovered from `.pi/skills/`, `.agents/skills/`, and global locations (Pi-standard `<name>/SKILL.md` directory layout supported)
 - **Tool denylist** — block specific tools via `disallowed_tools` frontmatter
-- **Styled completion notifications** — background agent results render as themed, compact notification boxes (icon, stats, result preview) instead of raw XML. Expandable to show full output. Group completions render each agent individually
+- **Styled completion notifications** — background agent results render as themed, compact notification boxes (icon, stats, result preview) instead of raw XML. Expandable to show full output
 - **Event bus** — lifecycle events (`subagents:created`, `started`, `completed`, `failed`, `steered`, `compacted`) emitted via `pi.events`, enabling other extensions to react to sub-agent activity
-- **Cross-extension RPC** — other pi extensions can spawn and stop subagents via the `pi.events` event bus (`subagents:rpc:ping`, `subagents:rpc:spawn`, `subagents:rpc:stop`). Standardized reply envelopes with protocol versioning. Emits `subagents:ready` on load
+
 
 ## Install
 
@@ -103,7 +103,7 @@ Background agent completion notifications render as styled boxes:
   transcript: .pi/output/agent-abc123.jsonl
 ```
 
-Group completions render each agent as a separate block. The LLM receives structured `<task-notification>` XML for parsing, while the user sees the themed visual.
+The LLM receives structured `<task-notification>` XML for parsing, while the user sees the themed visual.
 
 ## Default Agent Types
 
@@ -232,7 +232,7 @@ The `/agents` command opens an interactive menu:
 Running agents (2) — 1 running, 1 done     ← only shown when agents exist
 Agent types (6)                             ← unified list: defaults + custom
 Create new agent                            ← manual wizard or AI-generated
-Settings                                    ← max concurrency, max turns, grace turns, join mode
+Settings                                    ← max concurrency, max turns, grace turns
 ```
 
 - **Agent types** — unified list with source indicators: `•` (project), `◦` (global), `✕` (disabled). Select an agent to manage it:
@@ -243,7 +243,7 @@ Settings                                    ← max concurrency, max turns, grac
 - **Eject** — writes the embedded default config as a `.md` file to project or personal location, so you can customize it
 - **Disable/Enable** — toggle agent availability. Disabled agents stay visible in the list (marked `✕`) and can be re-enabled
 - **Create new agent** — choose project/personal location, then manual wizard (step-by-step prompts for name, tools, model, thinking, system prompt) or AI-generated (describe what the agent should do and a sub-agent writes the `.md` file). Any name is allowed, including default agent names (overrides them)
-- **Settings** — configure max concurrency, default max turns, grace turns, and join mode at runtime
+- **Settings** — configure max concurrency, default max turns, and grace turns at runtime
 
 ## Graceful Max Turns
 
@@ -266,29 +266,14 @@ Background agents are subject to a configurable concurrency limit (default: 4). 
 
 Foreground agents bypass the queue — they block the parent anyway.
 
-## Join Strategies
-
-When background agents complete, they notify the main agent. The **join mode** controls how these notifications are delivered. It applies only to background agents.
-
-| Mode | Behavior |
-|------|----------|
-| `smart` (default) | 2+ background agents spawned in the same turn are auto-grouped into a single consolidated notification. Solo agents notify individually. |
-| `async` | Each agent sends its own notification on completion (original behavior). Best when results need incremental processing. |
-| `group` | Force grouping even when spawning a single agent. Useful when you know more agents will follow. |
-
-**Timeout behavior:** When agents are grouped, a 30-second timeout starts after the first agent completes. If not all agents finish in time, a partial notification is sent with completed results and remaining agents continue with a shorter 15-second re-batch window for stragglers.
-
-**Configuration:**
-- Configure join mode in `/agents` → Settings → Join mode
-
 ## Persistent Settings
 
-Runtime tuning values set via `/agents` → Settings (max concurrency, default max turns, grace turns, default join mode) persist across pi restarts. Two files, merged on load:
+Runtime tuning values set via `/agents` → Settings (max concurrency, default max turns, grace turns) persist across pi restarts. Two files, merged on load:
 
 - **Global:** `~/.pi/agent/subagents.json` — your machine-wide defaults. Edit by hand; the `/agents` menu never writes here.
 - **Project:** `<cwd>/.pi/subagents.json` — per-project overrides. Written by `/agents` → Settings.
 
-**Precedence:** project overrides global on any field present in both. Missing fields fall back to the hardcoded defaults (max concurrency `4`, default max turns unlimited, grace turns `5`, join mode `smart`).
+**Precedence:** project overrides global on any field present in both. Missing fields fall back to the hardcoded defaults (max concurrency `4`, default max turns unlimited, grace turns `5`).
 
 **Example — global defaults for a beefy machine:**
 
@@ -318,77 +303,10 @@ Agent lifecycle events are emitted via `pi.events.emit()` so other extensions ca
 | `subagents:failed` | Agent errored, stopped, or aborted | same as completed + `error`, `status` |
 | `subagents:steered` | Steering message sent | `id`, `message` |
 | `subagents:compacted` | Agent's session successfully compacted | `id`, `type`, `description`, `reason` (`"manual"` / `"threshold"` / `"overflow"`), `tokensBefore`, `compactionCount` |
-| `subagents:ready` | Extension loaded and RPC handlers registered | — |
 | `subagents:settings_loaded` | Persisted settings applied at extension init | `settings` (merged global + project) |
 | `subagents:settings_changed` | `/agents` → Settings mutation was applied | `settings`, `persisted` (`boolean` — `false` on write failure) |
 
 `tokens.total` = `input + output + cacheWrite`. `cacheRead` is excluded — each turn's `cacheRead` is the cumulative cached prefix re-read on that one API call, so summing per-message would over-count it. Use `contextUsage.percent` (surfaced as `(NN%)` in the widget) for current context size.
-
-## Cross-Extension RPC
-
-Other pi extensions can spawn and stop subagents programmatically via the `pi.events` event bus, without importing this package directly.
-
-All RPC replies use a standardized envelope: `{ success: true, data?: T }` on success, `{ success: false, error: string }` on failure.
-
-### Discovery
-
-Listen for `subagents:ready` to know when RPC handlers are available:
-
-```typescript
-pi.events.on("subagents:ready", () => {
-  // RPC handlers are registered — safe to call ping/spawn/stop
-});
-```
-
-### Ping
-
-Check if the subagents extension is loaded and get the protocol version:
-
-```typescript
-const requestId = crypto.randomUUID();
-const unsub = pi.events.on(`subagents:rpc:ping:reply:${requestId}`, (reply) => {
-  unsub();
-  if (reply.success) console.log("Protocol version:", reply.data.version);
-});
-pi.events.emit("subagents:rpc:ping", { requestId });
-```
-
-### Spawn
-
-Spawn a subagent and receive its ID:
-
-```typescript
-const requestId = crypto.randomUUID();
-const unsub = pi.events.on(`subagents:rpc:spawn:reply:${requestId}`, (reply) => {
-  unsub();
-  if (!reply.success) {
-    console.error("Spawn failed:", reply.error);
-  } else {
-    console.log("Agent ID:", reply.data.id);
-  }
-});
-pi.events.emit("subagents:rpc:spawn", {
-  requestId,
-  type: "general-purpose",
-  prompt: "Do something useful",
-  options: { description: "My task", run_in_background: true },
-});
-```
-
-### Stop
-
-Stop a running agent by ID:
-
-```typescript
-const requestId = crypto.randomUUID();
-const unsub = pi.events.on(`subagents:rpc:stop:reply:${requestId}`, (reply) => {
-  unsub();
-  if (!reply.success) console.error("Stop failed:", reply.error);
-});
-pi.events.emit("subagents:rpc:stop", { requestId, agentId: "agent-id-here" });
-```
-
-Reply channels are scoped per `requestId`, so concurrent requests don't interfere.
 
 ## Persistent Agent Memory
 
@@ -477,8 +395,6 @@ src/
   agent-types.ts      # Unified agent registry (defaults + user), tool name resolution
   agent-runner.ts     # Session creation, execution, graceful max_turns, steer/resume
   agent-manager.ts    # Agent lifecycle, concurrency queue, completion notifications
-  cross-extension-rpc.ts # RPC handlers for cross-extension spawn/ping via pi.events
-  group-join.ts       # Group join manager: batched completion notifications with timeout
   custom-agents.ts    # Load user-defined agents from .pi/agents/*.md
   memory.ts           # Persistent agent memory (resolve, read, build prompt blocks)
   skill-loader.ts     # Preload skills (Pi-standard + Agent Skills spec layouts)

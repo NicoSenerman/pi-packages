@@ -329,7 +329,7 @@ export default function (pi: ExtensionAPI) {
     };
   }
 
-  // Background completion: route through group join or send individual nudge
+  // Background completion: emit lifecycle event and send individual nudge
   const manager = new AgentManager((record) => {
     // Emit lifecycle event based on terminal status
     const isError = record.status === "error" || record.status === "stopped" || record.status === "aborted";
