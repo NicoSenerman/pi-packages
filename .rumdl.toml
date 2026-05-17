@@ -1,6 +1,6 @@
 [global]
 exclude = ["**/CHANGELOG.md", "packages/pi-subagents/README.md"]
-disable = ["MD013", "MD041"]
+disable = ["MD013", "MD041", "MD057"]
 extend-enable = ["MD060"]
 
 [MD024]

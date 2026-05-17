@@ -11,13 +11,13 @@
         "--files-ignore-unknown=true"
       ]
     },
-    "markdownlint-cli2": {
-      "command": ["pnpm", "exec", "markdownlint-cli2", "--fix"]
+    "rumdl": {
+      "command": ["pnpm", "exec", "rumdl", "fmt"]
     }
   },
   "chains": {
     ".ts": ["biome"],
     ".json": ["biome"],
-    ".md": ["markdownlint-cli2"]
+    ".md": ["rumdl"]
   }
 }

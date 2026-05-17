@@ -1,6 +1,11 @@
-# AGENTS.md
+---
+name: package-pi-autoformat
+description: |
+  Package-specific context for @gotgenes/pi-autoformat.
+  Load when working on code, tests, or docs in packages/pi-autoformat/.
+---
 
-## Project Purpose
+# pi-autoformat
 
 Pi extension that auto-formats files after agent edits so formatting does not fail late at commit time.
 
@@ -42,10 +47,10 @@ Read `docs/plans/` before making architectural changes.
 
 Before implementing, understand:
 
-1. the problem being solved
-2. the timing tradeoffs between tool-mode and prompt-mode formatting
-3. the need to support repository-specific formatter chains
-4. the chosen config layout and merge precedence
-5. the need to keep schema, config loader, and docs aligned
+1. The problem being solved.
+2. The timing tradeoffs between tool-mode and prompt-mode formatting.
+3. The need to support repository-specific formatter chains.
+4. The chosen config layout and merge precedence.
+5. The need to keep schema, config loader, and docs aligned.
 
 Do not assume commit-time hooks are an acceptable primary formatting mechanism.

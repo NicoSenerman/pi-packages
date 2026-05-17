@@ -10,8 +10,8 @@
     "prepare": "command -v prek >/dev/null 2>&1 && prek install || echo 'prek not found — skipping hook install (see README)'",
     "check": "pnpm -r run check",
     "test": "pnpm -r run test",
-    "lint": "biome check . && rumdl check '**/*.md'",
-    "lint:fix": "biome check --write . && rumdl fmt '**/*.md'",
+    "lint": "biome check . && rumdl check .",
+    "lint:fix": "biome check --write . && rumdl fmt .",
     "format": "biome format --write ."
   },
   "devDependencies": {

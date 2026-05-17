@@ -1,6 +1,11 @@
-# AGENTS.md
+---
+name: package-pi-subagents
+description: |
+  Package-specific context for @gotgenes/pi-subagents.
+  Load when working on code, tests, or docs in packages/pi-subagents/.
+---
 
-## Project Purpose
+# pi-subagents
 
 Pi extension that adds Claude Code-style autonomous subagent dispatch to the Pi coding agent.
 
@@ -23,7 +28,8 @@ See `docs/decisions/0001-deferred-patches.md` for a fourth patch (mirror parent 
 
 ## Code Style
 
-Formatting is handled by Biome (`biome check`, `biome format`). The repo intentionally does not use Prettier — a top-level `.prettierignore` blocks any harness with project-level write-time Prettier formatting from reformatting files here.
+Formatting is handled by Biome (`biome check`, `biome format`).
+The repo intentionally does not use Prettier — a top-level `.prettierignore` blocks any harness with project-level write-time Prettier formatting from reformatting files here.
 
 ## Testing
 

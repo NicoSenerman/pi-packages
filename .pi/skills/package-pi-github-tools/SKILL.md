@@ -1,6 +1,11 @@
-# AGENTS.md
+---
+name: package-pi-github-tools
+description: |
+  Package-specific context for @gotgenes/pi-github-tools.
+  Load when working on code, tests, or docs in packages/pi-github-tools/.
+---
 
-## Project Purpose
+# pi-github-tools
 
 Pi extension that registers deterministic GitHub CI, release, and issue tools via `pi.registerTool()`.
 Replaces ad-hoc `gh` CLI polling with structured tools that have exponential backoff, progress streaming, and structured success/timeout returns.

@@ -4,7 +4,8 @@
 
 This is a pnpm workspace monorepo.
 Each package under `packages/` is a Pi extension published to npm under `@gotgenes/`.
-Pi concatenates root + package AGENTS.md when working in a package directory.
+Always launch Pi from the repo root — the root `.pi/settings.json` and `.pi/prompts/` are only discovered from CWD.
+Before working on a specific package, load its `package-<name>` skill for architecture, priorities, and testing context.
 
 ## Workflow
 

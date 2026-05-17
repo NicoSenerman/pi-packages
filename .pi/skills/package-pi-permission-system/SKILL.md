@@ -1,6 +1,11 @@
-# AGENTS.md
+---
+name: package-pi-permission-system
+description: |
+  Package-specific context for @gotgenes/pi-permission-system.
+  Load when working on code, tests, or docs in packages/pi-permission-system/.
+---
 
-## Project Purpose
+# pi-permission-system
 
 Pi extension that enforces deterministic permission gates over tool, bash, MCP, skill, and special operations so the agent cannot silently exceed the policy a user has configured.
 
@@ -74,11 +79,11 @@ When investigating a reported bug:
 
 Before implementing, understand:
 
-1. the problem being solved
-2. which permission surface is involved (tools / bash / mcp / skills / special / external_directory)
-3. the merge precedence between global, project, and per-agent policies
-4. whether the change renames the `/permission-system` slash command — if yes, it is breaking
-5. the need to keep schema, example config, loader, and docs aligned
+1. The problem being solved.
+2. Which permission surface is involved (tools / bash / mcp / skills / special / external_directory).
+3. The merge precedence between global, project, and per-agent policies.
+4. Whether the change renames the `/permission-system` slash command — if yes, it is breaking.
+5. The need to keep schema, example config, loader, and docs aligned.
 
 Do not assume "allow" is a safe default.
 Do not add a permission surface without also adding a policy field, schema entry, and example.

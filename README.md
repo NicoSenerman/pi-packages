@@ -66,17 +66,25 @@ pnpm run lint:fix # auto-fix lint issues
 
 ### Agentic development workflow
 
-To work on a package, `cd` into it and start Pi from there:
+Always start Pi from the **repo root**:
 
 ```bash
-cd packages/pi-permission-system
-pi -e .
+pi
 ```
 
-This matters because `/reload` live-reloads the extension from the current directory.
-If you start Pi from the repo root, `/reload` won't pick up your source changes.
+This gives the agent access to:
 
-Pi also concatenates the root `AGENTS.md` with the package's own `AGENTS.md`, so the agent gets both monorepo-wide and package-specific context regardless of where you start.
+- `.pi/settings.json` — loads all packages from local source (with npm versions disabled)
+- `.pi/prompts/` — slash commands (`/plan-issue`, `/tdd-plan`, `/ship-issue`, etc.)
+- Root `AGENTS.md` — monorepo-wide conventions
+
+Package-specific context (architecture, priorities, testing strategy) lives in skills.
+Load the relevant skill before working on a package:
+
+- `package-pi-autoformat` — for `packages/pi-autoformat/`
+- `package-pi-github-tools` — for `packages/pi-github-tools/`
+- `package-pi-permission-system` — for `packages/pi-permission-system/`
+- `package-pi-subagents` — for `packages/pi-subagents/`
 
 The one exception is pi-autoformat: because it hooks into file mutations made by the agent, you typically test it by installing it into a separate target project rather than running it against itself.
 
