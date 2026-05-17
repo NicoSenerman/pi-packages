@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded
 date: 2026-05-11
 ---
 
@@ -7,7 +7,8 @@ date: 2026-05-11
 
 ## Status
 
-Accepted
+Superseded by [`docs/architecture/architecture.md`](../architecture/architecture.md), which commits to a hard fork with material scope reduction (scheduling removal, `SubagentsAPI` boundary, `index.ts` decomposition).
+The original rationale below remains useful context.
 
 ## Context
 
@@ -51,7 +52,8 @@ All three divergences now have upstream PRs, opened after production validation 
 2. **Post-bind re-filter** — [tintinweb/pi-subagents#72](https://github.com/tintinweb/pi-subagents/pull/72) (`fix(agent-runner): re-filter active tools after bindExtensions so extension tools land in child`)
 3. **Active-agent tag** — [tintinweb/pi-subagents#73](https://github.com/tintinweb/pi-subagents/pull/73) (`feat(prompts): inject <active_agent name="..."/> tag for permission resolution`)
 
-Once these land upstream, the fork's divergence reduces to package naming and tooling.
+If these land upstream, upstream gains the peer-dep fix and the two RepOne patches.
+However, the fork now diverges intentionally beyond those patches — see [`docs/architecture/architecture.md`](../architecture/architecture.md) for the full scope of planned changes.
 
 ## Consequences
 
@@ -67,5 +69,6 @@ Once these land upstream, the fork's divergence reduces to package naming and to
 
 ### Operational
 
-- Upstream PRs are open and linked above. Once merged, the fork's behavioral divergence is eliminated.
+- Upstream PRs are open and linked above. If merged, upstream gains the three patches, but the fork continues independently with broader architectural changes per [`docs/architecture/architecture.md`](../architecture/architecture.md).
+- The architecture document governs the fork's direction going forward; this ADR's original "thin-patch" framing no longer describes the fork's trajectory.
 - When Patch 1 is eventually added, it should be a separate ADR in `docs/decisions/` with its own follow-up.
