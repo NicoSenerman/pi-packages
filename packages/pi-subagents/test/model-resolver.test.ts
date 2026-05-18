@@ -208,6 +208,20 @@ describe("resolveModel", () => {
 describe("resolveInvocationModel", () => {
   const parentModel = { id: "claude-opus-4-6", provider: "anthropic" };
 
+  describe("user-specified model failure (modelFromParams true)", () => {
+    it("returns error when params-specified model fails to resolve", () => {
+      const result = resolveInvocationModel(parentModel, "nonexistent-model", true, makeRegistry());
+      expect(result.model).toBeUndefined();
+      expect(result.error).toContain("Model not found");
+      expect(result.error).toContain("nonexistent-model");
+    });
+
+    it("error includes available models list", () => {
+      const result = resolveInvocationModel(parentModel, "xyz", true, makeRegistry());
+      expect(result.error).toContain("Available models:");
+    });
+  });
+
   describe("successful model resolution", () => {
     it("returns resolved model when modelInput resolves (config-specified)", () => {
       const result = resolveInvocationModel(parentModel, "haiku", false, makeRegistry());
