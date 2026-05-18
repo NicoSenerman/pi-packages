@@ -24,6 +24,7 @@ Before reading anything, make sure the working tree is up to date with the remot
 4. List `packages/<PKG>/docs/plans/` to see numbering and style conventions (create the directory if it does not exist yet). Pick the next free `NNNN` (prefer matching the issue number when reasonable).
 5. Read every issue the body references as a prerequisite or related (`gh issue view <n>`). Note whether each is implemented yet — your plan must say what it depends on vs. defers.
 6. Open the source files most relevant to the change and skim them before writing.
+7. When the plan introduces a public API pattern (package `exports`, `Symbol.for()` accessor, service interface), grep sibling packages for the established convention and follow it unless there is a documented reason to diverge.
 
 ## Load skills
 

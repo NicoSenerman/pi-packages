@@ -25,7 +25,7 @@ Upstream PRs for these patches ([#71](https://github.com/tintinweb/pi-subagents/
 
 - Follow the phased plan in `docs/architecture/architecture.md`.
 - Narrow core — the extension owns agent spawning, execution, and result retrieval; everything else is a consumer.
-- Typed API boundary — export `SubagentsAPI` via `Symbol.for()` accessors so other extensions can spawn agents without importing this package directly.
+- Typed API boundary — export `SubagentsService` via `Symbol.for()` accessors so other extensions can spawn agents without importing this package directly (done, #48).
 - Remove scheduling subsystem (done); ad-hoc RPC and group-join (done); output-file porting to Pi session format tracked in #61.
 - Cherry-pick upstream fixes when they align with this fork's scope; do not track upstream as a merge target.
 
@@ -58,8 +58,10 @@ index.ts ──wires──> agent-manager.ts ──calls──> agent-runner.ts
     │                    │                       ├── prompts.ts
     │                    ├── worktree.ts          ├── context.ts
     │                    └── usage.ts             ├── memory.ts
-    ├── tools (Agent,                              ├── skill-loader.ts
-    │   get_subagent_result,                      └── env.ts
+    ├── service.ts (public API)                   ├── skill-loader.ts
+    ├── service-adapter.ts ──wraps──> agent-manager  └── env.ts
+    ├── tools (Agent,
+    │   get_subagent_result,
     │   steer_subagent)
     ├── ui/
     │   ├── agent-widget.ts
@@ -73,6 +75,13 @@ index.ts ──wires──> agent-manager.ts ──calls──> agent-runner.ts
 ```
 
 ### Module Descriptions
+
+#### Public API
+
+| Module               | Responsibility                                                                                                                                                                                                           |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `service.ts`         | Public entry point (`exports` in `package.json`). Defines `SubagentsService` interface, `SubagentRecord`, `SpawnOptions`, accessor functions (`publish/get/unpublishSubagentsService`), and `SUBAGENT_EVENTS` constants. |
+| `service-adapter.ts` | `createSubagentsService()` factory. Wraps `AgentManager` via narrow `AgentManagerLike` interface. Handles string model resolution, record serialization (allowlist), and session gating.                                 |
 
 #### Core engine
 
