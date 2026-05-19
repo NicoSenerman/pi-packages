@@ -57,7 +57,7 @@ describeIfPi("acceptance: extension loads under real pi CLI", () => {
     expect(stateResponse).toBeDefined();
     expect(stateResponse?.success).toBe(true);
     expect(stateResponse?.command).toBe("get_state");
-  });
+  }, 15_000);
 });
 
 if (!piAvailable) {
