@@ -48,7 +48,7 @@
     "url": "https://github.com/gotgenes/pi-packages/issues"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public"

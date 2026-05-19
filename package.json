@@ -4,7 +4,7 @@
   "description": "Monorepo for @gotgenes pi packages",
   "packageManager": "pnpm@11.1.1",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "prepare": "command -v prek >/dev/null 2>&1 && prek install || echo 'prek not found — skipping hook install (see README)'",

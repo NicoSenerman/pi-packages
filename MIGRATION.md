@@ -63,7 +63,7 @@ done
 
 All packages extend a shared `tsconfig.base.json` with unified settings:
 
-- **ES2023** target (Node ≥ 20)
+- **ES2024** target (Node ≥ 22)
 - **Bundler** module resolution (no `.js` extensions required in imports)
 - **strict: true** everywhere
 - **noEmit: true** (Pi loads TypeScript source directly — no build step)

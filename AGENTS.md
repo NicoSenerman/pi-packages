@@ -22,9 +22,9 @@ Before working on a specific package, load its `package-<name>` skill for archit
 - Keep modules focused and composable (one concern per file).
 - Prefer explicit configuration over hidden behavior.
 - This project uses **pnpm** exclusively — never `npm` or `npx`.
-- The tsconfig target is ES2023 (`noEmit: true`).
-  ES2023 APIs (`findLast`, `findLastIndex`, `toReversed`, `toSorted`, `toSpliced`, `with`) are available and preferred.
-  Do not use APIs introduced after ES2023 (`Object.groupBy`, `Array.fromAsync`, etc.).
+- The tsconfig target is ES2024 (`noEmit: true`).
+  ES2023 APIs (`findLast`, `findLastIndex`, `toReversed`, `toSorted`, `toSpliced`, `with`) and ES2024 APIs (`Promise.withResolvers`, `Object.groupBy`, `Map.groupBy`, `Array.fromAsync`) are available and preferred.
+  Do not use APIs introduced after ES2024.
 
 Before implementing, refactoring, or reviewing code, load the `code-style` skill for structural design heuristics.
 

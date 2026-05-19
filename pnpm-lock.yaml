@@ -10,8 +10,8 @@ catalogs:
       specifier: ^2.4.14
       version: 2.4.15
     '@types/node':
-      specifier: ^25.6.2
-      version: 25.7.0
+      specifier: ^22.15.3
+      version: 22.19.19
     rumdl:
       specifier: ^0.1.93
       version: 0.1.93
@@ -43,7 +43,7 @@ importers:
         version: 0.74.0(ws@8.20.1)(zod@4.4.3)
       '@types/node':
         specifier: 'catalog:'
-        version: 25.7.0
+        version: 22.19.19
       rumdl:
         specifier: 'catalog:'
         version: 0.1.93
@@ -52,7 +52,7 @@ importers:
         version: 6.0.3
       vitest:
         specifier: 'catalog:'
-        version: 4.1.6(@types/node@25.7.0)(vite@8.0.13(@types/node@25.7.0)(jiti@2.7.0)(yaml@2.9.0))
+        version: 4.1.6(@types/node@22.19.19)(vite@8.0.13(@types/node@22.19.19)(jiti@2.7.0)(yaml@2.9.0))
 
   packages/pi-github-tools:
     devDependencies:
@@ -64,7 +64,7 @@ importers:
         version: 0.74.0(ws@8.20.1)(zod@4.4.3)
       '@types/node':
         specifier: 'catalog:'
-        version: 25.7.0
+        version: 22.19.19
       rumdl:
         specifier: 'catalog:'
         version: 0.1.93
@@ -76,7 +76,7 @@ importers:
         version: 6.0.3
       vitest:
         specifier: 'catalog:'
-        version: 4.1.6(@types/node@25.7.0)(vite@8.0.13(@types/node@25.7.0)(jiti@2.7.0)(yaml@2.9.0))
+        version: 4.1.6(@types/node@22.19.19)(vite@8.0.13(@types/node@22.19.19)(jiti@2.7.0)(yaml@2.9.0))
 
   packages/pi-permission-system:
     dependencies:
@@ -98,7 +98,7 @@ importers:
         version: 0.74.0
       '@types/node':
         specifier: 'catalog:'
-        version: 25.7.0
+        version: 22.19.19
       rumdl:
         specifier: 'catalog:'
         version: 0.1.93
@@ -107,7 +107,7 @@ importers:
         version: 6.0.3
       vitest:
         specifier: 'catalog:'
-        version: 4.1.6(@types/node@25.7.0)(vite@8.0.13(@types/node@25.7.0)(jiti@2.7.0)(yaml@2.9.0))
+        version: 4.1.6(@types/node@22.19.19)(vite@8.0.13(@types/node@22.19.19)(jiti@2.7.0)(yaml@2.9.0))
 
   packages/pi-subagents:
     dependencies:
@@ -132,7 +132,7 @@ importers:
         version: 2.4.15
       '@types/node':
         specifier: 'catalog:'
-        version: 25.7.0
+        version: 22.19.19
       rumdl:
         specifier: 'catalog:'
         version: 0.1.93
@@ -141,7 +141,7 @@ importers:
         version: 6.0.3
       vitest:
         specifier: 'catalog:'
-        version: 4.1.6(@types/node@25.7.0)(vite@8.0.13(@types/node@25.7.0)(jiti@2.7.0)(yaml@2.9.0))
+        version: 4.1.6(@types/node@22.19.19)(vite@8.0.13(@types/node@22.19.19)(jiti@2.7.0)(yaml@2.9.0))
 
 packages:
 
@@ -716,6 +716,9 @@ packages:
 
   '@types/mime-types@2.1.4':
     resolution: {integrity: sha512-lfU4b34HOri+kAY5UheuFMWPDOI+OPceBSHZKp69gEyTL/mmJ4cnU6Y/rlme3UL3GyOn6Y42hyIEw0/q8sWx5w==}
+
+  '@types/node@22.19.19':
+    resolution: {integrity: sha512-dyh/xO2Fh5bYrfWaaqGrRQQGkNdmYw6AmaAUvYeUMNTWQtvb796ikLdmTchRmOlOiIJ1TDXfWgVx1QkUlQ6Hew==}
 
   '@types/node@25.7.0':
     resolution: {integrity: sha512-z+pdZyxE+RTQE9AcboAZCb4otwcrvgHD+GlBpPgn0emDVt0ohrTMhAwlr2Wd9nZ+nihhYFxO2pThz3C5qSu2Eg==}
@@ -1411,6 +1414,9 @@ packages:
   uint8array-extras@1.5.0:
     resolution: {integrity: sha512-rvKSBiC5zqCCiDZ9kAOszZcDvdAHwwIKJG33Ykj43OKcWsnmcBRL09YTU4nOeHZ8Y2a7l1MgTd08SBe9A8Qj6A==}
     engines: {node: '>=18'}
+
+  undici-types@6.21.0:
+    resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
 
   undici-types@7.21.0:
     resolution: {integrity: sha512-w9IMgQrz4O0YN1LtB7K5P63vhlIOvC7opSmouCJ+ZywlPAlO9gIkJ+otk6LvGpAs2wg4econaCz3TvQ9xPoyuQ==}
@@ -2270,6 +2276,10 @@ snapshots:
 
   '@types/mime-types@2.1.4': {}
 
+  '@types/node@22.19.19':
+    dependencies:
+      undici-types: 6.21.0
+
   '@types/node@25.7.0':
     dependencies:
       undici-types: 7.21.0
@@ -2290,13 +2300,13 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.1.0
 
-  '@vitest/mocker@4.1.6(vite@8.0.13(@types/node@25.7.0)(jiti@2.7.0)(yaml@2.9.0))':
+  '@vitest/mocker@4.1.6(vite@8.0.13(@types/node@22.19.19)(jiti@2.7.0)(yaml@2.9.0))':
     dependencies:
       '@vitest/spy': 4.1.6
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 8.0.13(@types/node@25.7.0)(jiti@2.7.0)(yaml@2.9.0)
+      vite: 8.0.13(@types/node@22.19.19)(jiti@2.7.0)(yaml@2.9.0)
 
   '@vitest/pretty-format@4.1.6':
     dependencies:
@@ -2941,13 +2951,15 @@ snapshots:
 
   uint8array-extras@1.5.0: {}
 
+  undici-types@6.21.0: {}
+
   undici-types@7.21.0: {}
 
   undici@7.25.0: {}
 
   uuid@14.0.0: {}
 
-  vite@8.0.13(@types/node@25.7.0)(jiti@2.7.0)(yaml@2.9.0):
+  vite@8.0.13(@types/node@22.19.19)(jiti@2.7.0)(yaml@2.9.0):
     dependencies:
       lightningcss: 1.32.0
       picomatch: 4.0.4
@@ -2955,15 +2967,15 @@ snapshots:
       rolldown: 1.0.1
       tinyglobby: 0.2.16
     optionalDependencies:
-      '@types/node': 25.7.0
+      '@types/node': 22.19.19
       fsevents: 2.3.3
       jiti: 2.7.0
       yaml: 2.9.0
 
-  vitest@4.1.6(@types/node@25.7.0)(vite@8.0.13(@types/node@25.7.0)(jiti@2.7.0)(yaml@2.9.0)):
+  vitest@4.1.6(@types/node@22.19.19)(vite@8.0.13(@types/node@22.19.19)(jiti@2.7.0)(yaml@2.9.0)):
     dependencies:
       '@vitest/expect': 4.1.6
-      '@vitest/mocker': 4.1.6(vite@8.0.13(@types/node@25.7.0)(jiti@2.7.0)(yaml@2.9.0))
+      '@vitest/mocker': 4.1.6(vite@8.0.13(@types/node@22.19.19)(jiti@2.7.0)(yaml@2.9.0))
       '@vitest/pretty-format': 4.1.6
       '@vitest/runner': 4.1.6
       '@vitest/snapshot': 4.1.6
@@ -2980,10 +2992,10 @@ snapshots:
       tinyexec: 1.1.2
       tinyglobby: 0.2.16
       tinyrainbow: 3.1.0
-      vite: 8.0.13(@types/node@25.7.0)(jiti@2.7.0)(yaml@2.9.0)
+      vite: 8.0.13(@types/node@22.19.19)(jiti@2.7.0)(yaml@2.9.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
-      '@types/node': 25.7.0
+      '@types/node': 22.19.19
     transitivePeerDependencies:
       - msw
 

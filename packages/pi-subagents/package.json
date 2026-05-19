@@ -39,7 +39,7 @@
     "nanoid": "^5.0.0"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "check": "tsc --noEmit",
