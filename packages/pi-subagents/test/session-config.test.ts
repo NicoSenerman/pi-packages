@@ -521,3 +521,146 @@ describe("assembleSessionConfig — memory block selection", () => {
     expect(result.toolNames).toContain("read");
   });
 });
+
+describe("assembleSessionConfig — isolated mode", () => {
+  it("isolated:true forces extensions to false regardless of config", () => {
+    mockGetConfig.mockReturnValueOnce({
+      displayName: "Agent",
+      description: "General",
+      builtinToolNames: [],
+      extensions: true as const,
+      skills: true as const,
+      promptMode: "append" as const,
+    });
+    mockGetAgentConfig.mockReturnValueOnce({
+      name: "general-purpose",
+      description: "General",
+      extensions: true as const,
+      skills: true as const,
+      systemPrompt: "",
+      promptMode: "append" as const,
+    });
+
+    const result = assembleSessionConfig("general-purpose", ctx, { isolated: true }, mockEnv);
+
+    expect(result.extensions).toBe(false);
+    expect(result.noSkills).toBe(true);
+  });
+
+  it("isolated:false (default) preserves config extensions setting", () => {
+    mockGetConfig.mockReturnValueOnce({
+      displayName: "Agent",
+      description: "General",
+      builtinToolNames: [],
+      extensions: true as const,
+      skills: true as const,
+      promptMode: "append" as const,
+    });
+    mockGetAgentConfig.mockReturnValueOnce({
+      name: "general-purpose",
+      description: "General",
+      extensions: true as const,
+      skills: true as const,
+      systemPrompt: "",
+      promptMode: "append" as const,
+    });
+
+    const result = assembleSessionConfig("general-purpose", ctx, {}, mockEnv);
+
+    expect(result.extensions).toBe(true);
+  });
+
+  it("isolated:true forces extensions to false even for string[] extension list", () => {
+    mockGetConfig.mockReturnValueOnce({
+      displayName: "Explore",
+      description: "test",
+      builtinToolNames: ["read"],
+      extensions: ["pi-github-tools"] as string[],
+      skills: false as const,
+      promptMode: "replace" as const,
+    });
+    mockGetAgentConfig.mockReturnValueOnce({
+      name: "Explore",
+      description: "test",
+      extensions: ["pi-github-tools"] as string[],
+      skills: false as const,
+      systemPrompt: "prompt",
+      promptMode: "replace" as const,
+    });
+
+    const result = assembleSessionConfig("Explore", ctx, { isolated: true }, mockEnv);
+
+    expect(result.extensions).toBe(false);
+  });
+});
+
+describe("assembleSessionConfig — unknown type fallback", () => {
+  it("uses general-purpose config when agentConfig returns undefined", () => {
+    mockGetAgentConfig.mockReturnValueOnce(undefined);
+    // getConfig returns general-purpose fallback for unknown types
+    mockGetConfig.mockReturnValueOnce({
+      displayName: "Agent",
+      description: "General-purpose",
+      builtinToolNames: [],
+      extensions: true as const,
+      skills: true as const,
+      promptMode: "append" as const,
+    });
+
+    assembleSessionConfig("unknown-custom-agent", ctx, {}, mockEnv);
+
+    // buildAgentPrompt called with the fallback config, name overridden to the type string
+    expect(mockBuildAgentPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "unknown-custom-agent" }),
+      expect.any(String),
+      expect.any(Object),
+      expect.any(String),
+      expect.any(Object),
+    );
+  });
+});
+
+describe("assembleSessionConfig — thinking level", () => {
+  it("returns undefined thinkingLevel when neither option nor config sets it", () => {
+    const result = assembleSessionConfig("Explore", ctx, {}, mockEnv);
+
+    expect(result.thinkingLevel).toBeUndefined();
+  });
+
+  it("options.thinkingLevel wins over agentConfig.thinking", () => {
+    mockGetAgentConfig.mockReturnValueOnce({
+      name: "Explore",
+      description: "test",
+      extensions: false as const,
+      skills: false as const,
+      systemPrompt: "prompt",
+      promptMode: "replace" as const,
+      thinking: "low" as const,
+    });
+
+    const result = assembleSessionConfig(
+      "Explore",
+      ctx,
+      { thinkingLevel: "high" },
+      mockEnv,
+    );
+
+    expect(result.thinkingLevel).toBe("high");
+  });
+
+  it("agentConfig.thinking is used when no option is provided", () => {
+    mockGetAgentConfig.mockReturnValueOnce({
+      name: "Explore",
+      description: "test",
+      extensions: false as const,
+      skills: false as const,
+      systemPrompt: "prompt",
+      promptMode: "replace" as const,
+      thinking: "medium" as const,
+    });
+
+    const result = assembleSessionConfig("Explore", ctx, {}, mockEnv);
+
+    expect(result.thinkingLevel).toBe("medium");
+  });
+});
