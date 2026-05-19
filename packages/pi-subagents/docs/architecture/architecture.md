@@ -342,20 +342,24 @@ The following issues track the work needed to bring `pi-subagents` to the same l
 
 ### Phase 1: Foundation
 
-These three issues are independent of each other and can land in any order.
-Together they eliminate module-scope mutable state and create a testable functional core.
+These issues are independent of each other and can land in any order.
+Together they eliminate module-scope mutable state, create a testable functional core, and simplify the agent-types API.
 
-1. **gotgenes/pi-packages#69** — Create `SubagentRuntime`
+1. **gotgenes/pi-packages#69** ✓ — Create `SubagentRuntime`
    - Move `defaultMaxTurns`, `graceTurns`, `agentActivity`, `currentCtx`, and widget references out of closure/module scope into a single factory-constructed object.
    - This unblocks handler extraction (Issue #70) by giving handlers a concrete deps bag instead of closure variables.
 
-2. **gotgenes/pi-packages#71** — Extract pure agent-session assembler from `agent-runner.ts`
+2. **gotgenes/pi-packages#71** ✓ — Extract pure agent-session assembler from `agent-runner.ts`
    - Split `runAgent()` into a pure configuration assembler (~200 lines) and an IO shell (~200 lines).
    - The assembler becomes independently testable without mocking the Pi SDK.
 
 3. **gotgenes/pi-packages#76** — Inject `cwd` into `AgentManager`
    - Replace the `process.cwd()` call in `dispose()` with a constructor parameter.
    - A small, mechanical prerequisite for Issue #72.
+
+4. **gotgenes/pi-packages#80** — Consolidate `getConfig` / `getAgentConfig` into a single resolution path
+   - Replace the two overlapping lookup functions with a single `resolveAgentConfig(type): AgentConfig` that handles the unknown-type fallback internally.
+   - Eliminates the duplicated fallback chain exposed by #71 and simplifies test mock setup.
 
 ### Phase 2: Core decomposition
 
@@ -394,19 +398,21 @@ Small cleanups that are safest after the structural changes settle.
 ### Dependency graph
 
 ```text
-#69 (SubagentRuntime) ──┬──► #70 (handler extraction)
+#69 (SubagentRuntime) ✓ ─┬─► #70 (handler extraction)
                         │
-                        └──► #72 (AgentManager DI) ──(optional)──► #70
+                        └─► #72 (AgentManager DI) ──(optional)──► #70
 
-#71 (pure assembler) ─────(independent)────► (can land any time)
+#71 (pure assembler) ✓ ──► #80 (consolidate getConfig/getAgentConfig)
 
-#76 (cwd injection) ──────► #72
+#76 (cwd injection) ────► #72
 
-#66 (type casts) ◄────────(after structural changes settle)
-#77 (projectAgentsDir) ◄──(after #66 or parallel)
+#80 (config lookup) ────(independent, simplifies #72 and test mocks)
 
-#61 (transcript format) ◄─(after structural refactor)
-#22 (parent session) ◄────(cross-extension, independent)
+#66 (type casts) ◄─────(after structural changes settle)
+#77 (projectAgentsDir) ◄─(after #66 or parallel)
+
+#61 (transcript format) ◄(after structural refactor)
+#22 (parent session) ◄──(cross-extension, independent)
 ```
 
 ### Recommended order
@@ -414,9 +420,10 @@ Small cleanups that are safest after the structural changes settle.
 The recommended sequence is:
 
 ```text
-#69 → #71 → #76 → #72 → #70 → #66 → #77 → #61
+#69 ✓ → #71 ✓ → #80 → #76 → #72 → #70 → #66 → #77 → #61
 ```
 
+Issue #80 slots after #71 because it cleans up the redundant lookup that #71 exposed, and simplifies mock setup for subsequent issues.
 Issue #22 is a parallel cross-extension track and does not gate the structural work.
 
 ## Relationship with upstream
