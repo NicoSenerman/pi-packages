@@ -9,6 +9,7 @@ import { appendFileSync, chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import { debugLog } from "./debug.js";
 
 /**
  * Encode a cwd path as a filesystem-safe directory name. Handles:
@@ -80,7 +81,9 @@ export function streamToOutputFile(
       };
       try {
         appendFileSync(path, JSON.stringify(entry) + "\n", "utf-8");
-      } catch { /* ignore write errors */ }
+      } catch (err) {
+        debugLog("write JSONL chunk", err);
+      }
       writtenCount++;
     }
   };
