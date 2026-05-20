@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentConfig, AgentRecord } from "../../src/types.js";
+import type { AgentConfig } from "../../src/types.js";
 import { type AgentMenuDeps, createAgentsMenuHandler } from "../../src/ui/agent-menu.js";
+import { createTestRecord } from "../helpers/make-record.js";
 
 const { mockExistsSync, mockGetAllTypes, mockResolveAgentConfig, mockResolveType } = vi.hoisted(() => ({
   mockExistsSync: vi.fn((): boolean => false),
@@ -45,22 +46,6 @@ vi.mock("../../src/agent-types.js", async (importOriginal) => {
     resolveType: mockResolveType,
   };
 });
-
-function makeRecord(overrides: Partial<AgentRecord> = {}): AgentRecord {
-  return {
-    id: "agent-1",
-    type: "general-purpose",
-    description: "Test task",
-    status: "completed",
-    result: "All done.",
-    toolUses: 3,
-    startedAt: 1000,
-    completedAt: 2000,
-    lifetimeUsage: { input: 500, output: 500, cacheWrite: 0 },
-    compactionCount: 0,
-    ...overrides,
-  };
-}
 
 function makeDeps(overrides: Partial<AgentMenuDeps> = {}): AgentMenuDeps {
   return {
@@ -150,8 +135,8 @@ describe("createAgentsMenuHandler", () => {
       manager: {
         ...makeDeps().manager,
         listAgents: vi.fn().mockReturnValue([
-          makeRecord({ status: "running" }),
-          makeRecord({ status: "completed", id: "agent-2" }),
+          createTestRecord({ status: "running" }),
+          createTestRecord({ status: "completed", id: "agent-2" }),
         ]),
       },
     });
