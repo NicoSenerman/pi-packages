@@ -26,7 +26,7 @@ Before reading anything, make sure the working tree is up to date with the remot
    Extract the `pkg:*` label from the issue (e.g., `pkg:pi-permission-system` → package is `pi-permission-system`).
    If no `pkg:*` label exists or it seems incongruent with the issue content, ask the user which package this issue belongs to.
    Set `PKG` to the package name (e.g., `pi-permission-system`) for the rest of this template.
-3. Read `AGENTS.md` for project priorities, constraints, and code-style rules.
+3. Read `AGENTS.md` for project priorities, constraints, and code-design rules.
    Honor them in the plan.
 4. List `packages/<PKG>/docs/plans/` to see numbering and style conventions (create the directory if it does not exist yet).
    Pick the next free `NNNN` (prefer matching the issue number when reasonable).
@@ -40,7 +40,7 @@ Before reading anything, make sure the working tree is up to date with the remot
 Before writing the plan, load skills relevant to the change:
 
 - Always load the `package-<PKG>` skill (e.g., `package-pi-permission-system`) for package-specific architecture, priorities, and testing context.
-- If the plan involves code changes: load the `code-style` skill.
+- If the plan involves code changes: load the `code-design` skill.
 - If the plan involves test changes or TDD steps: load the `testing` skill.
 - If the plan involves markdown/doc changes: load the `markdown-conventions` skill.
 - If the plan adds fields to shared interfaces or touches wiring between layers: load the `design-review` skill and run its checklist on the affected modules.

@@ -30,7 +30,7 @@ If "TDD Order" is missing or empty, stop and report — re-run `/plan-issue` fir
 
 Read `AGENTS.md` for project priorities and conventions.
 Load the `package-<PKG>` skill (e.g., `package-pi-permission-system`) for package-specific architecture, priorities, and testing context.
-Load the `code-style` skill (TypeScript conventions, structural design heuristics).
+Load the `code-design` skill (design principles, TypeScript conventions, structural heuristics).
 Load the `testing` skill (Vitest mock patterns, TDD planning rules).
 
 ## Execute the TDD cycle

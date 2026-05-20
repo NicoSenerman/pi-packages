@@ -26,7 +26,7 @@ Before working on a specific package, load its `package-<name>` skill for archit
   ES2023 APIs (`findLast`, `findLastIndex`, `toReversed`, `toSorted`, `toSpliced`, `with`) and ES2024 APIs (`Promise.withResolvers`, `Object.groupBy`, `Map.groupBy`, `Array.fromAsync`) are available and preferred.
   Do not use APIs introduced after ES2024.
 
-Before implementing, refactoring, or reviewing code, load the `code-style` skill for structural design heuristics.
+Before implementing, refactoring, or reviewing code, load the `code-design` skill for design principles and structural heuristics.
 
 ## Markdown
 

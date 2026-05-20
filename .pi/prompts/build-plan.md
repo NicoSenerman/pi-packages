@@ -33,7 +33,7 @@ If the plan has a "TDD Order" section with red→green test cycles, stop and tel
 
 Read `AGENTS.md` for project priorities and conventions.
 Load the `package-<PKG>` skill (e.g., `package-pi-permission-system`) for package-specific architecture, priorities, and testing context.
-If the plan touches code: load the `code-style` skill.
+If the plan touches code: load the `code-design` skill.
 If the plan touches markdown/docs: load the `markdown-conventions` skill.
 
 ## Execute the plan steps
