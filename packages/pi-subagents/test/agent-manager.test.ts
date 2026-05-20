@@ -466,24 +466,8 @@ describe("AgentManager — dependency injection via options bag", () => {
   });
 
   it("calls injected runner.run when spawning an agent", async () => {
-    const runner = {
-      run: vi.fn().mockResolvedValue({
-        responseText: "injected",
-        session: mockSession(),
-        aborted: false,
-        steered: false,
-      }),
-      resume: vi.fn(),
-    };
-    const worktrees = {
-      create: vi.fn(),
-      cleanup: vi.fn(() => ({ hasChanges: false })),
-      prune: vi.fn(),
-    };
-    manager = new AgentManager({
-      runner,
-      worktrees,
-    });
+    let runner: AgentRunner;
+    ({ manager, runner } = createManager());
 
     const id = manager.spawn(mockPi, mockCtx, "general-purpose", "test", {
       description: "test",
@@ -492,6 +476,185 @@ describe("AgentManager — dependency injection via options bag", () => {
     await manager.getRecord(id)!.promise;
 
     expect(runner.run).toHaveBeenCalledOnce();
-    expect(manager.getRecord(id)!.result).toBe("injected");
+    expect(manager.getRecord(id)!.result).toBe("done");
+  });
+
+  it("calls injected runner.resume when resuming an agent", async () => {
+    const session = mockSession();
+    const runner: AgentRunner = {
+      run: vi.fn().mockResolvedValue({
+        responseText: "first",
+        session,
+        aborted: false,
+        steered: false,
+      }),
+      resume: vi.fn().mockResolvedValue("second"),
+    };
+    ({ manager } = createManager({ runner }));
+
+    const id = manager.spawn(mockPi, mockCtx, "general-purpose", "test", {
+      description: "test",
+      isBackground: true,
+    });
+    await manager.getRecord(id)!.promise;
+
+    await manager.resume(id, "continue");
+
+    expect(runner.resume).toHaveBeenCalledOnce();
+    expect(manager.getRecord(id)!.result).toBe("second");
+  });
+
+  it("calls worktrees.create for worktree isolation", async () => {
+    const worktrees: WorktreeManager = {
+      create: vi.fn().mockReturnValue({ path: "/tmp/wt", branch: "pi-agent-x" }),
+      cleanup: vi.fn(() => ({ hasChanges: false })),
+      prune: vi.fn(),
+    };
+    ({ manager } = createManager({ worktrees }));
+
+    manager.spawn(mockPi, mockCtx, "general-purpose", "test", {
+      description: "test",
+      isolation: "worktree",
+      isBackground: true,
+    });
+
+    expect(worktrees.create).toHaveBeenCalledOnce();
+  });
+
+  it("calls worktrees.cleanup after agent completes with a worktree", async () => {
+    const worktrees: WorktreeManager = {
+      create: vi.fn().mockReturnValue({ path: "/tmp/wt", branch: "pi-agent-x" }),
+      cleanup: vi.fn(() => ({ hasChanges: false })),
+      prune: vi.fn(),
+    };
+    ({ manager } = createManager({ worktrees }));
+
+    const id = manager.spawn(mockPi, mockCtx, "general-purpose", "test", {
+      description: "test",
+      isolation: "worktree",
+      isBackground: true,
+    });
+    await manager.getRecord(id)!.promise;
+
+    expect(worktrees.cleanup).toHaveBeenCalledOnce();
+  });
+});
+
+describe("AgentManager — queueing and concurrency with injected stubs", () => {
+  let manager: AgentManager;
+
+  afterEach(() => {
+    manager?.dispose();
+  });
+
+  it("queues excess background agents and drains them in order", async () => {
+    const startOrder: string[] = [];
+    const { promise: gate1, resolve: resolve1 } = Promise.withResolvers<void>();
+    const { promise: gate2, resolve: resolve2 } = Promise.withResolvers<void>();
+
+    let callCount = 0;
+    const runner: AgentRunner = {
+      run: vi.fn().mockImplementation(async () => {
+        callCount++;
+        const n = callCount;
+        startOrder.push(`start-${n}`);
+        if (n === 1) await gate1;
+        if (n === 2) await gate2;
+        return { responseText: `result-${n}`, session: mockSession(), aborted: false, steered: false };
+      }),
+      resume: vi.fn(),
+    };
+    ({ manager } = createManager({ runner, maxConcurrent: 1 }));
+
+    // Spawn two background agents — first runs, second queues
+    const id1 = manager.spawn(mockPi, mockCtx, "general-purpose", "test1", {
+      description: "first", isBackground: true,
+    });
+    const id2 = manager.spawn(mockPi, mockCtx, "general-purpose", "test2", {
+      description: "second", isBackground: true,
+    });
+
+    expect(manager.getRecord(id1)!.status).toBe("running");
+    expect(manager.getRecord(id2)!.status).toBe("queued");
+
+    // Complete first agent — second should start
+    resolve1!();
+    await manager.getRecord(id1)!.promise;
+
+    // Wait for the second to start
+    await vi.waitFor(() => expect(manager.getRecord(id2)!.status).toBe("running"));
+
+    resolve2!();
+    await manager.getRecord(id2)!.promise;
+
+    expect(startOrder).toEqual(["start-1", "start-2"]);
+    expect(manager.getRecord(id1)!.result).toBe("result-1");
+    expect(manager.getRecord(id2)!.result).toBe("result-2");
+  });
+
+  it("abort removes a queued agent without ever running it", () => {
+    const runner: AgentRunner = {
+      run: vi.fn().mockImplementation(() => new Promise(() => {})),
+      resume: vi.fn(),
+    };
+    ({ manager } = createManager({ runner, maxConcurrent: 1 }));
+
+    // First runs, second queues
+    const id1 = manager.spawn(mockPi, mockCtx, "general-purpose", "a", {
+      description: "a", isBackground: true,
+    });
+    const id2 = manager.spawn(mockPi, mockCtx, "general-purpose", "b", {
+      description: "b", isBackground: true,
+    });
+
+    expect(manager.getRecord(id2)!.status).toBe("queued");
+
+    // Abort the queued agent
+    expect(manager.abort(id2)).toBe(true);
+    expect(manager.getRecord(id2)!.status).toBe("stopped");
+
+    // runner.run was called once (for the first agent), never for the aborted one
+    expect(runner.run).toHaveBeenCalledOnce();
+
+    manager.abort(id1);
+  });
+
+  it("onStart fires when agent transitions from queued to running", async () => {
+    const startedIds: string[] = [];
+    const { promise: gate, resolve } = Promise.withResolvers<void>();
+
+    let callCount = 0;
+    const runner: AgentRunner = {
+      run: vi.fn().mockImplementation(async () => {
+        callCount++;
+        if (callCount === 1) await gate;
+        return { responseText: "ok", session: mockSession(), aborted: false, steered: false };
+      }),
+      resume: vi.fn(),
+    };
+    ({ manager } = createManager({
+      runner,
+      maxConcurrent: 1,
+      onStart: (record) => { startedIds.push(record.id); },
+    }));
+
+    const id1 = manager.spawn(mockPi, mockCtx, "general-purpose", "a", {
+      description: "a", isBackground: true,
+    });
+    const id2 = manager.spawn(mockPi, mockCtx, "general-purpose", "b", {
+      description: "b", isBackground: true,
+    });
+
+    // First agent started immediately
+    expect(startedIds).toEqual([id1]);
+
+    // Complete first — second should start and fire onStart
+    resolve!();
+    await manager.getRecord(id1)!.promise;
+    await vi.waitFor(() => expect(startedIds).toHaveLength(2));
+
+    expect(startedIds).toEqual([id1, id2]);
+
+    await manager.getRecord(id2)!.promise;
   });
 });
