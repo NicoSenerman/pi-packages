@@ -5,8 +5,8 @@ import { SessionLifecycleHandler } from "../../src/handlers/lifecycle.js";
 describe("SessionLifecycleHandler", () => {
   let runtime: LifecycleRuntime;
   let manager: LifecycleManager;
-  let disposeNotifications: ReturnType<typeof vi.fn>;
-  let unpublishService: ReturnType<typeof vi.fn>;
+  let disposeNotifications: () => void;
+  let unpublishService: () => void;
   let handler: SessionLifecycleHandler;
 
   const fakePi = { name: "fake-pi" };
@@ -21,8 +21,8 @@ describe("SessionLifecycleHandler", () => {
       abortAll: vi.fn(),
       dispose: vi.fn(),
     };
-    disposeNotifications = vi.fn();
-    unpublishService = vi.fn();
+    disposeNotifications = vi.fn<() => void>();
+    unpublishService = vi.fn<() => void>();
 
     handler = new SessionLifecycleHandler(
       fakePi,
@@ -79,15 +79,15 @@ describe("SessionLifecycleHandler", () => {
 
     it("calls cleanup in correct order", async () => {
       const callOrder: string[] = [];
-      unpublishService.mockImplementation(() => { callOrder.push("unpublishService"); });
-      (runtime.clearSessionContext as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      vi.mocked(unpublishService).mockImplementation(() => { callOrder.push("unpublishService"); });
+      vi.mocked(runtime.clearSessionContext).mockImplementation(() => {
         callOrder.push("clearSessionContext");
       });
-      (manager.abortAll as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      vi.mocked(manager.abortAll).mockImplementation(() => {
         callOrder.push("abortAll");
       });
-      disposeNotifications.mockImplementation(() => { callOrder.push("disposeNotifications"); });
-      (manager.dispose as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      vi.mocked(disposeNotifications).mockImplementation(() => { callOrder.push("disposeNotifications"); });
+      vi.mocked(manager.dispose).mockImplementation(() => {
         callOrder.push("dispose");
       });
 

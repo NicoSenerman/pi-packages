@@ -16,6 +16,7 @@ import { AgentManager } from "./agent-manager.js";
 import { getAgentConversation, normalizeMaxTurns, resumeAgent, runAgent, steerAgent } from "./agent-runner.js";
 import { getAvailableTypes, getDefaultAgentNames, getUserAgentNames, registerAgents, resolveAgentConfig, } from "./agent-types.js";
 import { loadCustomAgents } from "./custom-agents.js";
+import { SessionLifecycleHandler, ToolStartHandler } from "./handlers/index.js";
 import { type ModelRegistry, resolveModel } from "./model-resolver.js";
 import { buildEventData, createNotificationSystem } from "./notification.js";
 import { createNotificationRenderer } from "./renderer.js";
@@ -122,33 +123,24 @@ export default function (pi: ExtensionAPI) {
   });
   publishSubagentsService(service);
 
-  pi.on("session_start", async (_event, ctx) => {
-    runtime.setSessionContext(pi, ctx);
-    manager.clearCompleted();
-  });
+  const lifecycle = new SessionLifecycleHandler(
+    pi,
+    runtime,
+    manager,
+    () => notifications.dispose(),
+    unpublishSubagentsService,
+  );
 
-  pi.on("session_before_switch", () => {
-    manager.clearCompleted();
-  });
-
-  // On shutdown, abort all agents immediately and clean up.
-  // If the session is going down, there's nothing left to consume agent results.
-  pi.on("session_shutdown", async () => {
-    unpublishSubagentsService();
-    runtime.clearSessionContext();
-    manager.abortAll();
-    notifications.dispose();
-    manager.dispose();
-  });
+  pi.on("session_start", (event, ctx) => lifecycle.handleSessionStart(event, ctx));
+  pi.on("session_before_switch", () => lifecycle.handleSessionBeforeSwitch());
+  pi.on("session_shutdown", () => lifecycle.handleSessionShutdown());
 
   // Live widget: show running agents above editor
   runtime.widget = new AgentWidget(manager, runtime.agentActivity);
 
   // Grab UI context from first tool execution + clear lingering widget on new turn
-  pi.on("tool_execution_start", async (_event, ctx) => {
-    runtime.setUICtx(ctx.ui as UICtx);
-    runtime.onTurnStart();
-  });
+  const toolStart = new ToolStartHandler(runtime);
+  pi.on("tool_execution_start", (event, ctx) => toolStart.handleToolExecutionStart(event, ctx));
 
   /** Build the full type list text dynamically from the unified registry. */
   const buildTypeListText = () => {
