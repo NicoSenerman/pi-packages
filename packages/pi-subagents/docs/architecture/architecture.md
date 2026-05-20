@@ -7,9 +7,9 @@ This document describes the planned decomposition of the pi-subagents fork into 
 1. **Narrow core** — the extension owns agent spawning, execution, and result retrieval.
    Everything else is a consumer.
 2. **Composable by default** — other extensions can spawn agents, observe their lifecycle, and display their state without importing this package directly.
-3. **Typed API boundary** — this package exports a `SubagentsAPI` interface and `Symbol.for()` accessors (`publishSubagentsAPI` / `getSubagentsAPI`).
+3. **Typed API boundary** — this package exports a `SubagentsService` interface and `Symbol.for()` accessors (`publishSubagentsService` / `getSubagentsService`).
    Consumers declare this package as an optional peer dependency and use dynamic import for compile-time types.
-   The runtime bridge is `Symbol.for()` on `globalThis` — no separate API package.
+   The runtime bridge is `Symbol.for("@gotgenes/pi-subagents:service")` on `globalThis` — no separate API package.
 4. **No scheduling** — in-process scheduling is removed from the core.
    Scheduling is a separate concern that any extension can implement by calling `spawn()` on the published API.
 5. **UI extraction is deferred** — the widget, conversation viewer, and `/agents` command menu stay in the core for now.
@@ -17,43 +17,60 @@ This document describes the planned decomposition of the pi-subagents fork into 
 
 ## Current state
 
-The extension is a 6,300 LOC monolith organized into well-factored internal modules but with no public API contract.
-The subsystems are:
+The extension is ~6,100 LOC across 35 focused modules with a typed `SubagentsService` API boundary.
+The `index.ts` entry point is ~270 lines; the rest is decomposed into domain modules.
 
 ```text
-index.ts (1,894 LOC) — entry point, tool registration, event wiring
-agent-manager.ts      — lifecycle, concurrency, queue
-agent-runner.ts       — session creation, turn loop, tool filtering
-agent-types.ts        — type registry (defaults + custom .md files)
-types.ts              — shared type definitions
+index.ts (274 LOC)       — entry point, tool registration, event wiring
+agent-manager.ts (499)   — lifecycle, concurrency, queue
+agent-runner.ts (512)    — session creation, turn loop, tool filtering
+session-config.ts (243)  — pure session-config assembler
+agent-types.ts (138)     — type registry (defaults + custom .md files)
+types.ts (126)           — shared type definitions
+runtime.ts (94)          — SubagentRuntime factory (session-scoped state)
 
-prompts.ts            — system prompt assembly
-context.ts            — parent conversation extraction
-memory.ts             — persistent MEMORY.md per agent
-skill-loader.ts       — preload .pi/skills into prompts
-env.ts                — git/platform detection
+prompts.ts               — system prompt assembly
+context.ts               — parent conversation extraction
+memory.ts                — persistent MEMORY.md per agent
+skill-loader.ts          — preload .pi/skills into prompts
+env.ts                   — git/platform detection
 
-worktree.ts           — git worktree isolation
-usage.ts              — token usage tracking
-model-resolver.ts     — fuzzy model name resolution
-invocation-config.ts  — merge tool params with agent config
-session-dir.ts        — subagent session directory derivation
-settings.ts           — persistent operational settings
+worktree.ts              — git worktree isolation
+usage.ts                 — token usage tracking
+model-resolver.ts        — fuzzy model name resolution
+invocation-config.ts     — merge tool params with agent config
+session-dir.ts           — subagent session directory derivation
+settings.ts              — persistent operational settings
 
-cross-extension-rpc.ts — RPC over pi.events                  ← replacing
-group-join.ts         — batch completion notifications
+service.ts               — SubagentsService interface + Symbol.for() accessors
+service-adapter.ts       — SubagentsService implementation wrapping AgentManager
+
+tools/agent-tool.ts      — Agent tool definition + execute
+tools/get-result-tool.ts — get_subagent_result tool
+tools/steer-tool.ts      — steer_subagent tool
+tools/helpers.ts         — shared tool utilities
+
+handlers/lifecycle.ts    — session_start, session_before_switch, session_shutdown
+handlers/tool-start.ts   — tool_execution_start handler
+
+notification.ts          — completion nudges, custom message renderer
+renderer.ts              — notification TUI component
 
 ui/agent-widget.ts       — above-editor live status widget
+ui/agent-menu.ts         — /agents slash command menu
 ui/conversation-viewer.ts — scrollable session overlay
+
+default-agents.ts        — embedded default agent configs (general-purpose, Explore, Plan)
+custom-agents.ts         — user-defined agent .md file loader
+debug.ts                 — debug logging utility
 ```
 
 ### Coupling today
 
-The widget reads agent state by holding a direct reference to `AgentManager` and polling a shared mutable `Map<string, AgentActivity>` every 80 ms. The conversation viewer subscribes directly to `AgentSession` objects.
+The widget reads agent state by holding a direct reference to `SubagentRuntime` and polling a shared mutable `Map<string, AgentActivity>` every 80 ms. The conversation viewer subscribes directly to `AgentSession` objects.
 
-Cross-extension consumers use an ad-hoc RPC layer over `pi.events` (`subagents:rpc:spawn`, `subagents:rpc:stop`, `subagents:rpc:ping`) with per-request reply channels and untyped envelopes.
-
-There is also a `Symbol.for("pi-subagents:manager")` export on `globalThis` that exposes `{ waitForAll, hasRunning, spawn, getRecord }`, but it is undocumented and untyped.
+Cross-extension consumers use the typed `SubagentsService` API published via `Symbol.for("@gotgenes/pi-subagents:service")` on `globalThis`.
+The ad-hoc RPC layer and untyped `Symbol.for("pi-subagents:manager")` have been removed.
 
 ## Target state
 
@@ -62,20 +79,20 @@ There is also a `Symbol.for("pi-subagents:manager")` export on `globalThis` that
   │  @gotgenes/pi-subagents  (this package)                 │
   │                                                        │
   │  Exports:                                              │
-  │    SubagentsAPI interface                              │
-  │    publishSubagentsAPI() / getSubagentsAPI()           │
-  │    SubagentRecord, SubagentStatus, LifetimeUsage types │
-  │    Event channel constants                             │
+  │    SubagentsService interface                           │
+  │    publishSubagentsService() / getSubagentsService()    │
+  │    SubagentRecord, SubagentStatus, LifetimeUsage types  │
+  │    SUBAGENT_EVENTS constants                            │
   │                                                        │
   │  Core:                                                 │
   │    Agent + get_subagent_result + steer_subagent tools  │
   │    AgentManager, agent-runner, agent-types             │
-  │    publishSubagentsAPI(impl)  ← called at init         │
+  │    publishSubagentsService(impl)  ← called at init     │
   │                                                        │
   │  Internal UI (widget, viewer, /agents menu)            │
   │  ← moves to pi-subagents-ui later                     │
   └──────────────────────┬─────────────────────────────────┘
-                         │ Symbol.for("pi:service:subagents")
+                         │ Symbol.for("@gotgenes/pi-subagents:service")
                          │
        ┌─────────────────┼──────────────────┐
        │                 │                  │
@@ -87,7 +104,7 @@ There is also a `Symbol.for("pi-subagents:manager")` export on `globalThis` that
   │  ext)   │    └──────────────┘    └──────────────┘
   └─────────┘
        │
-       │  getSubagentsAPI()?.spawn(...)
+       │  getSubagentsService()?.spawn(...)
        │  (optional peer dep + dynamic import for types)
        ▼
 ```
@@ -97,10 +114,13 @@ There is also a `Symbol.for("pi-subagents:manager")` export on `globalThis` that
 - The three tools: `Agent`, `get_subagent_result`, `steer_subagent`.
 - `AgentManager` — spawn, queue, abort, resume, concurrency control.
 - `agent-runner` — session creation, turn loop, tool filtering, extension binding (Patches 2 and 3).
+- `session-config` — pure configuration assembler (extracted from `agent-runner`).
+- `SubagentRuntime` — session-scoped state bag with methods.
 - Agent type registry — default agents, custom `.md` file loading.
 - Prompt assembly, context extraction, memory, skills, environment.
 - Worktree isolation.
 - Token usage tracking.
+- Session directory derivation and persisted `SessionManager` for subagent transcripts.
 - Settings persistence.
 - Internal UI (widget, conversation viewer, `/agents` menu) — these stay until the API boundary is proven, then move to a separate extension.
 
@@ -108,8 +128,8 @@ There is also a `Symbol.for("pi-subagents:manager")` export on `globalThis` that
 
 - **Scheduling** (`schedule.ts`, `schedule-store.ts`, `ui/schedule-menu.ts`) — 612 LOC removed.
   The `schedule` parameter is removed from the `Agent` tool schema.
-  Any extension that wants scheduling can implement it by calling `getSubagentsAPI()?.spawn(...)` on a timer.
-- **Ad-hoc RPC** (`cross-extension-rpc.ts`) — replaced by the typed `SubagentsAPI` published via `Symbol.for()`.
+  Any extension that wants scheduling can implement it by calling `getSubagentsService()?.spawn(...)` on a timer.
+- **Ad-hoc RPC** (`cross-extension-rpc.ts`) — replaced by the typed `SubagentsService` published via `Symbol.for()`.
   The untyped event-bus RPC channels are removed.
 - **Group join** (`group-join.ts`) — 141 LOC removed.
   The grouped notification batching adds complexity for a marginal UX improvement.
@@ -117,21 +137,22 @@ There is also a `Symbol.for("pi-subagents:manager")` export on `globalThis` that
 - **Output file** (`output-file.ts`) — replaced by `session-dir.ts` + `SessionManager.create()` (#61).
   Subagent transcripts are now written in Pi's official JSONL session format via the SDK's `SessionManager`, nested under the parent session directory.
 
-### Estimated impact
+### Estimated impact (realized)
 
-| Subsystem removed | LOC removed   | LOC removed from index.ts |
-| ----------------- | ------------- | ------------------------- |
-| Scheduling        | 612           | ~200                      |
-| Ad-hoc RPC        | 80            | ~50                       |
-| Group join        | 141           | ~100                      |
-| Output file       | 83 (replaced) | ~50                       |
-| **Total**         | **~916**      | **~400**                  |
+| Subsystem              | Status         | LOC impact                                 |
+| ---------------------- | -------------- | ------------------------------------------ |
+| Scheduling             | Removed (#52)  | −612                                       |
+| Ad-hoc RPC             | Removed (#49)  | −080                                       |
+| Group join             | Removed (#49)  | −141                                       |
+| Output file            | Replaced (#61) | −83 (replaced by 38-line `session-dir.ts`) |
+| index.ts decomposition | Done (#54)     | 1,894 → 274                                |
 
-After removal and `index.ts` decomposition, the core shrinks from ~6,300 to ~5,400 LOC, and `index.ts` shrinks from ~1,894 to ~1,300 LOC.
+The codebase is now ~6,100 LOC across 35 modules.
+The `index.ts` entry point is 274 lines.
 
-## SubagentsAPI
+## SubagentsService (done — #48)
 
-The `SubagentsAPI` interface, accessor functions, and serializable types are exported directly from this package (`@gotgenes/pi-subagents`).
+The `SubagentsService` interface, accessor functions, and serializable types are exported from `@gotgenes/pi-subagents` via the `./service` export map entry.
 No separate API package is needed.
 
 Consumers declare this package as an optional peer dependency:
@@ -139,7 +160,7 @@ Consumers declare this package as an optional peer dependency:
 ```json
 {
   "peerDependencies": {
-    "@gotgenes/pi-subagents": ">=2.0.0"
+    "@gotgenes/pi-subagents": ">=5.0.0"
   },
   "peerDependenciesMeta": {
     "@gotgenes/pi-subagents": { "optional": true }
@@ -150,72 +171,40 @@ Consumers declare this package as an optional peer dependency:
 At runtime, consumers use dynamic import for type-safe access to the accessor functions:
 
 ```typescript
-const { getSubagentsAPI } = await import("@gotgenes/pi-subagents");
-const api = getSubagentsAPI();
-if (api) {
-  api.spawn("Explore", "Check for stale TODOs");
+const { getSubagentsService } = await import("@gotgenes/pi-subagents");
+const svc = getSubagentsService();
+if (svc) {
+  svc.spawn("Explore", "Check for stale TODOs");
 }
 ```
 
 Pi's extension loader creates a fresh `jiti` instance per extension with `moduleCache: false`, so module-scoped singletons don't survive across extensions.
-The accessor functions use `Symbol.for()` on `globalThis`, which is process-global by spec, to bridge this gap.
+The accessor functions use `Symbol.for("@gotgenes/pi-subagents:service")` on `globalThis`, which is process-global by spec, to bridge this gap.
 The dynamic import provides compile-time types; the `Symbol.for()` key is the actual runtime channel.
 
 ### Interface
 
-```typescript
-/** The public API surface published by pi-subagents. */
-export interface SubagentsAPI {
-  /**
-   * Spawn an agent. Returns the agent ID immediately.
-   * The agent runs in the background unless options.foreground is true.
-   */
-  spawn(type: string, prompt: string, options?: SpawnOptions): string;
+See `src/service.ts` for the canonical definition.
+Key types:
 
-  /** Get a snapshot of an agent's current state. */
-  getRecord(id: string): SubagentRecord | undefined;
-
-  /** List all tracked agents, most recent first. */
-  listAgents(): SubagentRecord[];
-
-  /** Abort a running or queued agent. Returns false if not found. */
-  abort(id: string): boolean;
-
-  /** Send a steering message to a running agent. */
-  steer(id: string, message: string): Promise<boolean>;
-
-  /** Wait for all running and queued agents to complete. */
-  waitForAll(): Promise<void>;
-
-  /** Whether any agents are running or queued. */
-  hasRunning(): boolean;
-}
-
-export interface SpawnOptions {
-  description?: string;
-  model?: string;
-  maxTurns?: number;
-  thinkingLevel?: string;
-  isolated?: boolean;
-  inheritContext?: boolean;
-  foreground?: boolean;
-  /** Skip the concurrency queue — start immediately. */
-  bypassQueue?: boolean;
-  isolation?: "worktree";
-}
-```
+- `SubagentsService` — `spawn`, `getRecord`, `listAgents`, `abort`, `steer`, `waitForAll`, `hasRunning`.
+- `SubagentRecord` — serializable agent snapshot (no live session objects).
+- `SpawnOptions` — `description`, `model`, `maxTurns`, `thinkingLevel`, `isolated`, `inheritContext`, `foreground`, `bypassQueue`, `isolation`.
+- `SUBAGENT_EVENTS` — channel constants for `pi.events` subscriptions.
 
 ### Accessor pattern
 
 ```typescript
-const KEY = Symbol.for("pi:service:subagents");
+const SERVICE_KEY = Symbol.for("@gotgenes/pi-subagents:service");
 
-export function publishSubagentsAPI(api: SubagentsAPI): void {
-  (globalThis as any)[KEY] = api;
+export function publishSubagentsService(service: SubagentsService): void {
+  (globalThis as Record<symbol, unknown>)[SERVICE_KEY] = service;
 }
 
-export function getSubagentsAPI(): SubagentsAPI | undefined {
-  return (globalThis as any)[KEY];
+export function getSubagentsService(): SubagentsService | undefined {
+  return (globalThis as Record<symbol, unknown>)[SERVICE_KEY] as
+    | SubagentsService
+    | undefined;
 }
 ```
 
@@ -237,23 +226,19 @@ They are fire-and-forget broadcast events — no request IDs, no reply channels.
 ### Consumer example: scheduling extension
 
 ```typescript
-// package.json:
-// "peerDependencies": { "@gotgenes/pi-subagents": ">=2.0.0" }
-// "peerDependenciesMeta": { "@gotgenes/pi-subagents": { "optional": true } }
-
 export default function (pi) {
   pi.on("session_start", async (event, ctx) => {
-    let getSubagentsAPI;
+    let getSubagentsService;
     try {
-      ({ getSubagentsAPI } = await import("@gotgenes/pi-subagents"));
+      ({ getSubagentsService } = await import("@gotgenes/pi-subagents"));
     } catch {
       return; // pi-subagents not installed
     }
-    const api = getSubagentsAPI();
-    if (!api) return;
+    const svc = getSubagentsService();
+    if (!svc) return;
 
     setInterval(() => {
-      api.spawn("Explore", "Check for stale TODOs", {
+      svc.spawn("Explore", "Check for stale TODOs", {
         bypassQueue: true,
       });
     }, 60 * 60 * 1000);
@@ -267,13 +252,13 @@ export default function (pi) {
 export default function (pi) {
   pi.events.on("subagents:completed", async (data) => {
     const { id } = data as { id: string };
-    let getSubagentsAPI;
+    let getSubagentsService;
     try {
-      ({ getSubagentsAPI } = await import("@gotgenes/pi-subagents"));
+      ({ getSubagentsService } = await import("@gotgenes/pi-subagents"));
     } catch {
       return;
     }
-    const record = getSubagentsAPI()?.getRecord(id);
+    const record = getSubagentsService()?.getRecord(id);
     if (record?.result) {
       fs.appendFileSync("agent-log.jsonl", JSON.stringify(record) + "\n");
     }
@@ -281,32 +266,38 @@ export default function (pi) {
 }
 ```
 
-## index.ts decomposition
+## index.ts decomposition (done — #54, #69, #70)
 
-The 1,894-line `index.ts` is decomposed into focused modules:
+The original 1,894-line `index.ts` has been decomposed into focused modules:
 
 ```text
 src/
-├── index.ts                  ← slimmed entry point: init, tool registration
+├── index.ts (274)            ← slimmed entry point: init, tool registration
+├── runtime.ts (94)           ← SubagentRuntime: session-scoped state + methods
 ├── tools/
-│   ├── agent-tool.ts         ← Agent tool definition + execute
-│   ├── result-tool.ts        ← get_subagent_result tool
-│   └── steer-tool.ts         ← steer_subagent tool
-├── notifications.ts          ← completion nudges, custom renderer
-├── activity-tracker.ts       ← AgentActivity map + callback factory
-├── agents-command.ts         ← /agents slash command menu
-├── api-adapter.ts            ← SubagentsAPI implementation wrapping AgentManager
-└── (existing modules unchanged)
+│   ├── agent-tool.ts (626)   ← Agent tool definition + execute
+│   ├── get-result-tool.ts    ← get_subagent_result tool
+│   ├── steer-tool.ts         ← steer_subagent tool
+│   └── helpers.ts            ← shared tool utilities
+├── handlers/
+│   ├── lifecycle.ts          ← session_start, session_before_switch, session_shutdown
+│   └── tool-start.ts         ← tool_execution_start handler
+├── notification.ts           ← completion nudges, custom renderer
+├── renderer.ts               ← notification TUI component
+├── ui/agent-menu.ts (677)    ← /agents slash command menu
+├── service-adapter.ts        ← SubagentsService implementation wrapping AgentManager
+└── (existing domain modules unchanged)
 ```
 
 Each extracted module receives narrow constructor-injected dependencies rather than closing over module-level state.
+Handlers call methods on narrow runtime interfaces — no raw field writes, no `widget!` reach-throughs.
 
 ## Phase plan
 
-### Phase 1: Export `SubagentsAPI` from this package
+### Phase 1: Export `SubagentsService` from this package ✓ (done — #48)
 
-Add the `SubagentsAPI` interface, serializable types, and `Symbol.for()` accessor functions as public exports of this package.
-No behavioral changes to the core yet.
+Added the `SubagentsService` interface, serializable types, `Symbol.for()` accessor functions, and `SUBAGENT_EVENTS` constants as public exports.
+Wired `service-adapter.ts` to wrap `AgentManager` and call `publishSubagentsService()` at extension init.
 
 ### Phase 2: Remove scheduling ✓ (done — issue #52)
 
@@ -314,26 +305,27 @@ Deleted `schedule.ts`, `schedule-store.ts`, `ui/schedule-menu.ts`.
 Removed the `schedule` parameter from the `Agent` tool schema.
 Removed scheduler setup and lifecycle hooks from `index.ts`.
 
-### Phase 3: Remove group-join, ad-hoc RPC; replace output-file
+### Phase 3: Remove group-join, ad-hoc RPC; replace output-file ✓ (done — #49, #61)
 
-Delete `group-join.ts`, `cross-extension-rpc.ts`.
-Replace `output-file.ts` with `SessionManager.create()` + `session-dir.ts` (#61).
-Simplify `index.ts` to use direct individual notifications.
-Emit lifecycle events on `pi.events` for external consumers.
+Deleted `group-join.ts`, `cross-extension-rpc.ts` (#49).
+Replaced `output-file.ts` with `SessionManager.create()` + `session-dir.ts` (#61).
+Simplified `index.ts` to use direct individual notifications.
+Lifecycle events emitted on `pi.events` for external consumers.
 
-### Phase 4: Implement and publish `SubagentsAPI`
+### Phase 4: Implement and publish `SubagentsService` ✓ (done — #48)
 
-Wire `api-adapter.ts` to wrap `AgentManager` and call `publishSubagentsAPI()` at extension init.
-Resolve model strings inside the adapter (fixing upstream [tintinweb/pi-subagents#60]).
+Wired `service-adapter.ts` to wrap `AgentManager` and call `publishSubagentsService()` at extension init.
+Model strings are resolved inside the adapter.
 
-### Phase 5: Decompose `index.ts` ✓ (done — issue #54)
+### Phase 5: Decompose `index.ts` ✓ (done — #54, #69, #70, #87)
 
-Extracted tools, notifications, activity tracking, and the `/agents` command into separate modules.
-`src/index.ts` shrank from ~1,619 lines to ~265 lines.
+Extracted tools, notifications, activity tracking, event handlers, and the `/agents` command into separate modules.
+Created `SubagentRuntime` factory to hold session-scoped state.
+`src/index.ts` shrank from ~1,894 lines to ~274 lines.
 
 ### Phase 6 (future): Extract UI to `@gotgenes/pi-subagents-ui`
 
-Move `ui/agent-widget.ts`, `ui/conversation-viewer.ts`, the `/agents` command, notifications, and activity tracking to a separate extension that consumes `SubagentsAPI` + lifecycle events.
+Move `ui/agent-widget.ts`, `ui/conversation-viewer.ts`, the `/agents` command, notifications, and activity tracking to a separate extension that consumes `SubagentsService` + lifecycle events.
 This phase is deferred until the API boundary is proven stable in production.
 
 ## Structural refactoring roadmap (post-#54)
@@ -383,16 +375,13 @@ These build on Phase 1 and should land after it.
    - Moved the four inline lambdas (`session_start`, `session_before_switch`, `session_shutdown`, `tool_execution_start`) into `SessionLifecycleHandler` and `ToolStartHandler` classes.
    - Handlers call methods on narrow runtime interfaces — no raw field writes, no `widget!` reach-throughs.
 
-### Phase 3: Interface polish
+### Phase 3: Interface polish ✓ (done)
 
-Small cleanups that are safest after the structural changes settle.
+1. **gotgenes/pi-packages#66** ✓ — Replace `as any` casts with proper SDK types
+   - Typed tool/menu factory dep interfaces with `ExtensionContext`, `AgentSession`, `SpawnOptions`, etc.
 
-1. **gotgenes/pi-packages#66** — Replace `as any` casts with proper SDK types
-   - Type-only change in the tool/menu factory dep interfaces.
-   - Best done after Issues #69 and #70 when the interfaces are stable.
-
-2. **gotgenes/pi-packages#77** — Add `projectAgentsDir` to `AgentMenuDeps`
-   - Remove the inline `process.cwd()` lambda from the menu handler.
+2. **gotgenes/pi-packages#77** ✓ — Add `projectAgentsDir` to `AgentMenuDeps`
+   - Removed the inline `process.cwd()` lambda from the menu handler.
 
 ### Phase 4: Features and cross-cutting concerns
 
@@ -416,8 +405,8 @@ Small cleanups that are safest after the structural changes settle.
 #84 (WorktreeManager) ✓                             │
 #72 (AgentManager DI) ✓ ────────────────────────────┘──(optional)──► #70
 
-#66 (type casts) ◄─────(after structural changes settle)
-#77 (projectAgentsDir) ◄─(after #66 or parallel)
+#66 (type casts) ✓
+#77 (projectAgentsDir) ✓
 
 #61 (transcript format) ✓
 #22 (parent session) ◄──(cross-extension, independent)
@@ -428,13 +417,11 @@ Small cleanups that are safest after the structural changes settle.
 The recommended sequence is:
 
 ```text
-#69 ✓ → #71 ✓ → #80 ✓ → #76 ✓ → #84 ✓ → #72 ✓ → #87 ✓ → #70 ✓ → #66 → #77 → #61 ✓
+#69 ✓ → #71 ✓ → #80 ✓ → #76 ✓ → #84 ✓ → #72 ✓ → #87 ✓ → #70 ✓ → #66 ✓ → #77 ✓ → #61 ✓
 ```
 
-Phase 1 is complete; Phase 2 is complete.
-Issue #61 (transcript format) is complete.
-The next issue is #66 (replace `as any` casts with proper SDK types).
-Issue #22 is a parallel cross-extension track and does not gate the structural work.
+All structural refactoring phases are complete.
+The remaining open issue is #22 (parent-session resolution), a cross-extension track that does not gate the structural work.
 
 ## Relationship with upstream
 
