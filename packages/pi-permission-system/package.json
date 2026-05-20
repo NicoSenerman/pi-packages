@@ -64,12 +64,12 @@
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
-    "@earendil-works/pi-coding-agent": ">=0.75.0",
-    "@earendil-works/pi-tui": ">=0.75.0",
+    "@earendil-works/pi-coding-agent": "0.75.4",
+    "@earendil-works/pi-tui": "0.75.4",
     "@types/node": "catalog:",
+    "rumdl": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:",
-    "rumdl": "catalog:"
+    "vitest": "catalog:"
   },
   "dependencies": {
     "tree-sitter-bash": "^0.25.1",
