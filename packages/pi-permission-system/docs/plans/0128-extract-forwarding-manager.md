@@ -130,7 +130,7 @@ And in the `deps` object: `forwarding: forwardingManager`.
 1. **`src/forwarding-manager.ts`** — `ForwardingManager` class.
    Moves `startForwardedPermissionPolling` and `stopForwardedPermissionPolling` logic from `runtime.ts`.
    Imports `isSubagentExecutionContext`, `processForwardedPermissionRequests`, `PERMISSION_FORWARDING_POLL_INTERVAL_MS`.
-1. **`tests/forwarding-manager.test.ts`** — Unit tests for `ForwardingManager.start()` and `.stop()`.
+2. **`tests/forwarding-manager.test.ts`** — Unit tests for `ForwardingManager.start()` and `.stop()`.
 
 ### Changed files
 
@@ -139,28 +139,28 @@ And in the `deps` object: `forwarding: forwardingManager`.
    - Remove `startForwardedPermissionPolling()` and `stopForwardedPermissionPolling()` free functions.
    - Remove the three field initializations from `createExtensionRuntime()`.
    - Remove `PermissionForwardingDeps` import (if no longer needed).
-1. **`src/handlers/types.ts`**
+2. **`src/handlers/types.ts`**
    - Replace `startForwardedPermissionPolling(ctx)` and `stopForwardedPermissionPolling()` with `readonly forwarding: ForwardingManager`.
    - Add `ForwardingManager` import.
-1. **`src/index.ts`**
+3. **`src/index.ts`**
    - Import `ForwardingManager`.
    - Construct `ForwardingManager` instance.
    - Replace `startForwardedPermissionPolling` / `stopForwardedPermissionPolling` closures in `deps` with `forwarding: forwardingManager`.
-1. **`src/handlers/before-agent-start.ts`** — `deps.startForwardedPermissionPolling(ctx)` → `deps.forwarding.start(ctx)`.
-1. **`src/handlers/input.ts`** — Same call-site update.
-1. **`src/handlers/tool-call.ts`** — Same call-site update.
-1. **`src/handlers/lifecycle.ts`** — `deps.startForwardedPermissionPolling(ctx)` → `deps.forwarding.start(ctx)`, `deps.stopForwardedPermissionPolling()` → `deps.forwarding.stop()`.
+4. **`src/handlers/before-agent-start.ts`** — `deps.startForwardedPermissionPolling(ctx)` → `deps.forwarding.start(ctx)`.
+5. **`src/handlers/input.ts`** — Same call-site update.
+6. **`src/handlers/tool-call.ts`** — Same call-site update.
+7. **`src/handlers/lifecycle.ts`** — `deps.startForwardedPermissionPolling(ctx)` → `deps.forwarding.start(ctx)`, `deps.stopForwardedPermissionPolling()` → `deps.forwarding.stop()`.
 
 ### Changed test files
 
 1. **`tests/runtime.test.ts`** — Remove the 3 tests asserting initial `null`/`false` values for the removed fields.
-1. **`tests/handlers/before-agent-start.test.ts`** — Replace `startForwardedPermissionPolling: vi.fn()` / `stopForwardedPermissionPolling: vi.fn()` with `forwarding: { start: vi.fn(), stop: vi.fn() }`.
+2. **`tests/handlers/before-agent-start.test.ts`** — Replace `startForwardedPermissionPolling: vi.fn()` / `stopForwardedPermissionPolling: vi.fn()` with `forwarding: { start: vi.fn(), stop: vi.fn() }`.
    Update assertion from `deps.startForwardedPermissionPolling` to `deps.forwarding.start`.
-1. **`tests/handlers/input.test.ts`** — Same mock shape update + assertion update.
-1. **`tests/handlers/input-events.test.ts`** — Same mock shape update (no assertions on these mocks).
-1. **`tests/handlers/tool-call.test.ts`** — Same mock shape + assertion update.
-1. **`tests/handlers/tool-call-events.test.ts`** — Same mock shape update.
-1. **`tests/handlers/lifecycle.test.ts`** — Same mock shape + both start/stop assertion updates.
+3. **`tests/handlers/input.test.ts`** — Same mock shape update + assertion update.
+4. **`tests/handlers/input-events.test.ts`** — Same mock shape update (no assertions on these mocks).
+5. **`tests/handlers/tool-call.test.ts`** — Same mock shape + assertion update.
+6. **`tests/handlers/tool-call-events.test.ts`** — Same mock shape update.
+7. **`tests/handlers/lifecycle.test.ts`** — Same mock shape + both start/stop assertion updates.
 
 ### Unchanged files
 
@@ -179,23 +179,23 @@ And in the `deps` object: `forwarding: forwardingManager`.
    - `stop()` → clears timer, context, and processing flag.
    - `start()` followed by timer tick → calls `processForwardedPermissionRequests`.
    - Timer tick while `processing` is true → skipped.
-1. **Existing tests that become simpler**: The 3 `createExtensionRuntime` init tests in `runtime.test.ts` for the forwarding fields are deleted — the class constructor handles initialization internally.
-1. **Existing tests that stay**: Handler tests still verify that `start(ctx)` and `stop()` are called at the right lifecycle points — the assertion target changes from `deps.startForwardedPermissionPolling` to `deps.forwarding.start` but the intent is identical.
+2. **Existing tests that become simpler**: The 3 `createExtensionRuntime` init tests in `runtime.test.ts` for the forwarding fields are deleted — the class constructor handles initialization internally.
+3. **Existing tests that stay**: Handler tests still verify that `start(ctx)` and `stop()` are called at the right lifecycle points — the assertion target changes from `deps.startForwardedPermissionPolling` to `deps.forwarding.start` but the intent is identical.
 
 ## TDD order
 
 1. **Red → Green**: Add `src/forwarding-manager.ts` with the class skeleton and `tests/forwarding-manager.test.ts` with core lifecycle tests (start no-op for non-UI, start no-op for subagent, stop clears state, timer tick calls process, tick skipped while processing, idempotent start).
    Commit: `feat: add ForwardingManager class (#128)`
-1. **Green → Refactor**: Remove the 3 forwarding fields from `ExtensionRuntime`, delete the two free functions from `runtime.ts`, update `createExtensionRuntime()`.
+2. **Green → Refactor**: Remove the 3 forwarding fields from `ExtensionRuntime`, delete the two free functions from `runtime.ts`, update `createExtensionRuntime()`.
    Remove the 3 init-value tests from `runtime.test.ts`.
    Run `pnpm run build` to verify.
    Commit: `refactor: remove forwarding state from ExtensionRuntime (#128)`
-1. **Green → Refactor**: Update `HandlerDeps` in `src/handlers/types.ts` — replace the two methods with `readonly forwarding: ForwardingManager`.
+3. **Green → Refactor**: Update `HandlerDeps` in `src/handlers/types.ts` — replace the two methods with `readonly forwarding: ForwardingManager`.
    Update all 4 handler files to use `deps.forwarding.start(ctx)` / `deps.forwarding.stop()`.
    Update all 7 handler test files (mock shape + assertions).
    Run `pnpm run build` and full test suite.
    Commit: `refactor: wire ForwardingManager through HandlerDeps (#128)`
-1. **Green → Refactor**: Update `src/index.ts` — construct `ForwardingManager`, pass it as `forwarding` in the deps object, remove the two closure wrappers.
+4. **Green → Refactor**: Update `src/index.ts` — construct `ForwardingManager`, pass it as `forwarding` in the deps object, remove the two closure wrappers.
    Run full test suite.
    Commit: `refactor: construct ForwardingManager in composition root (#128)`
 
@@ -206,7 +206,7 @@ Step 2 will break the build until step 3 updates callers, so steps 2 and 3 shoul
 The sequence becomes:
 
 1. `feat: add ForwardingManager class (#128)` — new file + tests, no existing code changed.
-1. `refactor: wire ForwardingManager and remove legacy forwarding state (#128)` — all mechanical changes in one commit: runtime, types, handlers, index, handler tests, runtime tests.
+2. `refactor: wire ForwardingManager and remove legacy forwarding state (#128)` — all mechanical changes in one commit: runtime, types, handlers, index, handler tests, runtime tests.
 
 ## Risks and mitigations
 

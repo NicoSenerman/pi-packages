@@ -106,11 +106,11 @@ Callers that read `runtime.agentDir` or `runtime.piInfrastructureDirs` continue 
 
 - `src/runtime.ts`:
   1. Import `ExtensionPaths` and `computeExtensionPaths` from `./extension-paths`.
-  1. Change `ExtensionRuntime` to `extends ExtensionPaths` instead of declaring the six path fields inline.
-  1. In `createExtensionRuntime`, replace the inline path computation with a `computeExtensionPaths(agentDir)` call and spread the result into the runtime object.
+  2. Change `ExtensionRuntime` to `extends ExtensionPaths` instead of declaring the six path fields inline.
+  3. In `createExtensionRuntime`, replace the inline path computation with a `computeExtensionPaths(agentDir)` call and spread the result into the runtime object.
 - `tests/runtime.test.ts`:
   1. Path-derivation tests for `createExtensionRuntime` remain as-is (they verify that the runtime object exposes the correct paths).
-  1. Add a mock for `../src/extension-paths` if needed, or leave the real implementation since `computeExtensionPaths` is a pure function with one side-effecting dep (`discoverGlobalNodeModulesRoot`) that is already mocked.
+  2. Add a mock for `../src/extension-paths` if needed, or leave the real implementation since `computeExtensionPaths` is a pure function with one side-effecting dep (`discoverGlobalNodeModulesRoot`) that is already mocked.
 
 ### Unchanged
 
@@ -124,10 +124,10 @@ Callers that read `runtime.agentDir` or `runtime.piInfrastructureDirs` continue 
 
 1. **New unit tests enabled**: `computeExtensionPaths()` can be tested independently of `createExtensionRuntime`.
    Tests cover: path derivation from `agentDir`, `piInfrastructureDirs` composition with/without `globalNodeModulesRoot`, and `readonly` semantics.
-1. **Existing tests that become partially redundant**: The path-derivation block in `tests/runtime.test.ts` (`"sets agentDir"`, `"derives sessionsDir"`, etc.) now duplicates coverage with the new `extension-paths.test.ts`.
+2. **Existing tests that become partially redundant**: The path-derivation block in `tests/runtime.test.ts` (`"sets agentDir"`, `"derives sessionsDir"`, etc.) now duplicates coverage with the new `extension-paths.test.ts`.
    These tests should stay — they verify that `createExtensionRuntime` correctly delegates to `computeExtensionPaths` and surfaces the fields on the runtime object.
    They can be simplified in a follow-up if desired (assert `runtime.agentDir === "/test/agent"` is sufficient; the detailed derivation is covered by the lower-level test).
-1. **Existing tests that must stay**: All handler tests (`tool-call.test.ts`, `lifecycle.test.ts`, etc.) and `runtime.test.ts` tests for mutable state, logging, config refresh, and agent name resolution are unchanged.
+3. **Existing tests that must stay**: All handler tests (`tool-call.test.ts`, `lifecycle.test.ts`, etc.) and `runtime.test.ts` tests for mutable state, logging, config refresh, and agent name resolution are unchanged.
 
 ## TDD order
 
@@ -143,8 +143,8 @@ Callers that read `runtime.agentDir` or `runtime.piInfrastructureDirs` continue 
    - Includes discovered global `node_modules` root when present.
    - Omits global `node_modules` when discovery returns `null`.
    - All entries in `piInfrastructureDirs` are strings (no `null`).
-1. Create `src/extension-paths.ts` with the `ExtensionPaths` interface and `computeExtensionPaths()` factory to make tests green.
-1. Commit: `test: add ExtensionPaths unit tests` and `feat: extract ExtensionPaths value object (#126)` (or squash into one `feat:` commit).
+2. Create `src/extension-paths.ts` with the `ExtensionPaths` interface and `computeExtensionPaths()` factory to make tests green.
+3. Commit: `test: add ExtensionPaths unit tests` and `feat: extract ExtensionPaths value object (#126)` (or squash into one `feat:` commit).
 
 ### Cycle 2: Integrate into ExtensionRuntime
 
@@ -152,11 +152,11 @@ Callers that read `runtime.agentDir` or `runtime.piInfrastructureDirs` continue 
    - `ExtensionRuntime extends ExtensionPaths`.
    - `createExtensionRuntime` calls `computeExtensionPaths(agentDir)` and spreads into the runtime literal.
    - Remove the now-redundant inline path computation and the direct import of `discoverGlobalNodeModulesRoot`.
-1. Run existing `tests/runtime.test.ts` — all path tests should stay green because the runtime object still exposes the same fields.
+2. Run existing `tests/runtime.test.ts` — all path tests should stay green because the runtime object still exposes the same fields.
    The `discoverGlobalNodeModulesRoot` mock in `runtime.test.ts` may need to be replaced with a mock on `../src/extension-paths` (or left as-is if the real `computeExtensionPaths` is called through and the existing mock of `../src/node-modules-discovery` still intercepts correctly).
-1. Run `pnpm run build` to verify type-checking.
-1. Run full test suite.
-1. Commit: `refactor: use computeExtensionPaths in createExtensionRuntime (#126)`.
+3. Run `pnpm run build` to verify type-checking.
+4. Run full test suite.
+5. Commit: `refactor: use computeExtensionPaths in createExtensionRuntime (#126)`.
 
 ## Risks and mitigations
 

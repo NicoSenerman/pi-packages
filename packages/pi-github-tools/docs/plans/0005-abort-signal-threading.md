@@ -319,17 +319,17 @@ No structural change needed.
 
 1. **`sleep()` abort tests** — previously impossible because `sleep()` had no signal parameter.
    Now we can test: immediate abort, abort mid-sleep, no-signal backward compat, cleanup of listeners.
-1. **Polling abort propagation** — we can now write focused tests that verify `findRun`/`watchRun`/`findReleasePR`/`watchRelease` catch abort and return structured messages, without needing time-based integration tests.
-1. **`gh()`/`git()` signal forwarding** — we can verify that an `AbortSignal` passed to `gh()` reaches `runCommand()`.
+2. **Polling abort propagation** — we can now write focused tests that verify `findRun`/`watchRun`/`findReleasePR`/`watchRelease` catch abort and return structured messages, without needing time-based integration tests.
+3. **`gh()`/`git()` signal forwarding** — we can verify that an `AbortSignal` passed to `gh()` reaches `runCommand()`.
 
 ### Existing tests that need updating
 
 1. **`tests/lib/github.test.ts`** — every `gh()`, `git()`, `ghJson()` call changes from spread to array syntax.
    The assertions on `mockRunCommand` calls also change from `{ cmd: "gh", args: ["run", "list"] }` to include `signal: undefined`.
-1. **`tests/lib/ci.test.ts`** — `mockGhJson()` uses `runCommand`, which is already mocked.
+2. **`tests/lib/ci.test.ts`** — `mockGhJson()` uses `runCommand`, which is already mocked.
    Call sites for `ghJson` internals change to array args.
    The `mockRunCommand` assertions for `ghJson` calls need updating.
-1. **`tests/lib/release.test.ts`** — same as ci.test.ts; `mockRunCommand` assertions need updating for the new `gh`/`git` array-args and `signal` parameter.
+3. **`tests/lib/release.test.ts`** — same as ci.test.ts; `mockRunCommand` assertions need updating for the new `gh`/`git` array-args and `signal` parameter.
 
 ### Existing tests that stay as-is
 

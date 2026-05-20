@@ -70,13 +70,13 @@ This matches user intent and is consistent with the principle that `deny` should
 
 - Add tests for trailing wildcard optionality:
   1. `"git *"` matches `"git"` (bare command).
-  1. `"git *"` matches `"git status"` (with arguments — existing behavior preserved).
-  1. `"git *"` matches `"git status --short"` (multiple arguments).
-  1. `"git *"` does not match `"npm install"` (different prefix).
-  1. `"git status *"` matches bare `"git status"`.
-  1. Non-trailing `*` is unaffected: `"g*t"` does not match `"g"` or `"t"`.
-  1. `"git*"` (no space) still matches `"git"` — unchanged behavior.
-  1. `"*"` alone still matches everything — unchanged behavior.
+  2. `"git *"` matches `"git status"` (with arguments — existing behavior preserved).
+  3. `"git *"` matches `"git status --short"` (multiple arguments).
+  4. `"git *"` does not match `"npm install"` (different prefix).
+  5. `"git status *"` matches bare `"git status"`.
+  6. Non-trailing `*` is unaffected: `"g*t"` does not match `"g"` or `"t"`.
+  7. `"git*"` (no space) still matches `"git"` — unchanged behavior.
+  8. `"*"` alone still matches everything — unchanged behavior.
 - Update existing test `"glob pattern matches with wildcard"` assertion for `"git *"` against `"git"` (previously `false`, now `true` — or add a new test alongside).
 
 ### `docs/opencode-compatibility.md`
@@ -91,10 +91,10 @@ This matches user intent and is consistent with the principle that `deny` should
 ## Test Impact Analysis
 
 1. **New tests enabled**: Direct unit tests for the trailing optionality behavior — straightforward additions to the existing `wildcardMatch` and `findCompiledWildcardMatch` describe blocks.
-1. **Existing tests that may break**: The test `"glob pattern matches with wildcard"` currently asserts `"git *"` does NOT match bare `"git"` implicitly (the test checks `"git status"` and `"git push origin main"` but not `"git"`).
+2. **Existing tests that may break**: The test `"glob pattern matches with wildcard"` currently asserts `"git *"` does NOT match bare `"git"` implicitly (the test checks `"git status"` and `"git push origin main"` but not `"git"`).
    No existing assertion should break since none test `"git *"` against `"git"`.
    However, review all tests to confirm.
-1. **Existing tests that stay**: All other wildcard tests (exact match, last-match-wins, regex escaping, home path expansion, multiline) are unaffected.
+3. **Existing tests that stay**: All other wildcard tests (exact match, last-match-wins, regex escaping, home path expansion, multiline) are unaffected.
 
 ## TDD Order
 
