@@ -27,14 +27,15 @@ Any test of `AgentManager` must mock entire modules via `vi.mock()`, coupling th
 
 ## Background
 
-### Completed prerequisites
+### Prerequisites
 
-| Issue | Title                                    | Status |
-| ----- | ---------------------------------------- | ------ |
-| #69   | Create `SubagentRuntime`                 | ✓ Done |
-| #71   | Extract pure agent-session assembler     | ✓ Done |
-| #76   | Inject `cwd` into `AgentManager`         | ✓ Done |
-| #80   | Consolidate `getConfig`/`getAgentConfig` | ✓ Done |
+| Issue | Title                                               | Status  |
+| ----- | --------------------------------------------------- | ------- |
+| #69   | Create `SubagentRuntime`                            | ✓ Done  |
+| #71   | Extract pure agent-session assembler                | ✓ Done  |
+| #76   | Inject `cwd` into `AgentManager`                    | ✓ Done  |
+| #80   | Consolidate `getConfig`/`getAgentConfig`            | ✓ Done  |
+| #84   | Extract `GitWorktreeManager` class from worktree.ts | Pending |
 
 ### Prior art
 
@@ -198,12 +199,9 @@ expect(runner.run).toHaveBeenCalled();
 
 ## Module-Level Changes
 
-### `src/worktree.ts` (modified)
+### `src/worktree.ts` (no changes in this issue)
 
-- Add `WorktreeManager` interface (3 methods, no `cwd` parameter).
-- Add `GitWorktreeManager` class that captures `cwd` and delegates to existing free functions.
-- Export both.
-- Existing free functions stay unchanged.
+`WorktreeManager` interface and `GitWorktreeManager` class are added by prerequisite #84.
 
 ### `src/agent-runner.ts` (modified)
 
@@ -262,21 +260,19 @@ Tests in `agent-runner.test.ts`, `agent-runner-extension-tools.test.ts`, `agent-
 
 ## TDD Order
 
-### Phase A: Define collaborator interfaces
+Issue #84 (extract `GitWorktreeManager`) must land first.
+This plan assumes `WorktreeManager` interface and `GitWorktreeManager` class already exist in `worktree.ts`.
 
-1. Add `WorktreeManager` interface and `GitWorktreeManager` class in `worktree.ts`.
-   Export both alongside existing free functions.
-   Run existing tests to confirm no regressions.
-   Commit: `feat: add WorktreeManager interface and GitWorktreeManager class`
+### Phase A: Define AgentRunner interface
 
-2. Add `AgentRunner` interface and named `ResumeOptions` type in `agent-runner.ts`.
+1. Add `AgentRunner` interface and named `ResumeOptions` type in `agent-runner.ts`.
    Export both.
    Run existing tests.
    Commit: `feat: define AgentRunner interface in agent-runner.ts`
 
 ### Phase B: Lift-and-shift test migration
 
-3. Create `createManager()` test helper factory in `agent-manager.test.ts`.
+2. Create `createManager()` test helper factory in `agent-manager.test.ts`.
    The factory constructs `AgentManager` using the **old** positional constructor, wrapping the same `vi.mock()` stubs in a consistent helper.
    Migrate all 19 `new AgentManager(...)` call sites to use the factory.
    All tests pass unchanged.
@@ -284,11 +280,11 @@ Tests in `agent-runner.test.ts`, `agent-runner-extension-tools.test.ts`, `agent-
 
 ### Phase C: Constructor conversion + DI
 
-4. RED: Add a test that calls `createManager()` with `runner` and `worktrees` overrides and asserts `runner.run` is called when spawning an agent.
+3. RED: Add a test that calls `createManager()` with `runner` and `worktrees` overrides and asserts `runner.run` is called when spawning an agent.
    This fails because the constructor does not accept the options bag yet.
    Commit: `test: add agent-manager test with injected AgentRunner`
 
-5. GREEN: Convert `AgentManager` constructor to accept `AgentManagerOptions`.
+4. GREEN: Convert `AgentManager` constructor to accept `AgentManagerOptions`.
    Replace internal calls to `runAgent`/`resumeAgent`/`createWorktree`/`cleanupWorktree`/`pruneWorktrees` with `this.runner.*`/`this.worktrees.*`.
    Remove runtime imports from `agent-runner.ts` and `worktree.ts`.
    Update `createManager()` factory to pass injected stubs via the options bag.
@@ -299,14 +295,14 @@ Tests in `agent-runner.test.ts`, `agent-runner-extension-tools.test.ts`, `agent-
 
 ### Phase D: Wiring and verification
 
-6. Wire `index.ts`: construct `GitWorktreeManager`, pass options bag to `AgentManager`.
+5. Wire `index.ts`: construct `GitWorktreeManager`, pass options bag to `AgentManager`.
    Run full test suite.
    Commit: `refactor: wire injected deps into AgentManager (#72)`
 
-7. Add new tests enabled by DI: queueing order, concurrency enforcement, abort-from-queue, lifecycle callback timing.
+6. Add new tests enabled by DI: queueing order, concurrency enforcement, abort-from-queue, lifecycle callback timing.
    Commit: `test: add DI-enabled agent-manager tests`
 
-8. Verify acceptance criteria.
+7. Verify acceptance criteria.
    Grep `agent-manager.ts` for runtime imports from `agent-runner.ts` and `worktree.ts` (expect none).
    Grep for `this.cwd` — if no readers remain, remove the field and the `cwd` option.
    Run `pnpm run check` for type safety.
