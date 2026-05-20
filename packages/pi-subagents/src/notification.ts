@@ -109,7 +109,10 @@ export function buildEventData(record: AgentRecord) {
 
 /** Narrow deps for the notification system — only the methods it actually calls. */
 export interface NotificationDeps {
-  sendMessage: (msg: unknown, opts: unknown) => void;
+  sendMessage: (
+    msg: { customType: string; content: string; display: boolean; details?: unknown },
+    opts?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
+  ) => void;
   agentActivity: Map<string, AgentActivity>;
   markFinished: (id: string) => void;
   updateWidget: () => void;

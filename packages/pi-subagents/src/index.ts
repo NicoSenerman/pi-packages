@@ -56,7 +56,7 @@ export default function (pi: ExtensionAPI) {
   // runtime.widget is assigned after AgentManager construction; arrow closures
   // capture `runtime` by reference so they always read the current value.
   const notifications = createNotificationSystem({
-    sendMessage: (msg, opts) => pi.sendMessage(msg as any, opts as any),
+    sendMessage: (msg, opts) => pi.sendMessage(msg, opts),
     agentActivity: runtime.agentActivity,
     markFinished: (id) => runtime.markFinished(id),
     updateWidget: () => runtime.updateWidget(),
