@@ -162,3 +162,33 @@ export function pruneWorktrees(cwd: string): void {
     execFileSync("git", ["worktree", "prune"], { cwd, stdio: "pipe", timeout: 5000 });
   } catch (err) { debugLog("pruneWorktrees", err); }
 }
+
+/**
+ * Interface for managing git worktrees relative to a fixed repository root.
+ * Callers do not thread `cwd` per call — it is captured at construction time.
+ */
+export interface WorktreeManager {
+  create(id: string): WorktreeInfo | undefined;
+  cleanup(wt: WorktreeInfo, description: string): WorktreeCleanupResult;
+  prune(): void;
+}
+
+/**
+ * Concrete implementation of WorktreeManager backed by the free functions in this module.
+ * Captures `cwd` (the repository root) at construction and delegates each method.
+ */
+export class GitWorktreeManager implements WorktreeManager {
+  constructor(private readonly cwd: string) {}
+
+  create(id: string): WorktreeInfo | undefined {
+    return createWorktree(this.cwd, id);
+  }
+
+  cleanup(wt: WorktreeInfo, description: string): WorktreeCleanupResult {
+    return cleanupWorktree(this.cwd, wt, description);
+  }
+
+  prune(): void {
+    pruneWorktrees(this.cwd);
+  }
+}
