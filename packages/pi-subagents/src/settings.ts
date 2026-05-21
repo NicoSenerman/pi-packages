@@ -34,10 +34,12 @@ export class SettingsManager {
 
   private readonly emit: SettingsEmit;
   private readonly cwd: string;
+  private readonly onMaxConcurrentChanged: (() => void) | undefined;
 
-  constructor(deps: { emit: SettingsEmit; cwd: string }) {
+  constructor(deps: { emit: SettingsEmit; cwd: string; onMaxConcurrentChanged?: () => void }) {
     this.emit = deps.emit;
     this.cwd = deps.cwd;
+    this.onMaxConcurrentChanged = deps.onMaxConcurrentChanged;
   }
 
   // ── defaultMaxTurns: 0 or undefined → unlimited (undefined); else max(1, n) ──

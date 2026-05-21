@@ -511,4 +511,16 @@ describe("SettingsManager", () => {
       }
     });
   });
+
+  describe("constructor onMaxConcurrentChanged callback", () => {
+    it("constructs without callback without throwing", () => {
+      expect(() => new SettingsManager({ emit: vi.fn(), cwd: "/tmp" })).not.toThrow();
+    });
+
+    it("constructs with callback without throwing", () => {
+      expect(
+        () => new SettingsManager({ emit: vi.fn(), cwd: "/tmp", onMaxConcurrentChanged: vi.fn() }),
+      ).not.toThrow();
+    });
+  });
 });
