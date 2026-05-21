@@ -9,7 +9,8 @@ import { truncateToWidth } from "@earendil-works/pi-tui";
 import type { AgentManager } from "../agent-manager.js";
 import { type AgentConfigLookup, AgentTypeRegistry } from "../agent-types.js";
 import type { AgentInvocation, SubagentType } from "../types.js";
-import { getLifetimeTotal, getSessionContextPercent, type LifetimeUsage, type SessionLike } from "../usage.js";
+import { getLifetimeTotal, getSessionContextPercent } from "../usage.js";
+import type { AgentActivityTracker } from "./agent-activity-tracker.js";
 
 // ---- Constants ----
 
@@ -48,20 +49,6 @@ export type UICtx = {
     options?: { placement?: "aboveEditor" | "belowEditor" },
   ): void;
 };
-
-/** Per-agent live activity state. */
-export interface AgentActivity {
-  activeTools: Map<string, string>;
-  toolUses: number;
-  responseText: string;
-  session?: SessionLike;
-  /** Current turn count. */
-  turnCount: number;
-  /** Effective max turns for this agent (undefined = unlimited). */
-  maxTurns?: number;
-  /** Lifetime usage breakdown — see LifetimeUsage docs. */
-  lifetimeUsage: LifetimeUsage;
-}
 
 /** Metadata attached to Agent tool results for custom rendering. */
 export interface AgentDetails {
@@ -177,7 +164,7 @@ function truncateLine(text: string, len = 60): string {
 }
 
 /** Build a human-readable activity string from currently-running tools or response text. */
-export function describeActivity(activeTools: Map<string, string>, responseText?: string): string {
+export function describeActivity(activeTools: ReadonlyMap<string, string>, responseText?: string): string {
   if (activeTools.size > 0) {
     const groups = new Map<string, number>();
     for (const toolName of activeTools.values()) {
@@ -224,7 +211,7 @@ export class AgentWidget {
 
   constructor(
     private manager: AgentManager,
-    private agentActivity: Map<string, AgentActivity>,
+    private agentActivity: Map<string, AgentActivityTracker>,
     private registry: AgentTypeRegistry,
   ) {}
 

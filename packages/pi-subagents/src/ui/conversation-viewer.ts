@@ -11,8 +11,8 @@ import type { AgentConfigLookup } from "../agent-types.js";
 import { extractText } from "../context.js";
 import type { AgentRecord } from "../types.js";
 import { getLifetimeTotal, getSessionContextPercent } from "../usage.js";
-import type { Theme } from "./agent-widget.js";
-import { type AgentActivity, buildInvocationTags, describeActivity, formatDuration, formatSessionTokens, getDisplayName, getPromptModeLabel } from "./agent-widget.js";
+import type { AgentActivityTracker } from "./agent-activity-tracker.js";
+import { buildInvocationTags, describeActivity, formatDuration, formatSessionTokens, getDisplayName, getPromptModeLabel, type Theme } from "./agent-widget.js";
 
 /** Base lines consumed by chrome: top border + header + header sep + footer sep + footer + bottom border. */
 const CHROME_LINES_BASE = 6;
@@ -31,7 +31,7 @@ export class ConversationViewer implements Component {
     private tui: TUI,
     private session: AgentSession,
     private record: AgentRecord,
-    private activity: AgentActivity | undefined,
+    private activity: AgentActivityTracker | undefined,
     private theme: Theme,
     private done: (result: undefined) => void,
     private registry: AgentConfigLookup,
