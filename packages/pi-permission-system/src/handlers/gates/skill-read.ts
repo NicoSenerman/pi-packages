@@ -1,9 +1,6 @@
 import { toRecord } from "../../common";
 import { normalizePathForComparison } from "../../path-utils";
-import {
-  formatSkillPathAskPrompt,
-  formatSkillPathDenyReason,
-} from "../../permission-prompts";
+import { formatSkillPathAskPrompt } from "../../permission-prompts";
 import type { SkillPromptEntry } from "../../skill-prompt-sanitizer";
 import { findSkillPathMatch } from "../../skill-prompt-sanitizer";
 import type { GateDescriptor } from "./descriptor";
@@ -55,19 +52,11 @@ export function describeSkillReadGate(
   return {
     surface: "skill",
     input: { name: matchedSkill.name },
-    messages: {
-      denyReason: formatSkillPathDenyReason(
-        matchedSkill,
-        path,
-        tcc.agentName ?? undefined,
-      ),
-      unavailableReason: `Accessing skill '${matchedSkill.name}' requires approval, but no interactive UI is available.`,
-      userDeniedReason: (decision) => {
-        const denialReason = decision.denialReason
-          ? ` Reason: ${decision.denialReason}.`
-          : "";
-        return `User denied access to skill '${matchedSkill.name}'.${denialReason}`;
-      },
+    denialContext: {
+      kind: "skill_read",
+      skillName: matchedSkill.name,
+      readPath: path,
+      agentName: tcc.agentName ?? undefined,
     },
     promptDetails: {
       source: "skill_read",

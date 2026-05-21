@@ -144,7 +144,11 @@ describe("describeBashPathGate", () => {
       checkPermission,
       getSessionRuleset,
     )) as GateDescriptor;
-    expect(result.messages!.denyReason).toContain(".env");
+    expect(result.denialContext).toMatchObject({
+      kind: "bash_path",
+      command: "cat .env",
+      pathValue: ".env",
+    });
     expect(result.promptDetails.message).toContain(".env");
   });
 

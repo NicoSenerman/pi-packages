@@ -10,7 +10,6 @@ import {
   formatMissingToolNameReason,
   formatSkillAskPrompt,
   formatSkillPathAskPrompt,
-  formatSkillPathDenyReason,
   formatUnknownToolReason,
 } from "../src/permission-prompts";
 import type { SkillPromptEntry } from "../src/skill-prompt-sanitizer";
@@ -203,23 +202,5 @@ describe("formatSkillPathAskPrompt", () => {
   });
 });
 
-describe("formatSkillPathDenyReason", () => {
-  test("includes skill name, read path, and agent name", () => {
-    const result = formatSkillPathDenyReason(
-      skillEntry("librarian"),
-      "/skills/librarian/SKILL.md",
-      "my-agent",
-    );
-    expect(result).toContain("librarian");
-    expect(result).toContain("/skills/librarian/SKILL.md");
-    expect(result).toContain("Agent 'my-agent'");
-  });
-
-  test("uses 'Current agent' without agent name", () => {
-    const result = formatSkillPathDenyReason(
-      skillEntry("librarian"),
-      "/skills/librarian/SKILL.md",
-    );
-    expect(result).toContain("Current agent");
-  });
-});
+// formatSkillPathDenyReason has moved to denial-messages.ts.
+// Its behavior is tested in denial-messages.test.ts.

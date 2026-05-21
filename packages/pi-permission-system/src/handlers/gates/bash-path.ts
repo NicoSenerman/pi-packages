@@ -4,7 +4,7 @@ import { deriveApprovalPattern } from "../../session-rules";
 import type { PermissionCheckResult } from "../../types";
 import { extractTokensForPathRules } from "./bash-path-extractor";
 import type { GateResult } from "./descriptor";
-import { formatPathAskPrompt, formatPathDenyReason } from "./path";
+import { formatPathAskPrompt } from "./path";
 import type { ToolCallContext } from "./types";
 
 /** Function type for checkPermission used by the descriptor factory. */
@@ -111,19 +111,11 @@ export async function describeBashPathGate(
   return {
     surface: "path",
     input: { path: worstToken },
-    messages: {
-      denyReason: formatPathDenyReason(
-        tcc.toolName,
-        worstToken,
-        tcc.agentName ?? undefined,
-      ),
-      unavailableReason: `Bash command '${command}' accesses path '${worstToken}' which requires approval, but no interactive UI is available.`,
-      userDeniedReason: (decision) => {
-        const reasonSuffix = decision.denialReason
-          ? ` Reason: ${decision.denialReason}.`
-          : "";
-        return `User denied path access for bash command '${command}' (path '${worstToken}').${reasonSuffix} Hard stop: this path permission denial is policy-enforced. Do not retry this path, do not attempt a filesystem bypass, and report the block to the user.`;
-      },
+    denialContext: {
+      kind: "bash_path",
+      command,
+      pathValue: worstToken,
+      agentName: tcc.agentName ?? undefined,
     },
     sessionApproval: {
       surface: "path",

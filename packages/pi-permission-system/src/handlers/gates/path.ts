@@ -1,4 +1,3 @@
-import { formatDenyReason } from "../../denial-messages";
 import { getPathBearingToolPath } from "../../path-utils";
 import type { Rule } from "../../rule";
 import { deriveApprovalPattern } from "../../session-rules";
@@ -87,17 +86,6 @@ export function describePathGate(
   };
 
   return descriptor;
-}
-
-/**
- * @deprecated Delegated to denial-messages.ts — kept until bash-path.ts migrates.
- */
-export function formatPathDenyReason(
-  toolName: string,
-  pathValue: string,
-  agentName?: string,
-): string {
-  return formatDenyReason({ kind: "path", toolName, pathValue, agentName });
 }
 
 export function formatPathAskPrompt(

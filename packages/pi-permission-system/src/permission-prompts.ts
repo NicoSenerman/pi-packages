@@ -73,11 +73,4 @@ export function formatSkillPathAskPrompt(
   return `${subject} requested access to skill '${skill.name}' via '${readPath}'. Allow this read?`;
 }
 
-export function formatSkillPathDenyReason(
-  skill: SkillPromptEntry,
-  readPath: string,
-  agentName?: string,
-): string {
-  const subject = agentName ? `Agent '${agentName}'` : "Current agent";
-  return `${subject} is not permitted to access skill '${skill.name}' via '${readPath}'.`;
-}
+// formatSkillPathDenyReason has been moved to denial-messages.ts.

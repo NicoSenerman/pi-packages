@@ -104,17 +104,16 @@ describe("describeSkillReadGate", () => {
     expect(result.decision.value).toBe("my-skill");
   });
 
-  it("messages contain the skill name", () => {
+  it("denialContext contains the skill name and read path", () => {
     const result = describeSkillReadGate(makeTcc(), () => [
       makeSkillEntry({ name: "librarian" }),
     ]) as GateDescriptor;
-    expect(result.messages!.denyReason).toContain("librarian");
-    expect(result.messages!.unavailableReason).toContain("librarian");
-    const deniedMsg = result.messages!.userDeniedReason({
-      approved: false,
-      state: "denied",
+    expect(result.denialContext).toEqual({
+      kind: "skill_read",
+      skillName: "librarian",
+      readPath: "/skills/librarian/SKILL.md",
+      agentName: undefined,
     });
-    expect(deniedMsg).toContain("librarian");
   });
 
   it("promptDetails includes skill_read source and skillName", () => {
