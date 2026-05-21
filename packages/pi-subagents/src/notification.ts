@@ -1,6 +1,6 @@
 import { debugLog } from "./debug.js";
 import type { AgentRecord, NotificationDetails } from "./types.js";
-import type { AgentActivity } from "./ui/agent-widget.js";
+import type { AgentActivityTracker } from "./ui/agent-activity-tracker.js";
 import { getLifetimeTotal, getSessionContextPercent } from "./usage.js";
 
 // ---- Pure helpers (exported for unit testing) ----
@@ -60,7 +60,7 @@ export function formatTaskNotification(record: AgentRecord, resultMaxLen: number
 export function buildNotificationDetails(
   record: AgentRecord,
   resultMaxLen: number,
-  activity?: AgentActivity,
+  activity?: AgentActivityTracker,
 ): NotificationDetails {
   const totalTokens = getLifetimeTotal(record.lifetimeUsage);
 
@@ -113,7 +113,7 @@ export interface NotificationDeps {
     msg: { customType: string; content: string; display: boolean; details?: unknown },
     opts?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
   ) => void;
-  agentActivity: Map<string, AgentActivity>;
+  agentActivity: Map<string, AgentActivityTracker>;
   markFinished: (id: string) => void;
   updateWidget: () => void;
 }

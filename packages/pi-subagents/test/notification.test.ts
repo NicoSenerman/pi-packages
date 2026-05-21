@@ -7,7 +7,7 @@ import {
   formatTaskNotification,
   getStatusLabel,
 } from "../src/notification.js";
-import type { AgentActivity } from "../src/ui/agent-widget.js";
+import { AgentActivityTracker } from "../src/ui/agent-activity-tracker.js";
 import { createTestRecord } from "./helpers/make-record.js";
 
 // ---- Pure helper tests ----
@@ -102,7 +102,8 @@ describe("buildNotificationDetails", () => {
   });
 
   it("uses activity turnCount when provided", () => {
-    const activity = { turnCount: 7, maxTurns: 10 } as AgentActivity;
+    const activity = new AgentActivityTracker(10);
+    for (let i = 0; i < 6; i++) activity.onTurnEnd(); // turnCount starts at 1, 6 increments → 7
     const details = buildNotificationDetails(baseRecord, 500, activity);
     expect(details.turnCount).toBe(7);
     expect(details.maxTurns).toBe(10);
@@ -170,7 +171,7 @@ describe("createNotificationSystem", () => {
   function makeDeps() {
     return {
       sendMessage: vi.fn(),
-      agentActivity: new Map<string, AgentActivity>(),
+      agentActivity: new Map<string, AgentActivityTracker>(),
       markFinished: vi.fn(),
       updateWidget: vi.fn(),
     };
@@ -194,7 +195,7 @@ describe("createNotificationSystem", () => {
 
   it("sendCompletion cleans up activity and widget, then schedules nudge", () => {
     const deps = makeDeps();
-    deps.agentActivity.set("agent-1", {} as AgentActivity);
+    deps.agentActivity.set("agent-1", new AgentActivityTracker());
     const system = createNotificationSystem(deps);
     system.sendCompletion(baseRecord);
     expect(deps.agentActivity.has("agent-1")).toBe(false);
@@ -216,7 +217,7 @@ describe("createNotificationSystem", () => {
 
   it("cleanupCompleted removes activity and marks finished without nudge", () => {
     const deps = makeDeps();
-    deps.agentActivity.set("agent-1", {} as AgentActivity);
+    deps.agentActivity.set("agent-1", new AgentActivityTracker());
     const system = createNotificationSystem(deps);
     system.cleanupCompleted("agent-1");
     expect(deps.agentActivity.has("agent-1")).toBe(false);

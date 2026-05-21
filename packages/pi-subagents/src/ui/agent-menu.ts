@@ -9,7 +9,7 @@ import {
 } from "../agent-types.js";
 import type { ModelRegistry } from "../model-resolver.js";
 import type { AgentConfig, AgentRecord } from "../types.js";
-import type { AgentActivity } from "./agent-widget.js";
+import type { AgentActivityTracker } from "./agent-activity-tracker.js";
 import { formatDuration, getDisplayName } from "./agent-widget.js";
 
 // ---- Deps interface ----
@@ -35,7 +35,7 @@ export interface AgentMenuSettings {
 export interface AgentMenuDeps {
   manager: AgentMenuManager;
   registry: AgentTypeRegistry;
-  agentActivity: Map<string, AgentActivity>;
+  agentActivity: Map<string, AgentActivityTracker>;
   /** Resolve model label for a given agent type + registry. */
   getModelLabel: (type: string, registry?: ModelRegistry) => string;
   /** Settings manager — owns in-memory values and persistence. */
