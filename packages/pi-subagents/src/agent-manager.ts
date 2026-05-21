@@ -13,9 +13,9 @@ import { AgentRecord } from "./agent-record.js";
 import type { AgentRunner, ToolActivity } from "./agent-runner.js";
 import { debugLog } from "./debug.js";
 import { buildParentSnapshot } from "./parent-snapshot.js";
+import { subscribeRecordObserver } from "./record-observer.js";
 import type { RunConfig } from "./runtime.js";
 import type { AgentInvocation, IsolationMode, ParentSnapshot, ShellExec, SubagentType, ThinkingLevel } from "./types.js";
-import { addUsage } from "./usage.js";
 import type { WorktreeManager } from "./worktree.js";
 
 export type OnAgentComplete = (record: AgentRecord) => void;
@@ -198,6 +198,8 @@ export class AgentManager {
     }
     const detach = () => { detachParentSignal?.(); detachParentSignal = undefined; };
 
+    let unsubRecordObserver: (() => void) | undefined;
+
     const runConfig = this.getRunConfig?.();
     const promise = this.runner.run(snapshot, type, prompt, {
       exec: this.exec,
@@ -211,21 +213,11 @@ export class AgentManager {
       parentSessionFile: options.parentSessionFile,
       parentSessionId: options.parentSessionId,
       signal: record.abortController!.signal,
-      onToolActivity: (activity) => {
-        if (activity.type === "end") record.toolUses++;
-        options.onToolActivity?.(activity);
-      },
+      onToolActivity: options.onToolActivity,
       onTurnEnd: options.onTurnEnd,
       onTextDelta: options.onTextDelta,
-      onAssistantUsage: (usage) => {
-        addUsage(record.lifetimeUsage, usage);
-        options.onAssistantUsage?.(usage);
-      },
-      onCompaction: (info) => {
-        record.compactionCount++;
-        this.onCompact?.(record, info);
-        options.onCompaction?.(info);
-      },
+      onAssistantUsage: options.onAssistantUsage,
+      onCompaction: options.onCompaction,
       onSessionCreated: (session) => {
         record.session = session;
         // Capture the session file path early so it's available for display
@@ -239,10 +231,15 @@ export class AgentManager {
           }
           record.pendingSteers = undefined;
         }
+        // Subscribe record observer for stats accumulation
+        unsubRecordObserver = subscribeRecordObserver(session, record, {
+          onCompact: (r, info) => this.onCompact?.(r, info),
+        });
         options.onSessionCreated?.(session);
       },
     })
       .then(({ responseText, session, aborted, steered, sessionFile }) => {
+        unsubRecordObserver?.();
         detach();
 
         // Clean up worktree before transition so the final result includes branch text
@@ -273,6 +270,7 @@ export class AgentManager {
       .catch((err) => {
         record.markError(err);
 
+        unsubRecordObserver?.();
         detach();
 
         // Best-effort worktree cleanup on error
@@ -340,23 +338,19 @@ export class AgentManager {
 
     record.resetForResume(Date.now());
 
+    const unsubResume = subscribeRecordObserver(record.session, record, {
+      onCompact: (r, info) => this.onCompact?.(r, info),
+    });
+
     try {
       const responseText = await this.runner.resume(record.session, prompt, {
-        onToolActivity: (activity) => {
-          if (activity.type === "end") record.toolUses++;
-        },
-        onAssistantUsage: (usage) => {
-          addUsage(record.lifetimeUsage, usage);
-        },
-        onCompaction: (info) => {
-          record.compactionCount++;
-          this.onCompact?.(record, info);
-        },
         signal,
       });
       record.markCompleted(responseText);
     } catch (err) {
       record.markError(err);
+    } finally {
+      unsubResume();
     }
 
     return record;

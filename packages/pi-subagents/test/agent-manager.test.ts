@@ -10,14 +10,28 @@ vi.mock("../src/parent-snapshot.js", () => ({
 }));
 
 import { AgentManager, type OnAgentCompact, type OnAgentComplete, type OnAgentStart } from "../src/agent-manager.js";
-import type { AgentRunner, ResumeOptions } from "../src/agent-runner.js";
+import type { AgentRunner } from "../src/agent-runner.js";
 import type { RunConfig } from "../src/runtime.js";
 import type { AgentRecord } from "../src/types.js";
 import type { WorktreeManager } from "../src/worktree.js";
 
 const mockCtx = { cwd: "/tmp" } as any;
 
-const mockSession = () => ({ dispose: vi.fn() } as any);
+const mockSession = () => {
+  const subscribers = new Set<(event: any) => void>();
+  return {
+    subscribe: vi.fn((fn: (event: any) => void) => {
+      subscribers.add(fn);
+      return () => { subscribers.delete(fn); };
+    }),
+    emit(event: any) {
+      for (const fn of subscribers) fn(event);
+    },
+    dispose: vi.fn(),
+    steer: vi.fn().mockResolvedValue(undefined),
+    sessionManager: { getSessionFile: vi.fn() },
+  } as any;
+};
 
 /** Test helper: construct an AgentManager with injected stubs. */
 function createManager(overrides?: {
@@ -294,15 +308,16 @@ describe("AgentManager — lifetime usage + compaction count are eagerly initial
     manager.abort(id);
   });
 
-  it("onAssistantUsage from runAgent accumulates into record.lifetimeUsage", async () => {
-    // Drive callbacks inside the runner to simulate assistant usage events
-    let captured: any;
+  it("record observer accumulates assistant usage into record.lifetimeUsage", async () => {
+    // The record observer subscribes to session events via onSessionCreated.
+    // Emitting message_end events through the mock session drives stats.
     const runner: AgentRunner = {
       run: vi.fn().mockImplementation(async (_ctx: any, _type: any, _prompt: any, opts: any) => {
-        captured = opts;
-        opts.onAssistantUsage?.({ input: 100, output: 50, cacheWrite: 10 });
-        opts.onAssistantUsage?.({ input: 200, output: 80, cacheWrite: 20 });
-        return { responseText: "done", session: mockSession(), aborted: false, steered: false };
+        const session = mockSession();
+        opts.onSessionCreated?.(session);
+        session.emit({ type: "message_end", message: { role: "assistant", usage: { input: 100, output: 50, cacheWrite: 10 } } });
+        session.emit({ type: "message_end", message: { role: "assistant", usage: { input: 200, output: 80, cacheWrite: 20 } } });
+        return { responseText: "done", session, aborted: false, steered: false };
       }),
       resume: vi.fn(),
     };
@@ -314,22 +329,23 @@ describe("AgentManager — lifetime usage + compaction count are eagerly initial
     });
     await manager.getRecord(id)!.promise;
 
-    expect(captured).toBeDefined();
     expect(manager.getRecord(id)!.lifetimeUsage).toEqual({
       input: 300, output: 130, cacheWrite: 30,
     });
   });
 
-  it("onCompaction from runAgent increments record.compactionCount", async () => {
+  it("record observer increments compactionCount on compaction_end events", async () => {
     const compactSeen: any[] = [];
 
     const runner: AgentRunner = {
       run: vi.fn().mockImplementation(async (_ctx: any, _type: any, _prompt: any, opts: any) => {
+        const session = mockSession();
+        opts.onSessionCreated?.(session);
         // Compaction fires while the agent is still running — the record passed to
         // onCompact should reflect the just-incremented count.
-        opts.onCompaction?.({ reason: "threshold", tokensBefore: 12345 });
-        opts.onCompaction?.({ reason: "manual", tokensBefore: 22222 });
-        return { responseText: "done", session: mockSession(), aborted: false, steered: false };
+        session.emit({ type: "compaction_end", aborted: false, result: { tokensBefore: 12345 }, reason: "threshold" });
+        session.emit({ type: "compaction_end", aborted: false, result: { tokensBefore: 22222 }, reason: "manual" });
+        return { responseText: "done", session, aborted: false, steered: false };
       }),
       resume: vi.fn(),
     };
@@ -352,18 +368,18 @@ describe("AgentManager — lifetime usage + compaction count are eagerly initial
   });
 
   it("resume() also accumulates usage and increments compactions on the same record", async () => {
-    // First, spawn with a session that resume can latch onto
-    const session = { ...mockSession() };
+    // First, spawn with a subscribable session that resume can latch onto
+    const session = mockSession();
     const runner: AgentRunner = {
-      run: vi.fn().mockResolvedValue({
-        responseText: "first",
-        session: session as any,
-        aborted: false,
-        steered: false,
+      run: vi.fn().mockImplementation(async (_ctx: any, _type: any, _prompt: any, opts: any) => {
+        opts.onSessionCreated?.(session);
+        return { responseText: "first", session, aborted: false, steered: false };
       }),
-      resume: vi.fn().mockImplementation(async (_session: any, _prompt: any, opts?: ResumeOptions) => {
-        opts?.onAssistantUsage?.({ input: 70, output: 30, cacheWrite: 5 });
-        opts?.onCompaction?.({ reason: "overflow", tokensBefore: 999 });
+      resume: vi.fn().mockImplementation(async (_session: any, _prompt: any) => {
+        // Emit events through the session — the record observer subscribed by
+        // AgentManager.resume() will pick them up.
+        session.emit({ type: "message_end", message: { role: "assistant", usage: { input: 70, output: 30, cacheWrite: 5 } } });
+        session.emit({ type: "compaction_end", aborted: false, result: { tokensBefore: 999 }, reason: "overflow" });
         return "second";
       }),
     };
@@ -375,7 +391,7 @@ describe("AgentManager — lifetime usage + compaction count are eagerly initial
     });
     await manager.getRecord(id)!.promise;
 
-    // Pre-resume: lifetimeUsage from spawn was zero (mock didn't call onAssistantUsage)
+    // Pre-resume: lifetimeUsage from spawn was zero (mock didn't emit usage events)
     expect(manager.getRecord(id)!.lifetimeUsage).toEqual({ input: 0, output: 0, cacheWrite: 0 });
     expect(manager.getRecord(id)!.compactionCount).toBe(0);
 
