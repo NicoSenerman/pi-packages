@@ -13,7 +13,7 @@ import { AgentRecord } from "./agent-record.js";
 import type { AgentRunner, ToolActivity } from "./agent-runner.js";
 import { debugLog } from "./debug.js";
 import type { RunConfig } from "./runtime.js";
-import type { AgentInvocation, IsolationMode, SubagentType, ThinkingLevel } from "./types.js";
+import type { AgentInvocation, IsolationMode, ShellExec, SubagentType, ThinkingLevel } from "./types.js";
 import { addUsage } from "./usage.js";
 import type { WorktreeManager } from "./worktree.js";
 
@@ -28,6 +28,7 @@ const DEFAULT_MAX_CONCURRENT = 4;
 export interface AgentManagerOptions {
   runner: AgentRunner;
   worktrees: WorktreeManager;
+  exec: ShellExec;
   maxConcurrent?: number;
   getRunConfig?: () => RunConfig;
   onStart?: OnAgentStart;
@@ -89,6 +90,7 @@ export class AgentManager {
   private onCompact?: OnAgentCompact;
   private readonly runner: AgentRunner;
   private readonly worktrees: WorktreeManager;
+  private readonly exec: ShellExec;
   private maxConcurrent: number;
   private getRunConfig?: () => RunConfig;
 
@@ -100,6 +102,7 @@ export class AgentManager {
   constructor(options: AgentManagerOptions) {
     this.runner = options.runner;
     this.worktrees = options.worktrees;
+    this.exec = options.exec;
     this.onComplete = options.onComplete;
     this.onStart = options.onStart;
     this.onCompact = options.onCompact;
@@ -165,7 +168,7 @@ export class AgentManager {
   }
 
   /** Actually start an agent (called immediately or from queue drain). */
-  private startAgent(id: string, record: AgentRecord, { pi, ctx, type, prompt, options }: SpawnArgs) {
+  private startAgent(id: string, record: AgentRecord, { ctx, type, prompt, options }: SpawnArgs) {
     // Worktree isolation: try to create a temporary git worktree. Strict —
     // fail loud if not possible (no silent fallback to main tree). Done
     // BEFORE state mutation so a throw doesn't leave the record half-running.
@@ -197,7 +200,7 @@ export class AgentManager {
 
     const runConfig = this.getRunConfig?.();
     const promise = this.runner.run(ctx, type, prompt, {
-      pi,
+      exec: this.exec,
       model: options.model,
       maxTurns: options.maxTurns,
       defaultMaxTurns: runConfig?.defaultMaxTurns,

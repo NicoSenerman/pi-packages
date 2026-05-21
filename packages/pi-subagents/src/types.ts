@@ -88,3 +88,13 @@ export interface EnvInfo {
   branch: string;
   platform: string;
 }
+
+/**
+ * Narrow shell-exec callback replacing `ExtensionAPI` in `detectEnv()`.
+ * Matches the shape of `pi.exec()` without carrying an SDK dependency.
+ */
+export type ShellExec = (
+  command: string,
+  args: string[],
+  options?: { cwd?: string; timeout?: number },
+) => Promise<{ stdout: string; stderr: string; code: number }>;

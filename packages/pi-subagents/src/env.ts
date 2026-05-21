@@ -2,16 +2,15 @@
  * env.ts — Detect environment info (git, platform) for subagent system prompts.
  */
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { debugLog } from "./debug.js";
-import type { EnvInfo } from "./types.js";
+import type { EnvInfo, ShellExec } from "./types.js";
 
-export async function detectEnv(pi: ExtensionAPI, cwd: string): Promise<EnvInfo> {
+export async function detectEnv(exec: ShellExec, cwd: string): Promise<EnvInfo> {
   let isGitRepo = false;
   let branch = "";
 
   try {
-    const result = await pi.exec("git", ["rev-parse", "--is-inside-work-tree"], { cwd, timeout: 5000 });
+    const result = await exec("git", ["rev-parse", "--is-inside-work-tree"], { cwd, timeout: 5000 });
     isGitRepo = result.code === 0 && result.stdout.trim() === "true";
   } catch (err) {
     debugLog("git rev-parse", err);
@@ -19,7 +18,7 @@ export async function detectEnv(pi: ExtensionAPI, cwd: string): Promise<EnvInfo>
 
   if (isGitRepo) {
     try {
-      const result = await pi.exec("git", ["branch", "--show-current"], { cwd, timeout: 5000 });
+      const result = await exec("git", ["branch", "--show-current"], { cwd, timeout: 5000 });
       branch = result.code === 0 ? result.stdout.trim() : "unknown";
     } catch (err) {
       debugLog("git branch", err);

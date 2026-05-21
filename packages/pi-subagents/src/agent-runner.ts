@@ -9,7 +9,6 @@ import {
   type AgentSessionEvent,
   createAgentSession,
   DefaultResourceLoader,
-  type ExtensionAPI,
   getAgentDir,
   SessionManager,
   SettingsManager,
@@ -18,7 +17,7 @@ import { buildParentContext, extractText } from "./context.js";
 import { detectEnv } from "./env.js";
 import { assembleSessionConfig } from "./session-config.js";
 import { deriveSubagentSessionDir } from "./session-dir.js";
-import type { SubagentType, ThinkingLevel } from "./types.js";
+import type { ShellExec, SubagentType, ThinkingLevel } from "./types.js";
 
 /** Names of tools registered by this extension that subagents must NOT inherit. */
 const EXCLUDED_TOOL_NAMES = ["Agent", "get_subagent_result", "steer_subagent"];
@@ -73,8 +72,8 @@ export interface ToolActivity {
 }
 
 export interface RunOptions {
-  /** ExtensionAPI instance — used for pi.exec() instead of execSync. */
-  pi: ExtensionAPI;
+  /** Shell-exec callback for detectEnv — injected from pi.exec(). */
+  exec: ShellExec;
   model?: Model<any>;
   maxTurns?: number;
   signal?: AbortSignal;
@@ -206,7 +205,7 @@ export async function runAgent(
 ): Promise<RunResult> {
   // Resolve working directory upfront — needed for detectEnv before assembly.
   const effectiveCwd = options.cwd ?? ctx.cwd;
-  const env = await detectEnv(options.pi, effectiveCwd);
+  const env = await detectEnv(options.exec, effectiveCwd);
 
   // Assemble session configuration (synchronous, no SDK objects).
   const cfg = assembleSessionConfig(

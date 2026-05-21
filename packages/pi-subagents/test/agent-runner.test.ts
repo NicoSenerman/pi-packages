@@ -106,7 +106,7 @@ const ctx = {
   sessionManager: { getBranch: vi.fn(() => []) },
 } as any;
 
-const pi = {} as any;
+const exec = vi.fn();
 
 beforeEach(() => {
   createAgentSession.mockReset();
@@ -127,7 +127,7 @@ describe("agent-runner final output capture", () => {
     const { session } = createSession("LOCKED");
     createAgentSession.mockResolvedValue({ session });
 
-    const result = await runAgent(ctx, "Explore", "Say LOCKED", { pi });
+    const result = await runAgent(ctx, "Explore", "Say LOCKED", { exec });
 
     expect(result.responseText).toBe("LOCKED");
   });
@@ -136,7 +136,7 @@ describe("agent-runner final output capture", () => {
     const { session } = createSession("BOUND");
     createAgentSession.mockResolvedValue({ session });
 
-    await runAgent(ctx, "Explore", "Say BOUND", { pi });
+    await runAgent(ctx, "Explore", "Say BOUND", { exec });
 
     expect(session.bindExtensions).toHaveBeenCalledTimes(1);
     expect(session.bindExtensions).toHaveBeenCalledWith(
@@ -152,7 +152,7 @@ describe("agent-runner final output capture", () => {
     const { session } = createSession("CONFIGURED");
     createAgentSession.mockResolvedValue({ session });
 
-    await runAgent(ctx, "Explore", "Say CONFIGURED", { pi, cwd: "/tmp/worktree" });
+    await runAgent(ctx, "Explore", "Say CONFIGURED", { exec, cwd: "/tmp/worktree" });
 
     expect(getAgentDir).toHaveBeenCalledTimes(1);
     expect(defaultResourceLoaderCtor).toHaveBeenCalledWith(expect.objectContaining({
@@ -171,7 +171,7 @@ describe("agent-runner final output capture", () => {
     const { session } = createSession("ISOLATED");
     createAgentSession.mockResolvedValue({ session });
 
-    await runAgent(ctx, "Explore", "Say ISOLATED", { pi });
+    await runAgent(ctx, "Explore", "Say ISOLATED", { exec });
 
     // noContextFiles skips AGENTS.md/CLAUDE.md at the loader source;
     // appendSystemPromptOverride suppresses APPEND_SYSTEM.md (no flag equivalent).
@@ -190,7 +190,7 @@ describe("agent-runner final output capture", () => {
     const { session } = createSession("WITH_FILE");
     createAgentSession.mockResolvedValue({ session });
 
-    const result = await runAgent(ctx, "Explore", "go", { pi });
+    const result = await runAgent(ctx, "Explore", "go", { exec });
 
     expect(result.sessionFile).toBe("/sessions/child.jsonl");
   });
@@ -200,7 +200,7 @@ describe("agent-runner final output capture", () => {
     createAgentSession.mockResolvedValue({ session });
 
     await runAgent(ctx, "Explore", "go", {
-      pi,
+      exec,
       parentSessionFile: "/sessions/parent.jsonl",
       parentSessionId: "parent-id-123",
     });
@@ -241,7 +241,7 @@ describe("agent-runner usage callback wiring", () => {
     });
 
     await runAgent(ctx, "Explore", "go", {
-      pi,
+      exec,
       onAssistantUsage: (u) => seen.push(u),
     });
 
@@ -262,7 +262,7 @@ describe("agent-runner usage callback wiring", () => {
     });
 
     await runAgent(ctx, "Explore", "go", {
-      pi,
+      exec,
       onAssistantUsage: (u) => seen.push(u),
     });
 
@@ -279,7 +279,7 @@ describe("agent-runner usage callback wiring", () => {
       session.messages.push({ role: "assistant", content: [{ type: "text", text: "OK" }] });
     });
 
-    await runAgent(ctx, "Explore", "go", { pi, onAssistantUsage: cb });
+    await runAgent(ctx, "Explore", "go", { exec, onAssistantUsage: cb });
 
     expect(cb).not.toHaveBeenCalled();
   });
@@ -324,7 +324,7 @@ describe("agent-runner usage callback wiring", () => {
     });
 
     await runAgent(ctx, "Explore", "go", {
-      pi,
+      exec,
       onCompaction: (info) => seen.push(info),
     });
 
@@ -351,7 +351,7 @@ describe("agent-runner RunOptions — defaultMaxTurns and graceTurns", () => {
     });
 
     const result = await runAgent(ctx, "Explore", "go", {
-      pi,
+      exec,
       defaultMaxTurns: 2,
       graceTurns: 1,
     } as any);
@@ -374,7 +374,7 @@ describe("agent-runner RunOptions — defaultMaxTurns and graceTurns", () => {
     });
 
     const result = await runAgent(ctx, "Explore", "go", {
-      pi,
+      exec,
       defaultMaxTurns: 1,
       graceTurns: 3,
     } as any);
@@ -397,7 +397,7 @@ describe("agent-runner RunOptions — defaultMaxTurns and graceTurns", () => {
     });
 
     await runAgent(ctx, "Explore", "go", {
-      pi,
+      exec,
       maxTurns: 3,       // explicit per-call limit
       defaultMaxTurns: 1, // should be overridden
       graceTurns: 1,

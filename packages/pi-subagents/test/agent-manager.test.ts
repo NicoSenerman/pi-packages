@@ -37,6 +37,7 @@ function createManager(overrides?: {
   const manager = new AgentManager({
     runner,
     worktrees,
+    exec: vi.fn(),
     onComplete: overrides?.onComplete,
     onStart: overrides?.onStart,
     onCompact: overrides?.onCompact,

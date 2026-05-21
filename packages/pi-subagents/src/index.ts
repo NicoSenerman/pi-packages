@@ -66,6 +66,7 @@ export default function (pi: ExtensionAPI) {
   const manager = new AgentManager({
     runner: { run: runAgent, resume: resumeAgent },
     worktrees: new GitWorktreeManager(process.cwd()),
+    exec: (cmd, args, opts) => pi.exec(cmd, args, opts),
     onComplete: (record) => {
       // Emit lifecycle event based on terminal status
       const isError = record.status === "error" || record.status === "stopped" || record.status === "aborted";
