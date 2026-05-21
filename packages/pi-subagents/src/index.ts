@@ -221,13 +221,29 @@ export default function (pi: ExtensionAPI) {
 
   // ---- /agents interactive menu ----
 
+  // Bridge: satisfies AgentMenuSettings using existing runtime/manager state.
+  // Replaced by SettingsManager in Cycle 6 (issue #109).
+  const menuSettings = {
+    get maxConcurrent() { return manager.getMaxConcurrent(); },
+    set maxConcurrent(n: number) { manager.setMaxConcurrent(n); },
+    get defaultMaxTurns() { return runtime.defaultMaxTurns; },
+    set defaultMaxTurns(n: number | undefined) { runtime.defaultMaxTurns = normalizeMaxTurns(n); },
+    get graceTurns() { return runtime.graceTurns; },
+    set graceTurns(n: number) { runtime.graceTurns = Math.max(1, n); },
+    saveAndNotify: (successMsg: string) => saveAndEmitChanged(
+      { maxConcurrent: manager.getMaxConcurrent(), defaultMaxTurns: runtime.defaultMaxTurns ?? 0, graceTurns: runtime.graceTurns },
+      successMsg,
+      (event, payload) => pi.events.emit(event, payload),
+    ),
+  };
+
   const agentsMenuHandler = createAgentsMenuHandler({
     manager: {
       listAgents: () => manager.listAgents(),
       getRecord: (id) => manager.getRecord(id),
       spawnAndWait: (ctx, type, prompt, opts) => manager.spawnAndWait(ctx, type, prompt, opts),
-      getMaxConcurrent: () => manager.getMaxConcurrent(),
-      setMaxConcurrent: (n) => manager.setMaxConcurrent(n),
+      // setter already drains the queue; notifyConcurrencyChanged is a no-op bridge
+      notifyConcurrencyChanged: () => {},
     },
     registry,
     agentActivity: runtime.agentActivity,
@@ -240,24 +256,7 @@ export default function (pi: ExtensionAPI) {
       }
       return getModelLabelFromConfig(cfg.model);
     },
-    snapshotSettings: () => ({
-      maxConcurrent: manager.getMaxConcurrent(),
-      defaultMaxTurns: runtime.defaultMaxTurns ?? 0,
-      graceTurns: runtime.graceTurns,
-    }),
-    getDefaultMaxTurns: () => runtime.defaultMaxTurns,
-    getGraceTurns: () => runtime.graceTurns,
-    setDefaultMaxTurns: (n) => {
-      runtime.defaultMaxTurns = normalizeMaxTurns(n);
-    },
-    setGraceTurns: (n) => {
-      runtime.graceTurns = Math.max(1, n);
-    },
-    saveSettings: (settings, successMsg) => saveAndEmitChanged(
-      settings,
-      successMsg,
-      (event, payload) => pi.events.emit(event, payload),
-    ),
+    settings: menuSettings,
     emitEvent: (name, data) => pi.events.emit(name, data),
     personalAgentsDir: join(getAgentDir(), 'agents'),
     projectAgentsDir: join(process.cwd(), '.pi', 'agents'),

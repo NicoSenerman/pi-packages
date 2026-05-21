@@ -20,8 +20,16 @@ export interface AgentMenuManager {
   getRecord: (id: string) => AgentRecord | undefined;
   /** Used by generate wizard to spawn an agent that writes the .md file. */
   spawnAndWait: (ctx: ExtensionContext, type: string, prompt: string, opts: Omit<SpawnOptions, "isBackground">) => Promise<AgentRecord>;
-  getMaxConcurrent: () => number;
-  setMaxConcurrent: (n: number) => void;
+  /** Drain the concurrency queue after maxConcurrent has been updated on SettingsManager. */
+  notifyConcurrencyChanged: () => void;
+}
+
+/** Narrow settings interface required by the agent menu. */
+export interface AgentMenuSettings {
+  maxConcurrent: number;
+  defaultMaxTurns: number | undefined;
+  graceTurns: number;
+  saveAndNotify(msg: string): { message: string; level: "info" | "warning" };
 }
 
 export interface AgentMenuDeps {
@@ -30,24 +38,11 @@ export interface AgentMenuDeps {
   agentActivity: Map<string, AgentActivity>;
   /** Resolve model label for a given agent type + registry. */
   getModelLabel: (type: string, registry?: ModelRegistry) => string;
-  /** Snapshot current settings for persistence. */
-  snapshotSettings: () => { maxConcurrent: number; defaultMaxTurns: number; graceTurns: number };
-  /** Save settings and return a notification result. */
-  saveSettings: (
-    settings: { maxConcurrent: number; defaultMaxTurns: number; graceTurns: number },
-    successMsg: string,
-  ) => { message: string; level: string };
+  /** Settings manager — owns in-memory values and persistence. */
+  settings: AgentMenuSettings;
   emitEvent: (name: string, data: unknown) => void;
   personalAgentsDir: string;
   projectAgentsDir: string;
-  /** Returns the runtime default max turns (undefined = unlimited). */
-  getDefaultMaxTurns: () => number | undefined;
-  /** Returns the runtime grace turns value. */
-  getGraceTurns: () => number;
-  /** Updates the runtime default max turns (undefined = unlimited). */
-  setDefaultMaxTurns: (n: number | undefined) => void;
-  /** Updates the runtime grace turns value (minimum 1). */
-  setGraceTurns: (n: number) => void;
 }
 
 // ---- Narrow UI context types ----
@@ -608,21 +603,22 @@ ${systemPrompt}
 
   async function showSettings(ctx: ExtensionContext) {
     const choice = await ctx.ui.select("Settings", [
-      `Max concurrency (current: ${deps.manager.getMaxConcurrent()})`,
-      `Default max turns (current: ${deps.getDefaultMaxTurns() ?? "unlimited"})`,
-      `Grace turns (current: ${deps.getGraceTurns()})`,
+      `Max concurrency (current: ${deps.settings.maxConcurrent})`,
+      `Default max turns (current: ${deps.settings.defaultMaxTurns ?? "unlimited"})`,
+      `Grace turns (current: ${deps.settings.graceTurns})`,
     ]);
     if (!choice) return;
 
     if (choice.startsWith("Max concurrency")) {
       const val = await ctx.ui.input(
         "Max concurrent background agents",
-        String(deps.manager.getMaxConcurrent()),
+        String(deps.settings.maxConcurrent),
       );
       if (val) {
         const n = parseInt(val, 10);
         if (n >= 1) {
-          deps.manager.setMaxConcurrent(n);
+          deps.settings.maxConcurrent = n;
+          deps.manager.notifyConcurrencyChanged();
           notifyApplied(ctx, `Max concurrency set to ${n}`);
         } else {
           ctx.ui.notify("Must be a positive integer.", "warning");
@@ -631,15 +627,15 @@ ${systemPrompt}
     } else if (choice.startsWith("Default max turns")) {
       const val = await ctx.ui.input(
         "Default max turns before wrap-up (0 = unlimited)",
-        String(deps.getDefaultMaxTurns() ?? 0),
+        String(deps.settings.defaultMaxTurns ?? 0),
       );
       if (val) {
         const n = parseInt(val, 10);
         if (n === 0) {
-          deps.setDefaultMaxTurns(undefined);
+          deps.settings.defaultMaxTurns = undefined;
           notifyApplied(ctx, "Default max turns set to unlimited");
         } else if (n >= 1) {
-          deps.setDefaultMaxTurns(n);
+          deps.settings.defaultMaxTurns = n;
           notifyApplied(ctx, `Default max turns set to ${n}`);
         } else {
           ctx.ui.notify("Must be 0 (unlimited) or a positive integer.", "warning");
@@ -648,12 +644,12 @@ ${systemPrompt}
     } else if (choice.startsWith("Grace turns")) {
       const val = await ctx.ui.input(
         "Grace turns after wrap-up steer",
-        String(deps.getGraceTurns()),
+        String(deps.settings.graceTurns),
       );
       if (val) {
         const n = parseInt(val, 10);
         if (n >= 1) {
-          deps.setGraceTurns(n);
+          deps.settings.graceTurns = n;
           notifyApplied(ctx, `Grace turns set to ${n}`);
         } else {
           ctx.ui.notify("Must be a positive integer.", "warning");
@@ -663,7 +659,7 @@ ${systemPrompt}
   }
 
   function notifyApplied(ctx: ExtensionContext, successMsg: string) {
-    const { message, level } = deps.saveSettings(deps.snapshotSettings(), successMsg);
+    const { message, level } = deps.settings.saveAndNotify(successMsg);
     ctx.ui.notify(message, level as "info" | "warning" | "error");
   }
 

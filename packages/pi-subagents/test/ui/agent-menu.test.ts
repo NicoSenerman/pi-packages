@@ -46,25 +46,23 @@ function makeDeps(overrides: Partial<AgentMenuDeps> = {}): AgentMenuDeps {
       listAgents: vi.fn().mockReturnValue([]),
       getRecord: vi.fn(),
       spawnAndWait: vi.fn(),
-      getMaxConcurrent: vi.fn().mockReturnValue(4),
-      setMaxConcurrent: vi.fn(),
+      notifyConcurrencyChanged: vi.fn(),
     },
     registry: testRegistry,
     agentActivity: new Map(),
     getModelLabel: vi.fn().mockReturnValue("inherit"),
-    snapshotSettings: vi.fn().mockReturnValue({
+    settings: {
       maxConcurrent: 4,
-      defaultMaxTurns: 0,
-      graceTurns: 3,
-    }),
-    saveSettings: vi.fn().mockReturnValue({ message: "Saved", level: "info" }),
+      defaultMaxTurns: undefined as number | undefined,
+      graceTurns: 5,
+      saveAndNotify: vi.fn((): { message: string; level: "info" | "warning" } => ({
+        message: "Saved",
+        level: "info",
+      })),
+    },
     emitEvent: vi.fn(),
     personalAgentsDir: "/home/.pi/agents",
     projectAgentsDir: "/test-project/.pi/agents",
-    getDefaultMaxTurns: vi.fn().mockReturnValue(undefined),
-    getGraceTurns: vi.fn().mockReturnValue(5),
-    setDefaultMaxTurns: vi.fn(),
-    setGraceTurns: vi.fn(),
     ...overrides,
   };
 }
@@ -167,7 +165,7 @@ describe("agent menu — projectAgentsDir injection", () => {
 });
 
 describe("agent menu — settings", () => {
-  it("navigates to settings and allows setting max concurrency", async () => {
+  it("navigates to settings and updates maxConcurrent via settings object", async () => {
     const deps = makeDeps();
     const ctx = makeCtx([
       "Settings", // from main menu
@@ -177,6 +175,36 @@ describe("agent menu — settings", () => {
     ctx.ui.input = vi.fn().mockResolvedValue("8");
     const handler = createAgentsMenuHandler(deps);
     await handler(ctx as any);
-    expect(deps.manager.setMaxConcurrent).toHaveBeenCalledWith(8);
+    expect(deps.settings.maxConcurrent).toBe(8);
+    expect(deps.manager.notifyConcurrencyChanged).toHaveBeenCalled();
+    expect(deps.settings.saveAndNotify).toHaveBeenCalledWith("Max concurrency set to 8");
+  });
+
+  it("updates defaultMaxTurns to unlimited when 0 is entered", async () => {
+    const deps = makeDeps();
+    const ctx = makeCtx([
+      "Settings",
+      "Default max turns (current: unlimited)",
+      undefined,
+    ]);
+    ctx.ui.input = vi.fn().mockResolvedValue("0");
+    const handler = createAgentsMenuHandler(deps);
+    await handler(ctx as any);
+    expect(deps.settings.defaultMaxTurns).toBeUndefined();
+    expect(deps.settings.saveAndNotify).toHaveBeenCalledWith("Default max turns set to unlimited");
+  });
+
+  it("updates graceTurns when a positive value is entered", async () => {
+    const deps = makeDeps();
+    const ctx = makeCtx([
+      "Settings",
+      "Grace turns (current: 5)",
+      undefined,
+    ]);
+    ctx.ui.input = vi.fn().mockResolvedValue("3");
+    const handler = createAgentsMenuHandler(deps);
+    await handler(ctx as any);
+    expect(deps.settings.graceTurns).toBe(3);
+    expect(deps.settings.saveAndNotify).toHaveBeenCalledWith("Grace turns set to 3");
   });
 });
