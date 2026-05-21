@@ -185,7 +185,7 @@ export function createAgentsMenuHandler(deps: AgentMenuDeps) {
     }
 
     const options = agents.map((a) => {
-      const dn = getDisplayName(a.type);
+      const dn = getDisplayName(a.type, deps.registry);
       const dur = formatDuration(a.startedAt, a.completedAt);
       return `${dn} (${a.description}) · ${a.toolUses} tools · ${a.status} · ${dur}`;
     });
@@ -218,7 +218,7 @@ export function createAgentsMenuHandler(deps: AgentMenuDeps) {
 
     await ctx.ui.custom<undefined>(
       (tui: any, theme: any, _keybindings: any, done: any) => {
-        return new ConversationViewer(tui, session, record, activity, theme, done);
+        return new ConversationViewer(tui, session, record, activity, theme, done, deps.registry);
       },
       {
         overlay: true,

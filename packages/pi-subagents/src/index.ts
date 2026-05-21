@@ -134,7 +134,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_shutdown", () => lifecycle.handleSessionShutdown());
 
   // Live widget: show running agents above editor
-  runtime.widget = new AgentWidget(manager, runtime.agentActivity);
+  runtime.widget = new AgentWidget(manager, runtime.agentActivity, registry);
 
   // Grab UI context from first tool execution + clear lingering widget on new turn
   const toolStart = new ToolStartHandler(runtime);
@@ -211,6 +211,7 @@ export default function (pi: ExtensionAPI) {
     getRecord: (id) => manager.getRecord(id),
     cancelNudge: (key) => notifications.cancelNudge(key),
     getConversation: (session) => getAgentConversation(session),
+    registry,
   })));
 
   // ---- steer_subagent tool ----

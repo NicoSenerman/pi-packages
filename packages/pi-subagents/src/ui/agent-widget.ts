@@ -7,7 +7,7 @@
 
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import type { AgentManager } from "../agent-manager.js";
-import { resolveAgentConfig } from "../agent-types.js";
+import { type AgentConfigLookup, AgentTypeRegistry } from "../agent-types.js";
 import type { AgentInvocation, SubagentType } from "../types.js";
 import { getLifetimeTotal, getSessionContextPercent, type LifetimeUsage, type SessionLike } from "../usage.js";
 
@@ -143,14 +143,14 @@ export function formatDuration(startedAt: number, completedAt?: number): string 
 }
 
 /** Get display name for any agent type (built-in or custom). */
-export function getDisplayName(type: SubagentType): string {
-  const config = resolveAgentConfig(type);
+export function getDisplayName(type: SubagentType, registry: AgentConfigLookup): string {
+  const config = registry.resolveAgentConfig(type);
   return config.displayName ?? config.name;
 }
 
 /** Short label for prompt mode: "twin" for append, nothing for replace (the default). */
-export function getPromptModeLabel(type: SubagentType): string | undefined {
-  const config = resolveAgentConfig(type);
+export function getPromptModeLabel(type: SubagentType, registry: AgentConfigLookup): string | undefined {
+  const config = registry.resolveAgentConfig(type);
   return config.promptMode === "append" ? "twin" : undefined;
 }
 
@@ -225,6 +225,7 @@ export class AgentWidget {
   constructor(
     private manager: AgentManager,
     private agentActivity: Map<string, AgentActivity>,
+    private registry: AgentTypeRegistry,
   ) {}
 
   /** Set the UI context (grabbed from first tool execution). */
@@ -275,8 +276,8 @@ export class AgentWidget {
 
   /** Render a finished agent line. */
   private renderFinishedLine(a: { id: string; type: SubagentType; status: string; description: string; toolUses: number; startedAt: number; completedAt?: number; error?: string }, theme: Theme): string {
-    const name = getDisplayName(a.type);
-    const modeLabel = getPromptModeLabel(a.type);
+    const name = getDisplayName(a.type, this.registry);
+    const modeLabel = getPromptModeLabel(a.type, this.registry);
     const duration = formatMs((a.completedAt ?? Date.now()) - a.startedAt);
 
     let icon: string;
@@ -345,8 +346,8 @@ export class AgentWidget {
 
     const runningLines: string[][] = []; // each entry is [header, activity]
     for (const a of running) {
-      const name = getDisplayName(a.type);
-      const modeLabel = getPromptModeLabel(a.type);
+      const name = getDisplayName(a.type, this.registry);
+      const modeLabel = getPromptModeLabel(a.type, this.registry);
       const modeTag = modeLabel ? ` ${theme.fg("dim", `(${modeLabel})`)}` : "";
       const elapsed = formatMs(Date.now() - a.startedAt);
 

@@ -207,7 +207,7 @@ Guidelines:
 
     renderCall(args: Record<string, unknown>, theme: any) {
       const displayName = args.subagent_type
-        ? getDisplayName(args.subagent_type as string)
+        ? getDisplayName(args.subagent_type as string, deps.registry)
         : "Agent";
       const desc = (args.description as string) ?? "";
       return new Text(
@@ -334,7 +334,7 @@ Guidelines:
       const subagentType = resolved ?? "general-purpose";
       const fellBack = resolved === undefined;
 
-      const displayName = getDisplayName(subagentType);
+      const displayName = getDisplayName(subagentType, deps.registry);
 
       // Get agent config for invocation resolution
       const customConfig = deps.registry.resolveAgentConfig(subagentType);
@@ -375,7 +375,7 @@ Guidelines:
         runInBackground,
         isolation,
       };
-      const modeLabel = getPromptModeLabel(subagentType);
+      const modeLabel = getPromptModeLabel(subagentType, deps.registry);
       const { tags: invocationTags } = buildInvocationTags(agentInvocation);
       const agentTags = modeLabel ? [modeLabel, ...invocationTags] : invocationTags;
       const detailBase = {

@@ -1,5 +1,74 @@
 import { describe, expect, it } from "vitest";
-import { formatSessionTokens } from "../src/ui/agent-widget.js";
+import { AgentTypeRegistry } from "../src/agent-types.js";
+import type { AgentConfig } from "../src/types.js";
+import { formatSessionTokens, getDisplayName, getPromptModeLabel } from "../src/ui/agent-widget.js";
+
+const testRegistry = new AgentTypeRegistry(() => new Map());
+
+describe("getDisplayName", () => {
+  it("returns displayName when set", () => {
+    const customAgents = new Map<string, AgentConfig>([[
+      "my-agent",
+      {
+        name: "my-agent",
+        displayName: "My Agent",
+        description: "test",
+        extensions: false,
+        skills: false,
+        systemPrompt: "",
+        promptMode: "replace",
+      },
+    ]]);
+    const registry = new AgentTypeRegistry(() => customAgents);
+    expect(getDisplayName("my-agent", registry)).toBe("My Agent");
+  });
+
+  it("falls back to name when displayName is not set", () => {
+    const customAgents = new Map<string, AgentConfig>([[
+      "my-agent",
+      {
+        name: "my-agent",
+        description: "test",
+        extensions: false,
+        skills: false,
+        systemPrompt: "",
+        promptMode: "replace",
+      },
+    ]]);
+    const registry = new AgentTypeRegistry(() => customAgents);
+    expect(getDisplayName("my-agent", registry)).toBe("my-agent");
+  });
+
+  it("uses registry to resolve Explore displayName", () => {
+    expect(getDisplayName("Explore", testRegistry)).toBe("Explore");
+  });
+
+  it("uses registry to resolve general-purpose displayName", () => {
+    expect(getDisplayName("general-purpose", testRegistry)).toBe("Agent");
+  });
+});
+
+describe("getPromptModeLabel", () => {
+  it("returns 'twin' for append promptMode", () => {
+    const customAgents = new Map<string, AgentConfig>([[
+      "twin-agent",
+      {
+        name: "twin-agent",
+        description: "test",
+        extensions: false,
+        skills: false,
+        systemPrompt: "",
+        promptMode: "append",
+      },
+    ]]);
+    const registry = new AgentTypeRegistry(() => customAgents);
+    expect(getPromptModeLabel("twin-agent", registry)).toBe("twin");
+  });
+
+  it("returns undefined for replace promptMode", () => {
+    expect(getPromptModeLabel("Explore", testRegistry)).toBeUndefined();
+  });
+});
 
 describe("formatSessionTokens", () => {
   const theme = { fg: (c: string, s: string) => `<${c}>${s}</${c}>`, bold: (s: string) => s };

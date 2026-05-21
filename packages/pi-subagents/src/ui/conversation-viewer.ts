@@ -7,6 +7,7 @@
 
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { type Component, matchesKey, type TUI, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import type { AgentConfigLookup } from "../agent-types.js";
 import { extractText } from "../context.js";
 import type { AgentRecord } from "../types.js";
 import { getLifetimeTotal, getSessionContextPercent } from "../usage.js";
@@ -33,6 +34,7 @@ export class ConversationViewer implements Component {
     private activity: AgentActivity | undefined,
     private theme: Theme,
     private done: (result: undefined) => void,
+    private registry: AgentConfigLookup,
   ) {
     this.unsubscribe = session.subscribe(() => {
       if (this.closed) return;
@@ -91,8 +93,8 @@ export class ConversationViewer implements Component {
 
     // Header
     lines.push(hrTop);
-    const name = getDisplayName(this.record.type);
-    const modeLabel = getPromptModeLabel(this.record.type);
+    const name = getDisplayName(this.record.type, this.registry);
+    const modeLabel = getPromptModeLabel(this.record.type, this.registry);
     const modeTag = modeLabel ? ` ${th.fg("dim", `(${modeLabel})`)}` : "";
     const statusIcon = this.record.status === "running"
       ? th.fg("accent", "●")

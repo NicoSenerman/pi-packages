@@ -1,5 +1,6 @@
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import type { AgentConfigLookup } from "../agent-types.js";
 import type { AgentRecord } from "../types.js";
 import { formatDuration, getDisplayName } from "../ui/agent-widget.js";
 import { getSessionContextPercent } from "../usage.js";
@@ -10,6 +11,7 @@ export interface GetResultDeps {
   getRecord: (id: string) => AgentRecord | undefined;
   cancelNudge: (key: string) => void;
   getConversation: (session: AgentSession) => string | undefined;
+  registry: AgentConfigLookup;
 }
 
 /** Create the get_subagent_result tool definition (without Pi SDK wrapper). */
@@ -57,7 +59,7 @@ export function createGetResultTool(deps: GetResultDeps) {
         await record.promise;
       }
 
-      const displayName = getDisplayName(record.type);
+      const displayName = getDisplayName(record.type, deps.registry);
       const duration = formatDuration(record.startedAt, record.completedAt);
       const tokens = formatLifetimeTokens(record);
       const contextPercent = getSessionContextPercent(record.session);
