@@ -28,6 +28,9 @@ Load this skill when writing, debugging, or planning tests.
 
 ## Test assertions
 
+- Prefer strong assertions that match the **entire** expected value (`toBe`, `toEqual`) over subset matchers (`toContain`, `toMatchObject`, `expect.objectContaining`).
+  Weak assertions hide unexpected values and make tests less useful as documentation.
+  When a weak assertion is necessary (third-party output, non-deterministic ordering), add a comment explaining why.
 - Prefer a concrete test asserting current (even imperfect) behavior over `test.todo`.
   A real assertion documents the limitation and lets a future fix flip the expectation.
 - When a test reveals a pre-existing bug rather than a wrong assumption, use `test.fails` to document the expected behavior and file a GitHub issue.
