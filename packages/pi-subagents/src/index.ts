@@ -23,7 +23,7 @@ import { createNotificationRenderer } from "./renderer.js";
 import { createSubagentRuntime } from "./runtime.js";
 import { publishSubagentsService, unpublishSubagentsService } from "./service.js";
 import { createSubagentsService } from "./service-adapter.js";
-import { applyAndEmitLoaded, saveAndEmitChanged } from "./settings.js";
+import { applyAndEmitLoaded, SettingsManager, saveAndEmitChanged } from "./settings.js";
 import { createAgentTool } from "./tools/agent-tool.js";
 import { createGetResultTool } from "./tools/get-result-tool.js";
 import { getModelLabelFromConfig } from "./tools/helpers.js";
@@ -55,8 +55,12 @@ export default function (pi: ExtensionAPI) {
     updateWidget: () => runtime.updateWidget(),
   });
 
-  // Bridge: local variable for maxConcurrent until SettingsManager wired (Cycle 6, #109).
-  let maxConcurrent = 4;
+  // Settings: owns all three in-memory values and handles load/save/emit.
+  const settings = new SettingsManager({
+    emit: (event, payload) => pi.events.emit(event, payload),
+    cwd: process.cwd(),
+  });
+  settings.load();
 
   // Background completion: emit lifecycle event and delegate to notification system
   const manager = new AgentManager({
@@ -108,8 +112,8 @@ export default function (pi: ExtensionAPI) {
         compactionCount: record.compactionCount,
       });
     },
-    getMaxConcurrent: () => maxConcurrent,
-    getRunConfig: () => ({ defaultMaxTurns: runtime.defaultMaxTurns, graceTurns: runtime.graceTurns }),
+    getMaxConcurrent: () => settings.maxConcurrent,
+    getRunConfig: () => settings,
   });
 
   // Typed service published via Symbol.for() for cross-extension access.
@@ -168,18 +172,6 @@ export default function (pi: ExtensionAPI) {
 
   const typeListText = buildTypeListText();
 
-  // Apply persisted settings on startup and emit `subagents:settings_loaded`.
-  // Global + project merged; missing → defaults; corrupt file emits a warning
-  // to stderr and falls back to defaults.
-  applyAndEmitLoaded(
-    {
-      setMaxConcurrent: (n) => { maxConcurrent = Math.max(1, n); manager.notifyConcurrencyChanged(); },
-      setDefaultMaxTurns: (n) => { runtime.defaultMaxTurns = normalizeMaxTurns(n); },
-      setGraceTurns: (n) => { runtime.graceTurns = Math.max(1, n); },
-    },
-    (event, payload) => pi.events.emit(event, payload),
-  );
-
   // ---- Agent tool ----
 
   pi.registerTool(defineTool(createAgentTool({
@@ -188,7 +180,7 @@ export default function (pi: ExtensionAPI) {
       spawnAndWait: (ctx, type, prompt, opts) => manager.spawnAndWait(ctx, type, prompt, opts),
       resume: (id, prompt, signal) => manager.resume(id, prompt, signal),
       getRecord: (id) => manager.getRecord(id),
-      getMaxConcurrent: () => maxConcurrent,
+      getMaxConcurrent: () => settings.maxConcurrent,
       listAgents: () => manager.listAgents(),
     },
     widget: {
@@ -203,8 +195,7 @@ export default function (pi: ExtensionAPI) {
     typeListText,
     availableTypesText: registry.getAvailableTypes().join(", "),
     agentDir: getAgentDir(),
-    // Bridge: reads from runtime until SettingsManager is wired (Cycle 6, issue #109)
-    settings: { get defaultMaxTurns() { return runtime.defaultMaxTurns; } },
+    settings,
   })));
 
   // ---- get_subagent_result tool ----
@@ -226,29 +217,12 @@ export default function (pi: ExtensionAPI) {
 
   // ---- /agents interactive menu ----
 
-  // Bridge: satisfies AgentMenuSettings using existing runtime/manager state.
-  // Replaced by SettingsManager in Cycle 6 (issue #109).
-  const menuSettings = {
-    get maxConcurrent() { return maxConcurrent; },
-    set maxConcurrent(n: number) { maxConcurrent = Math.max(1, n); },
-    get defaultMaxTurns() { return runtime.defaultMaxTurns; },
-    set defaultMaxTurns(n: number | undefined) { runtime.defaultMaxTurns = normalizeMaxTurns(n); },
-    get graceTurns() { return runtime.graceTurns; },
-    set graceTurns(n: number) { runtime.graceTurns = Math.max(1, n); },
-    saveAndNotify: (successMsg: string) => saveAndEmitChanged(
-      { maxConcurrent, defaultMaxTurns: runtime.defaultMaxTurns ?? 0, graceTurns: runtime.graceTurns },
-      successMsg,
-      (event, payload) => pi.events.emit(event, payload),
-    ),
-  };
-
   const agentsMenuHandler = createAgentsMenuHandler({
     manager: {
       listAgents: () => manager.listAgents(),
       getRecord: (id) => manager.getRecord(id),
       spawnAndWait: (ctx, type, prompt, opts) => manager.spawnAndWait(ctx, type, prompt, opts),
-      // setter already drains the queue; notifyConcurrencyChanged is a no-op bridge
-      notifyConcurrencyChanged: () => {},
+      notifyConcurrencyChanged: () => manager.notifyConcurrencyChanged(),
     },
     registry,
     agentActivity: runtime.agentActivity,
@@ -261,7 +235,7 @@ export default function (pi: ExtensionAPI) {
       }
       return getModelLabelFromConfig(cfg.model);
     },
-    settings: menuSettings,
+    settings,
     emitEvent: (name, data) => pi.events.emit(name, data),
     personalAgentsDir: join(getAgentDir(), 'agents'),
     projectAgentsDir: join(process.cwd(), '.pi', 'agents'),
