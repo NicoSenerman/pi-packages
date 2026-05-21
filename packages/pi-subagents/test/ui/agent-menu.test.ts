@@ -1,22 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { AgentTypeRegistry } from "../../src/agent-types.js";
 import type { AgentConfig } from "../../src/types.js";
 import { type AgentMenuDeps, createAgentsMenuHandler } from "../../src/ui/agent-menu.js";
 import { createTestRecord } from "../helpers/make-record.js";
 
-const { mockExistsSync, mockGetAllTypes, mockResolveAgentConfig, mockResolveType } = vi.hoisted(() => ({
+const { mockExistsSync } = vi.hoisted(() => ({
   mockExistsSync: vi.fn((): boolean => false),
-  mockGetAllTypes: vi.fn((): string[] => []),
-  mockResolveAgentConfig: vi.fn((): AgentConfig => ({
-    name: "test-agent",
-    description: "A test agent",
-    systemPrompt: "You are a test agent.",
-    promptMode: "replace" as const,
-    extensions: true,
-    skills: true,
-    isDefault: true,
-    source: "default" as const,
-  })),
-  mockResolveType: vi.fn((): string | undefined => "test-agent"),
 }));
 
 vi.mock("node:fs", async (importOriginal) => {
@@ -37,15 +26,19 @@ vi.mock("node:fs", async (importOriginal) => {
   };
 });
 
-vi.mock("../../src/agent-types.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../src/agent-types.js")>();
-  return {
-    ...actual,
-    getAllTypes: mockGetAllTypes,
-    resolveAgentConfig: mockResolveAgentConfig,
-    resolveType: mockResolveType,
-  };
-});
+const testDefaultAgentConfig: AgentConfig = {
+  name: "test-agent",
+  description: "A test agent",
+  systemPrompt: "You are a test agent.",
+  promptMode: "replace" as const,
+  extensions: true,
+  skills: true,
+  isDefault: true,
+  source: "default" as const,
+};
+
+/** Real registry for all tests. Methods are spied on per-test as needed. */
+const testRegistry = new AgentTypeRegistry(() => new Map());
 
 function makeDeps(overrides: Partial<AgentMenuDeps> = {}): AgentMenuDeps {
   return {
@@ -56,7 +49,7 @@ function makeDeps(overrides: Partial<AgentMenuDeps> = {}): AgentMenuDeps {
       getMaxConcurrent: vi.fn().mockReturnValue(4),
       setMaxConcurrent: vi.fn(),
     },
-    reloadCustomAgents: vi.fn(),
+    registry: testRegistry,
     agentActivity: new Map(),
     getModelLabel: vi.fn().mockReturnValue("inherit"),
     snapshotSettings: vi.fn().mockReturnValue({
@@ -93,9 +86,13 @@ function makeCtx(selectResults: (string | undefined)[] = []) {
 
 beforeEach(() => {
   mockExistsSync.mockClear();
-  mockGetAllTypes.mockClear();
-  mockResolveAgentConfig.mockClear();
-  mockResolveType.mockClear();
+  vi.restoreAllMocks();
+  // Default spy: resolveAgentConfig returns testDefaultAgentConfig
+  vi.spyOn(testRegistry, "resolveAgentConfig").mockReturnValue(testDefaultAgentConfig);
+  // Default spy: resolveType returns "test-agent"
+  vi.spyOn(testRegistry, "resolveType").mockReturnValue("test-agent");
+  // Default spy: getAllTypes returns empty (tests override as needed)
+  vi.spyOn(testRegistry, "getAllTypes").mockReturnValue([]);
 });
 
 describe("createAgentsMenuHandler", () => {
@@ -104,12 +101,13 @@ describe("createAgentsMenuHandler", () => {
     expect(typeof handler).toBe("function");
   });
 
-  it("calls reloadCustomAgents on menu open", async () => {
+  it("calls registry.reload() on menu open", async () => {
+    const reloadSpy = vi.spyOn(testRegistry, "reload");
     const deps = makeDeps();
     const ctx = makeCtx([undefined]); // user cancels immediately
     const handler = createAgentsMenuHandler(deps);
     await handler(ctx as any);
-    expect(deps.reloadCustomAgents).toHaveBeenCalled();
+    expect(reloadSpy).toHaveBeenCalled();
   });
 
   it("shows Create new agent option", async () => {
@@ -150,7 +148,7 @@ describe("createAgentsMenuHandler", () => {
 
 describe("agent menu — projectAgentsDir injection", () => {
   it("uses injected projectAgentsDir when resolving agent files", async () => {
-    mockGetAllTypes.mockReturnValue(["test-agent"]);
+    vi.spyOn(testRegistry, "getAllTypes").mockReturnValue(["test-agent"]);
     const deps = makeDeps({ projectAgentsDir: "/test-project/.pi/agents" });
     let selectCall = 0;
     const ctx = makeCtx([]);

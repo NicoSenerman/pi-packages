@@ -4,10 +4,8 @@ import { join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { SpawnOptions } from "../agent-manager.js";
 import {
+  AgentTypeRegistry,
   BUILTIN_TOOL_NAMES,
-  getAllTypes,
-  resolveAgentConfig,
-  resolveType,
 } from "../agent-types.js";
 import type { ModelRegistry } from "../model-resolver.js";
 import type { AgentConfig, AgentRecord } from "../types.js";
@@ -28,7 +26,7 @@ export interface AgentMenuManager {
 
 export interface AgentMenuDeps {
   manager: AgentMenuManager;
-  reloadCustomAgents: () => void;
+  registry: AgentTypeRegistry;
   agentActivity: Map<string, AgentActivity>;
   /** Resolve model label for a given agent type + registry. */
   getModelLabel: (type: string, registry?: ModelRegistry) => string;
@@ -72,8 +70,8 @@ export function createAgentsMenuHandler(deps: AgentMenuDeps) {
   }
 
   async function showAgentsMenu(ctx: ExtensionContext) {
-    deps.reloadCustomAgents();
-    const allNames = getAllTypes();
+    deps.registry.reload();
+    const allNames = deps.registry.getAllTypes();
 
     const options: string[] = [];
 
@@ -126,7 +124,7 @@ export function createAgentsMenuHandler(deps: AgentMenuDeps) {
   }
 
   async function showAllAgentsList(ctx: ExtensionContext) {
-    const allNames = getAllTypes();
+    const allNames = deps.registry.getAllTypes();
     if (allNames.length === 0) {
       ctx.ui.notify("No agents.", "info");
       return;
@@ -141,7 +139,7 @@ export function createAgentsMenuHandler(deps: AgentMenuDeps) {
     };
 
     const entries = allNames.map((name) => {
-      const cfg = resolveAgentConfig(name);
+      const cfg = deps.registry.resolveAgentConfig(name);
       const disabled = cfg.enabled === false;
       const model = deps.getModelLabel(name, ctx.modelRegistry);
       const indicator = sourceIndicator(cfg);
@@ -152,10 +150,10 @@ export function createAgentsMenuHandler(deps: AgentMenuDeps) {
     const maxPrefix = Math.max(...entries.map((e) => e.prefix.length));
 
     const hasCustom = allNames.some((n) => {
-      const c = resolveAgentConfig(n);
+      const c = deps.registry.resolveAgentConfig(n);
       return !c.isDefault && c.enabled !== false;
     });
-    const hasDisabled = allNames.some((n) => resolveAgentConfig(n).enabled === false);
+    const hasDisabled = allNames.some((n) => deps.registry.resolveAgentConfig(n).enabled === false);
     const legendParts: string[] = [];
     if (hasCustom) legendParts.push("• = project  ◦ = global");
     if (hasDisabled) legendParts.push("✕ = disabled");
@@ -173,7 +171,7 @@ export function createAgentsMenuHandler(deps: AgentMenuDeps) {
       .split(" · ")[0]
       .replace(/^[•◦✕\s]+/, "")
       .trim();
-    if (resolveType(agentName) != null) {
+    if (deps.registry.resolveType(agentName) != null) {
       await showAgentDetail(ctx, agentName);
       await showAllAgentsList(ctx);
     }
@@ -234,11 +232,11 @@ export function createAgentsMenuHandler(deps: AgentMenuDeps) {
   }
 
   async function showAgentDetail(ctx: ExtensionContext, name: string) {
-    if (resolveType(name) == null) {
+    if (deps.registry.resolveType(name) == null) {
       ctx.ui.notify(`Agent config not found for "${name}".`, "warning");
       return;
     }
-    const cfg = resolveAgentConfig(name);
+    const cfg = deps.registry.resolveAgentConfig(name);
 
     const file = findAgentFile(name);
     const isDefault = cfg.isDefault === true;
@@ -266,7 +264,7 @@ export function createAgentsMenuHandler(deps: AgentMenuDeps) {
       if (edited !== undefined && edited !== content) {
         const { writeFileSync } = await import("node:fs");
         writeFileSync(file.path, edited, "utf-8");
-        deps.reloadCustomAgents();
+        deps.registry.reload();
         ctx.ui.notify(`Updated ${file.path}`, "info");
       }
     } else if (choice === "Delete") {
@@ -277,7 +275,7 @@ export function createAgentsMenuHandler(deps: AgentMenuDeps) {
         );
         if (confirmed) {
           unlinkSync(file.path);
-          deps.reloadCustomAgents();
+          deps.registry.reload();
           ctx.ui.notify(`Deleted ${file.path}`, "info");
         }
       }
@@ -288,7 +286,7 @@ export function createAgentsMenuHandler(deps: AgentMenuDeps) {
       );
       if (confirmed) {
         unlinkSync(file.path);
-        deps.reloadCustomAgents();
+        deps.registry.reload();
         ctx.ui.notify(`Restored default ${name}`, "info");
       }
     } else if (choice.startsWith("Eject")) {
@@ -347,7 +345,7 @@ export function createAgentsMenuHandler(deps: AgentMenuDeps) {
 
     const { writeFileSync } = await import("node:fs");
     writeFileSync(targetPath, content, "utf-8");
-    deps.reloadCustomAgents();
+    deps.registry.reload();
     ctx.ui.notify(`Ejected ${name} to ${targetPath}`, "info");
   }
 
@@ -362,7 +360,7 @@ export function createAgentsMenuHandler(deps: AgentMenuDeps) {
       const updated = content.replace(/^---\n/, "---\nenabled: false\n");
       const { writeFileSync } = await import("node:fs");
       writeFileSync(file.path, updated, "utf-8");
-      deps.reloadCustomAgents();
+      deps.registry.reload();
       ctx.ui.notify(`Disabled ${name} (${file.path})`, "info");
       return;
     }
@@ -381,7 +379,7 @@ export function createAgentsMenuHandler(deps: AgentMenuDeps) {
     const targetPath = join(targetDir, `${name}.md`);
     const { writeFileSync } = await import("node:fs");
     writeFileSync(targetPath, "---\nenabled: false\n---\n", "utf-8");
-    deps.reloadCustomAgents();
+    deps.registry.reload();
     ctx.ui.notify(`Disabled ${name} (${targetPath})`, "info");
   }
 
@@ -395,11 +393,11 @@ export function createAgentsMenuHandler(deps: AgentMenuDeps) {
 
     if (updated.trim() === "---\n---" || updated.trim() === "---\n---\n") {
       unlinkSync(file.path);
-      deps.reloadCustomAgents();
+      deps.registry.reload();
       ctx.ui.notify(`Enabled ${name} (removed ${file.path})`, "info");
     } else {
       writeFileSync(file.path, updated, "utf-8");
-      deps.reloadCustomAgents();
+      deps.registry.reload();
       ctx.ui.notify(`Enabled ${name} (${file.path})`, "info");
     }
   }
@@ -501,7 +499,7 @@ Write the file using the write tool. Only write the file, nothing else.`;
       return;
     }
 
-    deps.reloadCustomAgents();
+    deps.registry.reload();
 
     if (existsSync(targetPath)) {
       ctx.ui.notify(`Created ${targetPath}`, "info");
@@ -604,7 +602,7 @@ ${systemPrompt}
 
     const { writeFileSync } = await import("node:fs");
     writeFileSync(targetPath, content, "utf-8");
-    deps.reloadCustomAgents();
+    deps.registry.reload();
     ctx.ui.notify(`Created ${targetPath}`, "info");
   }
 

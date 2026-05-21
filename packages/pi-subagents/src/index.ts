@@ -231,13 +231,13 @@ export default function (pi: ExtensionAPI) {
       getMaxConcurrent: () => manager.getMaxConcurrent(),
       setMaxConcurrent: (n) => manager.setMaxConcurrent(n),
     },
-    reloadCustomAgents,
+    registry,
     agentActivity: runtime.agentActivity,
-    getModelLabel: (type, registry) => {
-      const cfg = resolveAgentConfig(type);
+    getModelLabel: (type, modelRegistry) => {
+      const cfg = registry.resolveAgentConfig(type);
       if (!cfg.model) return 'inherit';
-      if (registry) {
-        const resolved = resolveModel(cfg.model, registry);
+      if (modelRegistry) {
+        const resolved = resolveModel(cfg.model, modelRegistry);
         if (typeof resolved === 'string') return 'inherit';
       }
       return getModelLabelFromConfig(cfg.model);
