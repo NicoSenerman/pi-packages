@@ -23,7 +23,7 @@ import { createNotificationRenderer } from "./renderer.js";
 import { createSubagentRuntime } from "./runtime.js";
 import { publishSubagentsService, unpublishSubagentsService } from "./service.js";
 import { createSubagentsService } from "./service-adapter.js";
-import { applyAndEmitLoaded, SettingsManager, saveAndEmitChanged } from "./settings.js";
+import { SettingsManager } from "./settings.js";
 import { createAgentTool } from "./tools/agent-tool.js";
 import { createGetResultTool } from "./tools/get-result-tool.js";
 import { getModelLabelFromConfig } from "./tools/helpers.js";
