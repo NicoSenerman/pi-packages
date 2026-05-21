@@ -413,6 +413,16 @@ The 6 settings-related fields in `AgentMenuDeps` collapsed to `settings: AgentMe
 
 Impact: reduced `AgentMenuDeps` from 13 → 8 fields; `AgentToolDeps` from 8 → 7 fields.
 
+#### A2b. `SettingsManager` apply methods (#118)
+
+Eliminate the cross-collaborator orchestration in `showSettings`.
+The menu currently mutates `settings`, pokes `manager.notifyConcurrencyChanged()`, then calls `settings.saveAndNotify()` — it knows too much about the consequence chain.
+Add `applyMaxConcurrent(n)`, `applyDefaultMaxTurns(n)`, `applyGraceTurns(n)` methods that own the full lifecycle: normalize → apply → notify interested parties (via callback) → persist → emit event → return toast.
+`SettingsManager` accepts an `onMaxConcurrentChanged` callback wired to `manager.notifyConcurrencyChanged()` at init.
+`notifyConcurrencyChanged` disappears from `AgentMenuManager`.
+
+Impact: eliminates LoD / Tell-Don't-Ask violation; menu no longer coordinates between settings and manager.
+
 #### A3. `AgentActivityTracker` class (#110)
 
 Wrap the 7-field mutable `AgentActivity` interface with transition methods (`onToolStart()`, `onToolEnd()`, `onMessageUpdate()`, `onTurnEnd()`).
@@ -452,10 +462,10 @@ The two types serve different consumers and should not share a name.
 
 #### D2. Narrow `AgentToolDeps` and `AgentMenuDeps` (#114)
 
-| Bag             | Before    | After | How                                                                                     |
-| --------------- | --------- | ----- | --------------------------------------------------------------------------------------- |
-| `AgentToolDeps` | 9 fields  | ~5    | Registry owns reload; activity tracker is a collaborator; `emitEvent` moves to observer |
-| `AgentMenuDeps` | 13 fields | ~6    | Settings manager absorbs 6 fields; registry owns reload                                 |
+| Bag             | Before    | After | How                                                                                                                    |
+| --------------- | --------- | ----- | ---------------------------------------------------------------------------------------------------------------------- |
+| `AgentToolDeps` | 9 fields  | ~5    | Registry owns reload; activity tracker is a collaborator; `emitEvent` moves to observer                                |
+| `AgentMenuDeps` | 13 fields | ~6    | Settings manager absorbs 6 fields (#109); apply methods remove `notifyConcurrencyChanged` (#118); registry owns reload |
 
 ### Step E: Decompose large files and relocate types (parallel)
 
@@ -492,7 +502,7 @@ The 654-line file splits along a natural seam.
 
 ```text
 A1 (Registry) ──────────────────┐
-A2 (Settings) ──────────────────┤
+A2 (Settings) ── A2b (Apply) ──┤
 A3 (Activity Tracker) ───────────┤
                                    ├── D2 (Narrow deps) ── E1 (agent-tool split)
 B  (Record lifecycle) ───────────┤
