@@ -17,6 +17,7 @@ export interface AgentManagerLike {
   abort(id: string): boolean;
   waitForAll(): Promise<void>;
   hasRunning(): boolean;
+  queueSteer(id: string, message: string): boolean;
 }
 
 /** Dependencies injected into the adapter factory. */
@@ -86,10 +87,8 @@ export function createSubagentsService(deps: AdapterDeps): SubagentsService {
         return false;
       }
       if (!record.session) {
-        // Session not ready yet — queue for delivery once initialized
-        if (!record.pendingSteers) record.pendingSteers = [];
-        record.pendingSteers.push(message);
-        return true;
+        // Session not ready yet — queue via manager for delivery once initialized
+        return manager.queueSteer(id, message);
       }
       await record.session.steer(message);
       return true;

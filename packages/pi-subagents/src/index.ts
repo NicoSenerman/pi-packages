@@ -215,6 +215,7 @@ export default function (pi: ExtensionAPI) {
     getRecord: (id) => manager.getRecord(id),
     emitEvent: (name, data) => pi.events.emit(name, data),
     steerAgent: (session, message) => steerAgent(session, message),
+    queueSteer: (id, message) => manager.queueSteer(id, message),
   })));
 
   // ---- /agents interactive menu ----

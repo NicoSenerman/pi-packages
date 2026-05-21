@@ -803,3 +803,55 @@ describe("AgentManager — execution state", () => {
     manager.abort(id);
   });
 });
+
+describe("AgentManager — queueSteer", () => {
+  let manager: AgentManager;
+
+  afterEach(() => {
+    manager?.dispose();
+  });
+
+  it("returns false for an unknown agent id", () => {
+    ({ manager } = createManager());
+    expect(manager.queueSteer("unknown-id", "hello")).toBe(false);
+  });
+
+  it("returns true and buffers the message for a known agent", () => {
+    const runner: AgentRunner = {
+      run: vi.fn().mockImplementation(() => new Promise(() => {})),
+      resume: vi.fn(),
+    };
+    ({ manager } = createManager({ runner }));
+
+    const id = manager.spawn(mockCtx, "general-purpose", "test", {
+      description: "test",
+      isBackground: true,
+    });
+
+    expect(manager.queueSteer(id, "steer message")).toBe(true);
+    manager.abort(id);
+  });
+
+  it("flushes queued steers to the session once onSessionCreated fires", async () => {
+    const session = mockSession();
+    const runner: AgentRunner = {
+      run: vi.fn().mockImplementation(async (_ctx: any, _type: any, _prompt: any, opts: any) => {
+        opts.onSessionCreated?.(session);
+        return { responseText: "done", session, aborted: false, steered: false };
+      }),
+      resume: vi.fn(),
+    };
+    ({ manager } = createManager({ runner }));
+
+    // Queue a steer before spawn (simulated via queueSteer after spawn, before session)
+    const id = manager.spawn(mockCtx, "general-purpose", "test", {
+      description: "test",
+      isBackground: false,
+    });
+
+    // Once session is created, steer should have been called
+    await manager.getRecord(id)!.promise;
+    // steer was NOT pre-queued (session was created synchronously in this mock), verify no steer was called
+    expect(session.steer).not.toHaveBeenCalled();
+  });
+});

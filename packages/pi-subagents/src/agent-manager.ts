@@ -94,6 +94,8 @@ export class AgentManager {
   private queue: { id: string; args: SpawnArgs }[] = [];
   /** Number of currently running background agents. */
   private runningBackground = 0;
+  /** Steers buffered for agents whose session hasn’t been created yet. */
+  private pendingSteers = new Map<string, string[]>();
 
   constructor(options: AgentManagerOptions) {
     this.runner = options.runner;
@@ -116,6 +118,19 @@ export class AgentManager {
    */
   notifyConcurrencyChanged(): void {
     this.drainQueue();
+  }
+
+  /**
+   * Buffer a steer message for an agent whose session isn’t ready yet.
+   * Returns false if the agent id is not tracked (already cleaned up or unknown).
+   * Called by steer-tool and service-adapter when record.execution is undefined.
+   */
+  queueSteer(id: string, message: string): boolean {
+    if (!this.agents.has(id)) return false;
+    const steers = this.pendingSteers.get(id) ?? [];
+    steers.push(message);
+    this.pendingSteers.set(id, steers);
+    return true;
   }
 
   /**
@@ -221,11 +236,12 @@ export class AgentManager {
         record.session = session;
         if (outputFile) record.outputFile = outputFile;
         // Flush any steers that arrived before the session was ready
-        if (record.pendingSteers?.length) {
-          for (const msg of record.pendingSteers) {
+        const buffered = this.pendingSteers.get(id);
+        if (buffered?.length) {
+          for (const msg of buffered) {
             session.steer(msg).catch(() => {});
           }
-          record.pendingSteers = undefined;
+          this.pendingSteers.delete(id);
         }
         // Subscribe record observer for stats accumulation
         unsubRecordObserver = subscribeRecordObserver(session, record, {
@@ -388,6 +404,7 @@ export class AgentManager {
     record.session?.dispose?.();
     record.session = undefined;
     this.agents.delete(id);
+    this.pendingSteers.delete(id);
   }
 
   private cleanup() {

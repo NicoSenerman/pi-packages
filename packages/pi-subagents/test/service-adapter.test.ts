@@ -51,10 +51,12 @@ describe("toSubagentRecord", () => {
     expect(result).not.toHaveProperty("promise");
   });
 
-  it("strips pendingSteers from the record", () => {
-    const record = createTestRecord({ pendingSteers: ["hurry up"] });
+  it("strips session, abortController, promise, outputFile, and other runtime fields from the record", () => {
+    const record = createTestRecord({ session: {} as any, abortController: new AbortController(), promise: Promise.resolve("x") });
     const result = toSubagentRecord(record);
-    expect(result).not.toHaveProperty("pendingSteers");
+    expect(result).not.toHaveProperty("session");
+    expect(result).not.toHaveProperty("abortController");
+    expect(result).not.toHaveProperty("promise");
   });
 
   it("strips resultConsumed, toolCallId, outputFile, worktree, invocation", () => {
@@ -132,6 +134,7 @@ describe("createSubagentsService — getRecord and listAgents", () => {
       abort: vi.fn(() => true),
       waitForAll: vi.fn(async () => {}),
       hasRunning: vi.fn(() => false),
+      queueSteer: vi.fn(() => true),
     };
   }
 
@@ -181,6 +184,7 @@ describe("createSubagentsService — spawn", () => {
         abort: vi.fn(() => true),
         waitForAll: vi.fn(async () => {}),
         hasRunning: vi.fn(() => false),
+        queueSteer: vi.fn(() => true),
       },
       resolveModel: vi.fn(() => ({ id: "claude-sonnet", provider: "anthropic" })),
       getCtx: () => ({ pi: { fake: true }, ctx: { cwd: "/tmp" } }),
@@ -287,6 +291,7 @@ describe("createSubagentsService — steer, abort, waitForAll, hasRunning", () =
         abort: vi.fn(() => true),
         waitForAll: vi.fn(async () => {}),
         hasRunning: vi.fn(() => true),
+        queueSteer: vi.fn(() => true),
       },
       resolveModel: vi.fn(),
       getCtx: () => ({ pi: {}, ctx: {} }),
@@ -353,13 +358,12 @@ describe("createSubagentsService — steer, abort, waitForAll, hasRunning", () =
         id: "a-1",
         status: "running",
         session: undefined,
-        pendingSteers: undefined,
       });
       const deps = createDeps();
       (deps.manager.getRecord as ReturnType<typeof vi.fn>).mockReturnValue(record);
       const svc = createSubagentsService(deps);
       expect(await svc.steer("a-1", "do this")).toBe(true);
-      expect(record.pendingSteers).toEqual(["do this"]);
+      expect(deps.manager.queueSteer).toHaveBeenCalledWith("a-1", "do this");
     });
 
     it("delegates to session.steer and returns true when session is ready", async () => {

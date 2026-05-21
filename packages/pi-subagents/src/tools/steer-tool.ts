@@ -9,6 +9,8 @@ export interface SteerToolDeps {
   getRecord: (id: string) => AgentRecord | undefined;
   emitEvent: (name: string, data: unknown) => void;
   steerAgent: (session: AgentSession, message: string) => Promise<void>;
+  /** Buffer a steer for an agent whose session isn't ready yet. */
+  queueSteer: (id: string, message: string) => boolean;
 }
 
 /** Create the steer_subagent tool definition (without Pi SDK wrapper). */
@@ -47,9 +49,8 @@ export function createSteerTool(deps: SteerToolDeps) {
         );
       }
       if (!record.session) {
-        // Session not ready yet — queue the steer for delivery once initialized
-        if (!record.pendingSteers) record.pendingSteers = [];
-        record.pendingSteers.push(params.message);
+        // Session not ready yet — queue via manager for delivery once initialized
+        deps.queueSteer(record.id, params.message);
         deps.emitEvent("subagents:steered", { id: record.id, message: params.message });
         return textResult(
           `Steering message queued for agent ${record.id}. It will be delivered once the session initializes.`,

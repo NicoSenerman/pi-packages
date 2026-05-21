@@ -8,6 +8,7 @@ function makeDeps(records: Map<string, AgentRecord> = new Map()) {
     getRecord: (id: string) => records.get(id),
     emitEvent: vi.fn(),
     steerAgent: vi.fn().mockResolvedValue(undefined),
+    queueSteer: vi.fn((_id: string, _msg: string) => true),
   };
 }
 
@@ -43,7 +44,7 @@ describe("createSteerTool", () => {
     const deps = makeDeps(records);
     const result = await execute(deps, { agent_id: "agent-1", message: "redirect" });
     expect(result.content[0].text).toContain("queued");
-    expect(record.pendingSteers).toEqual(["redirect"]);
+    expect(deps.queueSteer).toHaveBeenCalledWith("agent-1", "redirect");
     expect(deps.emitEvent).toHaveBeenCalledWith("subagents:steered", {
       id: "agent-1",
       message: "redirect",

@@ -46,7 +46,6 @@ export interface AgentRecordInit {
 	session?: AgentSession;
 	promise?: Promise<string>;
 	resultConsumed?: boolean;
-	pendingSteers?: string[];
 	worktree?: { path: string; branch: string };
 	worktreeResult?: { hasChanges: boolean; branch?: string };
 	toolCallId?: string;
@@ -91,7 +90,6 @@ export class AgentRecord {
 	abortController?: AbortController;
 	promise?: Promise<string>;
 	resultConsumed?: boolean;
-	pendingSteers?: string[];
 	worktree?: { path: string; branch: string };
 	worktreeResult?: { hasChanges: boolean; branch?: string };
 	toolCallId?: string;
@@ -121,7 +119,6 @@ export class AgentRecord {
 		this.session = init.session;
 		this.promise = init.promise;
 		this.resultConsumed = init.resultConsumed;
-		this.pendingSteers = init.pendingSteers;
 		this.worktree = init.worktree;
 		this.worktreeResult = init.worktreeResult;
 		this.toolCallId = init.toolCallId;
