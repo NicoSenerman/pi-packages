@@ -290,4 +290,40 @@ describe("isPiInfrastructureRead", () => {
       false,
     );
   });
+
+  // ── glob patterns ─────────────────────────────────────────────────
+
+  test("glob entry matches a versioned path", () => {
+    expect(
+      isPiInfrastructureRead(
+        "read",
+        "/opt/homebrew/Cellar/pi-coding-agent/0.74.0/libexec/lib/node_modules/@earendil-works/pi-coding-agent/SKILL.md",
+        ["/opt/homebrew/**/@earendil-works/pi-coding-agent/**"],
+        cwd,
+      ),
+    ).toBe(true);
+  });
+
+  test("glob entry does not match an unrelated path", () => {
+    expect(
+      isPiInfrastructureRead(
+        "read",
+        "/etc/passwd",
+        ["/opt/homebrew/**/@earendil-works/pi-coding-agent/**"],
+        cwd,
+      ),
+    ).toBe(false);
+  });
+
+  test("plain entry with ~ expands to home dir for matching", () => {
+    // node:os is mocked: homedir() returns "/mock/home"
+    expect(
+      isPiInfrastructureRead(
+        "read",
+        "/mock/home/.pi/agent/config.json",
+        ["~/.pi/agent"],
+        cwd,
+      ),
+    ).toBe(true);
+  });
 });
