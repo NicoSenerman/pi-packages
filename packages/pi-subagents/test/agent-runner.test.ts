@@ -1,47 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const {
-  createAgentSession,
-  defaultResourceLoaderCtor,
-  getAgentDir,
-  sessionManagerCreate,
-  sessionManagerInMemory,
-  settingsManagerCreate,
-} = vi.hoisted(() => ({
-  createAgentSession: vi.fn(),
-  defaultResourceLoaderCtor: vi.fn(),
-  getAgentDir: vi.fn(() => "/mock/agent-dir"),
-  sessionManagerCreate: vi.fn(() => ({
-    kind: "persisted-session-manager",
-    newSession: vi.fn(),
-    getSessionFile: vi.fn(() => "/sessions/child.jsonl"),
-  })),
-  sessionManagerInMemory: vi.fn(() => ({ kind: "memory-session-manager" })),
-  settingsManagerCreate: vi.fn(() => ({ kind: "settings-manager" })),
-}));
-
-vi.mock("@earendil-works/pi-coding-agent", () => ({
-  createAgentSession,
-  DefaultResourceLoader: class {
-    constructor(options: any) {
-      defaultResourceLoaderCtor(options);
-    }
-
-    async reload() {}
-  },
-  getAgentDir,
-  SessionManager: { create: sessionManagerCreate, inMemory: sessionManagerInMemory },
-  SettingsManager: { create: settingsManagerCreate },
-}));
-
-vi.mock("../src/agent-types.js", async (importOriginal) => ({
-  ...await importOriginal<typeof import("../src/agent-types.js")>(),
-  // Only mock the free-function exports still imported by session-config.ts.
-  // resolveAgentConfig / getToolNamesForType are now injected via RunOptions.registry.
-  getMemoryToolNames: vi.fn(() => []),
-  getReadOnlyMemoryToolNames: vi.fn(() => []),
-}));
-
 /** Mock AgentConfigLookup injected via RunOptions.registry. */
 const mockAgentLookup = {
   resolveAgentConfig: vi.fn((): import("../src/types.js").AgentConfig => ({
@@ -58,27 +16,6 @@ const mockAgentLookup = {
   })),
   getToolNamesForType: vi.fn((): string[] => ["read"]),
 };
-
-vi.mock("../src/env.js", () => ({
-  detectEnv: vi.fn(async () => ({ isGitRepo: false, branch: "", platform: "linux" })),
-}));
-
-vi.mock("../src/prompts.js", () => ({
-  buildAgentPrompt: vi.fn(() => "system prompt"),
-}));
-
-vi.mock("../src/memory.js", () => ({
-  buildMemoryBlock: vi.fn(() => ""),
-  buildReadOnlyMemoryBlock: vi.fn(() => ""),
-}));
-
-vi.mock("../src/skill-loader.js", () => ({
-  preloadSkills: vi.fn(() => []),
-}));
-
-vi.mock("../src/session-dir.js", () => ({
-  deriveSubagentSessionDir: vi.fn(() => "/mock/session-dir/tasks"),
-}));
 
 import { resumeAgent, runAgent } from "../src/agent-runner.js";
 
@@ -148,18 +85,6 @@ const exec = vi.fn();
 
 beforeEach(() => {
   io = createRunnerIO();
-  // Legacy hoisted-mock resets (dead code after RunnerIO injection; removed in next commit).
-  createAgentSession.mockReset();
-  defaultResourceLoaderCtor.mockClear();
-  getAgentDir.mockClear();
-  sessionManagerCreate.mockClear();
-  sessionManagerCreate.mockReturnValue({
-    kind: "persisted-session-manager",
-    newSession: vi.fn(),
-    getSessionFile: vi.fn(() => "/sessions/child.jsonl"),
-  });
-  sessionManagerInMemory.mockClear();
-  settingsManagerCreate.mockClear();
 });
 
 describe("agent-runner final output capture", () => {
