@@ -80,7 +80,6 @@ export interface AgentToolManager {
   resume: (id: string, prompt: string, signal: AbortSignal) => Promise<AgentRecord | undefined>;
   getRecord: (id: string) => AgentRecord | undefined;
   getMaxConcurrent: () => number;
-  listAgents: () => AgentRecord[];
 }
 
 /** Narrow widget interface — only the methods the Agent tool calls. */
@@ -524,17 +523,12 @@ Guidelines:
             signal,
             parentSessionFile: ctx.sessionManager.getSessionFile(),
             parentSessionId: ctx.sessionManager.getSessionId(),
-            onSessionCreated: (session: any) => {
+            onSessionCreated: (session: any, record: AgentRecord) => {
               fgState.setSession(session);
               unsubUI = subscribeUIObserver(session, fgState, streamUpdate);
-              for (const a of deps.manager.listAgents()) {
-                if (a.execution?.session === session) {
-                  fgId = a.id;
-                  deps.agentActivity.set(a.id, fgState);
-                  deps.widget.ensureTimer();
-                  break;
-                }
-              }
+              fgId = record.id;
+              deps.agentActivity.set(record.id, fgState);
+              deps.widget.ensureTimer();
             },
           },
         );

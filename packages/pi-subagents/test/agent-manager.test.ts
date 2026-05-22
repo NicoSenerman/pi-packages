@@ -914,3 +914,59 @@ describe("AgentManager — onAgentCreated observer", () => {
     expect(callOrder).toEqual(["created", "started"]);
   });
 });
+
+describe("AgentManager — onSessionCreated callback receives record", () => {
+  let manager: AgentManager;
+
+  afterEach(() => {
+    manager?.dispose();
+  });
+
+  it("passes record as second argument to onSessionCreated callback", async () => {
+    const session = mockSession();
+    const received: { record: AgentRecord | undefined } = { record: undefined };
+    const runner: AgentRunner = {
+      run: vi.fn().mockImplementation(async (_ctx: any, _type: any, _prompt: any, opts: any) => {
+        opts.onSessionCreated?.(session);
+        return { responseText: "done", session, aborted: false, steered: false };
+      }),
+      resume: vi.fn(),
+    };
+    ({ manager } = createManager({ runner }));
+
+    const id = manager.spawn(mockCtx, "general-purpose", "test", {
+      description: "test",
+      isBackground: true,
+      onSessionCreated: (_session, record) => {
+        received.record = record;
+      },
+    });
+    await manager.getRecord(id)!.promise;
+
+    expect(received.record).toBe(manager.getRecord(id));
+    expect(received.record!.id).toBe(id);
+  });
+
+  it("passes record to foreground onSessionCreated callback", async () => {
+    const session = mockSession();
+    const received: { record: AgentRecord | undefined } = { record: undefined };
+    const runner: AgentRunner = {
+      run: vi.fn().mockImplementation(async (_ctx: any, _type: any, _prompt: any, opts: any) => {
+        opts.onSessionCreated?.(session);
+        return { responseText: "done", session, aborted: false, steered: false };
+      }),
+      resume: vi.fn(),
+    };
+    ({ manager } = createManager({ runner }));
+
+    await manager.spawnAndWait(mockCtx, "general-purpose", "test", {
+      description: "fg",
+      onSessionCreated: (_session, record) => {
+        received.record = record;
+      },
+    });
+
+    expect(received.record).toBeDefined();
+    expect(received.record!.type).toBe("general-purpose");
+  });
+});

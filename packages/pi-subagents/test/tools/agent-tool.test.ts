@@ -14,7 +14,6 @@ function makeDeps(overrides: Partial<AgentToolDeps> = {}): AgentToolDeps {
       resume: vi.fn().mockResolvedValue(createTestRecord()),
       getRecord: vi.fn().mockReturnValue(createTestRecord()),
       getMaxConcurrent: vi.fn().mockReturnValue(4),
-      listAgents: vi.fn().mockReturnValue([]),
     },
     widget: {
       setUICtx: vi.fn(),

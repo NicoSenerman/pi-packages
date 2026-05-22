@@ -72,8 +72,8 @@ export interface AgentSpawnConfig {
   invocation?: AgentInvocation;
   /** Parent abort signal — when aborted, the subagent is also stopped. */
   signal?: AbortSignal;
-  /** Called when the agent session is created — the one remaining callback. */
-  onSessionCreated?: (session: AgentSession) => void;
+  /** Called when the agent session is created — receives the session and the agent's record. */
+  onSessionCreated?: (session: AgentSession, record: AgentRecord) => void;
   /** Path to the parent session's JSONL file (for deriving the subagent session directory). */
   parentSessionFile?: string;
   /** Session ID of the parent agent (stored in the child session's parentSession header). */
@@ -244,7 +244,7 @@ export class AgentManager {
         unsubRecordObserver = subscribeRecordObserver(session, record, {
           onCompact: (r, info) => this.observer?.onAgentCompacted(r, info),
         });
-        options.onSessionCreated?.(session);
+        options.onSessionCreated?.(session, record);
       },
     })
       .then(({ responseText, session, aborted, steered, sessionFile }) => {
