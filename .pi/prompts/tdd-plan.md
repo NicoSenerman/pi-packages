@@ -33,6 +33,17 @@ Load the `package-<PKG>` skill (e.g., `package-pi-permission-system`) for packag
 Load the `code-design` skill (design principles, TypeScript conventions, structural heuristics).
 Load the `testing` skill (Vitest mock patterns, TDD planning rules).
 
+## Verify green baseline
+
+Before writing any code, confirm the starting state is clean:
+
+1. `pnpm run check` — must pass.
+2. `pnpm run lint` — must pass.
+3. `pnpm vitest run` — must pass.
+
+If any check fails, stop and report to the user.
+Do not start TDD cycles from a broken baseline.
+
 ## Execute the TDD cycle
 
 For **each** step in the plan's "TDD Order", in order:
@@ -67,6 +78,7 @@ If the deviation is large, stop and ask.
    Must succeed — Vitest does not typecheck.
 3. Run the linter: `pnpm run lint`.
    If it fails, run `pnpm run lint:fix` and re-check.
+   Fix all failures — including pre-existing ones unrelated to the current change.
    Commit any fixup as part of the most recent feat commit (amend) only if you haven't pushed; otherwise as a `style:` commit.
    The fixup must NOT land in a `docs:` commit.
 4. Cross-check the plan's "Module-Level Changes" table against actually-changed files.

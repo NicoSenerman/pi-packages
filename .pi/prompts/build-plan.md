@@ -36,6 +36,16 @@ Load the `package-<PKG>` skill (e.g., `package-pi-permission-system`) for packag
 If the plan touches code: load the `code-design` skill.
 If the plan touches markdown/docs: load the `markdown-conventions` skill.
 
+## Verify green baseline
+
+Before making any changes, confirm the starting state is clean:
+
+1. `pnpm run check` — must pass (if the package has TypeScript sources).
+2. `pnpm run lint` — must pass.
+
+If any check fails, stop and report to the user.
+Do not start from a broken baseline.
+
 ## Execute the plan steps
 
 For **each** numbered step in the plan's "TDD Order" (or equivalent execution section), in order:
@@ -45,6 +55,7 @@ For **each** numbered step in the plan's "TDD Order" (or equivalent execution se
    Run the linters to confirm the change is clean:
    - `pnpm run lint`.
      If it fails, run `pnpm run lint:fix` and re-check.
+     Fix all failures — including pre-existing ones unrelated to the current change.
 3. **Commit.**
    Use the commit message the plan suggests, or a Conventional Commits message that matches:
    - `docs:` for documentation changes.
