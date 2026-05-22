@@ -3,7 +3,7 @@ import type { TUI } from "@earendil-works/pi-tui";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "../src/agent-types.js";
 import type { AgentActivityTracker } from "../src/ui/agent-activity-tracker.js";
-import type { Theme } from "../src/ui/agent-widget.js";
+import type { Theme } from "../src/ui/display.js";
 import { createTestRecord } from "./helpers/make-record.js";
 
 const testRegistry = new AgentTypeRegistry(() => new Map());
