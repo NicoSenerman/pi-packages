@@ -1,6 +1,6 @@
 import { Text } from "@earendil-works/pi-tui";
 import type { NotificationDetails } from "./notification.js";
-import { formatMs, formatTokens, formatTurns } from "./ui/agent-widget.js";
+import { formatMs, formatTokens, formatTurns } from "./ui/display.js";
 
 /** Narrow theme interface — only the methods the renderer actually calls. */
 interface RendererTheme {

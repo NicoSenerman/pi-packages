@@ -2,7 +2,7 @@ import type { Model } from "@earendil-works/pi-ai";
 import type { AgentSpawnConfig } from "../agent-manager.js";
 import type { AgentInvocation, AgentRecord, IsolationMode, ThinkingLevel } from "../types.js";
 import { AgentActivityTracker } from "../ui/agent-activity-tracker.js";
-import type { AgentDetails } from "../ui/agent-widget.js";
+import type { AgentDetails } from "../ui/display.js";
 import { subscribeUIObserver } from "../ui/ui-observer.js";
 import type { AgentActivityAccess } from "./agent-tool.js";
 import { textResult } from "./helpers.js";

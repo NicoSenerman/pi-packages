@@ -1,6 +1,6 @@
 import type { AgentConfigLookup } from "../agent-types.js";
 import { AgentActivityTracker } from "../ui/agent-activity-tracker.js";
-import { type AgentDetails, formatTokens } from "../ui/agent-widget.js";
+import { type AgentDetails, formatTokens } from "../ui/display.js";
 import { getLifetimeTotal, type LifetimeUsage } from "../usage.js";
 
 /** Parenthetical status note for completed agent result text. */

@@ -9,6 +9,7 @@ import { resolveInvocationModel } from "../model-resolver.js";
 
 import type { AgentInvocation, AgentRecord, SubagentType } from "../types.js";
 import { AgentActivityTracker } from "../ui/agent-activity-tracker.js";
+import { type UICtx } from "../ui/agent-widget.js";
 import {
   type AgentDetails,
   buildInvocationTags,
@@ -17,8 +18,7 @@ import {
   getDisplayName,
   getPromptModeLabel,
   SPINNER,
-  type UICtx,
-} from "../ui/agent-widget.js";
+} from "../ui/display.js";
 import { spawnBackground } from "./background-spawner.js";
 import { runForeground } from "./foreground-runner.js";
 import { buildDetails, buildTypeListText, textResult } from "./helpers.js";

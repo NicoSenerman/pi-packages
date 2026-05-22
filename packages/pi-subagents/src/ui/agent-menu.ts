@@ -10,7 +10,7 @@ import {
 import type { ModelRegistry } from "../model-resolver.js";
 import type { AgentConfig, AgentRecord } from "../types.js";
 import type { AgentActivityTracker } from "./agent-activity-tracker.js";
-import { formatDuration, getDisplayName } from "./agent-widget.js";
+import { formatDuration, getDisplayName } from "./display.js";
 
 // ---- Deps interface ----
 

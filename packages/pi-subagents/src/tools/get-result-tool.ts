@@ -2,7 +2,7 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import type { AgentConfigLookup } from "../agent-types.js";
 import type { AgentRecord } from "../types.js";
-import { formatDuration, getDisplayName } from "../ui/agent-widget.js";
+import { formatDuration, getDisplayName } from "../ui/display.js";
 import { getSessionContextPercent } from "../usage.js";
 import { formatLifetimeTokens, textResult } from "./helpers.js";
 

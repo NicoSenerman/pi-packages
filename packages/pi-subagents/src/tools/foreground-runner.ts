@@ -8,7 +8,7 @@ import {
   describeActivity,
   formatMs,
   SPINNER,
-} from "../ui/agent-widget.js";
+} from "../ui/display.js";
 import { subscribeUIObserver } from "../ui/ui-observer.js";
 import type { AgentActivityAccess } from "./agent-tool.js";
 import {

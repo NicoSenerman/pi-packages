@@ -12,7 +12,7 @@ import { extractText } from "../context.js";
 import type { AgentRecord } from "../types.js";
 import { getLifetimeTotal, getSessionContextPercent } from "../usage.js";
 import type { AgentActivityTracker } from "./agent-activity-tracker.js";
-import { buildInvocationTags, describeActivity, formatDuration, formatSessionTokens, getDisplayName, getPromptModeLabel, type Theme } from "./agent-widget.js";
+import { buildInvocationTags, describeActivity, formatDuration, formatSessionTokens, getDisplayName, getPromptModeLabel, type Theme } from "./display.js";
 
 // ── Local message-shape types ───────────────────────────────────────────────
 // The Pi SDK does not export narrow types for all message content variants.
