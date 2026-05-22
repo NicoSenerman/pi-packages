@@ -7,7 +7,6 @@ import { AgentTypeRegistry } from "../agent-types.js";
 import { resolveAgentInvocationConfig } from "../invocation-config.js";
 import { resolveInvocationModel } from "../model-resolver.js";
 
-import { NotificationState } from "../notification-state.js";
 import type { AgentInvocation, AgentRecord, SubagentType } from "../types.js";
 import { AgentActivityTracker } from "../ui/agent-activity-tracker.js";
 import {
@@ -428,6 +427,7 @@ Guidelines:
             isBackground: true,
             isolation,
             invocation: agentInvocation,
+            toolCallId,
             onSessionCreated: (session: any) => {
               bgState.setSession(session);
               subscribeUIObserver(session, bgState);
@@ -438,10 +438,6 @@ Guidelines:
         }
 
         const record = deps.manager.getRecord(id);
-        if (record) {
-          // Born complete: notification-state object owns toolCallId + resultConsumed.
-          record.notification = new NotificationState(toolCallId);
-        }
 
         deps.agentActivity.set(id, bgState);
         deps.widget.ensureTimer();

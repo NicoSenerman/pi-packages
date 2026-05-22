@@ -970,3 +970,40 @@ describe("AgentManager — onSessionCreated callback receives record", () => {
     expect(received.record!.type).toBe("general-purpose");
   });
 });
+
+describe("AgentManager — toolCallId notification wiring", () => {
+  let manager: AgentManager;
+
+  afterEach(() => {
+    manager?.dispose();
+  });
+
+  it("wires NotificationState on spawn when toolCallId is provided", () => {
+    ({ manager } = createManager());
+
+    const id = manager.spawn(mockCtx, "general-purpose", "test", {
+      description: "bg",
+      isBackground: true,
+      toolCallId: "tc-42",
+    });
+    const record = manager.getRecord(id)!;
+
+    expect(record.notification).toBeInstanceOf(NotificationState);
+    expect(record.notification!.toolCallId).toBe("tc-42");
+    expect(record.notification!.resultConsumed).toBe(false);
+    manager.abort(id);
+  });
+
+  it("does not wire NotificationState when toolCallId is absent", () => {
+    ({ manager } = createManager());
+
+    const id = manager.spawn(mockCtx, "general-purpose", "test", {
+      description: "bg",
+      isBackground: true,
+    });
+    const record = manager.getRecord(id)!;
+
+    expect(record.notification).toBeUndefined();
+    manager.abort(id);
+  });
+});

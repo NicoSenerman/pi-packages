@@ -202,19 +202,17 @@ describe("Agent tool — background execution", () => {
     expect(deps.agentActivity.get("agent-1")).toBeDefined();
   });
 
-  it("sets record.notification with the tool call id for background agents", async () => {
-    const record = createTestRecord({ status: "running" });
+  it("passes toolCallId to manager.spawn so the manager wires NotificationState", async () => {
     const deps = makeDeps();
-    deps.manager.getRecord = vi.fn().mockReturnValue(record);
+    deps.manager.getRecord = vi.fn().mockReturnValue(createTestRecord({ status: "running" }));
     await execute(deps, {
       prompt: "do something",
       description: "bg task",
       subagent_type: "general-purpose",
       run_in_background: true,
     });
-    expect(record.notification).toBeDefined();
-    expect(record.notification!.toolCallId).toBe("tc-1");
-    expect(record.notification!.resultConsumed).toBe(false);
+    const spawnOpts = (deps.manager.spawn as ReturnType<typeof vi.fn>).mock.calls[0][3];
+    expect(spawnOpts.toolCallId).toBe("tc-1");
   });
 });
 

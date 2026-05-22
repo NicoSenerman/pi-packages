@@ -13,6 +13,7 @@ import { AgentRecord } from "./agent-record.js";
 import type { AgentRunner } from "./agent-runner.js";
 import { AgentTypeRegistry } from "./agent-types.js";
 import { debugLog } from "./debug.js";
+import { NotificationState } from "./notification-state.js";
 import { buildParentSnapshot } from "./parent-snapshot.js";
 import { subscribeRecordObserver } from "./record-observer.js";
 import type { RunConfig } from "./runtime.js";
@@ -78,6 +79,8 @@ export interface AgentSpawnConfig {
   parentSessionFile?: string;
   /** Session ID of the parent agent (stored in the child session's parentSession header). */
   parentSessionId?: string;
+  /** Tool call ID for background notification wiring. When set, spawn attaches NotificationState. */
+  toolCallId?: string;
 }
 
 export class AgentManager {
@@ -154,6 +157,10 @@ export class AgentManager {
       invocation: options.invocation,
     });
     this.agents.set(id, record);
+
+    if (options.toolCallId) {
+      record.notification = new NotificationState(options.toolCallId);
+    }
 
     if (options.isBackground) {
       this.observer?.onAgentCreated(record);
