@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatLifetimeTokens, getModelLabelFromConfig, textResult } from "../../src/tools/helpers.js";
+import { buildTypeListText, formatLifetimeTokens, getModelLabelFromConfig, textResult } from "../../src/tools/helpers.js";
 
 describe("textResult", () => {
   it("wraps a message in the tool result shape", () => {
@@ -53,5 +53,61 @@ describe("getModelLabelFromConfig", () => {
 
   it("handles model with multiple slashes", () => {
     expect(getModelLabelFromConfig("provider/sub/model-name")).toBe("model-name");
+  });
+});
+
+describe("buildTypeListText", () => {
+  it("lists default agents with their descriptions", () => {
+    const registry = {
+      getDefaultAgentNames: () => ["general-purpose"],
+      getUserAgentNames: () => [],
+      resolveAgentConfig: () => ({ description: "General purpose agent", model: undefined }),
+    };
+    const result = buildTypeListText(registry as any, "/home/.pi");
+    expect(result).toContain("- general-purpose: General purpose agent");
+  });
+
+  it("includes model suffix for default agents that have a model set", () => {
+    const registry = {
+      getDefaultAgentNames: () => ["Explore"],
+      getUserAgentNames: () => [],
+      resolveAgentConfig: () => ({ description: "Fast explorer", model: "anthropic/claude-haiku-4-5" }),
+    };
+    const result = buildTypeListText(registry as any, "/home/.pi");
+    expect(result).toContain("- Explore: Fast explorer (claude-haiku-4-5)");
+  });
+
+  it("includes agentDir in the trailing hint line", () => {
+    const registry = {
+      getDefaultAgentNames: () => [],
+      getUserAgentNames: () => [],
+      resolveAgentConfig: () => ({ description: "", model: undefined }),
+    };
+    const result = buildTypeListText(registry as any, "/home/user/.pi");
+    expect(result).toContain("/home/user/.pi");
+  });
+
+  it("adds Custom agents section when user agents are present", () => {
+    const registry = {
+      getDefaultAgentNames: () => ["general-purpose"],
+      getUserAgentNames: () => ["my-agent"],
+      resolveAgentConfig: (name: string) =>
+        name === "general-purpose"
+          ? { description: "General purpose", model: undefined }
+          : { description: "My custom agent", model: undefined },
+    };
+    const result = buildTypeListText(registry as any, "/home/.pi");
+    expect(result).toContain("Custom agents:");
+    expect(result).toContain("- my-agent: My custom agent");
+  });
+
+  it("omits Custom agents section when no user agents exist", () => {
+    const registry = {
+      getDefaultAgentNames: () => ["general-purpose"],
+      getUserAgentNames: () => [],
+      resolveAgentConfig: () => ({ description: "General purpose", model: undefined }),
+    };
+    const result = buildTypeListText(registry as any, "/home/.pi");
+    expect(result).not.toContain("Custom agents:");
   });
 });

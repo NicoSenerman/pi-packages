@@ -26,7 +26,7 @@ import { createSubagentsService } from "./service-adapter.js";
 import { SettingsManager } from "./settings.js";
 import { createAgentTool } from "./tools/agent-tool.js";
 import { createGetResultTool } from "./tools/get-result-tool.js";
-import { getModelLabelFromConfig } from "./tools/helpers.js";
+import { buildTypeListText, getModelLabelFromConfig } from "./tools/helpers.js";
 import { createSteerTool } from "./tools/steer-tool.js";
 import { type NotificationDetails } from "./types.js";
 import { createAgentsMenuHandler } from "./ui/agent-menu.js";
@@ -154,32 +154,7 @@ export default function (pi: ExtensionAPI) {
   const toolStart = new ToolStartHandler(runtime);
   pi.on("tool_execution_start", (event, ctx) => toolStart.handleToolExecutionStart(event, ctx));
 
-  /** Build the full type list text dynamically from the unified registry. */
-  const buildTypeListText = () => {
-    const defaultNames = registry.getDefaultAgentNames();
-    const userNames = registry.getUserAgentNames();
-
-    const defaultDescs = defaultNames.map((name) => {
-      const cfg = registry.resolveAgentConfig(name);
-      const modelSuffix = cfg.model ? ` (${getModelLabelFromConfig(cfg.model)})` : "";
-      return `- ${name}: ${cfg.description}${modelSuffix}`;
-    });
-
-    const customDescs = userNames.map((name) => {
-      const cfg = registry.resolveAgentConfig(name);
-      return `- ${name}: ${cfg.description}`;
-    });
-
-    return [
-      "Default agents:",
-      ...defaultDescs,
-      ...(customDescs.length > 0 ? ["", "Custom agents:", ...customDescs] : []),
-      "",
-      `Custom agents can be defined in .pi/agents/<name>.md (project) or ${getAgentDir()}/agents/<name>.md (global) — they are picked up automatically. Project-level agents override global ones. Creating a .md file with the same name as a default agent overrides it.`,
-    ].join("\n");
-  };
-
-  const typeListText = buildTypeListText();
+  const typeListText = buildTypeListText(registry, getAgentDir());
 
   // ---- Agent tool ----
 
