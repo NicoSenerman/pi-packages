@@ -40,7 +40,6 @@ export interface AgentMenuDeps {
   getModelLabel: (type: string, registry?: ModelRegistry) => string;
   /** Settings manager — owns in-memory values and persistence. */
   settings: AgentMenuSettings;
-  emitEvent: (name: string, data: unknown) => void;
   personalAgentsDir: string;
   projectAgentsDir: string;
 }

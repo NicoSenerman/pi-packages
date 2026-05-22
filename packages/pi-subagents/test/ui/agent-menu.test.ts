@@ -67,7 +67,6 @@ function makeDeps(overrides: Partial<AgentMenuDeps> = {}): AgentMenuDeps {
         level: "info",
       })),
     },
-    emitEvent: vi.fn(),
     personalAgentsDir: "/home/.pi/agents",
     projectAgentsDir: "/test-project/.pi/agents",
     ...overrides,

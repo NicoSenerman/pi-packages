@@ -221,7 +221,6 @@ export default function (pi: ExtensionAPI) {
       return getModelLabelFromConfig(cfg.model);
     },
     settings,
-    emitEvent: (name, data) => pi.events.emit(name, data),
     personalAgentsDir: join(getAgentDir(), 'agents'),
     projectAgentsDir: join(process.cwd(), '.pi', 'agents'),
   });
