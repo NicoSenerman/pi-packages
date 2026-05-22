@@ -26,6 +26,13 @@ export type OnAgentStart = (record: AgentRecord) => void;
 export type OnAgentCompact = (record: AgentRecord, info: CompactionInfo) => void;
 export type CompactionInfo = { reason: "manual" | "threshold" | "overflow"; tokensBefore: number };
 
+/** Observer interface for agent lifecycle notifications. */
+export interface AgentManagerObserver {
+  onAgentStarted(record: AgentRecord): void;
+  onAgentCompleted(record: AgentRecord): void;
+  onAgentCompacted(record: AgentRecord, info: CompactionInfo): void;
+}
+
 /** Default max concurrent background agents. */
 const DEFAULT_MAX_CONCURRENT = 4;
 
