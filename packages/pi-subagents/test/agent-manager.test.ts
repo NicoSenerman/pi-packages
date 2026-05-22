@@ -65,6 +65,7 @@ function createManager(overrides?: {
         onAgentStarted: overrides.observer.onAgentStarted ?? (() => {}),
         onAgentCompleted: overrides.observer.onAgentCompleted ?? (() => {}),
         onAgentCompacted: overrides.observer.onAgentCompacted ?? (() => {}),
+        onAgentCreated: overrides.observer.onAgentCreated ?? (() => {}),
       }
     : undefined;
   const manager = new AgentManager({
@@ -859,5 +860,57 @@ describe("AgentManager — queueSteer", () => {
     await manager.getRecord(id)!.promise;
     // steer was NOT pre-queued (session was created synchronously in this mock), verify no steer was called
     expect(session.steer).not.toHaveBeenCalled();
+  });
+});
+
+describe("AgentManager — onAgentCreated observer", () => {
+  let manager: AgentManager;
+
+  afterEach(() => {
+    manager?.dispose();
+  });
+
+  it("fires onAgentCreated when a background agent is spawned", () => {
+    const onCreated = vi.fn();
+    ({ manager } = createManager({ observer: { onAgentCreated: onCreated } }));
+
+    const id = manager.spawn(mockCtx, "general-purpose", "test", {
+      description: "test agent",
+      isBackground: true,
+    });
+
+    expect(onCreated).toHaveBeenCalledOnce();
+    expect(onCreated).toHaveBeenCalledWith(manager.getRecord(id));
+
+    manager.abort(id);
+  });
+
+  it("does not fire onAgentCreated for foreground agents", async () => {
+    const onCreated = vi.fn();
+    ({ manager } = createManager({ observer: { onAgentCreated: onCreated } }));
+
+    await manager.spawnAndWait(mockCtx, "general-purpose", "test", {
+      description: "foreground agent",
+    });
+
+    expect(onCreated).not.toHaveBeenCalled();
+  });
+
+  it("fires onAgentCreated before onAgentStarted for background agents", async () => {
+    const callOrder: string[] = [];
+    ({ manager } = createManager({
+      observer: {
+        onAgentCreated: () => { callOrder.push("created"); },
+        onAgentStarted: () => { callOrder.push("started"); },
+      },
+    }));
+
+    const id = manager.spawn(mockCtx, "general-purpose", "test", {
+      description: "bg agent",
+      isBackground: true,
+    });
+    await manager.getRecord(id)!.promise;
+
+    expect(callOrder).toEqual(["created", "started"]);
   });
 });

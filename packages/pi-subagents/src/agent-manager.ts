@@ -27,6 +27,8 @@ export interface AgentManagerObserver {
   onAgentStarted(record: AgentRecord): void;
   onAgentCompleted(record: AgentRecord): void;
   onAgentCompacted(record: AgentRecord, info: CompactionInfo): void;
+  /** Fires synchronously after a background agent record is created (before startAgent). */
+  onAgentCreated(record: AgentRecord): void;
 }
 
 /** Default max concurrent background agents. */
@@ -152,6 +154,10 @@ export class AgentManager {
       invocation: options.invocation,
     });
     this.agents.set(id, record);
+
+    if (options.isBackground) {
+      this.observer?.onAgentCreated(record);
+    }
 
     const snapshot = buildParentSnapshot(ctx, options.inheritContext);
     const args: SpawnArgs = { snapshot, type, prompt, options };

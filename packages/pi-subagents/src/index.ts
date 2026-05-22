@@ -110,6 +110,9 @@ export default function (pi: ExtensionAPI) {
         compactionCount: record.compactionCount,
       });
     },
+    onAgentCreated(_record) {
+      // Placeholder — wired to emit subagents:created in a subsequent step.
+    },
   };
 
   const manager = new AgentManager({
