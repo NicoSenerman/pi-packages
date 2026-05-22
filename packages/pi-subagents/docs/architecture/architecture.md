@@ -68,6 +68,7 @@ notification.ts           — completion nudges, custom message renderer
 renderer.ts               — notification TUI component
 record-observer.ts        — session-event observer for record statistics
 
+ui/display.ts             — pure formatters, display helpers, and shared types (Theme, AgentDetails)
 ui/agent-widget.ts        — above-editor live status widget
 ui/agent-menu.ts          — /agents slash command menu
 ui/conversation-viewer.ts — scrollable session overlay
@@ -564,16 +565,12 @@ Production changes:
 
 Remaining 15 `as any` casts are: 8 menu-handler `ctx as any` (deferred — requires `AgentManager.spawn` to accept `ParentSnapshot` directly), 2 `print-mode.test.ts` (same ExtensionContext/API pattern), 2 private-field test access, 1 `createSession` SDK bridge in `index.ts`, 1 `foreground-runner.ts` `AgentToolResult<any>` detail, 1 `stub-ctx.ts` comment.
 
-### Step J: Extract display helpers (#135)
+### Step J: Extract display helpers (#135) ✓ done
 
-`agent-widget.ts` (600 lines) exports 11 helper functions and constants that are used by both the widget and the menu.
-Extract these into `ui/display.ts`:
-
-- Pure formatters: `formatTokens`, `formatSessionTokens`, `formatTurns`, `formatMs`, `formatDuration`.
-- Display helpers: `getDisplayName`, `getPromptModeLabel`, `buildInvocationTags`, `describeActivity`.
-- Constants: `SPINNER`, `ERROR_STATUSES`, `TOOL_DISPLAY`.
-
-Impact: `agent-widget.ts` drops from 600 → ~420 lines; shared display logic has a single import point; menu and tool modules stop importing from the widget.
+`ui/display.ts` now contains all pure formatters, display helpers, constants, and shared types (`Theme`, `AgentDetails`).
+`agent-widget.ts` dropped from 522 → ~340 lines.
+All consumer modules (menu, tools, renderer, conversation viewer) import from `ui/display.ts` directly.
+`test/agent-widget.test.ts` renamed to `test/display.test.ts`.
 
 ### Step K: Decompose agent-menu.ts (#136)
 
