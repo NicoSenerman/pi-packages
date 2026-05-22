@@ -5,6 +5,7 @@ import { createGetResultTool } from "../../src/tools/get-result-tool.js";
 import type { AgentRecord } from "../../src/types.js";
 import { createTestRecord } from "../helpers/make-record.js";
 import { createMockSession, toAgentSession } from "../helpers/mock-session.js";
+import { STUB_CTX } from "../helpers/stub-ctx.js";
 
 const testRegistry = new AgentTypeRegistry(() => new Map());
 
@@ -19,7 +20,7 @@ function makeDeps(records: Map<string, AgentRecord> = new Map()) {
 
 async function execute(deps: ReturnType<typeof makeDeps>, params: { agent_id: string; wait?: boolean; verbose?: boolean }) {
   const tool = createGetResultTool(deps);
-  return tool.execute("tc-1", params, new AbortController().signal, undefined, {} as any);
+  return tool.execute("tc-1", params, new AbortController().signal, undefined, STUB_CTX);
 }
 
 describe("createGetResultTool", () => {

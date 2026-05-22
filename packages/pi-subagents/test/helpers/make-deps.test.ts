@@ -1,12 +1,9 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import type { BackgroundDeps } from "../../src/tools/background-spawner.js";
 import type { ForegroundDeps } from "../../src/tools/foreground-runner.js";
 import { AgentActivityTracker } from "../../src/ui/agent-activity-tracker.js";
 import { createToolDeps } from "./make-deps.js";
-
-// Stub context — mocked manager functions ignore it; typed to avoid 'as any'.
-const STUB_CTX = {} as unknown as ExtensionContext;
+import { STUB_CTX } from "./stub-ctx.js";
 
 describe("createToolDeps", () => {
 	describe("manager defaults", () => {

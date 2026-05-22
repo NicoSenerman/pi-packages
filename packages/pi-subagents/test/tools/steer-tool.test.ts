@@ -3,6 +3,7 @@ import { createSteerTool } from "../../src/tools/steer-tool.js";
 import type { AgentRecord } from "../../src/types.js";
 import { createTestRecord } from "../helpers/make-record.js";
 import { createMockSession, toAgentSession } from "../helpers/mock-session.js";
+import { STUB_CTX } from "../helpers/stub-ctx.js";
 
 function makeDeps(records: Map<string, AgentRecord> = new Map()) {
   return {
@@ -18,7 +19,7 @@ async function execute(
   params: { agent_id: string; message: string },
 ) {
   const tool = createSteerTool(deps);
-  return tool.execute("tc-1", params, new AbortController().signal, undefined, {} as any);
+  return tool.execute("tc-1", params, new AbortController().signal, undefined, STUB_CTX);
 }
 
 describe("createSteerTool", () => {
