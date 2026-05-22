@@ -23,7 +23,6 @@ function makeDeps(overrides: Partial<AgentToolDeps> = {}): AgentToolDeps {
       markFinished: vi.fn(),
     },
     agentActivity: new Map<string, AgentActivityTracker>(),
-    emitEvent: vi.fn(),
     registry: testRegistry,
     agentDir: "/home/user/.pi",
     settings: { defaultMaxTurns: undefined as number | undefined },
@@ -176,19 +175,20 @@ describe("Agent tool — background execution", () => {
     expect(text).toContain("bg task");
   });
 
-  it("emits subagents:created event for background agents", async () => {
+  it("does not emit subagents:created directly — delegated to observer.onAgentCreated", async () => {
+    // The subagents:created event is now emitted by AgentManagerObserver.onAgentCreated,
+    // called from AgentManager.spawn(). Tested in agent-manager.test.ts.
+    // This test ensures the tool no longer holds an emitEvent dep for this purpose.
     const deps = makeDeps();
     deps.manager.getRecord = vi.fn().mockReturnValue(createTestRecord({ status: "running" }));
-    await execute(deps, {
+    const result = await execute(deps, {
       prompt: "do something",
       description: "bg task",
       subagent_type: "general-purpose",
       run_in_background: true,
     });
-    expect(deps.emitEvent).toHaveBeenCalledWith("subagents:created", expect.objectContaining({
-      id: "agent-1",
-      isBackground: true,
-    }));
+    // Background spawn succeeds — no emitEvent dep required
+    expect(result.content[0].text).toContain("background");
   });
 
   it("registers activity in agentActivity map", async () => {

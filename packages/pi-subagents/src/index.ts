@@ -110,8 +110,14 @@ export default function (pi: ExtensionAPI) {
         compactionCount: record.compactionCount,
       });
     },
-    onAgentCreated(_record) {
-      // Placeholder — wired to emit subagents:created in a subsequent step.
+    onAgentCreated(record) {
+      // Emit created event for background agents (before startAgent / queue drain).
+      pi.events.emit("subagents:created", {
+        id: record.id,
+        type: record.type,
+        description: record.description,
+        isBackground: true,
+      });
     },
   };
 
@@ -172,7 +178,6 @@ export default function (pi: ExtensionAPI) {
       markFinished: (id) => runtime.markFinished(id),
     },
     agentActivity: runtime.agentActivity,
-    emitEvent: (name, data) => pi.events.emit(name, data),
     registry,
     agentDir: getAgentDir(),
     settings,

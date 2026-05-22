@@ -95,7 +95,6 @@ export interface AgentToolDeps {
   manager: AgentToolManager;
   widget: AgentToolWidget;
   agentActivity: Map<string, AgentActivityTracker>;
-  emitEvent: (name: string, data: unknown) => void;
   registry: AgentTypeRegistry;
   agentDir: string;
   /** Narrow settings accessor — only the default max turns is needed here. */
@@ -438,14 +437,6 @@ Guidelines:
         deps.agentActivity.set(id, bgState);
         deps.widget.ensureTimer();
         deps.widget.update();
-
-        // Emit created event
-        deps.emitEvent("subagents:created", {
-          id,
-          type: subagentType,
-          description: params.description,
-          isBackground: true,
-        });
 
         const isQueued = record?.status === "queued";
         return textResult(
