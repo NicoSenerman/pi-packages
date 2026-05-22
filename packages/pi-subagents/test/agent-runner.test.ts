@@ -17,6 +17,7 @@ const mockAgentLookup = {
   getToolNamesForType: vi.fn((): string[] => ["read"]),
 };
 
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { resumeAgent, runAgent } from "../src/agent-runner.js";
 
 // ── RunnerIO stub factory ──────────────────────────────────────────────────────
@@ -52,7 +53,7 @@ let io: ReturnType<typeof createRunnerIO>;
 function createSession(finalText: string) {
   const listeners: Array<(event: any) => void> = [];
   const session = {
-    messages: [] as any[],
+    messages: [] as unknown[],
     subscribe: vi.fn((listener: (event: any) => void) => {
       listeners.push(listener);
       return () => {};
@@ -176,7 +177,7 @@ describe("agent-runner final output capture", () => {
   it("resumeAgent also falls back to the final assistant message text", async () => {
     const { session } = createSession("RESUMED");
 
-    const result = await resumeAgent(session as any, "Continue");
+    const result = await resumeAgent(session as unknown as AgentSession, "Continue");
 
     expect(result).toBe("RESUMED");
   });
@@ -212,7 +213,7 @@ describe("agent-runner RunOptions — defaultMaxTurns and graceTurns", () => {
       defaultMaxTurns: 2,
       graceTurns: 1,
       registry: mockAgentLookup,
-    } as any, io);
+    }, io);
 
     expect(session.steer).toHaveBeenCalledWith(expect.stringContaining("turn limit"));
     expect(session.abort).toHaveBeenCalled();
@@ -236,7 +237,7 @@ describe("agent-runner RunOptions — defaultMaxTurns and graceTurns", () => {
       defaultMaxTurns: 1,
       graceTurns: 3,
       registry: mockAgentLookup,
-    } as any, io);
+    }, io);
 
     // Steered at turn 1, but not aborted (turn 3 < 1+3=4)
     expect(result.steered).toBe(true);
@@ -261,7 +262,7 @@ describe("agent-runner RunOptions — defaultMaxTurns and graceTurns", () => {
       defaultMaxTurns: 1, // should be overridden
       graceTurns: 1,
       registry: mockAgentLookup,
-    } as any, io);
+    }, io);
 
     // Only 2 turns fired, maxTurns=3, so steer should NOT be called
     expect(session.steer).not.toHaveBeenCalled();

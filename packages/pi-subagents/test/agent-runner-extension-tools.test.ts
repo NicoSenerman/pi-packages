@@ -82,7 +82,7 @@ function createSessionWithExtensionToolRegistration(
 ) {
   let bound = false;
   const session = {
-    messages: [] as any[],
+    messages: [] as unknown[],
     subscribe: vi.fn(() => () => {}),
     prompt: vi.fn(async () => {
       session.messages.push({
