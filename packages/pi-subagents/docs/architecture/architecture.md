@@ -273,7 +273,10 @@ src/
 │   └── tool-start.ts         — tool_execution_start handler
 ├── notification.ts           — completion nudges, custom renderer
 ├── renderer.ts               — notification TUI component
-├── ui/agent-menu.ts          — /agents slash command menu
+├── ui/agent-menu.ts          — /agents slash command menu (orchestration, listing, settings)
+├── ui/agent-config-editor.ts — agent detail view (edit/delete/eject/disable/enable)
+├── ui/agent-creation-wizard.ts — agent creation (AI-generation and manual-form)
+├── ui/agent-file-ops.ts      — AgentFileOps interface + FsAgentFileOps implementation
 ├── service-adapter.ts        — SubagentsService implementation wrapping AgentManager
 └── (existing domain modules unchanged)
 ```
@@ -572,17 +575,16 @@ Remaining 15 `as any` casts are: 8 menu-handler `ctx as any` (deferred — requi
 All consumer modules (menu, tools, renderer, conversation viewer) import from `ui/display.ts` directly.
 `test/agent-widget.test.ts` renamed to `test/display.test.ts`.
 
-### Step K: Decompose agent-menu.ts (#136)
+### Step K: Decompose agent-menu.ts (#136) ✅
 
-`agent-menu.ts` (650 lines) has 8 distinct responsibilities: menu FSM, agent listing, config editing, agent ejection, two creation wizards, running-agent viewer, and settings form.
-Filesystem operations (read/write/delete agent `.md` files) are scattered throughout.
+`agent-menu.ts` (668 lines) decomposed into four modules:
 
-1. Extract `AgentFileOps` interface — `read`, `write`, `delete`, `findAgentFile` — abstracting the fs calls.
-2. Extract `ui/agent-config-editor.ts` — `showAgentDetail` with enable/disable/reset/delete transitions.
-3. Extract `ui/agent-creation-wizard.ts` — both AI-generation and manual form paths.
-4. Leave menu orchestration, settings form, and running-agent viewer in `agent-menu.ts` (~200 lines).
+1. `ui/agent-file-ops.ts` — `AgentFileOps` interface (`exists`, `read`, `write`, `remove`, `ensureDir`, `findAgentFile`) + `FsAgentFileOps` production implementation.
+2. `ui/agent-config-editor.ts` — `showAgentDetail` with edit/delete/reset/eject/disable/enable transitions (~200 lines).
+3. `ui/agent-creation-wizard.ts` — AI-generation and manual-form creation paths (~250 lines).
+4. `ui/agent-menu.ts` — menu orchestration, agent listing, running-agent viewer, settings form (~300 lines).
 
-Impact: `agent-menu.ts` drops from 650 → ~200 lines; extracted modules receive `AgentFileOps` via injection; wizard logic becomes independently testable.
+Impact: `agent-menu.ts` dropped from 668 → 296 lines; extracted modules receive `AgentFileOps` via injection; `vi.mock("node:fs")` eliminated from `agent-menu.test.ts`.
 
 ### Step dependencies
 
