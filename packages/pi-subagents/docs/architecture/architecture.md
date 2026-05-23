@@ -661,7 +661,7 @@ The runner would accept `EnvironmentIO & SessionFactoryIO` (keeping backward com
 
 Phase 10 addresses the structural gaps identified in this analysis: flat code organization, oversized dependency bags, and complexity hotspots.
 
-### Step 1: Reorganize source into domain directories (#164)
+### Step 1: Reorganize source into domain directories ([#164][164])
 
 Move files into `config/`, `session/`, `lifecycle/`, `observation/`, and `service/` subdirectories as described in the [proposed directory restructuring](#proposed-directory-restructuring).
 
@@ -671,43 +671,43 @@ This is a mechanical change (file moves + import path updates) that:
 - Reduces cognitive load when navigating the codebase (5 root files + 8 directories vs. 31 root files + 3 directories).
 - Co-locates related files, making subsequent refactoring easier.
 
-### Step 2: Decompose ResolvedSpawnConfig (#165)
+### Step 2: Decompose ResolvedSpawnConfig ([#165][165])
 
 Split the 15-field bag into `SpawnIdentity`, `SpawnExecution`, and `SpawnPresentation`.
 Each consumer declares its real dependencies.
-Enables Step 3 (narrowing AgentSpawnConfig).
+Enables Step 3 (narrowing AgentSpawnConfig, [#166][166]).
 
-### Step 3: Extract ParentSessionInfo from AgentSpawnConfig (#166)
+### Step 3: Extract ParentSessionInfo from AgentSpawnConfig ([#166][166])
 
 Extract `parentSessionFile`, `parentSessionId`, `toolCallId` into a `ParentSessionInfo` value object.
 Reduces AgentSpawnConfig from 13 to 10 fields.
 
-### Step 4: Narrow RunnerIO (#167)
+### Step 4: Narrow RunnerIO ([#167][167])
 
 Split into `EnvironmentIO` and `SessionFactoryIO`.
 Each half can be tested independently.
 
-### Step 5: Extract ToolFilterConfig from SessionConfig (#168)
+### Step 5: Extract ToolFilterConfig from SessionConfig ([#168][168])
 
 Extract the tool-filtering cluster into `ToolFilterConfig`.
 Give `filterActiveTools` a named input type.
 
-### Step 6: Extract RunContext from RunOptions (#169)
+### Step 6: Extract RunContext from RunOptions ([#169][169])
 
 Extract context fields into `RunContext`.
 Reduces RunOptions from 12 to 7 fields.
 
-### Step 7: Reduce buildContentLines complexity (#170)
+### Step 7: Reduce buildContentLines complexity ([#170][170])
 
 `buildContentLines` in `conversation-viewer.ts` has cognitive complexity 71.
 Extract formatting sub-functions for each content type (tool calls, text, bash output).
 
-### Step 8: Reduce renderResult complexity (#171)
+### Step 8: Reduce renderResult complexity ([#171][171])
 
 `renderResult` in `agent-tool.ts` has cognitive complexity 43.
 Extract result formatting by status (completed, error, aborted, stopped).
 
-### Step 9: Extract shared turn-formatting logic (#172)
+### Step 9: Extract shared turn-formatting logic ([#172][172])
 
 The 18-line production clone between `agent-runner.ts` and `conversation-viewer.ts` extracts into a shared function in the session domain.
 
@@ -733,9 +733,9 @@ flowchart LR
     S1 --> S7 & S8 & S9
 ```
 
-Step 1 (directory restructuring) unblocks all other steps by co-locating related files.
+Step 1 ([#164][164], directory restructuring) unblocks all other steps by co-locating related files.
 Steps 2–6 (bag decomposition) and Steps 7–9 (complexity reduction) are independent tracks that can proceed in parallel.
-Within the bag track, Step 2 (ResolvedSpawnConfig) enables Step 3 (AgentSpawnConfig).
+Within the bag track, Step 2 ([#165][165], ResolvedSpawnConfig) enables Step 3 ([#166][166], AgentSpawnConfig).
 
 ## Refactoring history
 
@@ -785,3 +785,13 @@ The upstream test suite is run periodically as a regression canary for the agent
 [earendil-works/pi#4207]: https://github.com/earendil-works/pi/issues/4207
 [gotgenes/pi-packages]: https://github.com/gotgenes/pi-packages
 [tintinweb/pi-subagents]: https://github.com/tintinweb/pi-subagents
+
+[164]: https://github.com/gotgenes/pi-packages/issues/164
+[165]: https://github.com/gotgenes/pi-packages/issues/165
+[166]: https://github.com/gotgenes/pi-packages/issues/166
+[167]: https://github.com/gotgenes/pi-packages/issues/167
+[168]: https://github.com/gotgenes/pi-packages/issues/168
+[169]: https://github.com/gotgenes/pi-packages/issues/169
+[170]: https://github.com/gotgenes/pi-packages/issues/170
+[171]: https://github.com/gotgenes/pi-packages/issues/171
+[172]: https://github.com/gotgenes/pi-packages/issues/172
