@@ -4,12 +4,11 @@ import { visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "../src/agent-types.js";
 import type { AgentActivityTracker } from "../src/ui/agent-activity-tracker.js";
+import { ConversationViewer } from "../src/ui/conversation-viewer.js";
 import type { Theme } from "../src/ui/display.js";
 import { createTestRecord } from "./helpers/make-record.js";
 
 const testRegistry = new AgentTypeRegistry(() => new Map());
-
-import { ConversationViewer } from "../src/ui/conversation-viewer.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
