@@ -75,6 +75,9 @@ Identified one prompt bug (`lint:fix` reference) and fixed it.
 - `rabbit-hole` — Spent ~5 minutes trying a ref-object wrapper to defeat TS6 narrowing in `pi-colgrep` before falling back to a type assertion cast.
   The ref-object approach failed because TS6 narrows object properties through assignments too.
   Impact: minor time cost, no rework — fixed in the same commit.
+- `missing-context` — The plan acknowledged the `#`-prefix aligns with Node.js subpath imports but only configured `tsconfig.json` `paths` and `vitest.config.ts` `resolve.alias`, never adding `package.json` `"imports"`. jiti (Pi's runtime) does NOT read `tsconfig.json` `paths` — confirmed via unjs/jiti#166.
+  Without `"imports"`, `pi-permission-system` failed to load at Pi runtime because 37 `src/` files use `#src/*`.
+  Impact: post-ship bug report, one additional fix commit.
 
 #### What caused friction (user side)
 
@@ -86,3 +89,10 @@ Identified one prompt bug (`lint:fix` reference) and fixed it.
 
 1. `.pi/prompts/build-plan.md`: replaced nonexistent `pnpm run lint:fix` reference with `pnpm exec biome check --write .`.
 2. `.pi/prompts/tdd-plan.md`: same fix — replaced `pnpm run lint:fix` with `pnpm exec biome check --write .`.
+
+### Post-retro fix
+
+3. `packages/pi-permission-system/package.json` (and 4 other packages): added `"imports"` field mapping `#src/*` → `./src/*` and `#test/*` → `./test/*`. jiti does NOT read `tsconfig.json` `paths` (confirmed via unjs/jiti#166 — pi0 states "tsconfig and other external configs are not infered").
+   Node.js subpath imports via `package.json` `"imports"` are the mechanism jiti respects.
+   Without this, `pi-permission-system` failed to load at Pi runtime because 37 `src/` files import from `#src/*`.
+   Also fixed `pi-permission-system`'s `"files"` field which still referenced the old `"tests"` directory name.
