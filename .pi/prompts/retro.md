@@ -1,23 +1,20 @@
 ---
 description: Review this session for workflow improvements and persist retro notes to the package's docs/retro/
-deterministic:
-  run: |
-    echo "=== Recent commits ==="
-    git log --oneline -25
-    echo
-    echo "=== Existing retros ==="
-    if [ -d docs/retro ]; then echo "--- docs/retro (cross-package) ---"; ls docs/retro 2>/dev/null || echo "(empty)"; fi
-    for d in packages/*/docs/retro; do echo "--- $d ---"; ls "$d" 2>/dev/null || echo "(empty)"; done
-    echo
-    echo "=== Plans referenced this session ==="
-    find docs/plans packages/*/docs/plans -type f -name '*.md' -print0 2>/dev/null | xargs -0 ls -t 2>/dev/null | head -5
-  handoff: always
 ---
 
 # Review session and persist retro notes
 
 The user wants a retrospective on this session.
 Issue number (if provided): `$1`
+
+## Sync with remote (do this first)
+
+Before reading anything, make sure the working tree is up to date with the remote:
+
+1. Run `git pull --ff-only`.
+2. If it fails for **any** reason — uncommitted changes, divergent history, merge conflict, network error, detached HEAD — stop immediately and report the failure to the user.
+   Do not attempt to stash, rebase, force, or otherwise resolve.
+3. Only proceed once the pull reports a clean fast-forward (or `Already up to date.`).
 
 ## Load skills
 
