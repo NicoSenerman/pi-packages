@@ -1,6 +1,7 @@
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { TUI } from "@earendil-works/pi-tui";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "../src/agent-types.js";
 import type { AgentActivityTracker } from "../src/ui/agent-activity-tracker.js";
 import type { Theme } from "../src/ui/display.js";
@@ -8,29 +9,7 @@ import { createTestRecord } from "./helpers/make-record.js";
 
 const testRegistry = new AgentTypeRegistry(() => new Map());
 
-// ── Mock wrapTextWithAnsi ──────────────────────────────────────────────
-// We need to control what wrapTextWithAnsi returns to simulate the
-// upstream bug (returning lines wider than requested width).
-// vi.mock is hoisted and intercepts before conversation-viewer.ts binds
-// its import.
-
-let wrapOverride: ((text: string, width: number) => string[]) | null = null;
-
-vi.mock("@earendil-works/pi-tui", async (importOriginal) => {
-  const original = await importOriginal<typeof import("@earendil-works/pi-tui")>();
-  return {
-    ...original,
-    wrapTextWithAnsi: (...args: [string, number]) => {
-      if (wrapOverride) return wrapOverride(...args);
-      return original.wrapTextWithAnsi(...args);
-    },
-  };
-});
-
-// Must import AFTER vi.mock declaration (vitest hoists vi.mock but the
-// dynamic import of the test subject must happen after)
-const { visibleWidth, wrapTextWithAnsi } = await import("@earendil-works/pi-tui");
-const { ConversationViewer } = await import("../src/ui/conversation-viewer.js");
+import { ConversationViewer } from "../src/ui/conversation-viewer.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -65,10 +44,6 @@ function assertAllLinesFit(lines: string[], width: number) {
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────
-
-beforeEach(() => {
-  wrapOverride = null;
-});
 
 describe("ConversationViewer", () => {
   describe("render width safety", () => {
