@@ -360,3 +360,83 @@ describe("createReindexer — schedule() in-flight queuing", () => {
     await vi.advanceTimersByTimeAsync(0);
   });
 });
+
+// ---- Cycle 5: shutdown ----
+
+describe("createReindexer — shutdown()", () => {
+  let exec: Mock<Exec>;
+  let onStatus: Mock<(status: string | undefined) => void>;
+  let resolveExecShutdown: (() => void) | undefined;
+
+  beforeEach(() => {
+    exec = makeExec();
+    onStatus = makeOnStatus();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    resolveExecShutdown?.();
+    vi.useRealTimers();
+  });
+
+  it("cancels a pending debounce timer so no reindex fires afterward", async () => {
+    exec.mockResolvedValue({ stdout: "", stderr: "", code: 0 });
+    const reindexer = createReindexer({
+      exec,
+      cwd: "/project",
+      onStatus,
+      debounceMs: 100,
+    });
+    reindexer.schedule();
+    await reindexer.shutdown();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(exec).not.toHaveBeenCalled();
+  });
+
+  it("waits for an in-flight reindex before resolving", async () => {
+    const held = vi.fn<Exec>();
+    held.mockImplementation(
+      () =>
+        new Promise<{ stdout: string; stderr: string; code: number }>(
+          (resolve) => {
+            resolveExecShutdown = () =>
+              resolve({ stdout: "", stderr: "", code: 0 });
+          },
+        ),
+    );
+    const reindexer = createReindexer({
+      exec: held,
+      cwd: "/project",
+      onStatus,
+      debounceMs: 10,
+    });
+    reindexer.schedule();
+    await vi.advanceTimersByTimeAsync(10); // fire debounce, starts reindex
+    let shutdownDone = false;
+    const shutdownPromise = reindexer.shutdown().then(() => {
+      shutdownDone = true;
+    });
+    // shutdown should not be done while exec is still in-flight
+    await vi.advanceTimersByTimeAsync(0);
+    expect(shutdownDone).toBe(false);
+    // finish exec
+    resolveExecShutdown?.();
+    resolveExecShutdown = undefined;
+    await shutdownPromise;
+    expect(shutdownDone).toBe(true);
+  });
+
+  it("makes schedule() a no-op after shutdown", async () => {
+    exec.mockResolvedValue({ stdout: "", stderr: "", code: 0 });
+    const reindexer = createReindexer({
+      exec,
+      cwd: "/project",
+      onStatus,
+      debounceMs: 100,
+    });
+    await reindexer.shutdown();
+    reindexer.schedule();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(exec).not.toHaveBeenCalled();
+  });
+});

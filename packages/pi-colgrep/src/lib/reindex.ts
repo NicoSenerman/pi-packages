@@ -35,6 +35,8 @@ export function createReindexer(deps: ReindexerDeps): Reindexer {
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
   let inFlight = false;
   let queued = false;
+  let isShutdown = false;
+  let inflightPromise: Promise<void> | undefined;
 
   async function runReindex(): Promise<void> {
     inFlight = true;
@@ -61,11 +63,13 @@ export function createReindexer(deps: ReindexerDeps): Reindexer {
     }
     onStatus(undefined);
     inFlight = false;
+    inflightPromise = undefined;
 
-    // Drain: if a reindex was queued while we were running, start it now.
-    if (queued) {
+    // Drain: if a reindex was queued while we were running, start it now
+    // (unless shut down in the meantime).
+    if (queued && !isShutdown) {
       queued = false;
-      void runReindex();
+      inflightPromise = runReindex();
     }
   }
 
@@ -74,6 +78,8 @@ export function createReindexer(deps: ReindexerDeps): Reindexer {
       await runReindex();
     },
     schedule(): void {
+      if (isShutdown) return;
+
       // While a reindex is in flight, mark a queued follow-up instead of
       // starting another debounce timer.
       if (inFlight) {
@@ -88,11 +94,18 @@ export function createReindexer(deps: ReindexerDeps): Reindexer {
       }
       debounceTimer = setTimeout(() => {
         debounceTimer = undefined;
-        void runReindex();
+        inflightPromise = runReindex();
       }, debounceMs);
     },
     async shutdown(): Promise<void> {
-      // Implemented in Cycle 5
+      isShutdown = true;
+      if (debounceTimer !== undefined) {
+        clearTimeout(debounceTimer);
+        debounceTimer = undefined;
+      }
+      if (inflightPromise !== undefined) {
+        await inflightPromise;
+      }
     },
   };
 }
