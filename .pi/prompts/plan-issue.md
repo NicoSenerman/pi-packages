@@ -33,13 +33,7 @@ Before investigating the plan, load skills relevant to the change:
 ## Gather context
 
 1. Run `gh issue view $1` to read the issue body and labels.
-   After fetching the issue, suggest the user name the session for later identification:
-
-   ```text
-   Please run: /name #N Planning — <issue title>
-   ```
-
-   This helps identify sessions when resuming work across multiple sessions.
+   After fetching the issue, call `set_session_name` with name `#N Planning — <issue title>` to identify this session in the session selector.
 2. **Determine the target package(s).**
    Extract the `pkg:*` label(s) from the issue (e.g., `pkg:pi-permission-system` → package is `pi-permission-system`).
    If no `pkg:*` label exists or it seems incongruent with the issue content, ask the user which package this issue belongs to.

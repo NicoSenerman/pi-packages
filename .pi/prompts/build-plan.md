@@ -30,14 +30,9 @@ If the plan lives under `docs/plans/`, it is cross-package — load skills for e
 Read the plan in full before doing anything else.
 If the plan has a "TDD Order" section with red→green test cycles, stop and tell the user to run `/tdd-plan` instead.
 
-After locating the plan and determining the issue/package, suggest the user name the session:
-
-```text
-Please run: /name #N Build — <issue title>
-```
-
 Extract the issue number from the plan filename pattern `NNNN-` or from the plan's frontmatter `issue:` field.
 Fetch the issue title via `gh issue view N --json title -q .title` if it is not in the frontmatter.
+Call `set_session_name` with name `#N Build — <issue title>` to identify this session in the session selector.
 
 ## Load prior session context
 

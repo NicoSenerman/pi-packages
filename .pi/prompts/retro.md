@@ -30,11 +30,7 @@ Before investigating or proposing changes, load skills relevant to the retro:
 
 ## Session naming
 
-Suggest the user name the session for identification:
-
-```text
-Please run: /name #N Retrospective — <issue title>
-```
+After identifying the issue number and title, call `set_session_name` with name `#N Retrospective — <issue title>` to identify this session in the session selector.
 
 ## Step 1 — Identify the retro file
 

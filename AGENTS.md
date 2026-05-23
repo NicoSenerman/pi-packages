@@ -29,7 +29,7 @@ These entries accumulate across sessions and serve as the cross-session context 
 
 ### Session naming convention
 
-Name sessions using `/name` for identification in the session selector:
+Each prompt template calls `set_session_name` (from `pi-session-tools`) to label the session automatically:
 
 | Stage                | Session name format          |
 | -------------------- | ---------------------------- |
@@ -39,7 +39,7 @@ Name sessions using `/name` for identification in the session selector:
 | Shipping             | `#N Ship — <title>`          |
 | Retrospective        | `#N Retrospective — <title>` |
 
-Each prompt template suggests the appropriate name at the start of its flow.
+Each prompt template sets the appropriate name automatically via `set_session_name`.
 
 ### Retro file format
 

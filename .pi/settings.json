@@ -5,6 +5,7 @@
     "../packages/pi-autoformat",
     "../packages/pi-permission-system",
     "../packages/pi-subagents",
+    "../packages/pi-session-tools",
 
     { "source": "npm:@gotgenes/pi-colgrep", "extensions": [], "skills": [] },
     {

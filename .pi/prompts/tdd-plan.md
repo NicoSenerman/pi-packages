@@ -29,11 +29,7 @@ If "TDD Order" is missing or empty, stop and report — re-run `/plan-issue` fir
 
 Extract the issue number from the plan filename (pattern `NNNN-`) or from the plan's frontmatter `issue:` field.
 If the issue title is not in the frontmatter, fetch it via `gh issue view N --json title -q .title`.
-Suggest the user name the session:
-
-```text
-Please run: /name #N TDD — <issue title>
-```
+Call `set_session_name` with name `#N TDD — <issue title>` to identify this session in the session selector.
 
 ## Load prior session context
 
