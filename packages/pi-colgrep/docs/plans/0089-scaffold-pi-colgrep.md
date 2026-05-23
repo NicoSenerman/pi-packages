@@ -17,6 +17,7 @@ This plan covers only the infrastructure scaffold — the minimal files, monorep
 - Wire the package into release-please, the publish script, and the CI pipeline.
 - Provide a minimal `src/extension.ts` entry point that compiles and does nothing yet.
 - Pass `pnpm -C packages/pi-colgrep run check` and `pnpm -C packages/pi-colgrep run lint`.
+- Publish an initial release to npm so Trusted Publishing can be configured for continuous publication.
 
 ## Non-Goals
 
@@ -94,15 +95,17 @@ The plan uses a build-plan workflow instead.
    Commit: `chore: update lockfile for pi-colgrep (#89)`.
 4. Verify: `pnpm -C packages/pi-colgrep run check` and `pnpm -C packages/pi-colgrep run lint` pass.
    No separate commit — this is a gate check.
+5. Push to `main`, wait for CI to pass, then merge the release-please PR to trigger the initial `0.1.0` publish.
+   This enables Trusted Publishing setup on npm before any further development.
 
 ## Risks and Mitigations
 
-| Risk                                                                                                        | Mitigation                                                                                  |
-| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| SDK version mismatch — new package pins a different `@earendil-works/pi-coding-agent` version than siblings | Use the exact same version (`0.75.4`) as existing packages.                                 |
-| release-please creates a PR for a `0.0.0 → 0.1.0` bump on first merge                                       | Expected behavior; the first release PR is harmless.                                        |
-| `rumdl check .` fails on empty or minimal markdown                                                          | Match the `CHANGELOG.md` heading style used by other packages; `README.md` will have an H1. |
-| Lockfile churn if catalog versions shift between plan and implementation                                    | Run `pnpm install` as the last step so the lockfile reflects current catalog state.         |
+| Risk                                                                                                        | Mitigation                                                                                               |
+| ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| SDK version mismatch — new package pins a different `@earendil-works/pi-coding-agent` version than siblings | Use the exact same version (`0.75.4`) as existing packages.                                              |
+| release-please creates a PR for a `0.0.0 → 0.1.0` bump on first merge                                       | Expected and desired — merging it publishes the initial version so Trusted Publishing can be configured. |
+| `rumdl check .` fails on empty or minimal markdown                                                          | Match the `CHANGELOG.md` heading style used by other packages; `README.md` will have an H1.              |
+| Lockfile churn if catalog versions shift between plan and implementation                                    | Run `pnpm install` as the last step so the lockfile reflects current catalog state.                      |
 
 ## Open Questions
 
