@@ -28,6 +28,14 @@ Before investigating or proposing changes, load skills relevant to the retro:
 - Load the `markdown-conventions` skill for writing the retro file.
 - Load the `code-design` skill if proposing code-related adjustments to prompts or `AGENTS.md`.
 
+## Session naming
+
+Suggest the user name the session for identification:
+
+```text
+Please run: /name #N Retrospective — <issue title>
+```
+
 ## Step 1 — Identify the retro file
 
 1. If `$1` is set, treat it as the issue number `N`.
@@ -47,6 +55,11 @@ Before investigating or proposing changes, load skills relevant to the retro:
 ## Step 2 — Synthesize observations
 
 Review what happened across this session — the user prompts, your tool calls, corrections, rework, and commits.
+
+If the retro file already contains stage entries from prior sessions (sections headed `## Stage: <name> (<timestamp>)`), read them as primary context.
+Your synthesis should span all stages — not just this session.
+Look for patterns that recur across stages, friction that compounds, and whether earlier observations led to adjustments.
+
 Be specific: cite file paths, commit subjects, and concrete tool sequences.
 Categorize each friction point with one label:
 
@@ -86,7 +99,7 @@ issue_title: "<exact title from `gh issue view N`>"
 
 # Retro: #N — <issue title>
 
-## Final Retrospective (<ISO timestamp>)
+## Stage: Final Retrospective (<ISO 8601 timestamp>)
 
 ### Session summary
 
@@ -107,6 +120,9 @@ issue_title: "<exact title from `gh issue view N`>"
 
 - ...
 ```
+
+If the file already exists with prior stage entries, **append** the new entry — do not overwrite existing content.
+The retro file accumulates entries across sessions.
 
 Wrap all code identifiers, filenames, route paths, CLI names, and any text containing underscores in backticks.
 Use sequential numbering in ordered lists.

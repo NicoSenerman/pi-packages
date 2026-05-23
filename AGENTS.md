@@ -14,6 +14,75 @@ Before working on a specific package, load its `package-<name>` skill for archit
 - Preserve intentional behavior unless there is a clear reason to change it.
 - Ask before removing functionality or changing defaults.
 
+### Multi-session issue lifecycle
+
+Larger issues span multiple sessions, each handling one stage.
+The standard flow is:
+
+1. `/plan-issue #N` — read the issue, explore the codebase, produce a numbered plan, commit it.
+2. `/tdd-plan` or `/build-plan` — execute the plan (TDD for code changes, build for docs/config).
+3. `/ship-issue #N` — push, verify CI, close the issue, merge the release-please PR.
+4. `/retro` — review the session(s) for workflow improvements, persist retro notes.
+
+Each prompt template writes a stage entry to `docs/retro/NNNN-<slug>.md` (or `packages/<PKG>/docs/retro/`) before finishing.
+These entries accumulate across sessions and serve as the cross-session context bridge — when a later stage starts, it reads the retro file to pick up decisions, observations, and warnings from prior sessions.
+
+### Session naming convention
+
+Name sessions using `/name` for identification in the session selector:
+
+| Stage                | Session name format          |
+| -------------------- | ---------------------------- |
+| Planning             | `#N Planning — <title>`      |
+| TDD implementation   | `#N TDD — <title>`           |
+| Build implementation | `#N Build — <title>`         |
+| Shipping             | `#N Ship — <title>`          |
+| Retrospective        | `#N Retrospective — <title>` |
+
+Each prompt template suggests the appropriate name at the start of its flow.
+
+### Retro file format
+
+Retro files use YAML frontmatter and accumulate `## Stage:` entries:
+
+````markdown
+---
+issue: 42
+issue_title: "Extract ExtensionPaths value object"
+---
+
+# Retro: #42 — Extract ExtensionPaths value object
+
+## Stage: Planning (2026-05-20T14:00:00Z)
+
+### Session summary
+
+...
+
+### Observations
+
+...
+
+## Stage: Implementation — TDD (2026-05-21T10:00:00Z)
+
+### Session summary
+
+...
+
+### Observations
+
+...
+
+## Stage: Final Retrospective (2026-05-22T16:00:00Z)
+
+### Session summary
+
+...
+````
+
+Use `/retro-note` to capture quick observations mid-session without interrupting the workflow.
+Use `scripts/issue-context.sh <N>` to gather all available context for an issue (plan, retro, commits, branches) when bootstrapping a new session.
+
 ## Code Style
 
 - Use TypeScript.

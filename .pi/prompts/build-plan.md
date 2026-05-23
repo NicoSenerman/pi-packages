@@ -30,6 +30,25 @@ If the plan lives under `docs/plans/`, it is cross-package — load skills for e
 Read the plan in full before doing anything else.
 If the plan has a "TDD Order" section with red→green test cycles, stop and tell the user to run `/tdd-plan` instead.
 
+After locating the plan and determining the issue/package, suggest the user name the session:
+
+```text
+Please run: /name #N Build — <issue title>
+```
+
+Extract the issue number from the plan filename pattern `NNNN-` or from the plan's frontmatter `issue:` field.
+Fetch the issue title via `gh issue view N --json title -q .title` if it is not in the frontmatter.
+
+## Load prior session context
+
+Check whether prior sessions have already done work on this issue:
+
+1. Extract the issue number from the plan filename (pattern `NNNN-`) or its frontmatter `issue:` field.
+2. Search for an existing retro file: look for `packages/*/docs/retro/NNNN-*.md` and `docs/retro/NNNN-*.md` matching the issue number.
+3. If a retro file exists, read it.
+   Prior stage entries contain summaries and observations from earlier sessions (e.g., planning decisions, risks identified, alternatives rejected).
+4. Use this context to inform your work — it may contain warnings about edge cases, decisions that were already debated, or friction points to avoid repeating.
+
 ## Load skills
 
 Before executing the plan, load skills relevant to the change:
@@ -89,6 +108,42 @@ Print:
 - `git log --oneline <N>` for the commits you just made (N = number of steps).
 - One-line summary of what changed.
 - Any deviations from the plan.
+
+## Write stage notes
+
+Before stopping, persist implementation observations for cross-session continuity:
+
+1. Determine the retro file path: same location as the plan file (single-package → `packages/<PKG>/docs/retro/`; cross-package → `docs/retro/`).
+   Use the same `NNNN-<slug>` as the plan file.
+   Create the directory if needed.
+2. If the retro file does not exist, create it with YAML frontmatter:
+
+   ```yaml
+   ---
+   issue: N
+   issue_title: "<exact title from issue>"
+   ---
+   ```
+
+   Followed by `# Retro: #N — <issue title>`.
+3. Append a stage entry:
+
+   ```markdown
+   ## Stage: Implementation — Build (<ISO 8601 timestamp>)
+
+   ### Session summary
+
+   2–3 sentences: what was implemented, how many steps completed, what changed.
+
+   ### Observations
+
+   Note deviations from the plan, unexpected issues, and any decisions made during implementation.
+   If the session was cut short (not all steps completed), note which steps remain.
+   ```
+
+4. Commit: `git add <retro-file> && git commit -m "docs(retro): add build stage notes for issue #N"`.
+
+Wrap code identifiers, filenames, and text containing underscores in backticks in the retro file.
 
 Stop.
 The next step is `/ship-issue`.

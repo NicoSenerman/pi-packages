@@ -27,6 +27,24 @@ If the plan lives under `docs/plans/`, it is cross-package — load skills for e
 Read the plan in full before doing anything else.
 If "TDD Order" is missing or empty, stop and report — re-run `/plan-issue` first.
 
+Extract the issue number from the plan filename (pattern `NNNN-`) or from the plan's frontmatter `issue:` field.
+If the issue title is not in the frontmatter, fetch it via `gh issue view N --json title -q .title`.
+Suggest the user name the session:
+
+```text
+Please run: /name #N TDD — <issue title>
+```
+
+## Load prior session context
+
+Check whether prior sessions have already done work on this issue:
+
+1. Extract the issue number from the plan filename (pattern `NNNN-`) or its frontmatter `issue:` field.
+2. Search for an existing retro file: look for `packages/*/docs/retro/NNNN-*.md` and `docs/retro/NNNN-*.md` matching the issue number.
+3. If a retro file exists, read it.
+   Prior stage entries contain summaries and observations from earlier sessions (e.g., planning decisions, risks identified, alternatives rejected).
+4. Use this context to inform your work — it may contain warnings about edge cases, decisions that were already debated, or friction points to avoid repeating.
+
 ## Load skills
 
 Before executing the TDD cycle, load skills relevant to the change:
@@ -97,6 +115,42 @@ Print:
 - One-line summary of behavioral change.
 - Any test-count delta.
 - Any deviations from the plan.
+
+## Write stage notes
+
+Before stopping, persist implementation observations for cross-session continuity:
+
+1. Determine the retro file path: same location as the plan file (single-package → `packages/<PKG>/docs/retro/`; cross-package → `docs/retro/`).
+   Use the same `NNNN-<slug>` as the plan file.
+   Create the directory if needed.
+2. If the retro file does not exist, create it with YAML frontmatter:
+
+   ```yaml
+   ---
+   issue: N
+   issue_title: "<exact title from issue>"
+   ---
+   ```
+
+   Followed by `# Retro: #N — <issue title>`.
+3. Append a stage entry:
+
+   ```markdown
+   ## Stage: Implementation — TDD (<ISO 8601 timestamp>)
+
+   ### Session summary
+
+   2–3 sentences: what was implemented, how many TDD cycles completed, test count delta.
+
+   ### Observations
+
+   Note deviations from the plan, unexpected edge cases, tests that were harder than expected, and any decisions made during implementation.
+   If the session was cut short (not all TDD steps completed), note which steps remain.
+   ```
+
+4. Commit: `git add <retro-file> && git commit -m "docs(retro): add TDD stage notes for issue #N"`.
+
+Wrap code identifiers, filenames, and text containing underscores in backticks in the retro file.
 
 Stop.
 The next step is `/ship-issue`.

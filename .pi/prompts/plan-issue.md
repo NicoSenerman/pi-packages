@@ -33,6 +33,13 @@ Before investigating the plan, load skills relevant to the change:
 ## Gather context
 
 1. Run `gh issue view $1` to read the issue body and labels.
+   After fetching the issue, suggest the user name the session for later identification:
+
+   ```text
+   Please run: /name #N Planning — <issue title>
+   ```
+
+   This helps identify sessions when resuming work across multiple sessions.
 2. **Determine the target package(s).**
    Extract the `pkg:*` label(s) from the issue (e.g., `pkg:pi-permission-system` → package is `pi-permission-system`).
    If no `pkg:*` label exists or it seems incongruent with the issue content, ask the user which package this issue belongs to.
@@ -45,6 +52,17 @@ Before investigating the plan, load skills relevant to the change:
    Note whether each is implemented yet — your plan must say what it depends on vs. defers.
 5. Open the source files most relevant to the change and skim them before writing.
 6. When the plan introduces a public API pattern (package `exports`, `Symbol.for()` accessor, service interface) or agent-facing message formatting (attribution tags, error prefixes, log labels), use colgrep or grep to search sibling packages for the established convention and follow it unless there is a documented reason to diverge.
+
+## Check for prior session context
+
+Before starting fresh, check whether prior sessions have already done work on this issue:
+
+1. Search for an existing retro file: look for `packages/*/docs/retro/NNNN-*.md` and `docs/retro/NNNN-*.md` where NNNN matches the issue number (zero-padded to 4 digits).
+2. If a retro file exists, read it in full.
+   It contains stage-boundary notes from prior sessions — summaries, observations, friction points, and decisions already made.
+3. If prior stage entries exist (e.g., a "Stage: Planning" entry from an earlier attempt), factor them into your approach.
+   Do not repeat work that was already completed unless explicitly asked.
+4. If no retro file exists, this is the first session on this issue — proceed normally.
 
 ## Decide
 
@@ -97,5 +115,41 @@ If the change is breaking, say so explicitly in Goals and use `feat!:` in the su
 git add <plan-file>
 git commit -m "docs: plan <short summary> (#$1)"
 ```
+
+## Write stage notes
+
+Before stopping, persist planning observations for cross-session continuity:
+
+1. Determine the retro file path: same location logic as the plan file (single-package → `packages/<PKG>/docs/retro/NNNN-<slug>.md`; cross-package → `docs/retro/NNNN-<slug>.md`).
+   Use the same slug as the plan file.
+   Create the directory if needed.
+2. If the retro file does not exist, create it with YAML frontmatter:
+
+   ```yaml
+   ---
+   issue: N
+   issue_title: "<exact title from issue>"
+   ---
+   ```
+
+   Followed by `# Retro: #N — <issue title>`.
+3. Append a stage entry:
+
+   ```markdown
+   ## Stage: Planning (<ISO 8601 timestamp>)
+
+   ### Session summary
+
+   2–3 sentences on what was accomplished in this planning session.
+
+   ### Observations
+
+   Note any significant decisions made, alternatives considered and rejected, risks identified, or scope adjustments.
+   Keep it concise — this is a breadcrumb trail for future sessions, not a full retrospective.
+   ```
+
+4. Commit: `git add <retro-file> && git commit -m "docs(retro): add planning stage notes for issue #N"`.
+
+Wrap code identifiers, filenames, and text containing underscores in backticks in the retro file.
 
 Then print a 5-line summary of the plan's key decisions and stop.
