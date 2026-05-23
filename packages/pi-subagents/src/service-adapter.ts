@@ -23,32 +23,27 @@ export interface AgentManagerLike {
   queueSteer(id: string, message: string): boolean;
 }
 
-/** Dependencies injected into the adapter factory. */
-export interface AdapterDeps {
-  manager: AgentManagerLike;
-  resolveModel: (input: string, registry: ModelRegistry) => unknown | string;
-  getCtx: () => { pi: unknown; ctx: unknown } | undefined;
-  getModelRegistry: () => ModelRegistry | undefined;
-}
-
 /** Create a SubagentsService backed by the given dependencies. */
-export function createSubagentsService(deps: AdapterDeps): SubagentsService {
-  const { manager } = deps;
-
+export function createSubagentsService(
+  manager: AgentManagerLike,
+  resolveModel: (input: string, registry: ModelRegistry) => unknown | string,
+  getCtx: () => { pi: unknown; ctx: unknown } | undefined,
+  getModelRegistry: () => ModelRegistry | undefined,
+): SubagentsService {
   return {
     spawn(type: string, prompt: string, options?) {
-      const session = deps.getCtx();
+      const session = getCtx();
       if (!session) {
         throw new Error("No active session — cannot spawn agents outside a session.");
       }
 
       let model: unknown;
       if (options?.model) {
-        const registry = deps.getModelRegistry();
+        const registry = getModelRegistry();
         if (!registry) {
           throw new Error("No model registry available.");
         }
-        const resolved = deps.resolveModel(options.model, registry);
+        const resolved = resolveModel(options.model, registry);
         if (typeof resolved === "string") {
           throw new Error(resolved);
         }

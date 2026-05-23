@@ -163,12 +163,12 @@ export default function (pi: ExtensionAPI) {
 
   // Typed service published via Symbol.for() for cross-extension access.
   // Consumers: const { getSubagentsService } = await import("@gotgenes/pi-subagents");
-  const service = createSubagentsService({
+  const service = createSubagentsService(
     manager,
     resolveModel,
-    getCtx: () => runtime.currentCtx,
-    getModelRegistry: () => (runtime.currentCtx?.ctx as { modelRegistry?: ModelRegistry } | undefined)?.modelRegistry,
-  });
+    () => runtime.currentCtx,
+    () => (runtime.currentCtx?.ctx as { modelRegistry?: ModelRegistry } | undefined)?.modelRegistry,
+  );
   publishSubagentsService(service);
 
   const lifecycle = new SessionLifecycleHandler(

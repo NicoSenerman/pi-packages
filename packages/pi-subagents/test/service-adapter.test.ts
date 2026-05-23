@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { NotificationState } from "../src/notification-state.js";
 import type { SubagentsService } from "../src/service.js";
 import type { AgentManagerLike } from "../src/service-adapter.js";
-import { type AdapterDeps, createSubagentsService, toSubagentRecord } from "../src/service-adapter.js";
+import { createSubagentsService, toSubagentRecord } from "../src/service-adapter.js";
 import type { AgentRecord } from "../src/types.js";
 import { WorktreeState } from "../src/worktree-state.js";
 import { createTestRecord } from "./helpers/make-record.js";
@@ -154,12 +154,12 @@ describe("createSubagentsService — getRecord and listAgents", () => {
 
   function createService(records: AgentRecord[]): SubagentsService {
     const manager = createMockManager(records);
-    return createSubagentsService({
+    return createSubagentsService(
       manager,
-      resolveModel: () => ({ id: "test" }),
-      getCtx: () => ({ pi: {}, ctx: makeStubCtx() }),
-      getModelRegistry: () => ({ find: () => null, getAll: () => [] }),
-    });
+      () => ({ id: "test" }),
+      () => ({ pi: {}, ctx: makeStubCtx() }),
+      () => ({ find: () => null, getAll: () => [] }),
+    );
   }
 
   it("getRecord returns serialized record for known id", () => {
@@ -189,44 +189,49 @@ describe("createSubagentsService — getRecord and listAgents", () => {
 });
 
 describe("createSubagentsService — spawn", () => {
-  function createDeps(overrides: Partial<AdapterDeps> = {}): AdapterDeps {
+  function defaultManager(): AgentManagerLike {
     return {
-      manager: {
-        spawn: vi.fn(() => "spawned-id"),
-        getRecord: vi.fn(),
-        listAgents: vi.fn(() => []),
-        abort: vi.fn(() => true),
-        waitForAll: vi.fn(async () => {}),
-        hasRunning: vi.fn(() => false),
-        queueSteer: vi.fn(() => true),
-      },
-      resolveModel: vi.fn(() => ({ id: "claude-sonnet", provider: "anthropic" })),
-      getCtx: () => ({ pi: { fake: true }, ctx: makeStubCtx() }),
-      getModelRegistry: () => ({ find: () => null, getAll: () => [] }),
-      ...overrides,
+      spawn: vi.fn(() => "spawned-id"),
+      getRecord: vi.fn(),
+      listAgents: vi.fn(() => []),
+      abort: vi.fn(() => true),
+      waitForAll: vi.fn(async () => {}),
+      hasRunning: vi.fn(() => false),
+      queueSteer: vi.fn(() => true),
     };
   }
 
   it("throws when getCtx returns undefined (no active session)", () => {
-    const deps = createDeps({ getCtx: () => undefined });
-    const svc = createSubagentsService(deps);
+    const svc = createSubagentsService(
+      defaultManager(),
+      vi.fn(),
+      () => undefined,
+      () => ({ find: () => null, getAll: () => [] }),
+    );
     expect(() => svc.spawn("Explore", "do something")).toThrow(
       /no active session/i,
     );
   });
 
   it("resolves string model names via resolveModel", () => {
-    const deps = createDeps();
-    const svc = createSubagentsService(deps);
+    const resolveModel = vi.fn(() => ({ id: "claude-sonnet", provider: "anthropic" }));
+    const svc = createSubagentsService(
+      defaultManager(),
+      resolveModel,
+      () => ({ pi: { fake: true }, ctx: makeStubCtx() }),
+      () => ({ find: () => null, getAll: () => [] }),
+    );
     svc.spawn("Explore", "check TODOs", { model: "haiku" });
-    expect(deps.resolveModel).toHaveBeenCalledWith("haiku", expect.anything());
+    expect(resolveModel).toHaveBeenCalledWith("haiku", expect.anything());
   });
 
   it("throws on model resolution failure", () => {
-    const deps = createDeps({
-      resolveModel: () => 'Model not found: "bad-model".\n\nAvailable models:\n  anthropic/claude-sonnet',
-    });
-    const svc = createSubagentsService(deps);
+    const svc = createSubagentsService(
+      defaultManager(),
+      () => 'Model not found: "bad-model".\n\nAvailable models:\n  anthropic/claude-sonnet',
+      () => ({ pi: {}, ctx: makeStubCtx() }),
+      () => ({ find: () => null, getAll: () => [] }),
+    );
     expect(() => svc.spawn("Explore", "task", { model: "bad-model" })).toThrow(
       /Model not found/,
     );
@@ -234,12 +239,17 @@ describe("createSubagentsService — spawn", () => {
 
   it("delegates to manager.spawn with resolved model", () => {
     const resolvedModel = { id: "claude-sonnet", provider: "anthropic" };
-    const deps = createDeps({ resolveModel: () => resolvedModel });
-    const svc = createSubagentsService(deps);
+    const mgr = defaultManager();
+    const svc = createSubagentsService(
+      mgr,
+      () => resolvedModel,
+      () => ({ pi: {}, ctx: makeStubCtx() }),
+      () => ({ find: () => null, getAll: () => [] }),
+    );
     const id = svc.spawn("Explore", "check TODOs", { model: "sonnet", maxTurns: 5 });
     expect(id).toBe("spawned-id");
-    expect(deps.manager.spawn).toHaveBeenCalledWith(
-      expect.anything(), // ctx
+    expect(mgr.spawn).toHaveBeenCalledWith(
+      expect.anything(), // snapshot
       "Explore",
       "check TODOs",
       expect.objectContaining({
@@ -251,11 +261,16 @@ describe("createSubagentsService — spawn", () => {
   });
 
   it("spawns as foreground when options.foreground is true", () => {
-    const deps = createDeps();
-    const svc = createSubagentsService(deps);
+    const mgr = defaultManager();
+    const svc = createSubagentsService(
+      mgr,
+      vi.fn(),
+      () => ({ pi: {}, ctx: makeStubCtx() }),
+      () => ({ find: () => null, getAll: () => [] }),
+    );
     svc.spawn("Plan", "plan work", { foreground: true });
-    expect(deps.manager.spawn).toHaveBeenCalledWith(
-      expect.anything(), // ctx
+    expect(mgr.spawn).toHaveBeenCalledWith(
+      expect.anything(), // snapshot
       "Plan",
       "plan work",
       expect.objectContaining({ isBackground: false }),
@@ -263,12 +278,17 @@ describe("createSubagentsService — spawn", () => {
   });
 
   it("uses truncated prompt as default description", () => {
-    const deps = createDeps();
-    const svc = createSubagentsService(deps);
+    const mgr = defaultManager();
+    const svc = createSubagentsService(
+      mgr,
+      vi.fn(),
+      () => ({ pi: {}, ctx: makeStubCtx() }),
+      () => ({ find: () => null, getAll: () => [] }),
+    );
     const longPrompt = "x".repeat(200);
     svc.spawn("Explore", longPrompt);
-    expect(deps.manager.spawn).toHaveBeenCalledWith(
-      expect.anything(), // ctx
+    expect(mgr.spawn).toHaveBeenCalledWith(
+      expect.anything(), // snapshot
       "Explore",
       longPrompt,
       expect.objectContaining({ description: "x".repeat(80) }),
@@ -276,11 +296,16 @@ describe("createSubagentsService — spawn", () => {
   });
 
   it("uses provided description over default", () => {
-    const deps = createDeps();
-    const svc = createSubagentsService(deps);
+    const mgr = defaultManager();
+    const svc = createSubagentsService(
+      mgr,
+      vi.fn(),
+      () => ({ pi: {}, ctx: makeStubCtx() }),
+      () => ({ find: () => null, getAll: () => [] }),
+    );
     svc.spawn("Explore", "long prompt here", { description: "short desc" });
-    expect(deps.manager.spawn).toHaveBeenCalledWith(
-      expect.anything(), // ctx
+    expect(mgr.spawn).toHaveBeenCalledWith(
+      expect.anything(), // snapshot
       "Explore",
       "long prompt here",
       expect.objectContaining({ description: "short desc" }),
@@ -288,108 +313,109 @@ describe("createSubagentsService — spawn", () => {
   });
 
   it("does not call resolveModel when no model option is provided", () => {
-    const deps = createDeps();
-    const svc = createSubagentsService(deps);
+    const resolveModel = vi.fn();
+    const svc = createSubagentsService(
+      defaultManager(),
+      resolveModel,
+      () => ({ pi: {}, ctx: makeStubCtx() }),
+      () => ({ find: () => null, getAll: () => [] }),
+    );
     svc.spawn("Explore", "quick check");
-    expect(deps.resolveModel).not.toHaveBeenCalled();
+    expect(resolveModel).not.toHaveBeenCalled();
   });
 });
 
 describe("createSubagentsService — steer, abort, waitForAll, hasRunning", () => {
-  function createDeps(overrides: Partial<AdapterDeps> = {}) {
-    const mockGetRecord = vi.fn<AgentManagerLike["getRecord"]>();
-    const mockAbort = vi.fn<AgentManagerLike["abort"]>(() => true);
-    const mockQueueSteer = vi.fn<AgentManagerLike["queueSteer"]>(() => true);
-
-    const deps: AdapterDeps = {
-      manager: {
-        spawn: vi.fn(() => "id"),
-        getRecord: mockGetRecord,
-        listAgents: vi.fn(() => []),
-        abort: mockAbort,
-        waitForAll: vi.fn(async () => {}),
-        hasRunning: vi.fn(() => true),
-        queueSteer: mockQueueSteer,
-      },
-      resolveModel: vi.fn(),
-      getCtx: () => ({ pi: {}, ctx: makeStubCtx() }),
-      getModelRegistry: () => ({ find: () => null, getAll: () => [] }),
-      ...overrides,
+  function createTestManager() {
+    return {
+      spawn: vi.fn(() => "id"),
+      getRecord: vi.fn<AgentManagerLike["getRecord"]>(),
+      listAgents: vi.fn(() => [] as AgentRecord[]),
+      abort: vi.fn<AgentManagerLike["abort"]>(() => true),
+      waitForAll: vi.fn(async () => {}),
+      hasRunning: vi.fn(() => true),
+      queueSteer: vi.fn<AgentManagerLike["queueSteer"]>(() => true),
     };
+  }
 
-    return { deps, mockGetRecord, mockAbort, mockQueueSteer };
+  function createSvc(mgr: ReturnType<typeof createTestManager>) {
+    return createSubagentsService(
+      mgr,
+      vi.fn(),
+      () => ({ pi: {}, ctx: makeStubCtx() }),
+      () => ({ find: () => null, getAll: () => [] }),
+    );
   }
 
   describe("abort", () => {
     it("delegates to manager.abort and returns its result", () => {
-      const { deps } = createDeps();
-      const svc = createSubagentsService(deps);
+      const mgr = createTestManager();
+      const svc = createSvc(mgr);
       const result = svc.abort("agent-1");
-      expect(deps.manager.abort).toHaveBeenCalledWith("agent-1");
+      expect(mgr.abort).toHaveBeenCalledWith("agent-1");
       expect(result).toBe(true);
     });
 
     it("returns false when manager returns false", () => {
-      const { deps, mockAbort } = createDeps();
-      mockAbort.mockReturnValue(false);
-      const svc = createSubagentsService(deps);
+      const mgr = createTestManager();
+      mgr.abort.mockReturnValue(false);
+      const svc = createSvc(mgr);
       expect(svc.abort("unknown")).toBe(false);
     });
   });
 
   describe("waitForAll", () => {
     it("delegates to manager.waitForAll", async () => {
-      const { deps } = createDeps();
-      const svc = createSubagentsService(deps);
+      const mgr = createTestManager();
+      const svc = createSvc(mgr);
       await svc.waitForAll();
-      expect(deps.manager.waitForAll).toHaveBeenCalled();
+      expect(mgr.waitForAll).toHaveBeenCalled();
     });
   });
 
   describe("hasRunning", () => {
     it("delegates to manager.hasRunning", () => {
-      const { deps } = createDeps();
-      const svc = createSubagentsService(deps);
+      const mgr = createTestManager();
+      const svc = createSvc(mgr);
       expect(svc.hasRunning()).toBe(true);
-      expect(deps.manager.hasRunning).toHaveBeenCalled();
+      expect(mgr.hasRunning).toHaveBeenCalled();
     });
   });
 
   describe("steer", () => {
     it("returns false for non-running agent", async () => {
-      const { deps, mockGetRecord } = createDeps();
-      mockGetRecord.mockReturnValue({
+      const mgr = createTestManager();
+      mgr.getRecord.mockReturnValue({
         id: "a-1",
         status: "completed",
       } as AgentRecord);
-      const svc = createSubagentsService(deps);
+      const svc = createSvc(mgr);
       expect(await svc.steer("a-1", "hurry")).toBe(false);
     });
 
     it("returns false for unknown agent", async () => {
-      const { deps, mockGetRecord } = createDeps();
-      mockGetRecord.mockReturnValue(undefined);
-      const svc = createSubagentsService(deps);
+      const mgr = createTestManager();
+      mgr.getRecord.mockReturnValue(undefined);
+      const svc = createSvc(mgr);
       expect(await svc.steer("unknown", "hurry")).toBe(false);
     });
 
     it("queues message and returns true when session not ready", async () => {
       const record = createTestRecord({ id: "a-1", status: "running" });
-      // No execution state — session not yet created
-      const { deps, mockGetRecord } = createDeps();
-      mockGetRecord.mockReturnValue(record);
-      const svc = createSubagentsService(deps);
+      const mgr = createTestManager();
+      mgr.getRecord.mockReturnValue(record);
+      const svc = createSvc(mgr);
       expect(await svc.steer("a-1", "do this")).toBe(true);
-      expect(deps.manager.queueSteer).toHaveBeenCalledWith("a-1", "do this");
+      expect(mgr.queueSteer).toHaveBeenCalledWith("a-1", "do this");
     });
 
     it("delegates to session.steer and returns true when session is ready", async () => {
       const mockSteer = vi.fn(async () => {});
       const record = createTestRecord({ id: "a-1", status: "running" });
       record.execution = { session: toAgentSession(createMockSession({ steer: mockSteer })), outputFile: undefined };
-      const { deps, mockGetRecord } = createDeps();
-      mockGetRecord.mockReturnValue(record);
-      const svc = createSubagentsService(deps);
+      const mgr = createTestManager();
+      mgr.getRecord.mockReturnValue(record);
+      const svc = createSvc(mgr);
       expect(await svc.steer("a-1", "focus on tests")).toBe(true);
       expect(mockSteer).toHaveBeenCalledWith("focus on tests");
     });
