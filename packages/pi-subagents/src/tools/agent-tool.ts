@@ -2,26 +2,22 @@ import type { AgentToolResult, ExtensionContext } from "@earendil-works/pi-codin
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import type { AgentSpawnConfig } from "../agent-manager.js";
-import { normalizeMaxTurns } from "../agent-runner.js";
 import { AgentTypeRegistry } from "../agent-types.js";
-import { resolveAgentInvocationConfig } from "../invocation-config.js";
-import { resolveInvocationModel } from "../model-resolver.js";
 
-import type { AgentInvocation, AgentRecord, SubagentType } from "../types.js";
+import type { AgentRecord, SubagentType } from "../types.js";
 import { AgentActivityTracker } from "../ui/agent-activity-tracker.js";
 import { type UICtx } from "../ui/agent-widget.js";
 import {
   type AgentDetails,
-  buildInvocationTags,
   formatMs,
   formatTurns,
   getDisplayName,
-  getPromptModeLabel,
   SPINNER,
 } from "../ui/display.js";
 import { spawnBackground } from "./background-spawner.js";
 import { runForeground } from "./foreground-runner.js";
 import { buildDetails, buildTypeListText, textResult } from "./helpers.js";
+import { resolveSpawnConfig } from "./spawn-config.js";
 
 // ---- Deps interface ----
 
@@ -278,64 +274,16 @@ Guidelines:
       // Reload custom agents so new .pi/agents/*.md files are picked up without restart
       deps.registry.reload();
 
-      const rawType = params.subagent_type as SubagentType;
-      const resolved = deps.registry.resolveType(rawType);
-      const subagentType = resolved ?? "general-purpose";
-      const fellBack = resolved === undefined;
-
-      const displayName = getDisplayName(subagentType, deps.registry);
-
-      // Get agent config for invocation resolution
-      const customConfig = deps.registry.resolveAgentConfig(subagentType);
-
-      const resolvedConfig = resolveAgentInvocationConfig(customConfig, params);
-
-      // Resolve model from agent config first; tool-call params only fill gaps.
-      const resolution = resolveInvocationModel(
-        ctx.model,
-        resolvedConfig.modelInput,
-        resolvedConfig.modelFromParams,
-        ctx.modelRegistry,
+      // ---- Config resolution (pure) ----
+      const config = resolveSpawnConfig(
+        params,
+        deps.registry,
+        { parentModel: ctx.model, modelRegistry: ctx.modelRegistry },
+        deps.settings,
       );
-      if (resolution.error) return textResult(resolution.error);
-      const model = resolution.model;
+      if ("error" in config) return textResult(config.error);
 
-      const thinking = resolvedConfig.thinking;
-      const inheritContext = resolvedConfig.inheritContext;
-      const runInBackground = resolvedConfig.runInBackground;
-      const isolated = resolvedConfig.isolated;
-      const isolation = resolvedConfig.isolation;
-
-      const parentModelId = ctx.model?.id;
-      const effectiveModelId = model?.id;
-      const modelName =
-        effectiveModelId && effectiveModelId !== parentModelId
-          ? (model?.name ?? effectiveModelId).replace(/^Claude\s+/i, "").toLowerCase()
-          : undefined;
-      const effectiveMaxTurns = normalizeMaxTurns(
-        resolvedConfig.maxTurns ?? deps.settings.defaultMaxTurns,
-      );
-      const agentInvocation: AgentInvocation = {
-        modelName,
-        thinking,
-        maxTurns: normalizeMaxTurns(resolvedConfig.maxTurns),
-        isolated,
-        inheritContext,
-        runInBackground,
-        isolation,
-      };
-      const modeLabel = getPromptModeLabel(subagentType, deps.registry);
-      const { tags: invocationTags } = buildInvocationTags(agentInvocation);
-      const agentTags = modeLabel ? [modeLabel, ...invocationTags] : invocationTags;
-      const detailBase = {
-        displayName,
-        description: params.description as string,
-        subagentType,
-        modelName,
-        tags: agentTags.length > 0 ? agentTags : undefined,
-      };
-
-      // Resume existing agent
+      // ---- Resume existing agent ----
       if (params.resume) {
         const existing = deps.manager.getRecord(params.resume as string);
         if (!existing) {
@@ -358,51 +306,51 @@ Guidelines:
         }
         return textResult(
           record.result?.trim() || record.error?.trim() || "No output.",
-          buildDetails(detailBase, record),
+          buildDetails(config.detailBase, record),
         );
       }
 
-      // Background execution
-      if (runInBackground) {
+      // ---- Background execution ----
+      if (config.runInBackground) {
         return spawnBackground(
           { manager: deps.manager, widget: deps.widget, agentActivity: deps.agentActivity },
           {
             ctx,
-            subagentType,
-            prompt: params.prompt as string,
-            description: params.description as string,
-            displayName,
+            subagentType: config.subagentType,
+            prompt: config.prompt,
+            description: config.description,
+            displayName: config.displayName,
             toolCallId,
-            detailBase,
-            model,
-            effectiveMaxTurns,
-            isolated,
-            inheritContext,
-            thinking,
-            isolation,
-            agentInvocation,
+            detailBase: config.detailBase,
+            model: config.model,
+            effectiveMaxTurns: config.effectiveMaxTurns,
+            isolated: config.isolated,
+            inheritContext: config.inheritContext,
+            thinking: config.thinking,
+            isolation: config.isolation,
+            agentInvocation: config.agentInvocation,
           },
         );
       }
 
-      // Foreground (synchronous) execution — stream progress via onUpdate
+      // ---- Foreground execution — stream progress via onUpdate ----
       return runForeground(
         { manager: deps.manager, widget: deps.widget, agentActivity: deps.agentActivity },
         {
           ctx,
-          subagentType,
-          prompt: params.prompt as string,
-          description: params.description as string,
-          detailBase,
-          rawType,
-          fellBack,
-          model,
-          effectiveMaxTurns,
-          isolated,
-          inheritContext,
-          thinking,
-          isolation,
-          agentInvocation,
+          subagentType: config.subagentType,
+          prompt: config.prompt,
+          description: config.description,
+          detailBase: config.detailBase,
+          rawType: config.rawType,
+          fellBack: config.fellBack,
+          model: config.model,
+          effectiveMaxTurns: config.effectiveMaxTurns,
+          isolated: config.isolated,
+          inheritContext: config.inheritContext,
+          thinking: config.thinking,
+          isolation: config.isolation,
+          agentInvocation: config.agentInvocation,
         },
         signal,
         onUpdate,
