@@ -1,4 +1,4 @@
-import type { AgentConfigLookup } from "../agent-types";
+import type { AgentConfigLookup } from "../config/agent-types";
 import { AgentActivityTracker } from "../ui/agent-activity-tracker";
 import { type AgentDetails, formatTokens } from "../ui/display";
 import { getLifetimeTotal, type LifetimeUsage } from "../usage";

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
-import type { AgentConfigLookup } from "#src/agent-types";
+import type { AgentConfigLookup } from "#src/config/agent-types";
 import type { AssemblerIO } from "#src/session-config";
 import type { PreloadedSkill } from "#src/skill-loader";
 import type { AgentConfig } from "#src/types";

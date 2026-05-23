@@ -22,8 +22,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { AgentManager, type AgentManagerObserver } from "./agent-manager";
 import { createAgentRunner, getAgentConversation, type RunnerIO, steerAgent } from "./agent-runner";
-import { AgentTypeRegistry } from "./agent-types";
-import { loadCustomAgents } from "./custom-agents";
+import { AgentTypeRegistry } from "./config/agent-types";
+import { loadCustomAgents } from "./config/custom-agents";
 import { detectEnv } from "./env";
 import { SessionLifecycleHandler, ToolStartHandler } from "./handlers/index";
 import { buildMemoryBlock, buildReadOnlyMemoryBlock } from "./memory";

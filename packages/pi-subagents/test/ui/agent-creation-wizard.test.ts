@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AgentTypeRegistry } from "#src/agent-types";
+import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { ParentSnapshot } from "#src/parent-snapshot";
 import { createAgentCreationWizard } from "#src/ui/agent-creation-wizard";
 import { createTestRecord } from "#test/helpers/make-record";

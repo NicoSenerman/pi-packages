@@ -1,6 +1,6 @@
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import type { AgentConfigLookup } from "../agent-types";
+import type { AgentConfigLookup } from "../config/agent-types";
 import type { AgentRecord } from "../types";
 import { formatDuration, getDisplayName } from "../ui/display";
 import { getSessionContextPercent } from "../usage";

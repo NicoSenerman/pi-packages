@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentManager, type AgentManagerObserver } from "#src/agent-manager";
 import type { AgentRunner } from "#src/agent-runner";
-import { AgentTypeRegistry } from "#src/agent-types";
+import { AgentTypeRegistry } from "#src/config/agent-types";
 import { NotificationState } from "#src/notification-state";
 import type { ParentSnapshot } from "#src/parent-snapshot";
 import type { RunConfig } from "#src/runtime";

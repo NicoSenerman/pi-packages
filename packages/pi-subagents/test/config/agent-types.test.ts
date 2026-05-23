@@ -4,7 +4,7 @@ import {
   BUILTIN_TOOL_NAMES,
   getMemoryToolNames,
   getReadOnlyMemoryToolNames,
-} from "#src/agent-types";
+} from "#src/config/agent-types";
 import type { AgentConfig } from "#src/types";
 
 function makeAgentConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {

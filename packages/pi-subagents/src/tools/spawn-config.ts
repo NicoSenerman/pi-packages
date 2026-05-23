@@ -8,8 +8,8 @@
 
 import type { Model } from "@earendil-works/pi-ai";
 import { normalizeMaxTurns } from "../agent-runner";
-import type { AgentTypeRegistry } from "../agent-types";
-import { resolveAgentInvocationConfig } from "../invocation-config";
+import type { AgentTypeRegistry } from "../config/agent-types";
+import { resolveAgentInvocationConfig } from "../config/invocation-config";
 import { resolveInvocationModel } from "../model-resolver";
 import type { AgentInvocation, IsolationMode, SubagentType, ThinkingLevel } from "../types";
 import {

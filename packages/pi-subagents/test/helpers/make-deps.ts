@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import { AgentTypeRegistry } from "#src/agent-types";
+import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { ParentSnapshot } from "#src/parent-snapshot";
 import { type AgentToolDeps } from "#src/tools/agent-tool";
 import { AgentActivityTracker } from "#src/ui/agent-activity-tracker";

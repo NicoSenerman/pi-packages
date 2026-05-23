@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { AgentTypeRegistry } from "#src/agent-types";
+import { AgentTypeRegistry } from "#src/config/agent-types";
 import { NotificationState } from "#src/notification-state";
 import { createGetResultTool } from "#src/tools/get-result-tool";
 import type { AgentRecord } from "#src/types";

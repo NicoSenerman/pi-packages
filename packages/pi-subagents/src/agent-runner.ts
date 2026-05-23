@@ -8,7 +8,7 @@ import {
   type AgentSessionEvent,
   type SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import type { AgentConfigLookup } from "./agent-types";
+import type { AgentConfigLookup } from "./config/agent-types";
 import { extractText } from "./context";
 import type { EnvInfo } from "./env";
 import type { ParentSnapshot } from "./parent-snapshot";

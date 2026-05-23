@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AgentTypeRegistry } from "#src/agent-types";
+import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { AgentConfig } from "#src/types";
 import { createAgentConfigEditor } from "#src/ui/agent-config-editor";
 

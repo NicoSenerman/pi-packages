@@ -11,7 +11,7 @@ import type { Model } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { AgentRecord } from "./agent-record";
 import type { AgentRunner } from "./agent-runner";
-import { AgentTypeRegistry } from "./agent-types";
+import { AgentTypeRegistry } from "./config/agent-types";
 import { debugLog } from "./debug";
 import { NotificationState } from "./notification-state";
 import type { ParentSnapshot } from "./parent-snapshot";

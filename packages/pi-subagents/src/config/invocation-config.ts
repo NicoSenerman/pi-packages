@@ -1,4 +1,4 @@
-import type { AgentConfig, IsolationMode, ThinkingLevel } from "./types";
+import type { AgentConfig, IsolationMode, ThinkingLevel } from "../types";
 
 interface AgentInvocationParams {
   model?: string;

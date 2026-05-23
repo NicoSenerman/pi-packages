@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AgentTypeRegistry } from "#src/agent-types";
+import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { Theme } from "#src/ui/display";
 import type { WidgetActivity, WidgetAgent } from "#src/ui/widget-renderer";
 import { renderFinishedLine, renderRunningLines, renderWidgetLines } from "#src/ui/widget-renderer";

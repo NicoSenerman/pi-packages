@@ -14,7 +14,7 @@ import {
   type AgentConfigLookup,
   getMemoryToolNames,
   getReadOnlyMemoryToolNames,
-} from "./agent-types";
+} from "./config/agent-types";
 import type { EnvInfo } from "./env";
 import type { PromptExtras } from "./prompts";
 import type { PreloadedSkill } from "./skill-loader";

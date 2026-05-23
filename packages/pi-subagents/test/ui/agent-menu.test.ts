@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AgentTypeRegistry } from "#src/agent-types";
+import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { ParentSnapshot } from "#src/parent-snapshot";
 import type { AgentConfig } from "#src/types";
 import { type AgentMenuDeps, createAgentsMenuHandler } from "#src/ui/agent-menu";

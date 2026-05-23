@@ -5,9 +5,9 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
+import { debugLog } from "../debug";
+import type { AgentConfig, MemoryScope, ThinkingLevel } from "../types";
 import { BUILTIN_TOOL_NAMES } from "./agent-types";
-import { debugLog } from "./debug";
-import type { AgentConfig, MemoryScope, ThinkingLevel } from "./types";
 
 /**
  * Scan for custom agent .md files from multiple locations.

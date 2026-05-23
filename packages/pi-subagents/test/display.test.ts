@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AgentTypeRegistry } from "#src/agent-types";
+import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { AgentConfig } from "#src/types";
 import { formatSessionTokens, getDisplayName, getPromptModeLabel } from "#src/ui/display";
 
