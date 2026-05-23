@@ -331,6 +331,12 @@ Eliminated `vi.mock()` module mocking in the two most fragile test suites by inj
 
 See the [Phase 8 roadmap](#phase-8-roadmap) section for the full breakdown.
 
+### Phase 9: Observation consolidation, ctx elimination, and remaining mocks
+
+Target: consolidate the dual observation model so stats live in one place; remove `ExtensionContext` from all internal APIs; eliminate remaining `vi.mock()` calls and `as any` casts; split widget rendering from lifecycle.
+
+See the [Phase 9 roadmap](#phase-9-roadmap) section for the full breakdown.
+
 ## Structural refactoring roadmap
 
 Phases 1–5, 7, and 8 are complete.
@@ -600,6 +606,97 @@ J (Display extraction) ───────────────────
 ```
 
 Steps F through I (testability) and Steps J through K (display/menu) are independent tracks that can proceed in parallel.
+
+---
+
+## Phase 9 roadmap
+
+Phases 7 and 8 addressed structural encapsulation and testability.
+Phase 9 targets the next layer: observation model consolidation, `ExtensionContext` elimination from internal APIs, and the remaining `vi.mock()` / `as any` casts.
+
+### Current smells
+
+| Smell                                         | Location                                                              | Evidence                                                                                                                                                       | Severity |
+| --------------------------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| Dual observation                              | `record-observer.ts`, `ui-observer.ts`                                | Both independently count tool uses and accumulate lifetime usage from the same session events; consumers use `activity?.toolUses ?? record.toolUses` fallbacks | High     |
+| `ExtensionContext` in AgentManager            | `agent-manager.ts:171`                                                | `spawn()` accepts `ctx: ExtensionContext` only to call `buildParentSnapshot(ctx)`; directly imports `parent-snapshot.ts`                                       | Medium   |
+| Wide `ctx` in menu handlers                   | `agent-menu.ts`, `agent-config-editor.ts`, `agent-creation-wizard.ts` | Functions declare `ctx: ExtensionContext` but only call `ctx.ui.select/confirm/input/notify/editor`; 43 `ctx as any` casts across 3 test files                 | Medium   |
+| `record.execution?.session` traversal         | 15+ callsites across tools, notification, widget, menu                | Callers reach through `ExecutionState` to access session and outputFile — Law of Demeter violation                                                             | Medium   |
+| Direct SDK import in `conversation-viewer.ts` | `conversation-viewer.test.ts`                                         | Hoisted `vi.mock("@earendil-works/pi-tui")` to intercept `wrapTextWithAnsi`                                                                                    | Low      |
+| Widget mixes rendering, lifecycle, and state  | `agent-widget.ts` (370 lines)                                         | `renderWidget` is ~109 lines mixing data collection, formatting, and overflow layout; constructor takes 3 concrete collaborators                               | Low      |
+
+### Step L: Consolidate observation model
+
+Remove `_toolUses` and `_lifetimeUsage` from `AgentActivityTracker`.
+UI consumers read stats from `AgentRecord` instead of the tracker.
+The UI observer retains event subscriptions for re-render triggers but no longer accumulates stats independently.
+
+Add `session` and `outputFile` convenience getters on `AgentRecord` to hide the `execution?.` traversal.
+The 15+ callsites that navigate `record.execution?.session` simplify to `record.session`.
+
+Impact: eliminates dual counting; removes `??` fallback pattern from widget and conversation viewer; hides `ExecutionState` structure from consumers.
+
+### Step M: Remove ExtensionContext from AgentManager
+
+`spawn()` and `spawnAndWait()` accept `ParentSnapshot` instead of `ExtensionContext`.
+Callers (`agent-tool.ts`, `service-adapter.ts`) call `buildParentSnapshot()` before spawning.
+Menu handlers delegate to an `index.ts`-provided factory that captures `ctx` at call time.
+
+`buildParentSnapshot` is removed from AgentManager's direct imports.
+AgentManager no longer depends on `ExtensionContext` at all — it operates entirely on domain types.
+
+Impact: eliminates 1 `vi.mock()` call in `agent-manager.test.ts`; tests pass plain `ParentSnapshot` objects instead of mocking the snapshot builder.
+
+### Step N: Narrow UI context for menu handlers
+
+Define a `MenuUI` interface with `select`, `confirm`, `input`, `notify`, and `editor` methods.
+Menu handler functions (`showAgentsMenu`, `showAgentDetail`, `showCreateWizard`, etc.) accept `MenuUI` instead of `ExtensionContext`.
+`index.ts` passes `ctx.ui` at the call site.
+
+Creation wizard's `spawnAndWait` call changes: the narrow `AgentMenuManager.spawnAndWait` accepts `ParentSnapshot` (enabled by Step M) instead of `ExtensionContext`.
+
+Impact: eliminates ~43 `ctx as any` casts across menu, editor, and wizard test files; tests construct a plain object satisfying `MenuUI` with no cast.
+
+### Step O: Inject text wrapping into ConversationViewer
+
+Accept a `wrapText` function via `ConversationViewerOptions`.
+`index.ts` passes the real `wrapTextWithAnsi` import.
+Tests inject a stub or the real function directly — no module-level mock needed.
+
+Impact: eliminates the hoisted `vi.mock("@earendil-works/pi-tui")` in `conversation-viewer.test.ts`.
+
+### Step P: Split AgentWidget rendering
+
+Extract pure rendering functions from `AgentWidget` into `ui/widget-renderer.ts`.
+The widget becomes a thin lifecycle/polling wrapper that calls pure render functions.
+Rendering functions receive data (agent list, activity map, registry) and return formatted strings — testable without widget lifecycle.
+
+Depends on Step L: once the tracker drops stats fields, the renderer reads from `AgentRecord` for tool uses and usage, and from `AgentActivityTracker` only for live UI state (active tools, response text, turn count).
+
+### Step dependencies
+
+```text
+L (Consolidate observation) ──────────────────────────┐
+  └── P (Split widget rendering) ──────────────────────┘
+
+M (Remove ctx from AgentManager) ─────────────────────┐
+  └── N (Narrow UI context) ───────────────────────────┘
+
+O (Inject text wrapping) ── independent
+```
+
+Tracks L→P and M→N are independent of each other.
+Step O is independent of both tracks.
+
+### Projected impact
+
+| Metric                             | Before                   | After                    |
+| ---------------------------------- | ------------------------ | ------------------------ |
+| `vi.mock()` calls remaining        | 4                        | 1 (`print-mode.test.ts`) |
+| `as any` casts remaining           | 45                       | ~5                       |
+| Independent tool-use counters      | 2                        | 1                        |
+| `record.execution?.` traversals    | 15+                      | 0                        |
+| `ExtensionContext` in domain types | 1 (`AgentManager.spawn`) | 0                        |
 
 ---
 
