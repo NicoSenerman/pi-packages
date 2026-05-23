@@ -1,9 +1,6 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { AgentSpawnConfig } from "../agent-manager.js";
 import { AgentTypeRegistry } from "../agent-types.js";
 import type { ModelRegistry } from "../model-resolver.js";
 import type { ParentSnapshot } from "../parent-snapshot.js";
-import { buildParentSnapshot } from "../parent-snapshot.js";
 import type { AgentConfig, AgentRecord } from "../types.js";
 import type { AgentActivityTracker } from "./agent-activity-tracker.js";
 import { createAgentConfigEditor } from "./agent-config-editor.js";
@@ -18,7 +15,12 @@ export interface AgentMenuManager {
   listAgents: () => AgentRecord[];
   getRecord: (id: string) => AgentRecord | undefined;
   /** Used by generate wizard to spawn an agent that writes the .md file. */
-  spawnAndWait: (parentSnapshot: ParentSnapshot, type: string, prompt: string, opts: { description: string; maxTurns: number }) => Promise<AgentRecord>;
+  spawnAndWait: (
+    parentSnapshot: ParentSnapshot,
+    type: string,
+    prompt: string,
+    opts: { description: string; maxTurns: number },
+  ) => Promise<AgentRecord>;
 }
 
 /** Narrow settings interface required by the agent menu. */
@@ -70,29 +72,42 @@ export interface MenuUI {
  * Create the `/agents` command handler.
  * Returns a function suitable for `pi.registerCommand("agents", { handler })`.
  */
-export function createAgentsMenuHandler(deps: AgentMenuDeps) {
+export function createAgentsMenuHandler({
+  manager,
+  registry,
+  agentActivity,
+  getModelLabel,
+  settings,
+  fileOps,
+  personalAgentsDir,
+  projectAgentsDir,
+}: AgentMenuDeps) {
   const editor = createAgentConfigEditor(
-    deps.fileOps,
-    deps.registry,
-    deps.personalAgentsDir,
-    deps.projectAgentsDir,
+    fileOps,
+    registry,
+    personalAgentsDir,
+    projectAgentsDir,
   );
 
   const wizard = createAgentCreationWizard({
-    fileOps: deps.fileOps,
-    manager: deps.manager,
-    registry: deps.registry,
-    personalAgentsDir: deps.personalAgentsDir,
-    projectAgentsDir: deps.projectAgentsDir,
+    fileOps,
+    manager,
+    registry,
+    personalAgentsDir,
+    projectAgentsDir,
   });
 
-  async function showAgentsMenu(ctx: ExtensionContext) {
-    deps.registry.reload();
-    const allNames = deps.registry.getAllTypes();
+  async function showAgentsMenu(
+    ui: MenuUI,
+    modelRegistry: ModelRegistry,
+    parentSnapshot: ParentSnapshot,
+  ) {
+    registry.reload();
+    const allNames = registry.getAllTypes();
 
     const options: string[] = [];
 
-    const agents = deps.manager.listAgents();
+    const agents = manager.listAgents();
     if (agents.length > 0) {
       const running = agents.filter(
         (a) => a.status === "running" || a.status === "queued",
@@ -120,30 +135,30 @@ export function createAgentsMenuHandler(deps: AgentMenuDeps) {
         : "";
 
     if (noAgentsMsg) {
-      ctx.ui.notify(noAgentsMsg, "info");
+      ui.notify(noAgentsMsg, "info");
     }
 
-    const choice = await ctx.ui.select("Agents", options);
+    const choice = await ui.select("Agents", options);
     if (!choice) return;
 
     if (choice.startsWith("Running agents (")) {
-      await showRunningAgents(ctx);
-      await showAgentsMenu(ctx);
+      await showRunningAgents(ui);
+      await showAgentsMenu(ui, modelRegistry, parentSnapshot);
     } else if (choice.startsWith("Agent types (")) {
-      await showAllAgentsList(ctx);
-      await showAgentsMenu(ctx);
+      await showAllAgentsList(ui, modelRegistry);
+      await showAgentsMenu(ui, modelRegistry, parentSnapshot);
     } else if (choice === "Create new agent") {
-      await wizard.showCreateWizard(ctx.ui, buildParentSnapshot(ctx));
+      await wizard.showCreateWizard(ui, parentSnapshot);
     } else if (choice === "Settings") {
-      await showSettings(ctx);
-      await showAgentsMenu(ctx);
+      await showSettings(ui);
+      await showAgentsMenu(ui, modelRegistry, parentSnapshot);
     }
   }
 
-  async function showAllAgentsList(ctx: ExtensionContext) {
-    const allNames = deps.registry.getAllTypes();
+  async function showAllAgentsList(ui: MenuUI, modelRegistry: ModelRegistry) {
+    const allNames = registry.getAllTypes();
     if (allNames.length === 0) {
-      ctx.ui.notify("No agents.", "info");
+      ui.notify("No agents.", "info");
       return;
     }
 
@@ -156,9 +171,9 @@ export function createAgentsMenuHandler(deps: AgentMenuDeps) {
     };
 
     const entries = allNames.map((name) => {
-      const cfg = deps.registry.resolveAgentConfig(name);
+      const cfg = registry.resolveAgentConfig(name);
       const disabled = cfg.enabled === false;
-      const model = deps.getModelLabel(name, ctx.modelRegistry);
+      const model = getModelLabel(name, modelRegistry);
       const indicator = sourceIndicator(cfg);
       const prefix = `${indicator}${name} · ${model}`;
       const desc = disabled ? "(disabled)" : cfg.description;
@@ -167,10 +182,12 @@ export function createAgentsMenuHandler(deps: AgentMenuDeps) {
     const maxPrefix = Math.max(...entries.map((e) => e.prefix.length));
 
     const hasCustom = allNames.some((n) => {
-      const c = deps.registry.resolveAgentConfig(n);
+      const c = registry.resolveAgentConfig(n);
       return !c.isDefault && c.enabled !== false;
     });
-    const hasDisabled = allNames.some((n) => deps.registry.resolveAgentConfig(n).enabled === false);
+    const hasDisabled = allNames.some(
+      (n) => registry.resolveAgentConfig(n).enabled === false,
+    );
     const legendParts: string[] = [];
     if (hasCustom) legendParts.push("• = project  ◦ = global");
     if (hasDisabled) legendParts.push("✕ = disabled");
@@ -181,47 +198,47 @@ export function createAgentsMenuHandler(deps: AgentMenuDeps) {
     );
     if (legend) options.push(legend);
 
-    const choice = await ctx.ui.select("Agent types", options);
+    const choice = await ui.select("Agent types", options);
     if (!choice) return;
 
     const agentName = choice
       .split(" · ")[0]
       .replace(/^[•◦✕\s]+/, "")
       .trim();
-    if (deps.registry.resolveType(agentName) != null) {
-      await editor.showAgentDetail(ctx.ui, agentName);
-      await showAllAgentsList(ctx);
+    if (registry.resolveType(agentName) != null) {
+      await editor.showAgentDetail(ui, agentName);
+      await showAllAgentsList(ui, modelRegistry);
     }
   }
 
-  async function showRunningAgents(ctx: ExtensionContext) {
-    const agents = deps.manager.listAgents();
+  async function showRunningAgents(ui: MenuUI) {
+    const agents = manager.listAgents();
     if (agents.length === 0) {
-      ctx.ui.notify("No agents.", "info");
+      ui.notify("No agents.", "info");
       return;
     }
 
     const options = agents.map((a) => {
-      const dn = getDisplayName(a.type, deps.registry);
+      const dn = getDisplayName(a.type, registry);
       const dur = formatDuration(a.startedAt, a.completedAt);
       return `${dn} (${a.description}) · ${a.toolUses} tools · ${a.status} · ${dur}`;
     });
 
-    const choice = await ctx.ui.select("Running agents", options);
+    const choice = await ui.select("Running agents", options);
     if (!choice) return;
 
     const idx = options.indexOf(choice);
     if (idx < 0) return;
     const record = agents[idx];
 
-    await viewAgentConversation(ctx, record);
-    await showRunningAgents(ctx);
+    await viewAgentConversation(ui, record);
+    await showRunningAgents(ui);
   }
 
-  async function viewAgentConversation(ctx: ExtensionContext, record: AgentRecord) {
+  async function viewAgentConversation(ui: MenuUI, record: AgentRecord) {
     const session = record.session;
     if (!session) {
-      ctx.ui.notify(
+      ui.notify(
         `Agent is ${record.status === "queued" ? "queued" : "expired"} — no session available.`,
         "info",
       );
@@ -231,11 +248,19 @@ export function createAgentsMenuHandler(deps: AgentMenuDeps) {
     const { ConversationViewer, VIEWPORT_HEIGHT_PCT } = await import(
       "./conversation-viewer.js"
     );
-    const activity = deps.agentActivity.get(record.id);
+    const activity = agentActivity.get(record.id);
 
-    await ctx.ui.custom<undefined>(
+    await ui.custom<undefined>(
       (tui: any, theme: any, _keybindings: any, done: any) => {
-        return new ConversationViewer({ tui, session, record, activity, theme, done, registry: deps.registry });
+        return new ConversationViewer({
+          tui,
+          session,
+          record,
+          activity,
+          theme,
+          done,
+          registry,
+        });
       },
       {
         overlay: true,
@@ -248,61 +273,68 @@ export function createAgentsMenuHandler(deps: AgentMenuDeps) {
     );
   }
 
-  async function showSettings(ctx: ExtensionContext) {
-    const choice = await ctx.ui.select("Settings", [
-      `Max concurrency (current: ${deps.settings.maxConcurrent})`,
-      `Default max turns (current: ${deps.settings.defaultMaxTurns ?? "unlimited"})`,
-      `Grace turns (current: ${deps.settings.graceTurns})`,
+  async function showSettings(ui: MenuUI) {
+    const choice = await ui.select("Settings", [
+      `Max concurrency (current: ${settings.maxConcurrent})`,
+      `Default max turns (current: ${settings.defaultMaxTurns ?? "unlimited"})`,
+      `Grace turns (current: ${settings.graceTurns})`,
     ]);
     if (!choice) return;
 
     if (choice.startsWith("Max concurrency")) {
-      const val = await ctx.ui.input(
+      const val = await ui.input(
         "Max concurrent background agents",
-        String(deps.settings.maxConcurrent),
+        String(settings.maxConcurrent),
       );
       if (val) {
         const n = parseInt(val, 10);
         if (n >= 1) {
-          const toast = deps.settings.applyMaxConcurrent(n);
-          ctx.ui.notify(toast.message, toast.level);
+          const toast = settings.applyMaxConcurrent(n);
+          ui.notify(toast.message, toast.level);
         } else {
-          ctx.ui.notify("Must be a positive integer.", "warning");
+          ui.notify("Must be a positive integer.", "warning");
         }
       }
     } else if (choice.startsWith("Default max turns")) {
-      const val = await ctx.ui.input(
+      const val = await ui.input(
         "Default max turns before wrap-up (0 = unlimited)",
-        String(deps.settings.defaultMaxTurns ?? 0),
+        String(settings.defaultMaxTurns ?? 0),
       );
       if (val) {
         const n = parseInt(val, 10);
         if (n >= 0) {
-          const toast = deps.settings.applyDefaultMaxTurns(n);
-          ctx.ui.notify(toast.message, toast.level);
+          const toast = settings.applyDefaultMaxTurns(n);
+          ui.notify(toast.message, toast.level);
         } else {
-          ctx.ui.notify("Must be 0 (unlimited) or a positive integer.", "warning");
+          ui.notify("Must be 0 (unlimited) or a positive integer.", "warning");
         }
       }
     } else if (choice.startsWith("Grace turns")) {
-      const val = await ctx.ui.input(
+      const val = await ui.input(
         "Grace turns after wrap-up steer",
-        String(deps.settings.graceTurns),
+        String(settings.graceTurns),
       );
       if (val) {
         const n = parseInt(val, 10);
         if (n >= 1) {
-          const toast = deps.settings.applyGraceTurns(n);
-          ctx.ui.notify(toast.message, toast.level);
+          const toast = settings.applyGraceTurns(n);
+          ui.notify(toast.message, toast.level);
         } else {
-          ctx.ui.notify("Must be a positive integer.", "warning");
+          ui.notify("Must be a positive integer.", "warning");
         }
       }
     }
   }
 
-  // Return the handler function
-  return async (ctx: ExtensionContext) => {
-    await showAgentsMenu(ctx);
+  return async ({
+    ui,
+    modelRegistry,
+    parentSnapshot,
+  }: {
+    ui: MenuUI;
+    modelRegistry: ModelRegistry;
+    parentSnapshot: ParentSnapshot;
+  }) => {
+    await showAgentsMenu(ui, modelRegistry, parentSnapshot);
   };
 }

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "../../src/agent-types.js";
+import type { ParentSnapshot } from "../../src/parent-snapshot.js";
 import type { AgentConfig } from "../../src/types.js";
 import { type AgentMenuDeps, createAgentsMenuHandler } from "../../src/ui/agent-menu.js";
 import { createTestRecord } from "../helpers/make-record.js";
@@ -17,6 +18,14 @@ const testDefaultAgentConfig: AgentConfig = {
 
 /** Real registry for all tests. Methods are spied on per-test as needed. */
 const testRegistry = new AgentTypeRegistry(() => new Map());
+
+/** Minimal stub satisfying the ParentSnapshot interface. */
+const stubParentSnapshot: ParentSnapshot = {
+  cwd: "/test",
+  systemPrompt: "",
+  model: {},
+  modelRegistry: { find: () => undefined },
+};
 
 function makeFileOps() {
   return {
@@ -63,7 +72,7 @@ function makeDeps(overrides: Partial<AgentMenuDeps> = {}): AgentMenuDeps {
   };
 }
 
-function makeCtx(selectResults: (string | undefined)[] = []) {
+function makeUI(selectResults: (string | undefined)[] = []) {
   let selectIdx = 0;
   return {
     ui: {
@@ -74,7 +83,8 @@ function makeCtx(selectResults: (string | undefined)[] = []) {
       notify: vi.fn(),
       custom: vi.fn(),
     },
-    modelRegistry: {},
+    modelRegistry: { find: () => undefined, getAll: () => [] },
+    parentSnapshot: stubParentSnapshot,
   };
 }
 
@@ -97,27 +107,27 @@ describe("createAgentsMenuHandler", () => {
   it("calls registry.reload() on menu open", async () => {
     const reloadSpy = vi.spyOn(testRegistry, "reload");
     const deps = makeDeps();
-    const ctx = makeCtx([undefined]); // user cancels immediately
+    const params = makeUI([undefined]); // user cancels immediately
     const handler = createAgentsMenuHandler(deps);
-    await handler(ctx as any);
+    await handler(params);
     expect(reloadSpy).toHaveBeenCalled();
   });
 
   it("shows Create new agent option", async () => {
     const deps = makeDeps();
-    const ctx = makeCtx([undefined]);
+    const params = makeUI([undefined]);
     const handler = createAgentsMenuHandler(deps);
-    await handler(ctx as any);
-    const selectCall = ctx.ui.select.mock.calls[0];
+    await handler(params);
+    const selectCall = params.ui.select.mock.calls[0];
     expect(selectCall[1]).toContain("Create new agent");
   });
 
   it("shows Settings option", async () => {
     const deps = makeDeps();
-    const ctx = makeCtx([undefined]);
+    const params = makeUI([undefined]);
     const handler = createAgentsMenuHandler(deps);
-    await handler(ctx as any);
-    const selectCall = ctx.ui.select.mock.calls[0];
+    await handler(params);
+    const selectCall = params.ui.select.mock.calls[0];
     expect(selectCall[1]).toContain("Settings");
   });
 
@@ -131,10 +141,10 @@ describe("createAgentsMenuHandler", () => {
         ]),
       },
     });
-    const ctx = makeCtx([undefined]);
+    const params = makeUI([undefined]);
     const handler = createAgentsMenuHandler(deps);
-    await handler(ctx as any);
-    const options = ctx.ui.select.mock.calls[0][1] as string[];
+    await handler(params);
+    const options = params.ui.select.mock.calls[0][1] as string[];
     expect(options.some((o: string) => o.startsWith("Running agents ("))).toBe(true);
   });
 });
@@ -145,8 +155,8 @@ describe("agent menu — delegates to config editor", () => {
     const fileOps = makeFileOps();
     const deps = makeDeps({ fileOps, projectAgentsDir: "/test-project/.pi/agents" });
     let selectCall = 0;
-    const ctx = makeCtx([]);
-    ctx.ui.select = vi.fn().mockImplementation((_title: string, options: string[]) => {
+    const params = makeUI([]);
+    params.ui.select = vi.fn().mockImplementation((_title: string, options: string[]) => {
       selectCall++;
       if (selectCall === 1) return "Agent types (1)"; // main menu
       if (selectCall === 2) return options[0]; // pick first agent type
@@ -154,7 +164,7 @@ describe("agent menu — delegates to config editor", () => {
     });
 
     const handler = createAgentsMenuHandler(deps);
-    await handler(ctx as any);
+    await handler(params);
 
     expect(fileOps.findAgentFile).toHaveBeenCalledWith(
       "test-agent",
@@ -166,40 +176,40 @@ describe("agent menu — delegates to config editor", () => {
 describe("agent menu — settings", () => {
   it("navigates to settings and delegates maxConcurrent change to applyMaxConcurrent", async () => {
     const deps = makeDeps();
-    const ctx = makeCtx([
+    const params = makeUI([
       "Settings", // from main menu
       "Max concurrency (current: 4)", // from settings
       undefined, // cancel settings re-show
     ]);
-    ctx.ui.input = vi.fn().mockResolvedValue("8");
+    params.ui.input = vi.fn().mockResolvedValue("8");
     const handler = createAgentsMenuHandler(deps);
-    await handler(ctx as any);
+    await handler(params);
     expect(deps.settings.applyMaxConcurrent).toHaveBeenCalledWith(8);
   });
 
   it("delegates defaultMaxTurns change to applyDefaultMaxTurns when 0 is entered", async () => {
     const deps = makeDeps();
-    const ctx = makeCtx([
+    const params = makeUI([
       "Settings",
       "Default max turns (current: unlimited)",
       undefined,
     ]);
-    ctx.ui.input = vi.fn().mockResolvedValue("0");
+    params.ui.input = vi.fn().mockResolvedValue("0");
     const handler = createAgentsMenuHandler(deps);
-    await handler(ctx as any);
+    await handler(params);
     expect(deps.settings.applyDefaultMaxTurns).toHaveBeenCalledWith(0);
   });
 
   it("delegates graceTurns change to applyGraceTurns when a positive value is entered", async () => {
     const deps = makeDeps();
-    const ctx = makeCtx([
+    const params = makeUI([
       "Settings",
       "Grace turns (current: 5)",
       undefined,
     ]);
-    ctx.ui.input = vi.fn().mockResolvedValue("3");
+    params.ui.input = vi.fn().mockResolvedValue("3");
     const handler = createAgentsMenuHandler(deps);
-    await handler(ctx as any);
+    await handler(params);
     expect(deps.settings.applyGraceTurns).toHaveBeenCalledWith(3);
   });
 });

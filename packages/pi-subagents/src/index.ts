@@ -270,6 +270,12 @@ export default function (pi: ExtensionAPI) {
 
   pi.registerCommand('agents', {
     description: 'Manage agents',
-    handler: async (_args, ctx) => { await agentsMenuHandler(ctx); },
+    handler: async (_args, ctx) => {
+      await agentsMenuHandler({
+        ui: ctx.ui,
+        modelRegistry: ctx.modelRegistry,
+        parentSnapshot: buildParentSnapshot(ctx),
+      });
+    },
   });
 }
