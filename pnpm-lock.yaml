@@ -54,6 +54,24 @@ importers:
         specifier: 'catalog:'
         version: 4.1.6(@types/node@22.19.19)(vite@8.0.13(@types/node@22.19.19)(jiti@2.7.0)(yaml@2.9.0))
 
+  packages/pi-colgrep:
+    devDependencies:
+      '@biomejs/biome':
+        specifier: 'catalog:'
+        version: 2.4.15
+      '@earendil-works/pi-coding-agent':
+        specifier: 0.75.4
+        version: 0.75.4(ws@8.20.1)(zod@4.4.3)
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.19
+      rumdl:
+        specifier: 'catalog:'
+        version: 0.1.93
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+
   packages/pi-github-tools:
     devDependencies:
       '@biomejs/biome':
