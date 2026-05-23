@@ -1,0 +1,60 @@
+{
+  "name": "@gotgenes/pi-colgrep",
+  "version": "0.0.0",
+  "description": "Pi extension that integrates ColGrep semantic code search as an agent tool.",
+  "type": "module",
+  "files": [
+    "src",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "check": "tsc --noEmit",
+    "lint:md": "rumdl check *.md docs/**/*.md",
+    "lint": "biome check . && pnpm run lint:md"
+  },
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-extension",
+    "pi-coding-agent",
+    "colgrep",
+    "semantic-search",
+    "code-search"
+  ],
+  "author": {
+    "name": "Chris Lasher"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gotgenes/pi-packages.git",
+    "directory": "packages/pi-colgrep"
+  },
+  "homepage": "https://github.com/gotgenes/pi-packages/tree/main/packages/pi-colgrep#readme",
+  "bugs": {
+    "url": "https://github.com/gotgenes/pi-packages/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "pi": {
+    "extensions": [
+      "./src/extension.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.75.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "catalog:",
+    "@earendil-works/pi-coding-agent": "0.75.4",
+    "@types/node": "catalog:",
+    "rumdl": "catalog:",
+    "typescript": "catalog:"
+  }
+}
