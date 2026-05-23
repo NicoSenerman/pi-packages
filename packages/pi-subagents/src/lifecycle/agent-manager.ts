@@ -9,17 +9,17 @@
 import { randomUUID } from "node:crypto";
 import type { Model } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import { AgentTypeRegistry } from "../config/agent-types";
-import { debugLog } from "../debug";
-import { NotificationState } from "../observation/notification-state";
-import { subscribeRecordObserver } from "../observation/record-observer";
-import type { RunConfig } from "../runtime";
-import type { AgentInvocation, IsolationMode, ShellExec, SubagentType, ThinkingLevel } from "../types";
-import { AgentRecord } from "./agent-record";
-import type { AgentRunner } from "./agent-runner";
-import type { ParentSnapshot } from "./parent-snapshot";
-import type { WorktreeManager } from "./worktree";
-import { WorktreeState } from "./worktree-state";
+import { AgentTypeRegistry } from "#src/config/agent-types";
+import { debugLog } from "#src/debug";
+import { AgentRecord } from "#src/lifecycle/agent-record";
+import type { AgentRunner } from "#src/lifecycle/agent-runner";
+import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
+import type { WorktreeManager } from "#src/lifecycle/worktree";
+import { WorktreeState } from "#src/lifecycle/worktree-state";
+import { NotificationState } from "#src/observation/notification-state";
+import { subscribeRecordObserver } from "#src/observation/record-observer";
+import type { RunConfig } from "#src/runtime";
+import type { AgentInvocation, IsolationMode, ShellExec, SubagentType, ThinkingLevel } from "#src/types";
 
 export type CompactionInfo = { reason: "manual" | "threshold" | "overflow"; tokensBefore: number };
 

@@ -1,2 +1,2 @@
-export { SessionLifecycleHandler } from "./lifecycle";
-export { ToolStartHandler } from "./tool-start";
+export { SessionLifecycleHandler } from "#src/handlers/lifecycle";
+export { ToolStartHandler } from "#src/handlers/tool-start";

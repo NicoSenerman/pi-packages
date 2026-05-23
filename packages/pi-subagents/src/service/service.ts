@@ -9,7 +9,7 @@
  *   svc?.spawn("Explore", "Check for stale TODOs");
  */
 
-import type { LifetimeUsage } from "../lifecycle/usage";
+import type { LifetimeUsage } from "#src/lifecycle/usage";
 
 export type { LifetimeUsage };
 

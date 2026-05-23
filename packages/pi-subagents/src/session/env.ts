@@ -2,8 +2,8 @@
  * env.ts — Detect environment info (git, platform) for subagent system prompts.
  */
 
-import { debugLog } from "../debug";
-import type { ShellExec } from "../types";
+import { debugLog } from "#src/debug";
+import type { ShellExec } from "#src/types";
 
 export interface EnvInfo {
   isGitRepo: boolean;

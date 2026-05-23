@@ -6,7 +6,7 @@
  * turn count, lifetime usage).
  */
 
-import type { AgentActivityTracker } from "./agent-activity-tracker";
+import type { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
 
 /** Narrow session interface — only the subscribe method needed by the observer. */
 interface SubscribableSession {

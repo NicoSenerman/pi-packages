@@ -1,7 +1,7 @@
-import { debugLog } from "../debug";
-import { getLifetimeTotal, getSessionContextPercent } from "../lifecycle/usage";
-import type { AgentRecord } from "../types";
-import type { AgentActivityTracker } from "../ui/agent-activity-tracker";
+import { debugLog } from "#src/debug";
+import { getLifetimeTotal, getSessionContextPercent } from "#src/lifecycle/usage";
+import type { AgentRecord } from "#src/types";
+import type { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
 
 /** Details attached to custom notification messages for visual rendering. */
 export interface NotificationDetails {

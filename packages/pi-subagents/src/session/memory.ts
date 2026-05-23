@@ -10,8 +10,8 @@
 import { existsSync, lstatSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, } from "node:path";
-import { debugLog } from "../debug";
-import type { MemoryScope } from "../types";
+import { debugLog } from "#src/debug";
+import type { MemoryScope } from "#src/types";
 
 /** Maximum lines to read from MEMORY.md */
 const MAX_MEMORY_LINES = 200;

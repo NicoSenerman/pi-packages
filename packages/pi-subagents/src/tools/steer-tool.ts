@@ -1,8 +1,8 @@
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { getSessionContextPercent } from "../lifecycle/usage";
-import type { AgentRecord } from "../types";
-import { formatLifetimeTokens, textResult } from "./helpers";
+import { getSessionContextPercent } from "#src/lifecycle/usage";
+import { formatLifetimeTokens, textResult } from "#src/tools/helpers";
+import type { AgentRecord } from "#src/types";
 
 /** Create the steer_subagent tool definition (without Pi SDK wrapper). */
 export function createSteerTool(

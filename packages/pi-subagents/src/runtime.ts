@@ -6,8 +6,8 @@
  * Follows the same pattern as pi-permission-system's ExtensionRuntime.
  */
 
-import type { AgentActivityTracker } from "./ui/agent-activity-tracker";
-import type { UICtx } from "./ui/agent-widget";
+import type { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
+import type { UICtx } from "#src/ui/agent-widget";
 
 /**
  * Narrow widget interface consumed by SubagentRuntime delegation methods.

@@ -1,10 +1,10 @@
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import type { AgentConfigLookup } from "../config/agent-types";
-import { getSessionContextPercent } from "../lifecycle/usage";
-import type { AgentRecord } from "../types";
-import { formatDuration, getDisplayName } from "../ui/display";
-import { formatLifetimeTokens, textResult } from "./helpers";
+import type { AgentConfigLookup } from "#src/config/agent-types";
+import { getSessionContextPercent } from "#src/lifecycle/usage";
+import { formatLifetimeTokens, textResult } from "#src/tools/helpers";
+import type { AgentRecord } from "#src/types";
+import { formatDuration, getDisplayName } from "#src/ui/display";
 
 /** Create the get_subagent_result tool definition (without Pi SDK wrapper). */
 export function createGetResultTool(

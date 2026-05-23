@@ -1,6 +1,6 @@
 import { Text } from "@earendil-works/pi-tui";
-import { formatMs, formatTokens, formatTurns } from "../ui/display";
-import type { NotificationDetails } from "./notification";
+import type { NotificationDetails } from "#src/observation/notification";
+import { formatMs, formatTokens, formatTurns } from "#src/ui/display";
 
 /** Narrow theme interface — only the methods the renderer actually calls. */
 interface RendererTheme {

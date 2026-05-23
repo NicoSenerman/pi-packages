@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { debugLog } from "../debug";
+import { debugLog } from "#src/debug";
 
 export interface WorktreeInfo {
   /** Absolute path to the worktree directory. */

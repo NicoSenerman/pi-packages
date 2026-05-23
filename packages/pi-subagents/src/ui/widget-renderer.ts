@@ -6,10 +6,10 @@
  */
 
 import { truncateToWidth } from "@earendil-works/pi-tui";
-import type { AgentConfigLookup } from "../config/agent-types";
-import type { LifetimeUsage, SessionLike } from "../lifecycle/usage";
-import { getLifetimeTotal, getSessionContextPercent } from "../lifecycle/usage";
-import type { SubagentType } from "../types";
+import type { AgentConfigLookup } from "#src/config/agent-types";
+import type { LifetimeUsage, SessionLike } from "#src/lifecycle/usage";
+import { getLifetimeTotal, getSessionContextPercent } from "#src/lifecycle/usage";
+import type { SubagentType } from "#src/types";
 import {
 	describeActivity,
 	formatMs,
@@ -19,7 +19,7 @@ import {
 	getPromptModeLabel,
 	SPINNER,
 	type Theme,
-} from "./display";
+} from "#src/ui/display";
 
 // ── Data interfaces ──────────────────────────────────────────────────────────
 

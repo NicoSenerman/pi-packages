@@ -20,35 +20,35 @@ import {
   SettingsManager as SdkSettingsManager,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
-import { AgentTypeRegistry } from "./config/agent-types";
-import { loadCustomAgents } from "./config/custom-agents";
-import { SessionLifecycleHandler, ToolStartHandler } from "./handlers/index";
-import { AgentManager, type AgentManagerObserver } from "./lifecycle/agent-manager";
-import { createAgentRunner, getAgentConversation, type RunnerIO, steerAgent } from "./lifecycle/agent-runner";
-import { buildParentSnapshot } from "./lifecycle/parent-snapshot";
-import { GitWorktreeManager } from "./lifecycle/worktree";
-import { buildEventData, type NotificationDetails, NotificationManager } from "./observation/notification";
-import { createNotificationRenderer } from "./observation/renderer";
-import { createSubagentRuntime } from "./runtime";
-import { publishSubagentsService, unpublishSubagentsService } from "./service/service";
-import { createSubagentsService } from "./service/service-adapter";
-import { detectEnv } from "./session/env";
-import { buildMemoryBlock, buildReadOnlyMemoryBlock } from "./session/memory";
-import { type ModelRegistry, resolveModel } from "./session/model-resolver";
-import { buildAgentPrompt } from "./session/prompts";
-import { deriveSubagentSessionDir } from "./session/session-dir";
-import { preloadSkills } from "./session/skill-loader";
-import { SettingsManager } from "./settings";
-import { createAgentTool } from "./tools/agent-tool";
-import { createGetResultTool } from "./tools/get-result-tool";
-import { getModelLabelFromConfig } from "./tools/helpers";
-import { createSteerTool } from "./tools/steer-tool";
-import { FsAgentFileOps } from "./ui/agent-file-ops";
-import { createAgentsMenuHandler } from "./ui/agent-menu";
+import { AgentTypeRegistry } from "#src/config/agent-types";
+import { loadCustomAgents } from "#src/config/custom-agents";
+import { SessionLifecycleHandler, ToolStartHandler } from "#src/handlers/index";
+import { AgentManager, type AgentManagerObserver } from "#src/lifecycle/agent-manager";
+import { createAgentRunner, getAgentConversation, type RunnerIO, steerAgent } from "#src/lifecycle/agent-runner";
+import { buildParentSnapshot } from "#src/lifecycle/parent-snapshot";
+import { GitWorktreeManager } from "#src/lifecycle/worktree";
+import { buildEventData, type NotificationDetails, NotificationManager } from "#src/observation/notification";
+import { createNotificationRenderer } from "#src/observation/renderer";
+import { createSubagentRuntime } from "#src/runtime";
+import { publishSubagentsService, unpublishSubagentsService } from "#src/service/service";
+import { createSubagentsService } from "#src/service/service-adapter";
+import { detectEnv } from "#src/session/env";
+import { buildMemoryBlock, buildReadOnlyMemoryBlock } from "#src/session/memory";
+import { type ModelRegistry, resolveModel } from "#src/session/model-resolver";
+import { buildAgentPrompt } from "#src/session/prompts";
+import { deriveSubagentSessionDir } from "#src/session/session-dir";
+import { preloadSkills } from "#src/session/skill-loader";
+import { SettingsManager } from "#src/settings";
+import { createAgentTool } from "#src/tools/agent-tool";
+import { createGetResultTool } from "#src/tools/get-result-tool";
+import { getModelLabelFromConfig } from "#src/tools/helpers";
+import { createSteerTool } from "#src/tools/steer-tool";
+import { FsAgentFileOps } from "#src/ui/agent-file-ops";
+import { createAgentsMenuHandler } from "#src/ui/agent-menu";
 import {
   AgentWidget,
   type UICtx,
-} from "./ui/agent-widget";
+} from "#src/ui/agent-widget";
 
 export default function (pi: ExtensionAPI) {
   // ---- Register custom notification renderer ----

@@ -1,13 +1,13 @@
 import { wrapTextWithAnsi } from "@earendil-works/pi-tui";
-import { AgentTypeRegistry } from "../config/agent-types";
-import type { ParentSnapshot } from "../lifecycle/parent-snapshot";
-import type { ModelRegistry } from "../session/model-resolver";
-import type { AgentConfig, AgentRecord } from "../types";
-import type { AgentActivityTracker } from "./agent-activity-tracker";
-import { createAgentConfigEditor } from "./agent-config-editor";
-import { createAgentCreationWizard } from "./agent-creation-wizard";
-import type { AgentFileOps } from "./agent-file-ops";
-import { formatDuration, getDisplayName } from "./display";
+import { AgentTypeRegistry } from "#src/config/agent-types";
+import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
+import type { ModelRegistry } from "#src/session/model-resolver";
+import type { AgentConfig, AgentRecord } from "#src/types";
+import type { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
+import { createAgentConfigEditor } from "#src/ui/agent-config-editor";
+import { createAgentCreationWizard } from "#src/ui/agent-creation-wizard";
+import type { AgentFileOps } from "#src/ui/agent-file-ops";
+import { formatDuration, getDisplayName } from "#src/ui/display";
 
 // ---- Deps interface ----
 

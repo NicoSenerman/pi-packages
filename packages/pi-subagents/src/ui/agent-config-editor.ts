@@ -7,10 +7,10 @@
 
 import { join } from "node:path";
 
-import type { AgentTypeRegistry } from "../config/agent-types";
-import type { AgentConfig } from "../types";
-import type { AgentFileOps } from "./agent-file-ops";
-import type { MenuUI } from "./agent-menu";
+import type { AgentTypeRegistry } from "#src/config/agent-types";
+import type { AgentConfig } from "#src/types";
+import type { AgentFileOps } from "#src/ui/agent-file-ops";
+import type { MenuUI } from "#src/ui/agent-menu";
 
 // ---- Factory ----
 

@@ -3,7 +3,7 @@
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { buildParentContext } from "../session/context";
+import { buildParentContext } from "#src/session/context";
 
 /**
  * Plain data snapshot of the parent session state captured at spawn time.

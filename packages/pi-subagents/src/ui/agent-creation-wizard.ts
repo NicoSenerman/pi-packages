@@ -7,11 +7,11 @@
 
 import { join } from "node:path";
 
-import { BUILTIN_TOOL_NAMES } from "../config/agent-types";
-import type { ParentSnapshot } from "../lifecycle/parent-snapshot";
-import type { AgentRecord } from "../types";
-import type { AgentFileOps } from "./agent-file-ops";
-import type { MenuUI } from "./agent-menu";
+import { BUILTIN_TOOL_NAMES } from "#src/config/agent-types";
+import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
+import type { AgentRecord } from "#src/types";
+import type { AgentFileOps } from "#src/ui/agent-file-ops";
+import type { MenuUI } from "#src/ui/agent-menu";
 
 // ---- Deps interface ----
 

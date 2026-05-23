@@ -1,23 +1,23 @@
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
-import type { AgentSpawnConfig } from "../lifecycle/agent-manager";
-import type { ParentSnapshot } from "../lifecycle/parent-snapshot";
-import type { AgentRecord } from "../types";
-import { AgentActivityTracker } from "../ui/agent-activity-tracker";
-import {
-  type AgentDetails,
-  describeActivity,
-  formatMs,
-  SPINNER,
-} from "../ui/display";
-import { subscribeUIObserver } from "../ui/ui-observer";
-import type { AgentActivityAccess } from "./agent-tool";
+import type { AgentSpawnConfig } from "#src/lifecycle/agent-manager";
+import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
+import type { AgentActivityAccess } from "#src/tools/agent-tool";
 import {
   buildDetails,
   formatLifetimeTokens,
   getStatusNote,
   textResult,
-} from "./helpers";
-import type { ResolvedSpawnConfig } from "./spawn-config";
+} from "#src/tools/helpers";
+import type { ResolvedSpawnConfig } from "#src/tools/spawn-config";
+import type { AgentRecord } from "#src/types";
+import { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
+import {
+  type AgentDetails,
+  describeActivity,
+  formatMs,
+  SPINNER,
+} from "#src/ui/display";
+import { subscribeUIObserver } from "#src/ui/ui-observer";
 
 /** Narrow manager interface for the foreground runner. */
 export interface ForegroundManagerDeps {
