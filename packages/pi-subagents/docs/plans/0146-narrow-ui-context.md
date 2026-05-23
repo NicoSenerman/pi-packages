@@ -63,10 +63,8 @@ No other `ExtensionContext` properties (session, tools, hooks, etc.) are accesse
 A narrow interface capturing only the `ctx.ui` methods used by menu handlers:
 
 ```typescript
-import type { ModelRegistry } from "../model-resolver.js";
-
 export interface MenuUI {
-  select<T extends string>(title: string, options: T[]): Promise<T | undefined>;
+  select(title: string, options: string[]): Promise<string | undefined>;
   confirm(title: string, message: string): Promise<boolean>;
   input(title: string, defaultValue?: string): Promise<string | undefined>;
   notify(message: string, level: "info" | "warning" | "error"): void;
@@ -74,6 +72,8 @@ export interface MenuUI {
   custom<R>(component: any, options?: any): Promise<R>;
 }
 ```
+
+`select` uses a plain `string` return (not a generic `<T extends string>`) to match the SDK's structural signature.
 
 `modelRegistry` is not included in `MenuUI` — it is not a UI concern.
 Instead, the handler registration in `index.ts` passes it separately.
@@ -92,25 +92,42 @@ After this change, `index.ts` destructures what each handler needs:
 ```typescript
 // index.ts — after
 handler: async (_args, ctx) => {
-  await agentsMenuHandler({ ui: ctx.ui, modelRegistry: ctx.modelRegistry });
+  await agentsMenuHandler({
+    ui: ctx.ui,
+    modelRegistry: ctx.modelRegistry,
+    parentSnapshot: buildParentSnapshot(ctx),
+  });
 },
 ```
 
-In `agent-menu.ts`, the return type changes from `(ctx: ExtensionContext) => Promise<void>` to a function that accepts `{ ui: MenuUI; modelRegistry: ModelRegistry }`.
+In `agent-menu.ts`, the return type changes from `(ctx: ExtensionContext) => Promise<void>` to a function that accepts `{ ui: MenuUI; modelRegistry: ModelRegistry; parentSnapshot: ParentSnapshot }`.
 The `ExtensionContext` import is removed from `agent-menu.ts`, `agent-config-editor.ts`, and `agent-creation-wizard.ts`.
 
-### Wizard spawnAndWait — ParentSnapshot
+`modelRegistry` is threaded from the handler through `showAgentsMenu` → `showAllAgentsList` (the only consumer).
+`parentSnapshot` is threaded from the handler through `showAgentsMenu` → `wizard.showCreateWizard` → `showGenerateWizard` (the only consumer).
 
-`WizardManager.spawnAndWait` currently takes `ctx: ExtensionContext` and passes it to `manager.spawnAndWait(...)`.
-After #145, `index.ts` can call `buildParentSnapshot(ctx)` at the call site and pass the result:
+### Wizard spawnAndWait — drop ctx parameter
+
+`WizardManager.spawnAndWait` currently takes `ctx: ExtensionContext` as its first parameter and passes it to `deps.manager.spawnAndWait(ctx, ...)`.
+Once the menu handler no longer receives `ExtensionContext`, the wizard has no `ctx` to pass.
+
+Thread `parentSnapshot` as a parameter from the handler through the wizard, keeping `AgentMenuManager.spawnAndWait` accepting `ParentSnapshot` as its first parameter (consistent with `AgentManager.spawnAndWait`).
+The wizard's `showGenerateWizard` receives `parentSnapshot` and passes it to `deps.manager.spawnAndWait(parentSnapshot, ...)`.
 
 ```typescript
-// index.ts — spawnAndWait call site
-spawnAndWait: (snapshot, type, prompt, opts) =>
-  manager.spawnAndWait(snapshot, type, prompt, opts),
+// agent-creation-wizard.ts — after
+async function showGenerateWizard(
+  ui: MenuUI,
+  parentSnapshot: ParentSnapshot,
+  targetDir: string,
+) {
+  // ...
+  const record = await deps.manager.spawnAndWait(
+    parentSnapshot, "general-purpose", generatePrompt, { ... },
+  );
+}
 ```
 
-The `WizardManager` interface changes from `spawnAndWait(ctx: ExtensionContext, ...)` to `spawnAndWait(snapshot: ParentSnapshot, ...)`.
 The creation wizard no longer imports `ExtensionContext`.
 
 ### Dependency bag convention
@@ -144,6 +161,7 @@ pi.registerCommand('agents', {
     await agentsMenuHandler({
       ui: ctx.ui,
       modelRegistry: ctx.modelRegistry,
+      parentSnapshot: buildParentSnapshot(ctx),
     });
   },
 });
@@ -181,7 +199,9 @@ All changes are modifications to existing files.
 - Replace `ctx.ui.xxx(...)` → `ui.xxx(...)`.
 - Replace `ctx.modelRegistry` → parameter `modelRegistry` threaded to `showAllAgentsList`.
 - Change `AgentMenuDeps` usage: destructure in `createAgentsMenuHandler` signature.
-- Change return type from `(ctx: ExtensionContext) => Promise<void>` to `(params: { ui: MenuUI; modelRegistry: ModelRegistry }) => Promise<void>`.
+- Change return type from `(ctx: ExtensionContext) => Promise<void>` to `(params: { ui: MenuUI; modelRegistry: ModelRegistry; parentSnapshot: ParentSnapshot }) => Promise<void>`.
+- Thread `modelRegistry` from handler through `showAgentsMenu` → `showAllAgentsList`.
+- Thread `parentSnapshot` from handler through `showAgentsMenu` → `wizard.showCreateWizard` → `showGenerateWizard`.
 - Update `AgentMenuManager.spawnAndWait` to accept `ParentSnapshot` instead of `ExtensionContext`.
 - Remove `Omit<AgentSpawnConfig, "isBackground">` in favor of plain inline type.
 
@@ -201,6 +221,7 @@ All changes are modifications to existing files.
 - Change all inner function signatures from `(ctx: ExtensionContext)` to `(ui: MenuUI)`.
 - Replace `ctx.ui.xxx(...)` → `ui.xxx(...)`.
 - Change `WizardManager.spawnAndWait` to accept `ParentSnapshot` instead of `ExtensionContext`.
+- Thread `parentSnapshot` as a parameter from `showCreateWizard(ui, parentSnapshot)` → `showGenerateWizard(ui, parentSnapshot, targetDir)`.
 - Destructure `AgentCreationWizardDeps` in signature.
 
 ### Modified: `src/tools/get-result-tool.ts`
@@ -217,14 +238,16 @@ All changes are modifications to existing files.
 - Update `createAgentCreationWizard` call: pass 4 plain args instead of `AgentCreationWizardDeps` (registry is the `WizardRegistry`, not the full `AgentTypeRegistry` — pass `{ reload: () => registry.reload() }`).
 - Update `createGetResultTool` call: pass 4 plain args instead of `GetResultDeps`.
 - Update `createSteerTool` call: pass 4 plain args instead of `SteerToolDeps`.
-- Update `spawnAndWait` call in menu handler deps: wrap with `buildParentSnapshot(ctx)`.
-- Update `/agents` command handler to destructure `ctx.ui` and `ctx.modelRegistry`.
+- Update `spawnAndWait` in menu handler deps: keep `ParentSnapshot` as first parameter.
+- Update `/agents` command handler to destructure `ctx.ui`, `ctx.modelRegistry`, and `buildParentSnapshot(ctx)`.
 
 ### Modified: test files
 
-- `test/ui/agent-menu.test.ts` — remove `ctx as any` casts; pass `{ ui: { ... }, modelRegistry: {} }`.
-- `test/ui/agent-config-editor.test.ts` — remove `ctx as any` casts; pass `MenuUI` objects.
-- `test/ui/agent-creation-wizard.test.ts` — remove `ctx as any` casts; pass `MenuUI` objects and `ParentSnapshot` mocks.
+- `test/ui/agent-menu.test.ts` — remove `ctx as any` casts; pass `{ ui: { ... }, modelRegistry: {}, parentSnapshot: {} }`.
+- `test/ui/agent-config-editor.test.ts` — remove `ctx as any` casts; pass `MenuUI` objects directly.
+- `test/ui/agent-creation-wizard.test.ts` — remove `ctx as any` casts; pass `MenuUI` and stub `ParentSnapshot`.
+- `test/tools/get-result-tool.test.ts` — update `makeDeps` and `execute` helpers for dissolved parameters.
+- `test/tools/steer-tool.test.ts` — update `makeDeps` and `execute` helpers for dissolved parameters.
 
 ### Unchanged
 
@@ -247,38 +270,49 @@ All changes are modifications to existing files.
 
 ## TDD Order
 
-1. **Red → Green:** Update `agent-config-editor.ts` — dissolve `AgentConfigEditorDeps` into 4 plain parameters.
-   Update `agent-config-editor.test.ts` — remove `ctx as any` casts, pass `MenuUI` directly.
-   Commit: `refactor: dissolve AgentConfigEditorDeps into plain parameters (#146)`
+Each step must leave `pnpm run check` green.
+When a step changes a factory signature, it must also update the corresponding `index.ts` call site in the same commit.
 
-2. **Red → Green:** Update `agent-creation-wizard.ts` — destructure `AgentCreationWizardDeps`, change `WizardManager.spawnAndWait` to accept `ParentSnapshot`.
+1. **Refactor:** Define and export `MenuUI` interface in `agent-menu.ts`.
+   No other changes — just add the interface alongside the existing code.
+   Commit: `refactor: add MenuUI interface (#146)`
+
+2. **Refactor:** Update `agent-config-editor.ts` — dissolve `AgentConfigEditorDeps` into 4 plain parameters; change `showAgentDetail(ctx)` to `showAgentDetail(ui: MenuUI)`; replace `ctx.ui.xxx` → `ui.xxx`.
+   Update `agent-config-editor.test.ts` — remove `ctx as any` casts, pass `MenuUI` objects directly.
+   Update `index.ts` — update `createAgentConfigEditor` call to pass 4 plain args.
+   Commit: `refactor: dissolve AgentConfigEditorDeps and narrow to MenuUI (#146)`
+
+3. **Refactor:** Update `agent-creation-wizard.ts` — destructure `AgentCreationWizardDeps`; change `showCreateWizard(ctx)` to `showCreateWizard(ui: MenuUI, parentSnapshot: ParentSnapshot)`; thread `parentSnapshot` to `showGenerateWizard`; change `WizardManager.spawnAndWait` to accept `ParentSnapshot`; replace `ctx.ui.xxx` → `ui.xxx`.
    Update `agent-creation-wizard.test.ts` — remove `ctx as any` casts, pass `MenuUI` and stub `ParentSnapshot`.
+   Update `index.ts` — update `createAgentCreationWizard` call for destructured params.
    Commit: `refactor: narrow creation wizard to MenuUI and ParentSnapshot (#146)`
 
-3. **Red → Green:** Update `agent-menu.ts` — add `MenuUI` interface, destructure `AgentMenuDeps`, thread `modelRegistry` separately.
-   Update `agent-menu.test.ts` — remove `ctx as any` casts, pass `{ ui, modelRegistry }`.
+4. **Refactor:** Update `agent-menu.ts` — destructure `AgentMenuDeps`; change handler return type to accept `{ ui: MenuUI; modelRegistry: ModelRegistry; parentSnapshot: ParentSnapshot }`; thread `modelRegistry` to `showAllAgentsList`; thread `parentSnapshot` to `wizard.showCreateWizard`; update `AgentMenuManager.spawnAndWait` to accept `ParentSnapshot`; replace `ctx.ui.xxx` → `ui.xxx`.
+   Update `agent-menu.test.ts` — remove `ctx as any` casts, pass `{ ui, modelRegistry, parentSnapshot }`.
+   Update `index.ts` — update `/agents` handler to destructure `ctx.ui`, `ctx.modelRegistry`, and `buildParentSnapshot(ctx)`.
    Commit: `refactor: narrow agent menu to MenuUI interface (#146)`
 
-4. **Red → Green:** Update `get-result-tool.ts` — dissolve `GetResultDeps` into 4 plain parameters.
+5. **Refactor:** Update `get-result-tool.ts` — dissolve `GetResultDeps` into 4 plain parameters.
+   Update `test/tools/get-result-tool.test.ts` — update `makeDeps` and `execute` helpers.
+   Update `index.ts` — update `createGetResultTool` call to pass 4 plain args.
    Commit: `refactor: dissolve GetResultDeps into plain parameters (#146)`
 
-5. **Red → Green:** Update `steer-tool.ts` — dissolve `SteerToolDeps` into 4 plain parameters.
+6. **Refactor:** Update `steer-tool.ts` — dissolve `SteerToolDeps` into 4 plain parameters.
+   Update `test/tools/steer-tool.test.ts` — update `makeDeps` and `execute` helpers.
+   Update `index.ts` — update `createSteerTool` call to pass 4 plain args.
    Commit: `refactor: dissolve SteerToolDeps into plain parameters (#146)`
 
-6. **Red → Green:** Update `index.ts` — update all 5 factory call sites for the new signatures; update handler to extract `ctx.ui` + `ctx.modelRegistry`.
-   Commit: `refactor: wire narrow menu UI context at call sites (#146)`
-
-7. **Verify:** Run full test suite and type check.
+7. **Verify:** Run full test suite (`pnpm vitest run`) and type check (`pnpm run check`).
    Confirm zero `ctx as any` in the three menu test files.
    Commit: none (verification only).
 
 ## Risks and Mitigations
 
-| Risk                                                                                     | Mitigation                                                                                                                                                                                                                                             |
-| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `ctx.ui.custom` signature mismatch between `MenuUI` and real `ExtensionContext.ui`       | `MenuUI.custom` uses `any` for the component and options parameters since these are opaque TUI types internal to the SDK. This matches the existing usage where `ctx.ui.custom<undefined>(...)` passes a TUI component constructor.                    |
-| `ParentSnapshot` vs `ExtensionContext` mismatch at `WizardManager.spawnAndWait` boundary | `index.ts` already wraps with `buildParentSnapshot(ctx)` in the `spawnAndWait` call site. `AgentMenuManager` already has it too. Making `WizardManager` match eliminates the last divergence.                                                          |
-| Deper interface dissolution breaks `index.ts` type check                                 | The deps interfaces are only used by their factory and `index.ts`. Since both change in the same commit sequence, there is no intermediate state where they diverge. Steps 1–5 change module + test; step 6 updates `index.ts` for all simultaneously. |
+| Risk                                                                               | Mitigation                                                                                                                                                                                                                                                                                                                   |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ctx.ui.custom` signature mismatch between `MenuUI` and real `ExtensionContext.ui` | `MenuUI.custom` uses `any` for the component and options parameters since these are opaque TUI types internal to the SDK. This matches the existing usage where `ctx.ui.custom<undefined>(...)` passes a TUI component constructor.                                                                                          |
+| `ParentSnapshot` threading through menu → wizard call chain                        | The handler receives `parentSnapshot` from `index.ts` and threads it through `showAgentsMenu` → `showCreateWizard` → `showGenerateWizard`. Only `showGenerateWizard` uses it; the other functions relay it. This is acceptable since the parameter follows the existing `targetDir` threading pattern already in the wizard. |
+| Deps dissolution breaks `index.ts` type check mid-sequence                         | Each TDD step updates the factory, its test file, AND the `index.ts` call site together, keeping `pnpm run check` green after every commit.                                                                                                                                                                                  |
 
 ## Open Questions
 
