@@ -69,12 +69,12 @@ export interface MenuUI {
  * Returns a function suitable for `pi.registerCommand("agents", { handler })`.
  */
 export function createAgentsMenuHandler(deps: AgentMenuDeps) {
-  const editor = createAgentConfigEditor({
-    fileOps: deps.fileOps,
-    registry: deps.registry,
-    personalAgentsDir: deps.personalAgentsDir,
-    projectAgentsDir: deps.projectAgentsDir,
-  });
+  const editor = createAgentConfigEditor(
+    deps.fileOps,
+    deps.registry,
+    deps.personalAgentsDir,
+    deps.projectAgentsDir,
+  );
 
   const wizard = createAgentCreationWizard({
     fileOps: deps.fileOps,
@@ -187,7 +187,7 @@ export function createAgentsMenuHandler(deps: AgentMenuDeps) {
       .replace(/^[•◦✕\s]+/, "")
       .trim();
     if (deps.registry.resolveType(agentName) != null) {
-      await editor.showAgentDetail(ctx, agentName);
+      await editor.showAgentDetail(ctx.ui, agentName);
       await showAllAgentsList(ctx);
     }
   }

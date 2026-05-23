@@ -33,25 +33,29 @@ function makeFileOps() {
   };
 }
 
-function makeDeps() {
+function makeEditor(overrides: {
+  fileOps?: ReturnType<typeof makeFileOps>;
+  personalAgentsDir?: string;
+  projectAgentsDir?: string;
+} = {}) {
+  const fileOps = overrides.fileOps ?? makeFileOps();
+  const personalAgentsDir = overrides.personalAgentsDir ?? "/home/.pi/agents";
+  const projectAgentsDir = overrides.projectAgentsDir ?? "/project/.pi/agents";
   return {
-    fileOps: makeFileOps(),
-    registry: testRegistry,
-    personalAgentsDir: "/home/.pi/agents",
-    projectAgentsDir: "/project/.pi/agents",
+    fileOps,
+    editor: createAgentConfigEditor(fileOps, testRegistry, personalAgentsDir, projectAgentsDir),
   };
 }
 
-function makeCtx(selectResults: (string | undefined)[] = []) {
+function makeUI(selectResults: (string | undefined)[] = []) {
   let selectIdx = 0;
   return {
-    ui: {
-      select: vi.fn().mockImplementation(() => selectResults[selectIdx++]),
-      input: vi.fn(),
-      confirm: vi.fn(),
-      editor: vi.fn(),
-      notify: vi.fn(),
-    },
+    select: vi.fn().mockImplementation(() => selectResults[selectIdx++]),
+    input: vi.fn(),
+    confirm: vi.fn(),
+    editor: vi.fn(),
+    notify: vi.fn(),
+    custom: vi.fn(),
   };
 }
 
@@ -67,76 +71,70 @@ describe("createAgentConfigEditor", () => {
   describe("showAgentDetail", () => {
     it("notifies warning when agent type is not found", async () => {
       vi.spyOn(testRegistry, "resolveType").mockReturnValue(undefined);
-      const deps = makeDeps();
-      const ctx = makeCtx();
-      const editor = createAgentConfigEditor(deps);
+      const { editor } = makeEditor();
+      const ui = makeUI();
 
-      await editor.showAgentDetail(ctx as any, "missing-agent");
+      await editor.showAgentDetail(ui, "missing-agent");
 
-      expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect(ui.notify).toHaveBeenCalledWith(
         'Agent config not found for "missing-agent".',
         "warning",
       );
     });
 
     it("returns without action when user selects Back", async () => {
-      const deps = makeDeps();
-      deps.fileOps.findAgentFile.mockReturnValue(undefined);
-      const ctx = makeCtx(["Back"]);
-      const editor = createAgentConfigEditor(deps);
+      const { fileOps, editor } = makeEditor();
+      fileOps.findAgentFile.mockReturnValue(undefined);
+      const ui = makeUI(["Back"]);
 
-      await editor.showAgentDetail(ctx as any, "test-agent");
+      await editor.showAgentDetail(ui, "test-agent");
 
-      expect(ctx.ui.notify).not.toHaveBeenCalled();
+      expect(ui.notify).not.toHaveBeenCalled();
     });
 
     it("returns without action when user cancels", async () => {
-      const deps = makeDeps();
-      deps.fileOps.findAgentFile.mockReturnValue(undefined);
-      const ctx = makeCtx([undefined]);
-      const editor = createAgentConfigEditor(deps);
+      const { fileOps, editor } = makeEditor();
+      fileOps.findAgentFile.mockReturnValue(undefined);
+      const ui = makeUI([undefined]);
 
-      await editor.showAgentDetail(ctx as any, "test-agent");
+      await editor.showAgentDetail(ui, "test-agent");
 
-      expect(ctx.ui.notify).not.toHaveBeenCalled();
+      expect(ui.notify).not.toHaveBeenCalled();
     });
 
     // ---- Menu option structure ----
 
     it("shows Eject and Disable for a default agent with no file", async () => {
-      const deps = makeDeps();
-      deps.fileOps.findAgentFile.mockReturnValue(undefined);
-      const ctx = makeCtx([undefined]);
-      const editor = createAgentConfigEditor(deps);
+      const { fileOps, editor } = makeEditor();
+      fileOps.findAgentFile.mockReturnValue(undefined);
+      const ui = makeUI([undefined]);
 
-      await editor.showAgentDetail(ctx as any, "test-agent");
+      await editor.showAgentDetail(ui, "test-agent");
 
-      const options = ctx.ui.select.mock.calls[0][1] as string[];
+      const options = ui.select.mock.calls[0][1] as string[];
       expect(options).toEqual(["Eject (export as .md)", "Disable", "Back"]);
     });
 
     it("shows Edit, Disable, Reset, Delete for a default agent with override file", async () => {
-      const deps = makeDeps();
-      deps.fileOps.findAgentFile.mockReturnValue("/project/.pi/agents/test-agent.md");
-      const ctx = makeCtx([undefined]);
-      const editor = createAgentConfigEditor(deps);
+      const { fileOps, editor } = makeEditor();
+      fileOps.findAgentFile.mockReturnValue("/project/.pi/agents/test-agent.md");
+      const ui = makeUI([undefined]);
 
-      await editor.showAgentDetail(ctx as any, "test-agent");
+      await editor.showAgentDetail(ui, "test-agent");
 
-      const options = ctx.ui.select.mock.calls[0][1] as string[];
+      const options = ui.select.mock.calls[0][1] as string[];
       expect(options).toEqual(["Edit", "Disable", "Reset to default", "Delete", "Back"]);
     });
 
     it("shows Edit, Disable, Delete for a custom agent with file", async () => {
       vi.spyOn(testRegistry, "resolveAgentConfig").mockReturnValue(testCustomConfig);
-      const deps = makeDeps();
-      deps.fileOps.findAgentFile.mockReturnValue("/project/.pi/agents/test-agent.md");
-      const ctx = makeCtx([undefined]);
-      const editor = createAgentConfigEditor(deps);
+      const { fileOps, editor } = makeEditor();
+      fileOps.findAgentFile.mockReturnValue("/project/.pi/agents/test-agent.md");
+      const ui = makeUI([undefined]);
 
-      await editor.showAgentDetail(ctx as any, "test-agent");
+      await editor.showAgentDetail(ui, "test-agent");
 
-      const options = ctx.ui.select.mock.calls[0][1] as string[];
+      const options = ui.select.mock.calls[0][1] as string[];
       expect(options).toEqual(["Edit", "Disable", "Delete", "Back"]);
     });
 
@@ -145,14 +143,13 @@ describe("createAgentConfigEditor", () => {
         ...testDefaultConfig,
         enabled: false,
       });
-      const deps = makeDeps();
-      deps.fileOps.findAgentFile.mockReturnValue("/project/.pi/agents/test-agent.md");
-      const ctx = makeCtx([undefined]);
-      const editor = createAgentConfigEditor(deps);
+      const { fileOps, editor } = makeEditor();
+      fileOps.findAgentFile.mockReturnValue("/project/.pi/agents/test-agent.md");
+      const ui = makeUI([undefined]);
 
-      await editor.showAgentDetail(ctx as any, "test-agent");
+      await editor.showAgentDetail(ui, "test-agent");
 
-      const options = ctx.ui.select.mock.calls[0][1] as string[];
+      const options = ui.select.mock.calls[0][1] as string[];
       expect(options).toEqual(["Enable", "Edit", "Reset to default", "Delete", "Back"]);
     });
 
@@ -161,105 +158,98 @@ describe("createAgentConfigEditor", () => {
         ...testCustomConfig,
         enabled: false,
       });
-      const deps = makeDeps();
-      deps.fileOps.findAgentFile.mockReturnValue("/project/.pi/agents/test-agent.md");
-      const ctx = makeCtx([undefined]);
-      const editor = createAgentConfigEditor(deps);
+      const { fileOps, editor } = makeEditor();
+      fileOps.findAgentFile.mockReturnValue("/project/.pi/agents/test-agent.md");
+      const ui = makeUI([undefined]);
 
-      await editor.showAgentDetail(ctx as any, "test-agent");
+      await editor.showAgentDetail(ui, "test-agent");
 
-      const options = ctx.ui.select.mock.calls[0][1] as string[];
+      const options = ui.select.mock.calls[0][1] as string[];
       expect(options).toEqual(["Enable", "Edit", "Delete", "Back"]);
     });
 
     // ---- Edit ----
 
     it("writes updated content when user edits and saves", async () => {
-      const deps = makeDeps();
+      const { fileOps, editor } = makeEditor();
       const filePath = "/project/.pi/agents/test-agent.md";
-      deps.fileOps.findAgentFile.mockReturnValue(filePath);
-      deps.fileOps.read.mockReturnValue("original content");
-      const ctx = makeCtx(["Edit"]);
-      ctx.ui.editor.mockResolvedValue("edited content");
-      const editor = createAgentConfigEditor(deps);
+      fileOps.findAgentFile.mockReturnValue(filePath);
+      fileOps.read.mockReturnValue("original content");
+      const ui = makeUI(["Edit"]);
+      ui.editor.mockResolvedValue("edited content");
 
-      await editor.showAgentDetail(ctx as any, "test-agent");
+      await editor.showAgentDetail(ui, "test-agent");
 
-      expect(deps.fileOps.write).toHaveBeenCalledWith(filePath, "edited content");
+      expect(fileOps.write).toHaveBeenCalledWith(filePath, "edited content");
       expect(testRegistry.reload).toHaveBeenCalled();
-      expect(ctx.ui.notify).toHaveBeenCalledWith(`Updated ${filePath}`, "info");
+      expect(ui.notify).toHaveBeenCalledWith(`Updated ${filePath}`, "info");
     });
 
     it("does not write when editor returns unchanged content", async () => {
-      const deps = makeDeps();
-      deps.fileOps.findAgentFile.mockReturnValue("/project/.pi/agents/test-agent.md");
-      deps.fileOps.read.mockReturnValue("same content");
-      const ctx = makeCtx(["Edit"]);
-      ctx.ui.editor.mockResolvedValue("same content");
-      const editor = createAgentConfigEditor(deps);
+      const { fileOps, editor } = makeEditor();
+      fileOps.findAgentFile.mockReturnValue("/project/.pi/agents/test-agent.md");
+      fileOps.read.mockReturnValue("same content");
+      const ui = makeUI(["Edit"]);
+      ui.editor.mockResolvedValue("same content");
 
-      await editor.showAgentDetail(ctx as any, "test-agent");
+      await editor.showAgentDetail(ui, "test-agent");
 
-      expect(deps.fileOps.write).not.toHaveBeenCalled();
+      expect(fileOps.write).not.toHaveBeenCalled();
     });
 
     it("does not write when user cancels editor", async () => {
-      const deps = makeDeps();
-      deps.fileOps.findAgentFile.mockReturnValue("/project/.pi/agents/test-agent.md");
-      deps.fileOps.read.mockReturnValue("content");
-      const ctx = makeCtx(["Edit"]);
-      ctx.ui.editor.mockResolvedValue(undefined);
-      const editor = createAgentConfigEditor(deps);
+      const { fileOps, editor } = makeEditor();
+      fileOps.findAgentFile.mockReturnValue("/project/.pi/agents/test-agent.md");
+      fileOps.read.mockReturnValue("content");
+      const ui = makeUI(["Edit"]);
+      ui.editor.mockResolvedValue(undefined);
 
-      await editor.showAgentDetail(ctx as any, "test-agent");
+      await editor.showAgentDetail(ui, "test-agent");
 
-      expect(deps.fileOps.write).not.toHaveBeenCalled();
+      expect(fileOps.write).not.toHaveBeenCalled();
     });
 
     // ---- Delete ----
 
     it("removes file when user confirms delete", async () => {
-      const deps = makeDeps();
+      const { fileOps, editor } = makeEditor();
       const filePath = "/project/.pi/agents/test-agent.md";
-      deps.fileOps.findAgentFile.mockReturnValue(filePath);
-      const ctx = makeCtx(["Delete"]);
-      ctx.ui.confirm.mockResolvedValue(true);
-      const editor = createAgentConfigEditor(deps);
+      fileOps.findAgentFile.mockReturnValue(filePath);
+      const ui = makeUI(["Delete"]);
+      ui.confirm.mockResolvedValue(true);
 
-      await editor.showAgentDetail(ctx as any, "test-agent");
+      await editor.showAgentDetail(ui, "test-agent");
 
-      expect(deps.fileOps.remove).toHaveBeenCalledWith(filePath);
+      expect(fileOps.remove).toHaveBeenCalledWith(filePath);
       expect(testRegistry.reload).toHaveBeenCalled();
-      expect(ctx.ui.notify).toHaveBeenCalledWith(`Deleted ${filePath}`, "info");
+      expect(ui.notify).toHaveBeenCalledWith(`Deleted ${filePath}`, "info");
     });
 
     it("does not remove file when user cancels delete", async () => {
-      const deps = makeDeps();
-      deps.fileOps.findAgentFile.mockReturnValue("/project/.pi/agents/test-agent.md");
-      const ctx = makeCtx(["Delete"]);
-      ctx.ui.confirm.mockResolvedValue(false);
-      const editor = createAgentConfigEditor(deps);
+      const { fileOps, editor } = makeEditor();
+      fileOps.findAgentFile.mockReturnValue("/project/.pi/agents/test-agent.md");
+      const ui = makeUI(["Delete"]);
+      ui.confirm.mockResolvedValue(false);
 
-      await editor.showAgentDetail(ctx as any, "test-agent");
+      await editor.showAgentDetail(ui, "test-agent");
 
-      expect(deps.fileOps.remove).not.toHaveBeenCalled();
+      expect(fileOps.remove).not.toHaveBeenCalled();
     });
 
     // ---- Reset to default ----
 
     it("removes override file when user confirms reset", async () => {
-      const deps = makeDeps();
+      const { fileOps, editor } = makeEditor();
       const filePath = "/project/.pi/agents/test-agent.md";
-      deps.fileOps.findAgentFile.mockReturnValue(filePath);
-      const ctx = makeCtx(["Reset to default"]);
-      ctx.ui.confirm.mockResolvedValue(true);
-      const editor = createAgentConfigEditor(deps);
+      fileOps.findAgentFile.mockReturnValue(filePath);
+      const ui = makeUI(["Reset to default"]);
+      ui.confirm.mockResolvedValue(true);
 
-      await editor.showAgentDetail(ctx as any, "test-agent");
+      await editor.showAgentDetail(ui, "test-agent");
 
-      expect(deps.fileOps.remove).toHaveBeenCalledWith(filePath);
+      expect(fileOps.remove).toHaveBeenCalledWith(filePath);
       expect(testRegistry.reload).toHaveBeenCalled();
-      expect(ctx.ui.notify).toHaveBeenCalledWith("Restored default test-agent", "info");
+      expect(ui.notify).toHaveBeenCalledWith("Restored default test-agent", "info");
     });
 
     // ---- Eject ----
@@ -269,14 +259,13 @@ describe("createAgentConfigEditor", () => {
         ...testDefaultConfig,
         builtinToolNames: ["read", "bash"],
       });
-      const deps = makeDeps();
-      deps.fileOps.findAgentFile.mockReturnValue(undefined);
-      const ctx = makeCtx(["Eject (export as .md)", "Project (.pi/agents/)"]);
-      const editor = createAgentConfigEditor(deps);
+      const { fileOps, editor } = makeEditor();
+      fileOps.findAgentFile.mockReturnValue(undefined);
+      const ui = makeUI(["Eject (export as .md)", "Project (.pi/agents/)"]);
 
-      await editor.showAgentDetail(ctx as any, "test-agent");
+      await editor.showAgentDetail(ui, "test-agent");
 
-      expect(deps.fileOps.write).toHaveBeenCalledWith(
+      expect(fileOps.write).toHaveBeenCalledWith(
         "/project/.pi/agents/test-agent.md",
         expect.stringContaining("description: A test agent"),
       );
@@ -284,36 +273,34 @@ describe("createAgentConfigEditor", () => {
     });
 
     it("prompts for overwrite when ejected file already exists", async () => {
-      const deps = makeDeps();
-      deps.fileOps.findAgentFile.mockReturnValue(undefined);
-      deps.fileOps.exists.mockReturnValue(true);
-      const ctx = makeCtx(["Eject (export as .md)", "Project (.pi/agents/)"]);
-      ctx.ui.confirm.mockResolvedValue(false);
-      const editor = createAgentConfigEditor(deps);
+      const { fileOps, editor } = makeEditor();
+      fileOps.findAgentFile.mockReturnValue(undefined);
+      fileOps.exists.mockReturnValue(true);
+      const ui = makeUI(["Eject (export as .md)", "Project (.pi/agents/)"]);
+      ui.confirm.mockResolvedValue(false);
 
-      await editor.showAgentDetail(ctx as any, "test-agent");
+      await editor.showAgentDetail(ui, "test-agent");
 
-      expect(ctx.ui.confirm).toHaveBeenCalledWith(
+      expect(ui.confirm).toHaveBeenCalledWith(
         "Overwrite",
         expect.stringContaining("already exists"),
       );
-      expect(deps.fileOps.write).not.toHaveBeenCalled();
+      expect(fileOps.write).not.toHaveBeenCalled();
     });
 
     // ---- Disable ----
 
     it("disables agent by toggling enabled:false in existing file", async () => {
-      const deps = makeDeps();
-      const filePath = "/project/.pi/agents/test-agent.md";
-      deps.fileOps.findAgentFile.mockReturnValue(filePath);
-      deps.fileOps.read.mockReturnValue("---\ndescription: test\n---\n\nprompt\n");
       vi.spyOn(testRegistry, "resolveAgentConfig").mockReturnValue(testCustomConfig);
-      const ctx = makeCtx(["Disable"]);
-      const editor = createAgentConfigEditor(deps);
+      const { fileOps, editor } = makeEditor();
+      const filePath = "/project/.pi/agents/test-agent.md";
+      fileOps.findAgentFile.mockReturnValue(filePath);
+      fileOps.read.mockReturnValue("---\ndescription: test\n---\n\nprompt\n");
+      const ui = makeUI(["Disable"]);
 
-      await editor.showAgentDetail(ctx as any, "test-agent");
+      await editor.showAgentDetail(ui, "test-agent");
 
-      expect(deps.fileOps.write).toHaveBeenCalledWith(
+      expect(fileOps.write).toHaveBeenCalledWith(
         filePath,
         "---\nenabled: false\ndescription: test\n---\n\nprompt\n",
       );
@@ -321,29 +308,27 @@ describe("createAgentConfigEditor", () => {
     });
 
     it("notifies when agent is already disabled", async () => {
-      const deps = makeDeps();
-      deps.fileOps.findAgentFile.mockReturnValue("/project/.pi/agents/test-agent.md");
-      deps.fileOps.read.mockReturnValue("---\nenabled: false\ndescription: test\n---\n");
       vi.spyOn(testRegistry, "resolveAgentConfig").mockReturnValue(testCustomConfig);
-      const ctx = makeCtx(["Disable"]);
-      const editor = createAgentConfigEditor(deps);
+      const { fileOps, editor } = makeEditor();
+      fileOps.findAgentFile.mockReturnValue("/project/.pi/agents/test-agent.md");
+      fileOps.read.mockReturnValue("---\nenabled: false\ndescription: test\n---\n");
+      const ui = makeUI(["Disable"]);
 
-      await editor.showAgentDetail(ctx as any, "test-agent");
+      await editor.showAgentDetail(ui, "test-agent");
 
-      expect(deps.fileOps.write).not.toHaveBeenCalled();
-      expect(ctx.ui.notify).toHaveBeenCalledWith("test-agent is already disabled.", "info");
+      expect(fileOps.write).not.toHaveBeenCalled();
+      expect(ui.notify).toHaveBeenCalledWith("test-agent is already disabled.", "info");
     });
 
     it("creates a disable-only file when no agent file exists", async () => {
-      const deps = makeDeps();
-      deps.fileOps.findAgentFile.mockReturnValue(undefined);
+      const { fileOps, editor } = makeEditor();
+      fileOps.findAgentFile.mockReturnValue(undefined);
       vi.spyOn(testRegistry, "resolveAgentConfig").mockReturnValue(testDefaultConfig);
-      const disableCtx = makeCtx(["Disable", "Project (.pi/agents/)"]);
-      const editor = createAgentConfigEditor(deps);
+      const ui = makeUI(["Disable", "Project (.pi/agents/)"]);
 
-      await editor.showAgentDetail(disableCtx as any, "test-agent");
+      await editor.showAgentDetail(ui, "test-agent");
 
-      expect(deps.fileOps.write).toHaveBeenCalledWith(
+      expect(fileOps.write).toHaveBeenCalledWith(
         "/project/.pi/agents/test-agent.md",
         "---\nenabled: false\n---\n",
       );
@@ -356,16 +341,15 @@ describe("createAgentConfigEditor", () => {
         ...testCustomConfig,
         enabled: false,
       });
-      const deps = makeDeps();
+      const { fileOps, editor } = makeEditor();
       const filePath = "/project/.pi/agents/test-agent.md";
-      deps.fileOps.findAgentFile.mockReturnValue(filePath);
-      deps.fileOps.read.mockReturnValue("---\nenabled: false\ndescription: test\n---\n\nprompt\n");
-      const ctx = makeCtx(["Enable"]);
-      const editor = createAgentConfigEditor(deps);
+      fileOps.findAgentFile.mockReturnValue(filePath);
+      fileOps.read.mockReturnValue("---\nenabled: false\ndescription: test\n---\n\nprompt\n");
+      const ui = makeUI(["Enable"]);
 
-      await editor.showAgentDetail(ctx as any, "test-agent");
+      await editor.showAgentDetail(ui, "test-agent");
 
-      expect(deps.fileOps.write).toHaveBeenCalledWith(
+      expect(fileOps.write).toHaveBeenCalledWith(
         filePath,
         "---\ndescription: test\n---\n\nprompt\n",
       );
@@ -377,17 +361,16 @@ describe("createAgentConfigEditor", () => {
         ...testDefaultConfig,
         enabled: false,
       });
-      const deps = makeDeps();
+      const { fileOps, editor } = makeEditor();
       const filePath = "/project/.pi/agents/test-agent.md";
-      deps.fileOps.findAgentFile.mockReturnValue(filePath);
-      deps.fileOps.read.mockReturnValue("---\nenabled: false\n---\n");
-      const ctx = makeCtx(["Enable"]);
-      const editor = createAgentConfigEditor(deps);
+      fileOps.findAgentFile.mockReturnValue(filePath);
+      fileOps.read.mockReturnValue("---\nenabled: false\n---\n");
+      const ui = makeUI(["Enable"]);
 
-      await editor.showAgentDetail(ctx as any, "test-agent");
+      await editor.showAgentDetail(ui, "test-agent");
 
-      expect(deps.fileOps.remove).toHaveBeenCalledWith(filePath);
-      expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect(fileOps.remove).toHaveBeenCalledWith(filePath);
+      expect(ui.notify).toHaveBeenCalledWith(
         `Enabled test-agent (removed ${filePath})`,
         "info",
       );

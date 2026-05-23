@@ -7,35 +7,31 @@
 
 import { join } from "node:path";
 
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentTypeRegistry } from "../agent-types.js";
 import type { AgentConfig } from "../types.js";
 import type { AgentFileOps } from "./agent-file-ops.js";
-
-// ---- Deps interface ----
-
-export interface AgentConfigEditorDeps {
-  fileOps: AgentFileOps;
-  registry: AgentTypeRegistry;
-  personalAgentsDir: string;
-  projectAgentsDir: string;
-}
+import type { MenuUI } from "./agent-menu.js";
 
 // ---- Factory ----
 
-export function createAgentConfigEditor(deps: AgentConfigEditorDeps) {
+export function createAgentConfigEditor(
+  fileOps: AgentFileOps,
+  registry: AgentTypeRegistry,
+  personalAgentsDir: string,
+  projectAgentsDir: string,
+) {
   function agentDirs(): string[] {
-    return [deps.projectAgentsDir, deps.personalAgentsDir];
+    return [projectAgentsDir, personalAgentsDir];
   }
 
-  async function showAgentDetail(ctx: ExtensionContext, name: string) {
-    if (deps.registry.resolveType(name) == null) {
-      ctx.ui.notify(`Agent config not found for "${name}".`, "warning");
+  async function showAgentDetail(ui: MenuUI, name: string) {
+    if (registry.resolveType(name) == null) {
+      ui.notify(`Agent config not found for "${name}".`, "warning");
       return;
     }
-    const cfg = deps.registry.resolveAgentConfig(name);
+    const cfg = registry.resolveAgentConfig(name);
 
-    const file = deps.fileOps.findAgentFile(name, agentDirs());
+    const file = fileOps.findAgentFile(name, agentDirs());
     const isDefault = cfg.isDefault === true;
     const disabled = cfg.enabled === false;
 
@@ -52,64 +48,64 @@ export function createAgentConfigEditor(deps: AgentConfigEditorDeps) {
       menuOptions = ["Edit", "Disable", "Delete", "Back"];
     }
 
-    const choice = await ctx.ui.select(name, menuOptions);
+    const choice = await ui.select(name, menuOptions);
     if (!choice || choice === "Back") return;
 
     if (choice === "Edit" && file) {
-      const content = deps.fileOps.read(file);
+      const content = fileOps.read(file);
       if (content !== undefined) {
-        const edited = await ctx.ui.editor(`Edit ${name}`, content);
+        const edited = await ui.editor(`Edit ${name}`, content);
         if (edited !== undefined && edited !== content) {
-          deps.fileOps.write(file, edited);
-          deps.registry.reload();
-          ctx.ui.notify(`Updated ${file}`, "info");
+          fileOps.write(file, edited);
+          registry.reload();
+          ui.notify(`Updated ${file}`, "info");
         }
       }
     } else if (choice === "Delete") {
       if (file) {
-        const confirmed = await ctx.ui.confirm(
+        const confirmed = await ui.confirm(
           "Delete agent",
           `Delete ${name} (${file})?`,
         );
         if (confirmed) {
-          deps.fileOps.remove(file);
-          deps.registry.reload();
-          ctx.ui.notify(`Deleted ${file}`, "info");
+          fileOps.remove(file);
+          registry.reload();
+          ui.notify(`Deleted ${file}`, "info");
         }
       }
     } else if (choice === "Reset to default" && file) {
-      const confirmed = await ctx.ui.confirm(
+      const confirmed = await ui.confirm(
         "Reset to default",
         `Delete override ${file} and restore embedded default?`,
       );
       if (confirmed) {
-        deps.fileOps.remove(file);
-        deps.registry.reload();
-        ctx.ui.notify(`Restored default ${name}`, "info");
+        fileOps.remove(file);
+        registry.reload();
+        ui.notify(`Restored default ${name}`, "info");
       }
     } else if (choice.startsWith("Eject")) {
-      await ejectAgent(ctx, name, cfg);
+      await ejectAgent(ui, name, cfg);
     } else if (choice === "Disable") {
-      await disableAgent(ctx, name);
+      await disableAgent(ui, name);
     } else if (choice === "Enable") {
-      await enableAgent(ctx, name);
+      await enableAgent(ui, name);
     }
   }
 
-  async function ejectAgent(ctx: ExtensionContext, name: string, cfg: AgentConfig) {
-    const location = await ctx.ui.select("Choose location", [
+  async function ejectAgent(ui: MenuUI, name: string, cfg: AgentConfig) {
+    const location = await ui.select("Choose location", [
       "Project (.pi/agents/)",
-      `Personal (${deps.personalAgentsDir})`,
+      `Personal (${personalAgentsDir})`,
     ]);
     if (!location) return;
 
     const targetDir = location.startsWith("Project")
-      ? deps.projectAgentsDir
-      : deps.personalAgentsDir;
+      ? projectAgentsDir
+      : personalAgentsDir;
 
     const targetPath = join(targetDir, `${name}.md`);
-    if (deps.fileOps.exists(targetPath)) {
-      const overwrite = await ctx.ui.confirm(
+    if (fileOps.exists(targetPath)) {
+      const overwrite = await ui.confirm(
         "Overwrite",
         `${targetPath} already exists. Overwrite?`,
       );
@@ -140,61 +136,61 @@ export function createAgentConfigEditor(deps: AgentConfigEditorDeps) {
 
     const content = `---\n${fmFields.join("\n")}\n---\n\n${cfg.systemPrompt}\n`;
 
-    deps.fileOps.write(targetPath, content);
-    deps.registry.reload();
-    ctx.ui.notify(`Ejected ${name} to ${targetPath}`, "info");
+    fileOps.write(targetPath, content);
+    registry.reload();
+    ui.notify(`Ejected ${name} to ${targetPath}`, "info");
   }
 
-  async function disableAgent(ctx: ExtensionContext, name: string) {
-    const file = deps.fileOps.findAgentFile(name, agentDirs());
+  async function disableAgent(ui: MenuUI, name: string) {
+    const file = fileOps.findAgentFile(name, agentDirs());
     if (file) {
-      const content = deps.fileOps.read(file);
+      const content = fileOps.read(file);
       if (content?.includes("\nenabled: false\n")) {
-        ctx.ui.notify(`${name} is already disabled.`, "info");
+        ui.notify(`${name} is already disabled.`, "info");
         return;
       }
       if (content) {
         const updated = content.replace(/^---\n/, "---\nenabled: false\n");
-        deps.fileOps.write(file, updated);
-        deps.registry.reload();
-        ctx.ui.notify(`Disabled ${name} (${file})`, "info");
+        fileOps.write(file, updated);
+        registry.reload();
+        ui.notify(`Disabled ${name} (${file})`, "info");
       }
       return;
     }
 
-    const location = await ctx.ui.select("Choose location", [
+    const location = await ui.select("Choose location", [
       "Project (.pi/agents/)",
-      `Personal (${deps.personalAgentsDir})`,
+      `Personal (${personalAgentsDir})`,
     ]);
     if (!location) return;
 
     const targetDir = location.startsWith("Project")
-      ? deps.projectAgentsDir
-      : deps.personalAgentsDir;
+      ? projectAgentsDir
+      : personalAgentsDir;
 
     const targetPath = join(targetDir, `${name}.md`);
-    deps.fileOps.write(targetPath, "---\nenabled: false\n---\n");
-    deps.registry.reload();
-    ctx.ui.notify(`Disabled ${name} (${targetPath})`, "info");
+    fileOps.write(targetPath, "---\nenabled: false\n---\n");
+    registry.reload();
+    ui.notify(`Disabled ${name} (${targetPath})`, "info");
   }
 
-  async function enableAgent(ctx: ExtensionContext, name: string) {
-    const file = deps.fileOps.findAgentFile(name, agentDirs());
+  async function enableAgent(ui: MenuUI, name: string) {
+    const file = fileOps.findAgentFile(name, agentDirs());
     if (!file) return;
 
-    const content = deps.fileOps.read(file);
+    const content = fileOps.read(file);
     if (!content) return;
 
     const updated = content.replace(/^(---\n)enabled: false\n/, "$1");
 
     if (updated.trim() === "---\n---" || updated.trim() === "---\n---\n") {
-      deps.fileOps.remove(file);
-      deps.registry.reload();
-      ctx.ui.notify(`Enabled ${name} (removed ${file})`, "info");
+      fileOps.remove(file);
+      registry.reload();
+      ui.notify(`Enabled ${name} (removed ${file})`, "info");
     } else {
-      deps.fileOps.write(file, updated);
-      deps.registry.reload();
-      ctx.ui.notify(`Enabled ${name} (${file})`, "info");
+      fileOps.write(file, updated);
+      registry.reload();
+      ui.notify(`Enabled ${name} (${file})`, "info");
     }
   }
 
