@@ -94,4 +94,54 @@ describe("renderFinishedLine", () => {
 		// Should show ~2.0s (may vary slightly due to test execution time)
 		expect(line).toMatch(/[12]\.\ds/);
 	});
+
+	it("renders error status with error icon and message", () => {
+		const agent = makeAgent({ status: "error", error: "something broke" });
+		const line = renderFinishedLine(agent, undefined, testRegistry, theme);
+
+		expect(line).toContain("[error:✗]");
+		expect(line).toContain("[error: error: something broke]");
+	});
+
+	it("renders error status without message when error is undefined", () => {
+		const agent = makeAgent({ status: "error" });
+		const line = renderFinishedLine(agent, undefined, testRegistry, theme);
+
+		expect(line).toContain("[error:✗]");
+		expect(line).toContain("[error: error]");
+	});
+
+	it("truncates long error messages to 60 chars", () => {
+		const longError = "a".repeat(80);
+		const agent = makeAgent({ status: "error", error: longError });
+		const line = renderFinishedLine(agent, undefined, testRegistry, theme);
+
+		// Error message should be sliced to 60 chars
+		expect(line).toContain("a".repeat(60));
+		expect(line).not.toContain("a".repeat(61));
+	});
+
+	it("renders aborted status with error icon and warning text", () => {
+		const agent = makeAgent({ status: "aborted" });
+		const line = renderFinishedLine(agent, undefined, testRegistry, theme);
+
+		expect(line).toContain("[error:✗]");
+		expect(line).toContain("[warning: aborted]");
+	});
+
+	it("renders steered status with warning icon and turn limit text", () => {
+		const agent = makeAgent({ status: "steered" });
+		const line = renderFinishedLine(agent, undefined, testRegistry, theme);
+
+		expect(line).toContain("[warning:✓]");
+		expect(line).toContain("[warning: (turn limit)]");
+	});
+
+	it("renders stopped status with dim icon and text", () => {
+		const agent = makeAgent({ status: "stopped" });
+		const line = renderFinishedLine(agent, undefined, testRegistry, theme);
+
+		expect(line).toContain("[dim:■]");
+		expect(line).toContain("[dim: stopped]");
+	});
 });
