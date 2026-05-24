@@ -6,7 +6,7 @@
  */
 
 import { truncateToWidth } from "@earendil-works/pi-tui";
-import { extractAssistantContent, getToolCallName } from "#src/session/content-items";
+import { extractAssistantContent } from "#src/session/content-items";
 import { extractText } from "#src/session/context";
 import type { Theme } from "#src/ui/display";
 import { describeActivity } from "#src/ui/display";

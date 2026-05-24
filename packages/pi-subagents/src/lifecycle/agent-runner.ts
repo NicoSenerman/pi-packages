@@ -1,5 +1,5 @@
 /**
- * agent-runner.ts — Core execution engine: creates sessions, runs agents, collects results.
+ * agent-runner.ts - Core execution engine: creates sessions, runs agents, collects results.
  */
 
 import type { Model } from "@earendil-works/pi-ai";
@@ -11,6 +11,7 @@ import {
 import type { AgentConfigLookup } from "#src/config/agent-types";
 import type { ParentSessionInfo } from "#src/lifecycle/agent-manager";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
+import { extractAssistantContent } from "#src/session/content-items";
 import { extractText } from "#src/session/context";
 import type { EnvInfo } from "#src/session/env";
 import { type AssemblerIO, assembleSessionConfig, type ToolFilterConfig } from "#src/session/session-config";
@@ -19,27 +20,10 @@ import type { ShellExec, SubagentType, ThinkingLevel } from "#src/types";
 /** Names of tools registered by this extension that subagents must NOT inherit. */
 const EXCLUDED_TOOL_NAMES = ["Agent", "get_subagent_result", "steer_subagent"];
 
-// ── Local message-shape types ───────────────────────────────────────────────
-// The Pi SDK does not export a narrow type for tool-call content variants.
-
-/** Tool-call content item — SDK exposes this variant at runtime but doesn’t export the narrow type. */
-interface ToolCallContent {
-  type: "toolCall";
-  name?: string;
-  toolName?: string;
-}
-
-/** Extracts the display name from a tool-call content item. */
-function getToolCallName(c: { type: string }): string {
-  if (c.type !== "toolCall") return "unknown";
-  const tc = c as ToolCallContent;
-  return tc.name ?? tc.toolName ?? "unknown";
-}
-
 /**
  * Filter the session's active tool names according to extension/denylist rules.
  *
- * Run twice — once before `bindExtensions` (filters built-in tools) and once after
+ * Run twice - once before `bindExtensions` (filters built-in tools) and once after
  * (filters extension-registered tools, which only join the active set during
  * `bindExtensions`). Extracting this keeps the two callsites consistent and makes
  * the post-bind re-filter trivial.
@@ -116,7 +100,7 @@ export interface CreateSessionOptions {
 }
 
 /**
- * Environment discovery — detect runtime context and resolve directories.
+ * Environment discovery - detect runtime context and resolve directories.
  *
  * Decouples the runner from direct process/SDK reads so each can be stubbed
  * independently in tests.
@@ -128,7 +112,7 @@ export interface EnvironmentIO {
 }
 
 /**
- * Session factory — create SDK objects for a child agent session.
+ * Session factory - create SDK objects for a child agent session.
  *
  * Decouples the runner from direct Pi SDK imports and sibling-module IO,
  * making it testable via plain stub objects without vi.mock().
@@ -153,15 +137,15 @@ export type RunnerIO = EnvironmentIO & SessionFactoryIO;
 // ── Public interfaces ─────────────────────────────────────────────────────────
 
 /**
- * Parent execution context — where/who is running.
+ * Parent execution context - where/who is running.
  *
  * Groups the four fields that describe the parent environment and identity,
  * separating them from the per-call execution parameters in RunOptions.
  */
 export interface RunContext {
-  /** Shell-exec callback for detectEnv — injected from pi.exec(). */
+  /** Shell-exec callback for detectEnv - injected from pi.exec(). */
   exec: ShellExec;
-  /** Agent config lookup — provides resolveAgentConfig and getToolNamesForType. */
+  /** Agent config lookup - provides resolveAgentConfig and getToolNamesForType. */
   registry: AgentConfigLookup;
   /** Override working directory (e.g. for worktree isolation). */
   cwd?: string;
@@ -170,14 +154,14 @@ export interface RunContext {
 }
 
 export interface RunOptions {
-  /** Parent execution context — where/who is running. */
+  /** Parent execution context - where/who is running. */
   context: RunContext;
   model?: Model<any>;
   maxTurns?: number;
   signal?: AbortSignal;
   isolated?: boolean;
   thinkingLevel?: ThinkingLevel;
-  /** Called once after session creation — session delivery mechanism. */
+  /** Called once after session creation - session delivery mechanism. */
   onSessionCreated?: (session: AgentSession) => void;
   /**
    * Default max turns from runtime config. Falls back to the module-scope
@@ -285,7 +269,7 @@ export async function runAgent(
   options: RunOptions,
   io: RunnerIO,
 ): Promise<RunResult> {
-  // Resolve working directory upfront — needed for detectEnv before assembly.
+  // Resolve working directory upfront - needed for detectEnv before assembly.
   const effectiveCwd = options.context.cwd ?? snapshot.cwd;
   const env = await io.detectEnv(options.context.exec, effectiveCwd);
 
@@ -312,7 +296,7 @@ export async function runAgent(
   const agentDir = io.getAgentDir();
 
   // Load extensions/skills: true or string[] → load; false → don't.
-  // Suppress AGENTS.md/CLAUDE.md and APPEND_SYSTEM.md — upstream's
+  // Suppress AGENTS.md/CLAUDE.md and APPEND_SYSTEM.md - upstream's
   // buildSystemPrompt() re-appends both AFTER systemPromptOverride, which
   // would defeat prompt_mode: replace and isolated: true. Parent context, if
   // wanted, reaches the subagent via prompt_mode: append (parentSystemPrompt
@@ -351,7 +335,7 @@ export async function runAgent(
 
   // Filter active tools: remove our own tools to prevent nesting,
   // apply extension allowlist if specified, and apply disallowedTools denylist.
-  // First pass — over built-in tools, before bindExtensions registers extension tools.
+  // First pass - over built-in tools, before bindExtensions registers extension tools.
   if (cfg.toolFilter.extensions !== false || cfg.toolFilter.disallowedSet) {
     const filtered = filterActiveTools(session.getActiveToolNames(), cfg.toolFilter);
     session.setActiveToolsByName(filtered);
@@ -391,7 +375,7 @@ export async function runAgent(
         if (!softLimitReached && turnCount >= maxTurns) {
           softLimitReached = true;
           void session.steer(
-            "You have reached your turn limit. Wrap up immediately — provide your final answer now.",
+            "You have reached your turn limit. Wrap up immediately - provide your final answer now.",
           );
         } else if (softLimitReached && turnCount >= maxTurns + (options.graceTurns ?? 5)) {
           aborted = true;
@@ -475,17 +459,13 @@ export function getAgentConversation(session: AgentSession): string {
           : extractText(msg.content);
       if (text.trim()) parts.push(`[User]: ${text.trim()}`);
     } else if (msg.role === "assistant") {
-      const textParts: string[] = [];
-      const toolCalls: string[] = [];
-      for (const c of msg.content) {
-        if (c.type === "text" && c.text) textParts.push(c.text);
-        else if (c.type === "toolCall")
-          toolCalls.push(`  Tool: ${getToolCallName(c)}`);
-      }
+      const { textParts, toolNames } = extractAssistantContent(
+        msg.content as unknown as { type: string; [key: string]: unknown }[],
+      );
       if (textParts.length > 0)
         parts.push(`[Assistant]: ${textParts.join("\n")}`);
-      if (toolCalls.length > 0)
-        parts.push(`[Tool Calls]:\n${toolCalls.join("\n")}`);
+      if (toolNames.length > 0)
+        parts.push(`[Tool Calls]:\n${toolNames.map((n) => `  Tool: ${n}`).join("\n")}`);
     } else if (msg.role === "toolResult") {
       const text = extractText(msg.content);
       const truncated = text.length > 200 ? text.slice(0, 200) + "..." : text;
