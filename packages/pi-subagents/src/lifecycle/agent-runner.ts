@@ -13,7 +13,7 @@ import type { ParentSessionInfo } from "#src/lifecycle/agent-manager";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { extractText } from "#src/session/context";
 import type { EnvInfo } from "#src/session/env";
-import { type AssemblerIO, assembleSessionConfig } from "#src/session/session-config";
+import { type AssemblerIO, assembleSessionConfig, type ToolFilterConfig } from "#src/session/session-config";
 import type { ShellExec, SubagentType, ThinkingLevel } from "#src/types";
 
 /** Names of tools registered by this extension that subagents must NOT inherit. */
@@ -45,16 +45,13 @@ function getToolCallName(c: { type: string }): string {
  * the post-bind re-filter trivial.
  *
  * @param activeTools  Names currently active on the session.
- * @param toolNames    The built-in tool name allowlist for this agent type.
- * @param extensions   Agent config `extensions` field: false | true | string[] (allowlist).
- * @param disallowedSet  Optional denylist from agent config.
+ * @param config       Tool filtering configuration from the assembled session config.
  */
 function filterActiveTools(
   activeTools: string[],
-  toolNames: string[],
-  extensions: boolean | string[],
-  disallowedSet: Set<string> | undefined,
+  config: ToolFilterConfig,
 ): string[] {
+  const { toolNames, extensions, disallowedSet } = config;
   if (extensions === false) {
     // Extensions disabled: only apply the denylist to built-in tools.
     if (!disallowedSet) return activeTools;
@@ -312,7 +309,7 @@ export async function runAgent(
   const loader = io.createResourceLoader({
     cwd: cfg.effectiveCwd,
     agentDir,
-    noExtensions: cfg.extensions === false,
+    noExtensions: cfg.toolFilter.extensions === false,
     noSkills: cfg.noSkills,
     noPromptTemplates: true,
     noThemes: true,
@@ -336,7 +333,7 @@ export async function runAgent(
     settingsManager: io.createSettingsManager(cfg.effectiveCwd, agentDir),
     modelRegistry: snapshot.modelRegistry,
     model: cfg.model,
-    tools: cfg.toolNames,
+    tools: cfg.toolFilter.toolNames,
     resourceLoader: loader,
     thinkingLevel: cfg.thinkingLevel,
   });
@@ -344,13 +341,8 @@ export async function runAgent(
   // Filter active tools: remove our own tools to prevent nesting,
   // apply extension allowlist if specified, and apply disallowedTools denylist.
   // First pass — over built-in tools, before bindExtensions registers extension tools.
-  if (cfg.extensions !== false || cfg.disallowedSet) {
-    const filtered = filterActiveTools(
-      session.getActiveToolNames(),
-      cfg.toolNames,
-      cfg.extensions,
-      cfg.disallowedSet,
-    );
+  if (cfg.toolFilter.extensions !== false || cfg.toolFilter.disallowedSet) {
+    const filtered = filterActiveTools(session.getActiveToolNames(), cfg.toolFilter);
     session.setActiveToolsByName(filtered);
   }
 
@@ -366,13 +358,8 @@ export async function runAgent(
   // re-filter, the `extensions: string[]` allowlist branch never matches any
   // extension tools and `extensions: true` lets non-allowlisted denylist
   // entries slip in. Run the same filter against the post-bind active set.
-  if (cfg.extensions !== false || cfg.disallowedSet) {
-    const refiltered = filterActiveTools(
-      session.getActiveToolNames(),
-      cfg.toolNames,
-      cfg.extensions,
-      cfg.disallowedSet,
-    );
+  if (cfg.toolFilter.extensions !== false || cfg.toolFilter.disallowedSet) {
+    const refiltered = filterActiveTools(session.getActiveToolNames(), cfg.toolFilter);
     session.setActiveToolsByName(refiltered);
   }
 
