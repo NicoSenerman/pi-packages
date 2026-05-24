@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Theme } from "#src/ui/display";
 import type { FormatterContext } from "#src/ui/message-formatters";
-import { formatUserMessage } from "#src/ui/message-formatters";
+import { formatAssistantMessage, formatUserMessage } from "#src/ui/message-formatters";
 
 // ── Theme helpers ────────────────────────────────────────────────────────────
 
@@ -73,6 +73,73 @@ describe("message-formatters", () => {
       const splitWrap = (text: string, _width: number): string[] => text.split(" ");
       const result = formatUserMessage("one two three", 80, { theme: plainTheme, wrapText: splitWrap });
       expect(result).toEqual(["[User]", "one", "two", "three"]);
+    });
+  });
+
+  describe("formatAssistantMessage", () => {
+    const ctx: FormatterContext = { theme: labelTheme, wrapText: noWrap };
+
+    it("returns [Assistant] header for empty content", () => {
+      expect(formatAssistantMessage([], 80, ctx)).toEqual(["[bold:[Assistant]]"]);
+    });
+
+    it("formats text-only content", () => {
+      const content = [{ type: "text", text: "Hello from assistant" }];
+      const result = formatAssistantMessage(content, 80, ctx);
+      expect(result).toEqual(["[bold:[Assistant]]", "Hello from assistant"]);
+    });
+
+    it("formats tool-call-only content", () => {
+      const content = [{ type: "toolCall", name: "read" }];
+      const result = formatAssistantMessage(content, 80, ctx);
+      expect(result).toEqual(["[bold:[Assistant]]", "[muted:  [Tool: read]]"]);
+    });
+
+    it("formats mixed text and tool calls", () => {
+      const content = [
+        { type: "text", text: "Let me check" },
+        { type: "toolCall", name: "grep" },
+      ];
+      const result = formatAssistantMessage(content, 80, ctx);
+      expect(result).toEqual(["[bold:[Assistant]]", "Let me check", "[muted:  [Tool: grep]]"]);
+    });
+
+    it("joins multiple text parts with newline before wrapping", () => {
+      const capturedTexts: string[] = [];
+      const capturingWrap = (text: string, _width: number): string[] => {
+        capturedTexts.push(text);
+        return [text];
+      };
+      const content = [
+        { type: "text", text: "Part A" },
+        { type: "text", text: "Part B" },
+      ];
+      formatAssistantMessage(content, 80, { theme: plainTheme, wrapText: capturingWrap });
+      expect(capturedTexts).toEqual(["Part A\nPart B"]);
+    });
+
+    it("uses toolName as fallback when name is absent", () => {
+      const content = [{ type: "toolCall", toolName: "bash" }];
+      const result = formatAssistantMessage(content, 80, ctx);
+      expect(result).toEqual(["[bold:[Assistant]]", "[muted:  [Tool: bash]]"]);
+    });
+
+    it("uses 'unknown' when both name and toolName are absent", () => {
+      const content = [{ type: "toolCall" }];
+      const result = formatAssistantMessage(content, 80, ctx);
+      expect(result).toEqual(["[bold:[Assistant]]", "[muted:  [Tool: unknown]]"]);
+    });
+
+    it("skips text items with no text value", () => {
+      const content = [{ type: "text" }, { type: "text", text: "" }];
+      const result = formatAssistantMessage(content, 80, ctx);
+      expect(result).toEqual(["[bold:[Assistant]]"]);
+    });
+
+    it("skips unknown content types", () => {
+      const content = [{ type: "image" }];
+      const result = formatAssistantMessage(content, 80, ctx);
+      expect(result).toEqual(["[bold:[Assistant]]"]);
     });
   });
 });

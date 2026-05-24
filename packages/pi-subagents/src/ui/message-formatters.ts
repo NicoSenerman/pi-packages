@@ -5,6 +5,7 @@
  * Returns null for empty/skippable content (caller skips the separator).
  */
 
+import { truncateToWidth } from "@earendil-works/pi-tui";
 import { extractText } from "#src/session/context";
 import type { Theme } from "#src/ui/display";
 
@@ -14,6 +15,22 @@ import type { Theme } from "#src/ui/display";
 export interface FormatterContext {
   theme: Theme;
   wrapText: (text: string, width: number) => string[];
+}
+
+// ── File-local types and guards ─────────────────────────────────────────────
+
+/** Tool-call content item — SDK exposes this variant at runtime but doesn't export the narrow type. */
+interface ToolCallContent {
+  type: "toolCall";
+  name?: string;
+  toolName?: string;
+}
+
+/** Extracts the tool name from a toolCall content item, falling back to 'unknown'. */
+function getToolCallName(c: { type: string }): string {
+  if (c.type !== "toolCall") return "unknown";
+  const tc = c as ToolCallContent;
+  return tc.name ?? tc.toolName ?? "unknown";
 }
 
 // ── formatUserMessage ─────────────────────────────────────────────────────────
@@ -34,4 +51,32 @@ export function formatUserMessage(
     theme.fg("accent", "[User]"),
     ...wrapText(text.trim(), width),
   ];
+}
+
+// ── formatAssistantMessage ───────────────────────────────────────────────────
+
+/**
+ * Format an assistant message into display lines.
+ * Always returns at least the [Assistant] header line.
+ */
+export function formatAssistantMessage(
+  content: { type: string; [key: string]: unknown }[],
+  width: number,
+  ctx: FormatterContext,
+): string[] {
+  const { theme, wrapText } = ctx;
+  const textParts: string[] = [];
+  const toolCalls: string[] = [];
+  for (const c of content) {
+    if (c.type === "text" && c.text) textParts.push(c.text as string);
+    else if (c.type === "toolCall") toolCalls.push(getToolCallName(c));
+  }
+  const lines: string[] = [theme.bold("[Assistant]")];
+  if (textParts.length > 0) {
+    lines.push(...wrapText(textParts.join("\n").trim(), width));
+  }
+  for (const name of toolCalls) {
+    lines.push(truncateToWidth(theme.fg("muted", `  [Tool: ${name}]`), width));
+  }
+  return lines;
 }
