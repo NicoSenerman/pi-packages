@@ -1,0 +1,20 @@
+---
+issue: 167
+issue_title: "refactor(pi-subagents): narrow RunnerIO (9 methods → 2 focused interfaces)"
+---
+
+# Retro: #167 — narrow RunnerIO (9 methods → 2 focused interfaces)
+
+## Stage: Planning (2026-05-24T20:00:00Z)
+
+### Session summary
+
+Produced a plan to split the `RunnerIO` interface in `agent-runner.ts` into two focused sub-interfaces (`EnvironmentIO` and `SessionFactoryIO`) while keeping `RunnerIO` as a backward-compatible type alias for their intersection.
+The change is a pure refactoring with zero runtime behavior change.
+
+### Observations
+
+- The split is mechanical and low-risk: `RunnerIO` becomes `type RunnerIO = EnvironmentIO & SessionFactoryIO`, and all existing consumers (production code and test factories) continue to compile via structural typing.
+- Dependency #164 (reorganize into domain directories) is already closed, so file paths are current.
+- The two test `createRunnerIO()` factories are unannotated (intentionally, per testing skill guidelines), so they don't need type-level updates — only comment updates for documentation.
+- This is a two-commit TDD plan, suitable for `/build-plan` rather than full TDD cycles since no new tests are required.
