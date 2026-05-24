@@ -21,7 +21,11 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
+    "@eslint/js": "catalog:",
+    "eslint": "catalog:",
     "fallow": "catalog:",
-    "rumdl": "^0.1.93"
+    "globals": "catalog:",
+    "rumdl": "^0.1.93",
+    "typescript-eslint": "catalog:"
   }
 }
