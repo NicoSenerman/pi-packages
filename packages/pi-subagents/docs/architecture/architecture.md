@@ -220,9 +220,9 @@ sequenceDiagram
 
 ## Module organization
 
-The extension has 53 source files (7,288 LOC) organized into six domains plus entry-point wiring.
-All eight domains now have directories: `config/`, `session/`, `lifecycle/`, `observation/`, `service/`, `tools/`, `ui/`, and `handlers/`.
-Issue #164 moved the 26 previously flat root-level files into the five new domain directories.
+The extension has 51 source files (7,338 LOC) organized into six domains plus entry-point wiring.
+All eight domains have directories: `config/`, `session/`, `lifecycle/`, `observation/`, `service/`, `tools/`, `ui/`, and `handlers/`.
+Issue #164 moved the 26 previously flat root-level files into five new domain directories, reducing the root to 5 files + 8 directories.
 
 ### Current layout
 
@@ -234,44 +234,43 @@ src/
 ├── settings.ts                     SettingsManager (persistent operational settings)
 ├── debug.ts                        debug logging utility
 │
-│  ── Config domain (agent type definitions and resolution) ──
-├── agent-types.ts                  AgentTypeRegistry class
-├── default-agents.ts               built-in agent configs (general-purpose, Explore, Plan)
-├── custom-agents.ts                user-defined agent .md file loader
-├── invocation-config.ts            per-call config merge
+├── config/                         agent type definitions and resolution
+│   ├── agent-types.ts              AgentTypeRegistry class
+│   ├── default-agents.ts           built-in agent configs (general-purpose, Explore, Plan)
+│   ├── custom-agents.ts            user-defined agent .md file loader
+│   └── invocation-config.ts        per-call config merge
 │
-│  ── Session domain (session assembly and preparation) ──
-├── session-config.ts               pure assembler (main entry)
-├── prompts.ts                      system prompt building
-├── context.ts                      parent conversation extraction
-├── memory.ts                       persistent MEMORY.md per agent
-├── skill-loader.ts                 skill preloading
-├── env.ts                          git/platform detection
-├── model-resolver.ts               fuzzy model name resolution
-├── session-dir.ts                  session directory derivation
+├── session/                        session assembly and preparation
+│   ├── session-config.ts           pure assembler (main entry)
+│   ├── prompts.ts                  system prompt building
+│   ├── context.ts                  parent conversation extraction
+│   ├── memory.ts                   persistent MEMORY.md per agent
+│   ├── skill-loader.ts             skill preloading
+│   ├── env.ts                      git/platform detection
+│   ├── model-resolver.ts           fuzzy model name resolution
+│   └── session-dir.ts              session directory derivation
 │
-│  ── Lifecycle domain (agent execution and state) ──
-├── agent-manager.ts                spawn, queue, abort, resume, concurrency
-├── agent-runner.ts                 session creation, turn loop, tool filtering
-├── agent-record.ts                 status state machine
-├── parent-snapshot.ts              immutable spawn-time parent state
-├── execution-state.ts              session/output phase state
-├── worktree.ts                     git worktree isolation
-├── worktree-state.ts               worktree phase state
-├── usage.ts                        token usage tracking
+├── lifecycle/                      agent execution and state tracking
+│   ├── agent-manager.ts            spawn, queue, abort, resume, concurrency
+│   ├── agent-runner.ts             session creation, turn loop, tool filtering
+│   ├── agent-record.ts             status state machine
+│   ├── parent-snapshot.ts          immutable spawn-time parent state
+│   ├── execution-state.ts          session/output phase state
+│   ├── worktree.ts                 git worktree isolation
+│   ├── worktree-state.ts           worktree phase state
+│   └── usage.ts                    token usage tracking
 │
-│  ── Observation domain (progress tracking and notification) ──
-├── record-observer.ts              session-event stats observer
-├── notification.ts                 completion nudges
-├── notification-state.ts           per-agent notification tracking
-├── renderer.ts                     notification TUI component
+├── observation/                    progress tracking and notification
+│   ├── record-observer.ts          session-event stats observer
+│   ├── notification.ts             completion nudges
+│   ├── notification-state.ts       per-agent notification tracking
+│   └── renderer.ts                 notification TUI component
 │
-│  ── Service domain (cross-extension API) ──
-├── service.ts                      SubagentsService interface + Symbol.for() accessors
-├── service-adapter.ts              SubagentsService wrapper around AgentManager
+├── service/                        cross-extension API boundary
+│   ├── service.ts                  SubagentsService interface + Symbol.for() accessors
+│   └── service-adapter.ts          SubagentsService wrapper around AgentManager
 │
-│  ── Tools domain (LLM-facing tool implementations) ──
-├── tools/
+├── tools/                          LLM-facing tool implementations
 │   ├── agent-tool.ts               Agent tool definition, validation, dispatch
 │   ├── spawn-config.ts             pure config resolution
 │   ├── foreground-runner.ts        foreground execution loop
@@ -280,8 +279,7 @@ src/
 │   ├── steer-tool.ts               steer_subagent tool
 │   └── helpers.ts                  shared tool utilities
 │
-│  ── UI domain (user-facing presentation) ──
-├── ui/
+├── ui/                             user-facing presentation
 │   ├── agent-widget.ts             above-editor live status widget
 │   ├── widget-renderer.ts          pure rendering for widget
 │   ├── agent-menu.ts               /agents slash command menu
@@ -293,67 +291,11 @@ src/
 │   ├── ui-observer.ts              session-event observer for streaming
 │   └── display.ts                  pure formatters and shared types
 │
-│  ── Event handlers ──
-└── handlers/
+└── handlers/                       event handlers
+    ├── index.ts                    barrel re-export
     ├── lifecycle.ts                session_start, session_before_switch, session_shutdown
     └── tool-start.ts               tool_execution_start handler
 ```
-
-### Proposed directory restructuring
-
-Move the four ungrouped domains into subdirectories so the filesystem mirrors the domain model.
-Root-level files stay: `index.ts` (entry point), `runtime.ts` (wiring), `types.ts` (shared), `settings.ts`, `debug.ts`.
-
-```text
-src/
-├── index.ts
-├── runtime.ts
-├── types.ts
-├── settings.ts
-├── debug.ts
-│
-├── config/                         agent type definitions and resolution
-│   ├── agent-types.ts
-│   ├── default-agents.ts
-│   ├── custom-agents.ts
-│   └── invocation-config.ts
-│
-├── session/                        session assembly and preparation
-│   ├── session-config.ts
-│   ├── prompts.ts
-│   ├── context.ts
-│   ├── memory.ts
-│   ├── skill-loader.ts
-│   ├── env.ts
-│   ├── model-resolver.ts
-│   └── session-dir.ts
-│
-├── lifecycle/                      agent execution and state tracking
-│   ├── agent-manager.ts
-│   ├── agent-runner.ts
-│   ├── agent-record.ts
-│   ├── parent-snapshot.ts
-│   ├── execution-state.ts
-│   ├── worktree.ts
-│   ├── worktree-state.ts
-│   └── usage.ts
-│
-├── observation/                    progress tracking and notification
-│   ├── record-observer.ts
-│   ├── notification.ts
-│   ├── notification-state.ts
-│   └── renderer.ts
-│
-├── service/                        cross-extension API boundary
-│   ├── service.ts
-│   └── service-adapter.ts
-│
-├── tools/                          (existing)
-├── ui/                             (existing)
-└── handlers/                       (existing)
-```
-
-Root goes from 31 files to 5 files + 8 directories — each directory name tells you what domain it belongs to.
 
 ### Observation model
 
@@ -633,29 +575,33 @@ interface ToolFilterConfig {
 
 Extracting this reduces `SessionConfig` from 11 to 8 fields and gives `filterActiveTools` a named input type instead of three positional parameters.
 
-#### RunnerIO (9 methods → 2 focused interfaces)
+#### RunnerIO (9 methods → 2 focused interfaces) — done ([#167][167])
 
-The IO boundary mixes environment discovery with session factory operations:
+The IO boundary was split into two focused interfaces:
 
 ```typescript
-/** Environment discovery — detecting paths and platform info. */
-interface EnvironmentIO {
+/** Environment discovery — detect runtime context and resolve directories. */
+export interface EnvironmentIO {
   detectEnv: (exec: ShellExec, cwd: string) => Promise<EnvInfo>;
   getAgentDir: () => string;
   deriveSessionDir: (parentSessionFile: string | undefined, effectiveCwd: string) => string;
 }
 
-/** Session factory — creating SDK objects. */
-interface SessionFactoryIO {
+/** Session factory — create SDK objects for a child agent session. */
+export interface SessionFactoryIO {
   createResourceLoader: (opts: ResourceLoaderOptions) => ResourceLoaderLike;
   createSessionManager: (cwd: string, sessionDir: string) => SessionManagerLike;
   createSettingsManager: (cwd: string, agentDir: string) => SettingsManager;
   createSession: (opts: CreateSessionOptions) => Promise<{ session: AgentSession }>;
   assemblerIO: AssemblerIO;
 }
+
+/** Backward-compatible intersection of the two focused interfaces. */
+export type RunnerIO = EnvironmentIO & SessionFactoryIO;
 ```
 
-The runner would accept `EnvironmentIO & SessionFactoryIO` (keeping backward compatibility) while each piece can be tested independently.
+`RunnerIO` is kept as a type alias for the intersection.
+All existing consumers satisfy both sub-interfaces via structural typing with no call-site changes.
 
 ## Improvement roadmap (Phase 10)
 
