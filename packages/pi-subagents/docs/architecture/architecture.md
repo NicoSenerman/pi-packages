@@ -67,6 +67,7 @@ flowchart TB
     subgraph tools["Tools domain"]
         direction TB
         AgentTool["Agent tool\n(dispatch)"]
+        ResultRenderer["result-renderer\n(pure rendering)"]
         SpawnConfig["spawn-config\n(resolve params)"]
         FgRunner["foreground-runner"]
         BgSpawner["background-spawner"]
@@ -431,7 +432,7 @@ These are fire-and-forget broadcast events — no request IDs, no reply channels
 | Metric                    | Value                        |
 | ------------------------- | ---------------------------- |
 | Health score              | 75/100 (B)                   |
-| Total LOC                 | 7,461 (52 files)             |
+| Total LOC                 | 8,218 (53 files)             |
 | Dead code                 | 0 files, 0 exports           |
 | Maintainability index     | 90.7 (good)                  |
 | Avg cyclomatic complexity | 1.5                          |
@@ -641,10 +642,11 @@ Extracted `exec`, `registry`, `cwd`, and `parentSession` into `RunContext`, nest
 Extracted formatting sub-functions for each content type (user, assistant, tool result, bash execution, streaming indicator) into `ui/message-formatters.ts`.
 `buildContentLines` in `conversation-viewer.ts` is now a ~30-line dispatch loop delegating to `formatMessage` and `formatStreamingIndicator`.
 
-### Step 8: Reduce renderResult complexity ([#171][171])
+### Step 8: Reduce renderResult complexity ([#171][171]) ✓ Done
 
-`renderResult` in `agent-tool.ts` has cognitive complexity 43.
-Extract result formatting by status (completed, error, aborted, stopped).
+Extracted per-status result formatting from `renderResult` in `agent-tool.ts` into `tools/result-renderer.ts`.
+`renderResult` reduced from ~80 lines (cognitive complexity 43) to a 10-line guard + `renderAgentResult` dispatcher.
+The inline `stats()` closure became the exported `renderStats` helper, shared by all status renderers.
 
 ### Step 9: Extract shared turn-formatting logic ([#172][172])
 
@@ -706,6 +708,7 @@ Detailed records are preserved in per-phase history files:
 | Encapsulation      | #108, #109, #110, #111, #112, #113, #114, #115, #116, #118 | Registry, settings, activity tracker, record lifecycle, observer, spawn options, deps narrowing, tool split, type housekeeping |
 | Testability        | #131, #132, #133, #134, #135, #136                         | Shared fixtures, session-config IO, runner SDK boundary, as-any reduction, display extraction, menu decomposition              |
 | Observation/ctx    | #144, #145, #146, #147, #148                               | Observation consolidation, execute decomposition, UI context, text wrapping injection, widget rendering split                  |
+| Phase 10           | #164, #166, #167, #168, #169, #170, #171                   | Domain directories, ParentSessionInfo, RunnerIO split, ToolFilterConfig, RunContext, buildContentLines, renderResult           |
 
 The remaining open issue is #22 (parent-session resolution), a cross-extension track that does not gate the structural work.
 
