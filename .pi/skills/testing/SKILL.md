@@ -70,6 +70,8 @@ Run `pnpm run check` (`tsc --noEmit`) for type-only changes.
 - When a TDD step changes an interface that has a single call site (e.g., a deps bag constructed in `index.ts`), the step must include updating that call site — the type checker will not allow the interface change and the call-site update to land in separate commits.
 - When adding a field to a shared interface, grep for ALL test files that construct a compatible mock — not just factory helpers.
 - When removing fields from a shared init type, grep for all test files and factory helpers that pass the removed field — esbuild won't reject unknown properties at runtime, so tests silently get wrong default values instead of failing.
+- When a TDD plan deletes a module across multiple steps (extract → remove consumers → delete), account for the doomed module's own imports at each intermediate step.
+  If step N removes a type or function that the doomed module still imports, either delete the module in the same step or patch its imports to compile cleanly.
 - When a TDD plan nests a previously-flat interface (e.g., splitting `Config` into `{ identity, execution }`), grep test factories for `Partial<OldInterface>` spread patterns.
   Top-level `...overrides` does not deep-merge — flat-key overrides like `{ description: "my task" }` silently become no-ops when the field moves into a nested sub-object.
   Either replace each call site with the full nested sub-object or switch to a deep-merge helper.

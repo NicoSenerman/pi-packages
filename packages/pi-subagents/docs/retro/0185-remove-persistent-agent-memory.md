@@ -37,3 +37,37 @@ New file `safe-fs.test.ts` was created with 13 tests for the extracted utilities
   Fix: inline the literal union `"user" | "project" | "local"` directly in `memory.ts` as a local type, so it compiles cleanly until deletion in step 4.
 - The `SKILL.md` for `package-pi-subagents` also listed `memory.ts` in the session domain table — updated alongside `architecture.md` in the docs commit.
 - No deviations from the plan other than the two minor bugs above (both self-corrected within the same TDD step).
+
+## Stage: Final Retrospective (2026-05-24T22:47:55Z)
+
+### Session summary
+
+Shipped issue #185 as `pi-subagents-v7.0.0`.
+CI passed, issue closed, release-please PR #190 merged.
+Three sessions total: planning, TDD (5 steps / 5 commits), shipping.
+
+### Observations
+
+#### What went well
+
+- The issue's "Scope" section was precise enough that the planning session required no `ask_user` and the Explore agent's trace matched the final commit diff exactly.
+- Consumers-first, declaration-last ordering kept each commit independently compilable (after the two self-corrected fixes).
+- The `SKILL.md` domain table update was caught naturally during the docs step even though the plan didn't list it.
+
+#### What caused friction (agent side)
+
+- `missing-context` — In TDD step 1, `memory.ts` was updated to re-export `isUnsafeName` from `safe-fs`, but the function was not imported into `memory.ts`'s own scope.
+  `resolveMemoryDir` threw a `ReferenceError` at runtime.
+  Impact: one extra test-run cycle (~5 seconds) and a trivial one-line fix; no rework commit.
+- `missing-context` — In TDD step 3, removing `MemoryScope` from `types.ts` broke `memory.ts` (scheduled for deletion in step 4).
+  The plan said "consumers-first" but didn't account for the doomed module itself being a consumer of the type.
+  Impact: one extra `pnpm run check` cycle and a local type inline; no rework commit.
+  Both share the same root cause: incremental deletion plans must account for doomed files' own imports at each intermediate step.
+
+#### What caused friction (user side)
+
+- None observed — all three sessions ran without user corrections or redirections.
+
+### Changes made
+
+1. Added a TDD planning rule to `.pi/skills/testing/SKILL.md` about accounting for doomed modules' own imports during multi-step deletion.
