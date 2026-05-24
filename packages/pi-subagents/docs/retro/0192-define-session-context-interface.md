@@ -20,3 +20,16 @@ Single TDD step: add the interface and verify with `pnpm run check`.
 - `ModelRegistry` already exists as a local narrow interface in `src/session/model-resolver.ts`; `SessionContext` imports it rather than redeclaring.
 - `sessionManager` uses an inline structural type (3 methods) rather than importing the SDK's `ReadonlySessionManager` (13 methods) — ISP applies here.
 - No design ambiguity required `ask_user`; the issue's proposed change section was fully specified.
+
+## Stage: Implementation — TDD (2026-05-24T19:55:00Z)
+
+### Session summary
+
+Added the `SessionContext` interface to `src/types.ts` with an `import type { ModelRegistry }` from `#src/session/model-resolver`.
+Single compile-time step — no runtime tests needed for a pure type definition.
+Baseline: 53 test files, 848 tests; final: unchanged.
+
+### Observations
+
+- Pre-existing lint failure in `docs/architecture/architecture.md` (5 unused MD053 link references for issues #164, #165, #170, #171, #172) was fixed as part of the baseline verification and included in the feat commit.
+- The interface landed exactly as planned — no deviations from the plan's Design Overview.
