@@ -220,7 +220,7 @@ sequenceDiagram
 
 ## Module organization
 
-The extension has 51 source files (7,338 LOC) organized into six domains plus entry-point wiring.
+The extension has 52 source files (7,461 LOC) organized into six domains plus entry-point wiring.
 All eight domains have directories: `config/`, `session/`, `lifecycle/`, `observation/`, `service/`, `tools/`, `ui/`, and `handlers/`.
 Issue #164 moved the 26 previously flat root-level files into five new domain directories, reducing the root to 5 files + 8 directories.
 
@@ -286,6 +286,7 @@ src/
 │   ├── agent-config-editor.ts      agent detail/edit view
 │   ├── agent-creation-wizard.ts    agent creation (AI + manual)
 │   ├── conversation-viewer.ts      scrollable session overlay
+│   ├── message-formatters.ts       pure per-message-type formatters (extracted from conversation-viewer)
 │   ├── agent-activity-tracker.ts   live activity state tracker
 │   ├── agent-file-ops.ts           filesystem abstraction
 │   ├── ui-observer.ts              session-event observer for streaming
@@ -429,7 +430,7 @@ These are fire-and-forget broadcast events — no request IDs, no reply channels
 | Metric                    | Value                        |
 | ------------------------- | ---------------------------- |
 | Health score              | 75/100 (B)                   |
-| Total LOC                 | 7,288 (53 files)             |
+| Total LOC                 | 7,461 (52 files)             |
 | Dead code                 | 0 files, 0 exports           |
 | Maintainability index     | 90.7 (good)                  |
 | Avg cyclomatic complexity | 1.5                          |
@@ -463,7 +464,6 @@ Functions with cyclomatic complexity ≥ 21 (critical threshold):
 
 | Function            | Cyclomatic | Cognitive | File                        | Concern                            |
 | ------------------- | ---------- | --------- | --------------------------- | ---------------------------------- |
-| `buildContentLines` | 30         | 71        | `ui/conversation-viewer.ts` | Formats session events for display |
 | `renderResult`      | 26         | 43        | `tools/agent-tool.ts`       | Formats agent result for LLM       |
 | `showAgentDetail`   | 25         | 33        | `ui/agent-config-editor.ts` | Agent detail/edit view             |
 | `renderWidgetLines` | 25         | 44        | `ui/widget-renderer.ts`     | Renders widget status lines        |
@@ -636,10 +636,10 @@ All existing consumers satisfy both sub-interfaces via structural typing with no
 Extracted `exec`, `registry`, `cwd`, and `parentSession` into `RunContext`, nested as `RunOptions.context`.
 `RunOptions` reduced from 12 to 9 fields (1 nested `context` + 8 flat execution fields).
 
-### Step 7: Reduce buildContentLines complexity ([#170][170])
+### Step 7: Reduce buildContentLines complexity ([#170][170]) ✓ Done
 
-`buildContentLines` in `conversation-viewer.ts` has cognitive complexity 71.
-Extract formatting sub-functions for each content type (tool calls, text, bash output).
+Extracted formatting sub-functions for each content type (user, assistant, tool result, bash execution, streaming indicator) into `ui/message-formatters.ts`.
+`buildContentLines` in `conversation-viewer.ts` is now a ~30-line dispatch loop delegating to `formatMessage` and `formatStreamingIndicator`.
 
 ### Step 8: Reduce renderResult complexity ([#171][171])
 
