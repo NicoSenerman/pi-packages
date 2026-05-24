@@ -33,3 +33,31 @@ Test count held steady at 805/805 (50 files) — no behavioral changes.
 - `RunnerIO` JSDoc was split: `EnvironmentIO` got the environment-discovery description, `SessionFactoryIO` got the original "decouples from Pi SDK imports" description, and `RunnerIO` itself got a short backward-compatibility note.
 - Architecture doc updated: wide-interface table row and Step 4 roadmap entry both marked done.
 - No deviations from the plan.
+
+## Stage: Final Retrospective (2026-05-24T21:30:00Z)
+
+### Session summary
+
+Issue #167 completed across three sessions: planning, TDD implementation, and ship.
+The `RunnerIO` interface was split into `EnvironmentIO` and `SessionFactoryIO` with a backward-compatible type alias.
+Released as `pi-subagents-v6.18.4`.
+
+### Observations
+
+#### What went well
+
+- The plan correctly identified that structural typing would make this zero-friction — no call-site changes were needed in `index.ts` or either test factory.
+- The two-step TDD plan was right-sized for a pure refactoring: step 1 for the interface split, step 2 for comment updates.
+  No new tests were needed, and the existing 805 tests validated the change without modification.
+- Ship session was clean: CI passed first try, release-please PR merged, issue closed.
+
+#### What caused friction (agent side)
+
+- `missing-context` — The TDD session's architecture doc update (`824fd72`) only touched the `RunnerIO`-specific table row and Step 4 roadmap entry.
+  It missed that the same file's "Current layout" section still showed the pre-#164 flat file structure and retained a redundant "Proposed directory restructuring" section.
+  The user had to request a follow-up update (`d4a98aa`) in the ship session.
+  Impact: one extra commit and user prompt; no rework of prior commits.
+
+#### What caused friction (user side)
+
+- No friction observed.
