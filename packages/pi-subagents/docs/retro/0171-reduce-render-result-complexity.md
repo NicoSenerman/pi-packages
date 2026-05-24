@@ -37,3 +37,7 @@ A docs commit updated the architecture file to remove `renderResult` from the co
 - The ESLint pre-commit hook correctly removed `@typescript-eslint/no-unsafe-return` from `agent-tool.ts`'s `eslint-disable` comment — that rule was only needed by the old `renderResult` body, not the new dispatcher.
 - No deviations from the plan: all 7 functions in `result-renderer.ts`, `renderResult` is now a guard + dispatcher as designed, and all 3 unused imports (`SPINNER`, `formatMs`, `formatTurns`) were removed.
 - The `Theme` type from `display.ts` worked cleanly for the pure functions — the `widget-renderer.ts` precedent held.
+
+## Stage: User Note (2026-05-24T21:30:00Z)
+
+We need to update `/plan-issue` so the plan includes updating any architecture documents.
