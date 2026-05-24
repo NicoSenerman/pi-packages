@@ -1,5 +1,5 @@
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
-import type { AgentSpawnConfig } from "#src/lifecycle/agent-manager";
+import type { AgentSpawnConfig, ParentSessionInfo } from "#src/lifecycle/agent-manager";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import type { AgentActivityAccess } from "#src/tools/agent-tool";
 import {
@@ -39,8 +39,7 @@ export interface ForegroundWidgetDeps {
 export interface ForegroundParams {
   config: ResolvedSpawnConfig;
   snapshot: ParentSnapshot;
-  parentSessionFile: string;
-  parentSessionId: string;
+  parentSession: ParentSessionInfo;
 }
 
 /**
@@ -109,8 +108,7 @@ export async function runForeground(
         isolation: execution.isolation,
         invocation: execution.agentInvocation,
         signal,
-        parentSessionFile: params.parentSessionFile,
-        parentSessionId: params.parentSessionId,
+        parentSession: params.parentSession,
         onSessionCreated: (session, record) => {
           fgState.setSession(session);
           recordRef = record;

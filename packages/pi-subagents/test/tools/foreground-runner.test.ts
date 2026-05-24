@@ -53,8 +53,7 @@ function makeParams(overrides: Partial<ForegroundParams> = {}): ForegroundParams
   return {
     config: makeConfig(),
     snapshot: STUB_SNAPSHOT,
-    parentSessionFile: "/sessions/parent.jsonl",
-    parentSessionId: "session-1",
+    parentSession: { parentSessionFile: "/sessions/parent.jsonl", parentSessionId: "session-1" },
     ...overrides,
   };
 }
