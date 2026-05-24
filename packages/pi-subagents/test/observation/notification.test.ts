@@ -9,7 +9,7 @@ import {
 } from "#src/observation/notification";
 import { NotificationState } from "#src/observation/notification-state";
 import { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
-import { createTestRecord } from "../helpers/make-record";
+import { createTestRecord } from "#test/helpers/make-record";
 
 // ---- Pure helper tests ----
 

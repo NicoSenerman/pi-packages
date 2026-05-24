@@ -7,7 +7,7 @@ import type { WorktreeManager } from "#src/lifecycle/worktree";
 import { NotificationState } from "#src/observation/notification-state";
 import type { RunConfig } from "#src/runtime";
 import type { AgentRecord } from "#src/types";
-import { createMockSession, toAgentSession } from "../helpers/mock-session";
+import { createMockSession, toAgentSession } from "#test/helpers/mock-session";
 
 /** Minimal registry with no user agents — sufficient since AgentManager only relays it to the runner. */
 const testRegistry = new AgentTypeRegistry(() => new Map());

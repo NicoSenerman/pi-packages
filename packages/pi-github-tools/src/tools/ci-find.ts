@@ -1,8 +1,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { findRun } from "../lib/ci";
-import { createProgressCallback } from "../progress";
-import { err, ok } from "../tool-result";
+import { findRun } from "#src/lib/ci";
+import { createProgressCallback } from "#src/progress";
+import { err, ok } from "#src/tool-result";
 
 export function registerCiFind(pi: ExtensionAPI): void {
   pi.registerTool({

@@ -6,9 +6,9 @@ import {
   getGlobalConfigPath,
   getProjectConfigPath,
   loadConfig,
-} from "../lib/config";
-import { type MergeMethod, mergeReleasePR } from "../lib/release";
-import { err, ok } from "../tool-result";
+} from "#src/lib/config";
+import { type MergeMethod, mergeReleasePR } from "#src/lib/release";
+import { err, ok } from "#src/tool-result";
 
 export function registerReleasePrMerge(pi: ExtensionAPI): void {
   pi.registerTool({

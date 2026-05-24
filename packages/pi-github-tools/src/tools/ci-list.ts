@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { listRuns } from "../lib/ci";
-import { err, ok } from "../tool-result";
+import { listRuns } from "#src/lib/ci";
+import { err, ok } from "#src/tool-result";
 
 export function registerCiList(pi: ExtensionAPI): void {
   pi.registerTool({

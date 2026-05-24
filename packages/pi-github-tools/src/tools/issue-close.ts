@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { closeIssue } from "../lib/issue";
-import { err, ok } from "../tool-result";
+import { closeIssue } from "#src/lib/issue";
+import { err, ok } from "#src/tool-result";
 
 export function registerIssueClose(pi: ExtensionAPI): void {
   pi.registerTool({

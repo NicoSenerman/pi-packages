@@ -5,8 +5,8 @@ import type { SubagentsService } from "#src/service/service";
 import type { AgentManagerLike } from "#src/service/service-adapter";
 import { createSubagentsService, toSubagentRecord } from "#src/service/service-adapter";
 import type { AgentRecord } from "#src/types";
-import { createTestRecord } from "../helpers/make-record";
-import { createMockSession, toAgentSession } from "../helpers/mock-session";
+import { createTestRecord } from "#test/helpers/make-record";
+import { createMockSession, toAgentSession } from "#test/helpers/mock-session";
 
 describe("toSubagentRecord", () => {
   const baseRecord = (() => {

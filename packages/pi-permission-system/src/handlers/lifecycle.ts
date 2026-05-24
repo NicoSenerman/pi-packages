@@ -1,7 +1,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-import type { PermissionSession } from "../permission-session";
-import { PERMISSION_SYSTEM_STATUS_KEY } from "../status";
+import type { PermissionSession } from "#src/permission-session";
+import { PERMISSION_SYSTEM_STATUS_KEY } from "#src/status";
 
 /** Minimal subset of SessionStartEvent used by this handler. */
 interface SessionStartPayload {

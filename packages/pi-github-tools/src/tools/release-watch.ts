@@ -1,8 +1,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { watchRelease } from "../lib/release";
-import { createProgressCallback } from "../progress";
-import { err, ok } from "../tool-result";
+import { watchRelease } from "#src/lib/release";
+import { createProgressCallback } from "#src/progress";
+import { err, ok } from "#src/tool-result";
 
 export function registerReleaseWatch(pi: ExtensionAPI): void {
   pi.registerTool({

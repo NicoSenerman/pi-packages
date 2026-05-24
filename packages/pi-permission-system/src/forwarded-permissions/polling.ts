@@ -5,12 +5,12 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   getActiveAgentName,
   getActiveAgentNameFromSystemPrompt,
-} from "../active-agent";
-import { toRecord } from "../common";
+} from "#src/active-agent";
+import { toRecord } from "#src/common";
 import type {
   PermissionPromptDecision,
   RequestPermissionOptions,
-} from "../permission-dialog";
+} from "#src/permission-dialog";
 import {
   type ForwardedPermissionRequest,
   type ForwardedPermissionResponse,
@@ -19,8 +19,8 @@ import {
   PERMISSION_FORWARDING_TIMEOUT_MS,
   resolvePermissionForwardingTargetSessionId,
   SUBAGENT_PARENT_SESSION_ENV_CANDIDATES,
-} from "../permission-forwarding";
-import { isSubagentExecutionContext } from "../subagent-context";
+} from "#src/permission-forwarding";
+import { isSubagentExecutionContext } from "#src/subagent-context";
 
 import {
   cleanupPermissionForwardingLocationIfEmpty,

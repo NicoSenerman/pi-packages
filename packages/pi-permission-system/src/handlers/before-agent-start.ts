@@ -6,12 +6,12 @@ import type {
 import {
   createActiveToolsCacheKey,
   createBeforeAgentStartPromptStateKey,
-} from "../before-agent-start-cache";
-import type { PermissionSession } from "../permission-session";
-import { resolveSkillPromptEntries } from "../skill-prompt-sanitizer";
-import { sanitizeAvailableToolsSection } from "../system-prompt-sanitizer";
-import { getToolNameFromValue, type ToolRegistry } from "../tool-registry";
-import type { PermissionState } from "../types";
+} from "#src/before-agent-start-cache";
+import type { PermissionSession } from "#src/permission-session";
+import { resolveSkillPromptEntries } from "#src/skill-prompt-sanitizer";
+import { sanitizeAvailableToolsSection } from "#src/system-prompt-sanitizer";
+import { getToolNameFromValue, type ToolRegistry } from "#src/tool-registry";
+import type { PermissionState } from "#src/types";
 
 /** Minimal subset of BeforeAgentStartEvent used by this handler. */
 interface BeforeAgentStartPayload {

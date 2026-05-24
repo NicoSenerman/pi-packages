@@ -3,24 +3,24 @@ import type {
   InputEventResult,
 } from "@earendil-works/pi-coding-agent";
 
-import { toRecord } from "../common";
+import { toRecord } from "#src/common";
 import {
   emitDecisionEvent,
   type PermissionEventBus,
-} from "../permission-events";
-import { applyPermissionGate } from "../permission-gate";
-import type { PromptPermissionDetails } from "../permission-prompter";
+} from "#src/permission-events";
+import { applyPermissionGate } from "#src/permission-gate";
+import type { PromptPermissionDetails } from "#src/permission-prompter";
 import {
   formatMissingToolNameReason,
   formatSkillAskPrompt,
   formatUnknownToolReason,
-} from "../permission-prompts";
-import type { PermissionSession } from "../permission-session";
+} from "#src/permission-prompts";
+import type { PermissionSession } from "#src/permission-session";
 import {
   checkRequestedToolRegistration,
   getToolNameFromValue,
   type ToolRegistry,
-} from "../tool-registry";
+} from "#src/tool-registry";
 import { describeBashExternalDirectoryGate } from "./gates/bash-external-directory";
 import { describeBashPathGate } from "./gates/bash-path";
 import type { GateRunnerDeps } from "./gates/descriptor";

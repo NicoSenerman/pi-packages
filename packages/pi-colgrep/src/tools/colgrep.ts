@@ -13,11 +13,11 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import type { SearchParams } from "../lib/args";
-import type { AvailabilityState } from "../lib/availability";
-import type { Exec } from "../lib/exec";
-import { runSearch } from "../lib/search";
-import { err, ok } from "../tool-result";
+import type { SearchParams } from "#src/lib/args";
+import type { AvailabilityState } from "#src/lib/availability";
+import type { Exec } from "#src/lib/exec";
+import { runSearch } from "#src/lib/search";
+import { err, ok } from "#src/tool-result";
 
 export interface ColGrepToolDetails {
   hitCount: number;
