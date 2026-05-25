@@ -148,6 +148,42 @@ function categorizeAgents(
 	};
 }
 
+interface WidgetSections {
+	finishedLines: string[];
+	runningLines: [string, string][];
+	queuedLine: string | undefined;
+}
+
+/** Render each agent bucket into pre-formatted lines with ├─ tree connectors. */
+function buildSections(
+	categories: AgentCategories,
+	activityMap: ReadonlyMap<string, WidgetActivity>,
+	registry: AgentConfigLookup,
+	spinnerFrame: number,
+	theme: Theme,
+	truncate: (line: string) => string,
+): WidgetSections {
+	const finishedLines: string[] = [];
+	for (const a of categories.finished) {
+		finishedLines.push(truncate(theme.fg("dim", "\u251C\u2500") + " " + renderFinishedLine(a, activityMap.get(a.id), registry, theme)));
+	}
+
+	const runningLines: [string, string][] = [];
+	for (const a of categories.running) {
+		const [header, act] = renderRunningLines(a, activityMap.get(a.id), registry, spinnerFrame, theme);
+		runningLines.push([
+			truncate(theme.fg("dim", "\u251C\u2500") + ` ${header}`),
+			truncate(theme.fg("dim", "\u2502  ") + act),
+		]);
+	}
+
+	const queuedLine = categories.queued.length > 0
+		? truncate(theme.fg("dim", "\u251C\u2500") + ` ${theme.fg("muted", "\u25E6")} ${theme.fg("dim", `${categories.queued.length} queued`)}`)
+		: undefined;
+
+	return { finishedLines, runningLines, queuedLine };
+}
+
 /** Pure rendering of the widget body. Returns lines to display. */
 export function renderWidgetLines(params: {
 	agents: readonly WidgetAgent[];
@@ -171,24 +207,14 @@ export function renderWidgetLines(params: {
 	const headingColor = hasActive ? "accent" : "dim";
 	const headingIcon = hasActive ? "\u25CF" : "\u25CB";
 
-	// Build sections separately for overflow-aware assembly.
-	const finishedLines: string[] = [];
-	for (const a of finished) {
-		finishedLines.push(truncate(theme.fg("dim", "\u251C\u2500") + " " + renderFinishedLine(a, activityMap.get(a.id), registry, theme)));
-	}
-
-	const runningLines: [string, string][] = [];
-	for (const a of running) {
-		const [header, act] = renderRunningLines(a, activityMap.get(a.id), registry, spinnerFrame, theme);
-		runningLines.push([
-			truncate(theme.fg("dim", "\u251C\u2500") + ` ${header}`),
-			truncate(theme.fg("dim", "\u2502  ") + act),
-		]);
-	}
-
-	const queuedLine = queued.length > 0
-		? truncate(theme.fg("dim", "\u251C\u2500") + ` ${theme.fg("muted", "\u25E6")} ${theme.fg("dim", `${queued.length} queued`)}`)
-		: undefined;
+	const { finishedLines, runningLines, queuedLine } = buildSections(
+		{ running, queued, finished },
+		activityMap,
+		registry,
+		spinnerFrame,
+		theme,
+		truncate,
+	);
 
 	// Assemble with overflow cap (heading takes 1 line).
 	const maxBody = MAX_WIDGET_LINES - 1;
