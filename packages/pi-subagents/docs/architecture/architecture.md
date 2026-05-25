@@ -608,16 +608,16 @@ The approach is layered: each step makes the next step trivial.
 
 ### Findings
 
-| Metric                    | Value                                   |
-| ------------------------- | --------------------------------------- |
-| Health score              | 75/100 (B)                              |
-| #1 hotspot                | `index.ts` (128 commits, accelerating)  |
-| Dead exports              | 1 (`getToolCallName` re-export)         |
-| Production duplication    | 0                                       |
-| Test duplication          | 1,396 lines (69 clone groups, 22 files) |
-| `as any` casts in index   | 1 (down from 5; Layer 1 resolved 4)     |
-| Adapter closures in index | 41 (down from 44; Layer 1 resolved 3)   |
-| Index fan-out             | 25 imports                              |
+| Metric                    | Value                                      |
+| ------------------------- | ------------------------------------------ |
+| Health score              | 75/100 (B)                                 |
+| #1 hotspot                | `index.ts` (128 commits, accelerating)     |
+| Dead exports              | 0 (down from 1; Layer 2 removed re-export) |
+| Production duplication    | 0                                          |
+| Test duplication          | 1,396 lines (69 clone groups, 22 files)    |
+| `as any` casts in index   | 1 (down from 5; Layer 1 resolved 4)        |
+| Adapter closures in index | 40 (down from 44; Layers 1–2 resolved 4)   |
+| Index fan-out             | 25 imports                                 |
 
 ### Root cause
 
@@ -628,8 +628,10 @@ The real objects can't satisfy the interfaces because:
    Resolved by Layer 0 (#192) + Layer 1 (#193).
 2. ~~Context queries (`buildSnapshot`, `getModelInfo`, `getSessionInfo`) live as closures in index.ts instead of methods on the state holder.~~
    Resolved by Layer 1 (#193).
-3. `AgentToolManager` mixes fields from `AgentManager` and `SettingsManager` (source mismatch).
-4. `AgentToolWidget` uses different method names than `SubagentRuntime` (name mismatch).
+3. ~~`AgentToolManager` mixes fields from `AgentManager` and `SettingsManager` (source mismatch).~~
+   Resolved by Layer 2 (#194).
+4. ~~`AgentToolWidget` uses different method names than `SubagentRuntime` (name mismatch).~~
+   Resolved by Layer 2 (#194).
 
 Fix these structural misalignments and the class conversions become mechanical.
 
@@ -668,7 +670,7 @@ Add typed methods: `buildSnapshot(inheritContext)`, `getModelInfo()`, `getSessio
 - Outcome: 3 closure queries in index.ts → 0; `SubagentRuntime` is self-sufficient for tool deps
 - Enables: Layer 3 (tools accept `SubagentRuntime` directly)
 
-### Layer 2: Align interfaces so real objects satisfy tool deps structurally ([#194][194])
+### Layer 2: Align interfaces so real objects satisfy tool deps structurally ([#194][194]) ✓ done
 
 Three alignment changes:
 
@@ -681,7 +683,7 @@ After this step, `AgentManager` structurally satisfies `AgentToolManager` and `S
 
 - Target: `src/tools/agent-tool.ts` (interface), `src/runtime.ts` (method names), `src/ui/message-formatters.ts`
 - Smell: Category C (source mismatch, name mismatch) + Category A (dead export)
-- Outcome: structural typing connects real objects to tool interfaces without adapters
+- Outcome: structural typing connects real objects to tool interfaces without adapters; 0 dead exports (fallow clean)
 - Enables: Layer 3 (class constructors accept real objects directly)
 
 ### Layer 3: Convert closure factories to classes ([#195][195], [#196][196])
