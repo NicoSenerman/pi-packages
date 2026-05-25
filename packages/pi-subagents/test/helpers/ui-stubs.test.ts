@@ -22,14 +22,12 @@ describe("makeFileOps", () => {
 	});
 
 	it("findAgentFile returns undefined by default", () => {
-		expect(makeFileOps().findAgentFile("/dir", "name")).toBeUndefined();
+		expect(makeFileOps().findAgentFile("agent", ["/dir"])).toBeUndefined();
 	});
 
 	it("stubs are vi.fn() instances", () => {
 		const fileOps = makeFileOps();
-		// @ts-expect-error -- confirming mock method exists
 		expect(fileOps.exists.mock).toBeDefined();
-		// @ts-expect-error -- confirming mock method exists
 		expect(fileOps.write.mock).toBeDefined();
 	});
 });
@@ -59,9 +57,7 @@ describe("makeMenuUI", () => {
 
 	it("stubs are vi.fn() instances", () => {
 		const ui = makeMenuUI();
-		// @ts-expect-error -- confirming mock method exists
 		expect(ui.select.mock).toBeDefined();
-		// @ts-expect-error -- confirming mock method exists
 		expect(ui.input.mock).toBeDefined();
 	});
 });
@@ -80,7 +76,6 @@ describe("makeMenuManager", () => {
 
 	it("stubs are vi.fn() instances", () => {
 		const mgr = makeMenuManager();
-		// @ts-expect-error -- confirming mock method exists
 		expect(mgr.listAgents.mock).toBeDefined();
 	});
 });

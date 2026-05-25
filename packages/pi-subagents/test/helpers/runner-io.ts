@@ -1,4 +1,5 @@
 import { vi } from "vitest";
+import type { PreloadedSkill } from "#src/session/skill-loader";
 import type { AgentConfig } from "#src/types";
 
 /** Default AgentConfig returned by createAgentLookup. Matches the Explore stub used in runner tests. */
@@ -25,13 +26,11 @@ const DEFAULT_AGENT_CONFIG: AgentConfig = {
  * production AssemblerIO interface. The stale buildMemoryBlock and
  * buildReadOnlyMemoryBlock stubs from older test files are intentionally omitted.
  *
- * Pass assemblerOverrides to replace individual assemblerIO methods without
- * rebuilding the entire factory.
+ * To customize assemblerIO methods after creation, configure the returned Mock:
+ *   const io = createRunnerIO();
+ *   io.assemblerIO.buildAgentPrompt.mockReturnValue("custom");
  */
-export function createRunnerIO(assemblerOverrides?: {
-	preloadSkills?: ReturnType<typeof vi.fn>;
-	buildAgentPrompt?: ReturnType<typeof vi.fn>;
-}) {
+export function createRunnerIO() {
 	return {
 		detectEnv: vi.fn().mockResolvedValue({ isGitRepo: false, branch: "", platform: "linux" }),
 		getAgentDir: vi.fn().mockReturnValue("/mock/agent-dir"),
@@ -44,8 +43,8 @@ export function createRunnerIO(assemblerOverrides?: {
 		createSettingsManager: vi.fn().mockReturnValue({}),
 		createSession: vi.fn(),
 		assemblerIO: {
-			preloadSkills: assemblerOverrides?.preloadSkills ?? vi.fn().mockReturnValue([]),
-			buildAgentPrompt: assemblerOverrides?.buildAgentPrompt ?? vi.fn().mockReturnValue("system prompt"),
+			preloadSkills: vi.fn((_skills: string[], _cwd: string): PreloadedSkill[] => []),
+			buildAgentPrompt: vi.fn((..._args: unknown[]): string => "system prompt"),
 		},
 	};
 }
@@ -64,8 +63,8 @@ export function createRunnerIO(assemblerOverrides?: {
 export function createAgentLookup(configOverrides?: Partial<AgentConfig>) {
 	const config: AgentConfig = { ...DEFAULT_AGENT_CONFIG, ...configOverrides };
 	return {
-		resolveAgentConfig: vi.fn((): AgentConfig => config),
-		getToolNamesForType: vi.fn((): string[] => config.builtinToolNames ?? ["read"]),
+		resolveAgentConfig: vi.fn((_type: string): AgentConfig => config),
+		getToolNamesForType: vi.fn((_type: string): string[] => config.builtinToolNames ?? ["read"]),
 	};
 }
 

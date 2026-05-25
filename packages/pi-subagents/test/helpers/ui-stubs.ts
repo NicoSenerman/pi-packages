@@ -20,12 +20,12 @@ const DEFAULT_TEST_AGENT_CONFIG: AgentConfig = {
  */
 export function makeFileOps() {
 	return {
-		exists: vi.fn((): boolean => false),
-		read: vi.fn((): string | undefined => undefined),
-		write: vi.fn(),
-		remove: vi.fn(),
-		ensureDir: vi.fn(),
-		findAgentFile: vi.fn((): string | undefined => undefined),
+		exists: vi.fn((_path: string): boolean => false),
+		read: vi.fn((_path: string): string | undefined => undefined),
+		write: vi.fn((_path: string, _content: string): void => {}),
+		remove: vi.fn((_path: string): void => {}),
+		ensureDir: vi.fn((_path: string): void => {}),
+		findAgentFile: vi.fn((_name: string, _dirs: string[]): string | undefined => undefined),
 	};
 }
 
