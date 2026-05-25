@@ -610,7 +610,7 @@ See [phase-11-closure-to-class.md](history/phase-11-closure-to-class.md) for det
 Phase 12 addresses the remaining fallow refactoring targets and test duplication.
 These are independent of Phase 11 and can proceed in parallel if desired.
 
-### Step 1: Decompose `renderWidgetLines` (cognitive 44)
+### Step 1: Decompose `renderWidgetLines` (cognitive 44) — [#205]
 
 `renderWidgetLines` in `ui/widget-renderer.ts` handles agent-status formatting, tree connectors, overflow, and empty states.
 Extract per-status renderers and a tree-connector utility.
@@ -618,7 +618,7 @@ Extract per-status renderers and a tree-connector utility.
 - Target: `src/ui/widget-renderer.ts`
 - Outcome: cognitive complexity < 10
 
-### Step 2: Decompose `showAgentDetail` (cognitive 33)
+### Step 2: Decompose `showAgentDetail` (cognitive 33) — [#206]
 
 `showAgentDetail` in `ui/agent-config-editor.ts` handles display, edit, eject, and delete flows.
 Extract sub-functions per menu action.
@@ -626,7 +626,7 @@ Extract sub-functions per menu action.
 - Target: `src/ui/agent-config-editor.ts`
 - Outcome: cognitive complexity < 10
 
-### Step 3: Decompose `update` in `agent-widget.ts` (cognitive 31)
+### Step 3: Decompose `update` in `agent-widget.ts` (cognitive 31) — [#207]
 
 `update` mixes timer lifecycle, agent list assembly, render delegation, and visibility state.
 Extract `assembleWidgetState` (pure) and timer management.
@@ -634,7 +634,7 @@ Extract `assembleWidgetState` (pure) and timer management.
 - Target: `src/ui/agent-widget.ts`
 - Outcome: cognitive complexity < 10
 
-### Step 4: Extract shared test fixtures
+### Step 4: Extract shared test fixtures — [#208]
 
 The 3 heaviest clone families:
 
@@ -681,6 +681,7 @@ Detailed records are preserved in per-phase history files:
 | Observation/ctx    | #144, #145, #146, #147, #148                               | Observation consolidation, execute decomposition, UI context, text wrapping injection, widget rendering split                                            |
 | Phase 10           | #164, #165, #166, #167, #168, #169, #170, #171, #172       | Domain directories, ResolvedSpawnConfig, ParentSessionInfo, RunnerIO split, ToolFilterConfig, RunContext, buildContentLines, renderResult, content-items |
 | Phase 11           | #192, #193, #194, #195, #196                               | SessionContext, runtime queries, interface alignment, tool classes, runner/menu classes, index.ts simplification                                         |
+| Phase 12           | #205, #206, #207, #208                                     | renderWidgetLines, showAgentDetail, widget update, shared test fixtures                                                                                  |
 
 The remaining open issue is #22 (parent-session resolution), a cross-extension track that does not gate the structural work.
 
@@ -704,3 +705,7 @@ The upstream test suite is run periodically as a regression canary for the agent
 [167]: https://github.com/gotgenes/pi-packages/issues/167
 [168]: https://github.com/gotgenes/pi-packages/issues/168
 [169]: https://github.com/gotgenes/pi-packages/issues/169
+[#205]: https://github.com/gotgenes/pi-packages/issues/205
+[#206]: https://github.com/gotgenes/pi-packages/issues/206
+[#207]: https://github.com/gotgenes/pi-packages/issues/207
+[#208]: https://github.com/gotgenes/pi-packages/issues/208
