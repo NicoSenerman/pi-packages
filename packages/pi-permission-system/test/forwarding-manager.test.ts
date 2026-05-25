@@ -205,6 +205,7 @@ describe("ForwardingManager", () => {
       expect(mockIsSubagentExecutionContext).toHaveBeenCalledWith(
         ctx,
         "/custom/subagent-dir",
+        undefined,
       );
     });
   });

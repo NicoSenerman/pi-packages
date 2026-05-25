@@ -4,6 +4,7 @@ import type { PermissionForwardingDeps } from "./forwarded-permissions/polling";
 import { processForwardedPermissionRequests } from "./forwarded-permissions/polling";
 import { PERMISSION_FORWARDING_POLL_INTERVAL_MS } from "./permission-forwarding";
 import { isSubagentExecutionContext } from "./subagent-context";
+import type { SubagentSessionRegistry } from "./subagent-registry";
 
 /**
  * Narrow interface for the forwarding lifecycle used by `PermissionSession`.
@@ -30,6 +31,7 @@ export class ForwardingManager {
   constructor(
     private readonly subagentSessionsDir: string,
     private readonly forwardingDeps: PermissionForwardingDeps,
+    private readonly registry?: SubagentSessionRegistry,
   ) {}
 
   /**
@@ -41,7 +43,7 @@ export class ForwardingManager {
   start(ctx: ExtensionContext): void {
     if (
       !ctx.hasUI ||
-      isSubagentExecutionContext(ctx, this.subagentSessionsDir)
+      isSubagentExecutionContext(ctx, this.subagentSessionsDir, this.registry)
     ) {
       this.stop();
       return;

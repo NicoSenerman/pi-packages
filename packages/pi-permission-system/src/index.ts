@@ -35,18 +35,21 @@ import {
 
 export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
   const runtime = createExtensionRuntime();
+  const subagentRegistry = new SubagentSessionRegistry();
 
   const prompter = new PermissionPrompter({
     getConfig: () => runtime.config,
     writeReviewLog: runtime.writeReviewLog.bind(runtime),
     subagentSessionsDir: runtime.subagentSessionsDir,
     forwardingDir: runtime.forwardingDir,
+    registry: subagentRegistry,
     requestPermissionDecisionFromUi,
   });
 
   const forwardingDeps: PermissionForwardingDeps = {
     forwardingDir: runtime.forwardingDir,
     subagentSessionsDir: runtime.subagentSessionsDir,
+    registry: subagentRegistry,
     logger: {
       writeReviewLog: runtime.writeReviewLog.bind(runtime),
       writeDebugLog: runtime.writeDebugLog.bind(runtime),
@@ -62,7 +65,11 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
   const session = new PermissionSession(
     runtime,
     createSessionLogger(runtime),
-    new ForwardingManager(runtime.subagentSessionsDir, forwardingDeps),
+    new ForwardingManager(
+      runtime.subagentSessionsDir,
+      forwardingDeps,
+      subagentRegistry,
+    ),
     {
       refreshExtensionConfig: (ctx) => refreshExtensionConfig(runtime, ctx),
       logResolvedConfigPaths: () => logResolvedConfigPaths(runtime),
@@ -74,6 +81,7 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
           isSubagent: isSubagentExecutionContext(
             ctx,
             runtime.subagentSessionsDir,
+            subagentRegistry,
           ),
         }),
       promptPermission: (ctx, details) => prompter.prompt(ctx, details),
@@ -97,8 +105,6 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
     requestPermissionDecisionFromUi,
     writeReviewLog: runtime.writeReviewLog.bind(runtime),
   });
-
-  const subagentRegistry = new SubagentSessionRegistry();
 
   const permissionsService: PermissionsService = {
     checkPermission(surface, value, agentName) {

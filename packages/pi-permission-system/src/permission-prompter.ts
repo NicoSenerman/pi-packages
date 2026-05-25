@@ -9,6 +9,7 @@ import type {
   PermissionPromptDecision,
   RequestPermissionOptions,
 } from "./permission-dialog";
+import type { SubagentSessionRegistry } from "./subagent-registry";
 import { shouldAutoApprovePermissionState } from "./yolo-mode";
 
 export type PermissionReviewSource = "tool_call" | "skill_input" | "skill_read";
@@ -54,6 +55,8 @@ export interface PermissionPrompterDeps {
   subagentSessionsDir: string;
   /** Directory used for file-based permission forwarding requests/responses. */
   forwardingDir: string;
+  /** In-process subagent session registry for detection and forwarding target resolution. */
+  registry?: SubagentSessionRegistry;
   /** Show the interactive permission dialog in the UI. */
   requestPermissionDecisionFromUi(
     ui: ExtensionContext["ui"],
@@ -155,6 +158,7 @@ export class PermissionPrompter implements PermissionPrompterApi {
     return {
       forwardingDir: deps.forwardingDir,
       subagentSessionsDir: deps.subagentSessionsDir,
+      registry: deps.registry,
       logger,
       // eslint-disable-next-line @typescript-eslint/unbound-method -- logger methods are plain function closures; no this-binding issue
       writeReviewLog: deps.writeReviewLog,

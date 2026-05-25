@@ -21,6 +21,7 @@ import {
   SUBAGENT_PARENT_SESSION_ENV_CANDIDATES,
 } from "#src/permission-forwarding";
 import { isSubagentExecutionContext } from "#src/subagent-context";
+import type { SubagentSessionRegistry } from "#src/subagent-registry";
 
 import {
   cleanupPermissionForwardingLocationIfEmpty,
@@ -40,6 +41,8 @@ import {
 export interface PermissionForwardingDeps {
   forwardingDir: string;
   subagentSessionsDir: string;
+  /** In-process subagent session registry for detection and forwarding target resolution. */
+  registry?: SubagentSessionRegistry;
   logger: ForwardedPermissionLogger;
   writeReviewLog: (event: string, details: Record<string, unknown>) => void;
   requestPermissionDecisionFromUi: (
@@ -102,11 +105,18 @@ export async function waitForForwardedPermissionApproval(
   deps: PermissionForwardingDeps,
 ): Promise<PermissionPromptDecision> {
   const requesterSessionId = getSessionId(ctx);
+  const sessionDir = ctx.sessionManager.getSessionDir();
   const targetSessionId = resolvePermissionForwardingTargetSessionId({
     hasUI: ctx.hasUI,
-    isSubagent: isSubagentExecutionContext(ctx, deps.subagentSessionsDir),
+    isSubagent: isSubagentExecutionContext(
+      ctx,
+      deps.subagentSessionsDir,
+      deps.registry,
+    ),
     currentSessionId: requesterSessionId,
     env: process.env,
+    sessionDir,
+    registry: deps.registry,
   });
 
   if (!targetSessionId) {
@@ -360,7 +370,9 @@ export async function confirmPermission(
     );
   }
 
-  if (!isSubagentExecutionContext(ctx, deps.subagentSessionsDir)) {
+  if (
+    !isSubagentExecutionContext(ctx, deps.subagentSessionsDir, deps.registry)
+  ) {
     return { approved: false, state: "denied" };
   }
 
