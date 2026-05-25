@@ -17,7 +17,7 @@ function makeManager(records: Map<string, AgentRecord> = new Map()): GetResultTo
 	return { getRecord: (id: string) => records.get(id) };
 }
 
-function makeNotifications(): GetResultToolNotifications & { cancelNudge: ReturnType<typeof vi.fn> } {
+function makeNotifications() {
 	return { cancelNudge: vi.fn() };
 }
 

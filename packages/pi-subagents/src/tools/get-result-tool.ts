@@ -1,4 +1,3 @@
-import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import type { AgentConfigLookup } from "#src/config/agent-types";
