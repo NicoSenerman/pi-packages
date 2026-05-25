@@ -25,7 +25,7 @@ import { AgentTypeRegistry } from "#src/config/agent-types";
 import { loadCustomAgents } from "#src/config/custom-agents";
 import { SessionLifecycleHandler, ToolStartHandler } from "#src/handlers/index";
 import { AgentManager, type AgentManagerObserver } from "#src/lifecycle/agent-manager";
-import { createAgentRunner, getAgentConversation, type RunnerIO, steerAgent } from "#src/lifecycle/agent-runner";
+import { createAgentRunner, getAgentConversation, type RunnerIO } from "#src/lifecycle/agent-runner";
 import { buildParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { GitWorktreeManager } from "#src/lifecycle/worktree";
 import { buildEventData, type NotificationDetails, NotificationManager } from "#src/observation/notification";
@@ -43,7 +43,7 @@ import { SettingsManager } from "#src/settings";
 import { createAgentTool } from "#src/tools/agent-tool";
 import { createGetResultTool } from "#src/tools/get-result-tool";
 import { getModelLabelFromConfig } from "#src/tools/helpers";
-import { createSteerTool } from "#src/tools/steer-tool";
+import { SteerTool } from "#src/tools/steer-tool";
 import { FsAgentFileOps } from "#src/ui/agent-file-ops";
 import { createAgentsMenuHandler } from "#src/ui/agent-menu";
 import {
@@ -218,12 +218,7 @@ export default function (pi: ExtensionAPI) {
 
   // ---- steer_subagent tool ----
 
-  pi.registerTool(defineTool(createSteerTool(
-    (id) => manager.getRecord(id),
-    (name, data) => pi.events.emit(name, data),
-    (session, message) => steerAgent(session, message),
-    (id, message) => manager.queueSteer(id, message),
-  )));
+  pi.registerTool(new SteerTool(manager, pi.events).toToolDefinition());
 
   // ---- /agents interactive menu ----
 

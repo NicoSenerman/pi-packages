@@ -1,97 +1,95 @@
 import { describe, expect, it, vi } from "vitest";
-import { createSteerTool } from "#src/tools/steer-tool";
+import { SteerTool, type SteerToolEvents, type SteerToolManager } from "#src/tools/steer-tool";
 import type { AgentRecord } from "#src/types";
 import { createTestRecord } from "#test/helpers/make-record";
 import { createMockSession, toAgentSession } from "#test/helpers/mock-session";
 import { STUB_CTX } from "#test/helpers/stub-ctx";
 
-function makeDeps(records: Map<string, AgentRecord> = new Map()) {
-  return {
-    getRecord: (id: string) => records.get(id),
-    emitEvent: vi.fn(),
-    steerAgent: vi.fn().mockResolvedValue(undefined),
-    queueSteer: vi.fn((_id: string, _msg: string) => true),
-  };
+function makeManager(records: Map<string, AgentRecord> = new Map()): SteerToolManager {
+	return {
+		getRecord: (id: string) => records.get(id),
+		queueSteer: vi.fn((_id: string, _msg: string) => true),
+	};
+}
+
+function makeEvents(): SteerToolEvents {
+	return { emit: vi.fn() };
 }
 
 async function execute(
-  deps: ReturnType<typeof makeDeps>,
-  params: { agent_id: string; message: string },
+	manager: SteerToolManager,
+	events: SteerToolEvents,
+	params: { agent_id: string; message: string },
 ) {
-  const tool = createSteerTool(
-    deps.getRecord,
-    deps.emitEvent,
-    deps.steerAgent,
-    deps.queueSteer,
-  );
-  return tool.execute("tc-1", params, new AbortController().signal, undefined, STUB_CTX);
+	const tool = new SteerTool(manager, events);
+	return tool.execute("tc-1", params, new AbortController().signal, undefined, STUB_CTX);
 }
 
-describe("createSteerTool", () => {
-  it("returns tool definition with correct name", () => {
-    const deps = makeDeps();
-    const tool = createSteerTool(deps.getRecord, deps.emitEvent, deps.steerAgent, deps.queueSteer);
-    expect(tool.name).toBe("steer_subagent");
-  });
+describe("SteerTool", () => {
+	it("returns tool definition with correct name", () => {
+		const tool = new SteerTool(makeManager(), makeEvents());
+		expect(tool.toToolDefinition().name).toBe("steer_subagent");
+	});
 
-  it("includes promptSnippet", () => {
-    const deps = makeDeps();
-    const tool = createSteerTool(deps.getRecord, deps.emitEvent, deps.steerAgent, deps.queueSteer);
-    expect(tool.promptSnippet).toBe(
-      "steer_subagent: Send a mid-run message to redirect a running background agent.",
-    );
-  });
+	it("includes promptSnippet", () => {
+		const tool = new SteerTool(makeManager(), makeEvents());
+		expect(tool.toToolDefinition().promptSnippet).toBe(
+			"steer_subagent: Send a mid-run message to redirect a running background agent.",
+		);
+	});
 
-  it("returns not-found message for unknown agent ID", async () => {
-    const result = await execute(makeDeps(), { agent_id: "unknown", message: "hi" });
-    expect(result.content[0].text).toContain("Agent not found");
-  });
+	it("returns not-found message for unknown agent ID", async () => {
+		const result = await execute(makeManager(), makeEvents(), { agent_id: "unknown", message: "hi" });
+		expect(result.content[0].text).toContain("Agent not found");
+	});
 
-  it("rejects steering a non-running agent", async () => {
-    const records = new Map([["agent-1", createTestRecord({ status: "completed" })]]);
-    const result = await execute(makeDeps(records), { agent_id: "agent-1", message: "hi" });
-    expect(result.content[0].text).toContain("not running");
-    expect(result.content[0].text).toContain("completed");
-  });
+	it("rejects steering a non-running agent", async () => {
+		const records = new Map([["agent-1", createTestRecord({ status: "completed" })]]);
+		const result = await execute(makeManager(records), makeEvents(), { agent_id: "agent-1", message: "hi" });
+		expect(result.content[0].text).toContain("not running");
+		expect(result.content[0].text).toContain("completed");
+	});
 
-  it("queues steer when session is not ready", async () => {
-    // No execution state set — session not yet created
-    const record = createTestRecord({ status: "running" });
-    const records = new Map([["agent-1", record]]);
-    const deps = makeDeps(records);
-    const result = await execute(deps, { agent_id: "agent-1", message: "redirect" });
-    expect(result.content[0].text).toContain("queued");
-    expect(deps.queueSteer).toHaveBeenCalledWith("agent-1", "redirect");
-    expect(deps.emitEvent).toHaveBeenCalledWith("subagents:steered", {
-      id: "agent-1",
-      message: "redirect",
-    });
-  });
+	it("queues steer when session is not ready", async () => {
+		// No execution state set — session not yet created
+		const record = createTestRecord({ status: "running" });
+		const records = new Map([["agent-1", record]]);
+		const manager = makeManager(records);
+		const events = makeEvents();
+		const result = await execute(manager, events, { agent_id: "agent-1", message: "redirect" });
+		expect(result.content[0].text).toContain("queued");
+		expect(manager.queueSteer).toHaveBeenCalledWith("agent-1", "redirect");
+		expect(events.emit).toHaveBeenCalledWith("subagents:steered", {
+			id: "agent-1",
+			message: "redirect",
+		});
+	});
 
-  it("sends steer and emits event on success", async () => {
-    const record = createTestRecord({ status: "running" });
-    const fakeSession = toAgentSession(createMockSession());
-    record.execution = { session: fakeSession, outputFile: undefined };
-    const records = new Map([["agent-1", record]]);
-    const deps = makeDeps(records);
-    const result = await execute(deps, { agent_id: "agent-1", message: "change plan" });
-    expect(deps.steerAgent).toHaveBeenCalledWith(fakeSession, "change plan");
-    expect(deps.emitEvent).toHaveBeenCalledWith("subagents:steered", {
-      id: "agent-1",
-      message: "change plan",
-    });
-    expect(result.content[0].text).toContain("Steering message sent");
-    expect(result.content[0].text).toContain("3 tool uses");
-  });
+	it("sends steer and emits event on success", async () => {
+		const record = createTestRecord({ status: "running" });
+		const mockSession = createMockSession();
+		record.execution = { session: toAgentSession(mockSession), outputFile: undefined };
+		const records = new Map([["agent-1", record]]);
+		const manager = makeManager(records);
+		const events = makeEvents();
+		const result = await execute(manager, events, { agent_id: "agent-1", message: "change plan" });
+		expect(mockSession.steer).toHaveBeenCalledWith("change plan");
+		expect(events.emit).toHaveBeenCalledWith("subagents:steered", {
+			id: "agent-1",
+			message: "change plan",
+		});
+		expect(result.content[0].text).toContain("Steering message sent");
+		expect(result.content[0].text).toContain("3 tool uses");
+	});
 
-  it("returns error message when steerAgent throws", async () => {
-    const record = createTestRecord({ status: "running" });
-    record.execution = { session: toAgentSession(createMockSession()), outputFile: undefined };
-    const records = new Map([["agent-1", record]]);
-    const deps = makeDeps(records);
-    deps.steerAgent.mockRejectedValue(new Error("session closed"));
-    const result = await execute(deps, { agent_id: "agent-1", message: "hi" });
-    expect(result.content[0].text).toContain("Failed to steer agent");
-    expect(result.content[0].text).toContain("session closed");
-  });
+	it("returns error message when steer fails", async () => {
+		const record = createTestRecord({ status: "running" });
+		const mockSession = createMockSession();
+		mockSession.steer.mockRejectedValue(new Error("session closed"));
+		record.execution = { session: toAgentSession(mockSession), outputFile: undefined };
+		const records = new Map([["agent-1", record]]);
+		const result = await execute(makeManager(records), makeEvents(), { agent_id: "agent-1", message: "hi" });
+		expect(result.content[0].text).toContain("Failed to steer agent");
+		expect(result.content[0].text).toContain("session closed");
+	});
 });
