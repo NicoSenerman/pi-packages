@@ -202,15 +202,29 @@ export interface AgentRunner {
 }
 
 /**
- * Create an AgentRunner backed by the given IO boundary.
+ * Concrete AgentRunner backed by a RunnerIO boundary.
  *
  * Captures io at construction time so AgentManager remains IO-unaware.
  */
+export class ConcreteAgentRunner implements AgentRunner {
+  constructor(private readonly io: RunnerIO) {}
+
+  run(snapshot: ParentSnapshot, type: SubagentType, prompt: string, options: RunOptions): Promise<RunResult> {
+    return runAgent(snapshot, type, prompt, options, this.io);
+  }
+
+  resume(session: AgentSession, prompt: string, options?: ResumeOptions): Promise<string> {
+    return resumeAgent(session, prompt, options);
+  }
+}
+
+/**
+ * Create an AgentRunner backed by the given IO boundary.
+ *
+ * @deprecated Use `new ConcreteAgentRunner(io)` directly.
+ */
 export function createAgentRunner(io: RunnerIO): AgentRunner {
-  return {
-    run: (snapshot, type, prompt, options) => runAgent(snapshot, type, prompt, options, io),
-    resume: resumeAgent,
-  };
+  return new ConcreteAgentRunner(io);
 }
 
 // ── Private helpers ───────────────────────────────────────────────────────────
