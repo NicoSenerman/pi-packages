@@ -12,6 +12,30 @@ import type { AgentConfig } from "#src/types";
 import type { AgentFileOps } from "#src/ui/agent-file-ops";
 import type { MenuUI } from "#src/ui/agent-menu";
 
+// ---- Pure helpers ----
+
+/** Compute the menu option list for the agent detail view. */
+export function buildMenuOptions(
+  cfg: { isDefault?: boolean; enabled?: boolean },
+  file: string | undefined,
+): string[] {
+  const isDefault = cfg.isDefault === true;
+  const disabled = cfg.enabled === false;
+
+  if (disabled && file) {
+    return isDefault
+      ? ["Enable", "Edit", "Reset to default", "Delete", "Back"]
+      : ["Enable", "Edit", "Delete", "Back"];
+  }
+  if (isDefault && !file) {
+    return ["Eject (export as .md)", "Disable", "Back"];
+  }
+  if (isDefault && file) {
+    return ["Edit", "Disable", "Reset to default", "Delete", "Back"];
+  }
+  return ["Edit", "Disable", "Delete", "Back"];
+}
+
 // ---- Factory ----
 
 export function createAgentConfigEditor(
@@ -30,25 +54,9 @@ export function createAgentConfigEditor(
       return;
     }
     const cfg = registry.resolveAgentConfig(name);
-
     const file = fileOps.findAgentFile(name, agentDirs());
-    const isDefault = cfg.isDefault === true;
-    const disabled = cfg.enabled === false;
 
-    let menuOptions: string[];
-    if (disabled && file) {
-      menuOptions = isDefault
-        ? ["Enable", "Edit", "Reset to default", "Delete", "Back"]
-        : ["Enable", "Edit", "Delete", "Back"];
-    } else if (isDefault && !file) {
-      menuOptions = ["Eject (export as .md)", "Disable", "Back"];
-    } else if (isDefault && file) {
-      menuOptions = ["Edit", "Disable", "Reset to default", "Delete", "Back"];
-    } else {
-      menuOptions = ["Edit", "Disable", "Delete", "Back"];
-    }
-
-    const choice = await ui.select(name, menuOptions);
+    const choice = await ui.select(name, buildMenuOptions(cfg, file));
     if (!choice || choice === "Back") return;
 
     if (choice === "Edit" && file) {

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { AgentConfig } from "#src/types";
-import { createAgentConfigEditor } from "#src/ui/agent-config-editor";
+import { buildMenuOptions, createAgentConfigEditor } from "#src/ui/agent-config-editor";
 
 const testDefaultConfig: AgentConfig = {
   name: "test-agent",
@@ -375,5 +375,45 @@ describe("createAgentConfigEditor", () => {
         "info",
       );
     });
+  });
+});
+
+describe("buildMenuOptions", () => {
+  it("shows Eject and Disable for a default agent with no file", () => {
+    expect(buildMenuOptions({ isDefault: true }, undefined)).toEqual([
+      "Eject (export as .md)",
+      "Disable",
+      "Back",
+    ]);
+  });
+
+  it("shows Edit, Disable, Reset, Delete for a default agent with override file", () => {
+    expect(
+      buildMenuOptions({ isDefault: true }, "/project/.pi/agents/test-agent.md"),
+    ).toEqual(["Edit", "Disable", "Reset to default", "Delete", "Back"]);
+  });
+
+  it("shows Edit, Disable, Delete for a custom agent with file", () => {
+    expect(
+      buildMenuOptions({ isDefault: false }, "/project/.pi/agents/test-agent.md"),
+    ).toEqual(["Edit", "Disable", "Delete", "Back"]);
+  });
+
+  it("shows Enable, Edit, Reset, Delete for a disabled default agent with file", () => {
+    expect(
+      buildMenuOptions(
+        { isDefault: true, enabled: false },
+        "/project/.pi/agents/test-agent.md",
+      ),
+    ).toEqual(["Enable", "Edit", "Reset to default", "Delete", "Back"]);
+  });
+
+  it("shows Enable, Edit, Delete for a disabled custom agent with file", () => {
+    expect(
+      buildMenuOptions(
+        { isDefault: false, enabled: false },
+        "/project/.pi/agents/test-agent.md",
+      ),
+    ).toEqual(["Enable", "Edit", "Delete", "Back"]);
   });
 });
