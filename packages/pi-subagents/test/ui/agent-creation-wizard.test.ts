@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
-import { createAgentCreationWizard } from "#src/ui/agent-creation-wizard";
+import { AgentCreationWizard } from "#src/ui/agent-creation-wizard";
 import { createTestRecord } from "#test/helpers/make-record";
 import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 import { makeFileOps, makeMenuManager, makeMenuUI } from "#test/helpers/ui-stubs";
@@ -22,12 +22,22 @@ beforeEach(() => {
   vi.spyOn(testRegistry, "reload").mockImplementation(() => {});
 });
 
-describe("createAgentCreationWizard", () => {
+function makeWizard(deps: ReturnType<typeof makeDeps>) {
+  return new AgentCreationWizard(
+    deps.fileOps,
+    deps.manager,
+    deps.registry,
+    deps.personalAgentsDir,
+    deps.projectAgentsDir,
+  );
+}
+
+describe("AgentCreationWizard", () => {
   describe("showCreateWizard", () => {
     it("returns when user cancels location selection", async () => {
       const deps = makeDeps();
       const ui = makeMenuUI([undefined]);
-      const wizard = createAgentCreationWizard(deps);
+      const wizard = makeWizard(deps);
 
       await wizard.showCreateWizard(ui, STUB_SNAPSHOT);
 
@@ -37,7 +47,7 @@ describe("createAgentCreationWizard", () => {
     it("returns when user cancels method selection", async () => {
       const deps = makeDeps();
       const ui = makeMenuUI(["Project (.pi/agents/)", undefined]);
-      const wizard = createAgentCreationWizard(deps);
+      const wizard = makeWizard(deps);
 
       await wizard.showCreateWizard(ui, STUB_SNAPSHOT);
 
@@ -66,7 +76,7 @@ describe("createAgentCreationWizard", () => {
         .mockResolvedValueOnce("A code reviewer agent") // description
         .mockResolvedValueOnce("code-reviewer"); // name
 
-      const wizard = createAgentCreationWizard(deps);
+      const wizard = makeWizard(deps);
       await wizard.showCreateWizard(ui, STUB_SNAPSHOT);
 
       expect(deps.manager.spawnAndWait).toHaveBeenCalledWith(
@@ -96,7 +106,7 @@ describe("createAgentCreationWizard", () => {
         .mockResolvedValueOnce("description")
         .mockResolvedValueOnce("test-agent");
 
-      const wizard = createAgentCreationWizard(deps);
+      const wizard = makeWizard(deps);
       await wizard.showCreateWizard(ui, STUB_SNAPSHOT);
 
       expect(ui.notify).toHaveBeenCalledWith(
@@ -121,7 +131,7 @@ describe("createAgentCreationWizard", () => {
         .mockResolvedValueOnce("description")
         .mockResolvedValueOnce("test-agent");
 
-      const wizard = createAgentCreationWizard(deps);
+      const wizard = makeWizard(deps);
       await wizard.showCreateWizard(ui, STUB_SNAPSHOT);
 
       expect(ui.notify).toHaveBeenCalledWith(
@@ -143,7 +153,7 @@ describe("createAgentCreationWizard", () => {
         .mockResolvedValueOnce("existing-agent");
       ui.confirm = vi.fn().mockResolvedValue(false);
 
-      const wizard = createAgentCreationWizard(deps);
+      const wizard = makeWizard(deps);
       await wizard.showCreateWizard(ui, STUB_SNAPSHOT);
 
       expect(ui.confirm).toHaveBeenCalledWith(
@@ -161,7 +171,7 @@ describe("createAgentCreationWizard", () => {
       ]);
       ui.input = vi.fn().mockResolvedValueOnce(undefined);
 
-      const wizard = createAgentCreationWizard(deps);
+      const wizard = makeWizard(deps);
       await wizard.showCreateWizard(ui, STUB_SNAPSHOT);
 
       expect(deps.manager.spawnAndWait).not.toHaveBeenCalled();
@@ -183,7 +193,7 @@ describe("createAgentCreationWizard", () => {
         .mockResolvedValueOnce("A test agent"); // description
       ui.editor = vi.fn().mockResolvedValue("You are a test agent.");
 
-      const wizard = createAgentCreationWizard(deps);
+      const wizard = makeWizard(deps);
       await wizard.showCreateWizard(ui, STUB_SNAPSHOT);
 
       expect(deps.fileOps.write).toHaveBeenCalledWith(
@@ -211,7 +221,7 @@ describe("createAgentCreationWizard", () => {
         .mockResolvedValueOnce("Fast agent");
       ui.editor = vi.fn().mockResolvedValue("prompt");
 
-      const wizard = createAgentCreationWizard(deps);
+      const wizard = makeWizard(deps);
       await wizard.showCreateWizard(ui, STUB_SNAPSHOT);
 
       expect(deps.fileOps.write).toHaveBeenCalledWith(
@@ -234,7 +244,7 @@ describe("createAgentCreationWizard", () => {
         .mockResolvedValueOnce("Deep thinker");
       ui.editor = vi.fn().mockResolvedValue("prompt");
 
-      const wizard = createAgentCreationWizard(deps);
+      const wizard = makeWizard(deps);
       await wizard.showCreateWizard(ui, STUB_SNAPSHOT);
 
       expect(deps.fileOps.write).toHaveBeenCalledWith(
@@ -257,7 +267,7 @@ describe("createAgentCreationWizard", () => {
         .mockResolvedValueOnce("Read-only agent");
       ui.editor = vi.fn().mockResolvedValue("prompt");
 
-      const wizard = createAgentCreationWizard(deps);
+      const wizard = makeWizard(deps);
       await wizard.showCreateWizard(ui, STUB_SNAPSHOT);
 
       expect(deps.fileOps.write).toHaveBeenCalledWith(
@@ -282,7 +292,7 @@ describe("createAgentCreationWizard", () => {
       ui.editor = vi.fn().mockResolvedValue("prompt");
       ui.confirm = vi.fn().mockResolvedValue(false);
 
-      const wizard = createAgentCreationWizard(deps);
+      const wizard = makeWizard(deps);
       await wizard.showCreateWizard(ui, STUB_SNAPSHOT);
 
       expect(ui.confirm).toHaveBeenCalledWith(
@@ -300,7 +310,7 @@ describe("createAgentCreationWizard", () => {
       ]);
       ui.input = vi.fn().mockResolvedValueOnce(undefined);
 
-      const wizard = createAgentCreationWizard(deps);
+      const wizard = makeWizard(deps);
       await wizard.showCreateWizard(ui, STUB_SNAPSHOT);
 
       expect(deps.fileOps.write).not.toHaveBeenCalled();
@@ -320,7 +330,7 @@ describe("createAgentCreationWizard", () => {
         .mockResolvedValueOnce("Personal agent");
       ui.editor = vi.fn().mockResolvedValue("prompt");
 
-      const wizard = createAgentCreationWizard(deps);
+      const wizard = makeWizard(deps);
       await wizard.showCreateWizard(ui, STUB_SNAPSHOT);
 
       expect(deps.fileOps.write).toHaveBeenCalledWith(

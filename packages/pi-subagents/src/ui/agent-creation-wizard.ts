@@ -30,33 +30,27 @@ export interface WizardRegistry {
   reload(): void;
 }
 
-export interface AgentCreationWizardDeps {
-  fileOps: AgentFileOps;
-  manager: WizardManager;
-  registry: WizardRegistry;
-  personalAgentsDir: string;
-  projectAgentsDir: string;
-}
+// ---- Class ----
 
-// ---- Factory ----
+export class AgentCreationWizard {
+  constructor(
+    private readonly fileOps: AgentFileOps,
+    private readonly manager: WizardManager,
+    private readonly registry: WizardRegistry,
+    private readonly personalAgentsDir: string,
+    private readonly projectAgentsDir: string,
+  ) {}
 
-export function createAgentCreationWizard({
-  fileOps,
-  manager,
-  registry,
-  personalAgentsDir,
-  projectAgentsDir,
-}: AgentCreationWizardDeps) {
-  async function showCreateWizard(ui: MenuUI, parentSnapshot: ParentSnapshot) {
+  async showCreateWizard(ui: MenuUI, parentSnapshot: ParentSnapshot): Promise<void> {
     const location = await ui.select("Choose location", [
       "Project (.pi/agents/)",
-      `Personal (${personalAgentsDir})`,
+      `Personal (${this.personalAgentsDir})`,
     ]);
     if (!location) return;
 
     const targetDir = location.startsWith("Project")
-      ? projectAgentsDir
-      : personalAgentsDir;
+      ? this.projectAgentsDir
+      : this.personalAgentsDir;
 
     const method = await ui.select("Creation method", [
       "Generate with Claude (recommended)",
@@ -65,27 +59,27 @@ export function createAgentCreationWizard({
     if (!method) return;
 
     if (method.startsWith("Generate")) {
-      await showGenerateWizard(ui, parentSnapshot, targetDir);
+      await this.showGenerateWizard(ui, parentSnapshot, targetDir);
     } else {
-      await showManualWizard(ui, targetDir);
+      await this.showManualWizard(ui, targetDir);
     }
   }
 
-  async function showGenerateWizard(
+  private async showGenerateWizard(
     ui: MenuUI,
     parentSnapshot: ParentSnapshot,
     targetDir: string,
-  ) {
+  ): Promise<void> {
     const description = await ui.input("Describe what this agent should do");
     if (!description) return;
 
     const name = await ui.input("Agent name (filename, no spaces)");
     if (!name) return;
 
-    fileOps.ensureDir(targetDir);
+    this.fileOps.ensureDir(targetDir);
 
     const targetPath = join(targetDir, `${name}.md`);
-    if (fileOps.exists(targetPath)) {
+    if (this.fileOps.exists(targetPath)) {
       const overwrite = await ui.confirm(
         "Overwrite",
         `${targetPath} already exists. Overwrite?`,
@@ -132,7 +126,7 @@ Guidelines for choosing settings:
 
 Write the file using the write tool. Only write the file, nothing else.`;
 
-    const record = await manager.spawnAndWait(
+    const record = await this.manager.spawnAndWait(
       parentSnapshot,
       "general-purpose",
       generatePrompt,
@@ -147,9 +141,9 @@ Write the file using the write tool. Only write the file, nothing else.`;
       return;
     }
 
-    registry.reload();
+    this.registry.reload();
 
-    if (fileOps.exists(targetPath)) {
+    if (this.fileOps.exists(targetPath)) {
       ui.notify(`Created ${targetPath}`, "info");
     } else {
       ui.notify(
@@ -159,7 +153,7 @@ Write the file using the write tool. Only write the file, nothing else.`;
     }
   }
 
-  async function showManualWizard(ui: MenuUI, targetDir: string) {
+  private async showManualWizard(ui: MenuUI, targetDir: string): Promise<void> {
     const name = await ui.input("Agent name (filename, no spaces)");
     if (!name) return;
 
@@ -239,7 +233,7 @@ ${systemPrompt}
 
     const targetPath = join(targetDir, `${name}.md`);
 
-    if (fileOps.exists(targetPath)) {
+    if (this.fileOps.exists(targetPath)) {
       const overwrite = await ui.confirm(
         "Overwrite",
         `${targetPath} already exists. Overwrite?`,
@@ -247,10 +241,8 @@ ${systemPrompt}
       if (!overwrite) return;
     }
 
-    fileOps.write(targetPath, content);
-    registry.reload();
+    this.fileOps.write(targetPath, content);
+    this.registry.reload();
     ui.notify(`Created ${targetPath}`, "info");
   }
-
-  return { showCreateWizard };
 }

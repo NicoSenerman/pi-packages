@@ -7,7 +7,7 @@ import { getModelLabelFromConfig } from "#src/tools/helpers";
 import type { AgentConfig, AgentRecord } from "#src/types";
 import type { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
 import { AgentConfigEditor } from "#src/ui/agent-config-editor";
-import { createAgentCreationWizard } from "#src/ui/agent-creation-wizard";
+import { AgentCreationWizard } from "#src/ui/agent-creation-wizard";
 import type { AgentFileOps } from "#src/ui/agent-file-ops";
 import { formatDuration, getDisplayName } from "#src/ui/display";
 
@@ -65,7 +65,7 @@ export interface MenuUI {
  */
 export class AgentsMenuHandler {
   private readonly editor: AgentConfigEditor;
-  private readonly wizard: ReturnType<typeof createAgentCreationWizard>;
+  private readonly wizard: AgentCreationWizard;
 
   constructor(
     private readonly manager: AgentMenuManager,
@@ -82,13 +82,13 @@ export class AgentsMenuHandler {
       personalAgentsDir,
       projectAgentsDir,
     );
-    this.wizard = createAgentCreationWizard({
+    this.wizard = new AgentCreationWizard(
       fileOps,
       manager,
       registry,
       personalAgentsDir,
       projectAgentsDir,
-    });
+    );
   }
 
   async handle({
