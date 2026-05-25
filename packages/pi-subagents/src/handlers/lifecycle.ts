@@ -1,3 +1,5 @@
+import type { SessionContext } from "#src/types";
+
 /**
  * Session lifecycle event handlers: session_start, session_before_switch, session_shutdown.
  *
@@ -14,7 +16,7 @@ export interface LifecycleManager {
 
 /** Narrow runtime interface — only the methods lifecycle handlers call. */
 export interface LifecycleRuntime {
-  setSessionContext(pi: unknown, ctx: unknown): void;
+  setSessionContext(ctx: SessionContext): void;
   clearSessionContext(): void;
 }
 
@@ -22,7 +24,7 @@ export interface LifecycleRuntime {
  * Handles session lifecycle events.
  *
  * Constructor deps:
- * - `pi` — the ExtensionAPI instance, stored in runtime on session_start
+ * - `pi` — the ExtensionAPI instance (unused after SessionContext migration; kept for interface compat)
  * - `runtime` — owns session context state
  * - `manager` — manages agent lifecycle (clear, abort, dispose)
  * - `disposeNotifications` — tears down the notification system on shutdown
@@ -38,7 +40,7 @@ export class SessionLifecycleHandler {
   ) {}
 
   handleSessionStart(_event: unknown, ctx: unknown): void {
-    this.runtime.setSessionContext(this.pi, ctx);
+    this.runtime.setSessionContext(ctx as SessionContext);
     this.manager.clearCompleted();
   }
 

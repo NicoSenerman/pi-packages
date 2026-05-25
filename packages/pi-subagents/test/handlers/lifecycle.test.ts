@@ -50,7 +50,7 @@ describe("SessionLifecycleHandler", () => {
 
       handler.handleSessionStart({}, ctx);
 
-      expect(runtime.setSessionContext).toHaveBeenCalledWith(fakePi, ctx);
+      expect(runtime.setSessionContext).toHaveBeenCalledWith(ctx);
       expect(manager.clearCompleted).toHaveBeenCalled();
     });
 
