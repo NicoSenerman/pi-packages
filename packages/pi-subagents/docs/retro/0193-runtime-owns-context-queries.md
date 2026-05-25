@@ -41,3 +41,35 @@ This is cleaner than the plan's `getModelInfo(): { modelRegistry: unknown }` app
 - Biome's `noUnusedPrivateClassMembers` warning caught the leftover `private readonly pi: unknown` in `SessionLifecycleHandler`.
 Removed `pi` from the constructor entirely (rather than adding `_` prefix), which also cleaned up `index.ts`.
 - The `eslint-disable` directive at the top of `index.ts` had two now-unused entries (`no-unsafe-member-access`, `no-unsafe-call`) removed by `eslint --fix`.
+
+## Stage: Final Retrospective (2026-05-24T20:45:00Z)
+
+### Session summary
+
+All three stages (plan, TDD, ship) completed in a single session.
+Released as `pi-subagents-v7.2.0`.
+One plan contradiction required a judgment call during implementation; otherwise clean mechanical execution.
+
+### Observations
+
+#### What went well
+
+- The architecture doc's Phase 11 Layer 1 spec was precise enough that no `ask_user` was needed at any stage — the issue body, architecture doc, and #192 retro were fully aligned.
+- `ServiceRuntimeLike` ended up simpler than planned (only `currentCtx` + `buildSnapshot` instead of also requiring `getModelInfo()`) — the implementation found a cleaner design than the plan specified.
+- Test count increase (+6) validates the design: methods that were previously untestable as anonymous closures now have dedicated unit tests.
+
+#### What caused friction (agent side)
+
+- `missing-context` — The plan's Non-Goals section claimed `buildParentContext` would not change, contradicting Module-Level Changes item #4 which explicitly listed the file.
+  The planning stage didn't cross-check these sections before committing.
+  Impact: brief confusion during step 3 about which section to trust (resolved by following Module-Level Changes); no rework, added ~30s of deliberation.
+- `missing-context` — TypeScript's discriminated union narrowing limitation with a `{ type: string }` catch-all arm was not anticipated.
+  Impact: required adding a local `BranchEntry` union type and explicit casts in `context.ts`; no rework but ~2 min of debugging the type error.
+
+#### What caused friction (user side)
+
+- None — no user intervention was needed at any point across all three stages.
+
+### Changes made
+
+1. `.pi/prompts/plan-issue.md` — added a Non-Goals vs Module-Level Changes cross-check instruction under the Module-Level Changes bullet.
