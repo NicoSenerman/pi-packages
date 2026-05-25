@@ -90,6 +90,8 @@ Then an H1 title (e.g., `# <short descriptive title>`) — required by markdownl
   When the design introduces a new collaborator that multiple consumers will use, sketch the consumer's call site (3–5 lines of pseudocode) to verify the interaction pattern follows Tell-Don't-Ask and Law of Demeter.
   When the design extracts code into a new module, sketch the extracted module's interaction with its upstream dependencies (3–5 lines) to verify it doesn't carry Tell-Don't-Ask violations, output-argument mutations, or reverse-search patterns from the original code.
   Fix upstream API gaps in the plan before planning the extraction.
+  When a new exported function accepts domain objects, verify the parameter type follows ISP — list which fields the function reads and confirm the type doesn't carry unused fields.
+  When the plan consolidates code from multiple methods into a shared helper, verify the methods have the same lifecycle semantics — different guards, cleanup scopes, or shutdown-vs-normal-operation contexts indicate structural duplication that should not be extracted.
 - **Module-Level Changes** — file-by-file list of what's added, changed, or removed.
   When a step removes or renames an export, grep all `src/` and `test/` files for every removed symbol before finalizing the file list.
   When the change adds, removes, or moves a module, check `packages/<PKG>/docs/architecture/` for layout listings, complexity tables, health metrics, or domain diagrams that reference the affected files and list them as doc updates.

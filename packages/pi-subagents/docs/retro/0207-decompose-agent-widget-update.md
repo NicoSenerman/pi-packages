@@ -54,3 +54,39 @@ Test count went from 868 to 884 (+16 tests across 55 files, up from 54).
 - The complexity hotspots table in `architecture.md` now has no rows (both `renderWidgetLines` from #205 and `update` from this issue are resolved).
   The section note was updated to reflect that Phase 12 cleared all critical hotspots.
 - `pnpm fallow dead-code` (from repo root) passed with no issues.
+
+## Stage: Final Retrospective (2026-05-25T13:15:00Z)
+
+### Session summary
+
+Issue #207 shipped as `pi-subagents-v7.3.0` with zero deviations from the revised plan.
+The session covered plan revision, TDD implementation (16 new tests, 868 → 884), shipping, and CI verification.
+
+### Observations
+
+#### What went well
+
+- The plan revision caught three real design issues before implementation started: ISP violation in the function parameter type, incorrect `dispose` → `clearWidget` delegation, and missing complexity budget.
+  Fixing these upfront meant the TDD execution had zero deviations and zero rework.
+- The narrow `AgentSummary` type (3 fields) made test fixtures trivial plain objects — no `createTestRecord` or factory infrastructure needed.
+  This validated the ISP improvement concretely.
+- The `dispose` independence decision (Sandi Metz principle applied to lifecycle semantics) kept `dispose` at its current 10-line simplicity while `clearWidget` got its own guarded teardown logic.
+
+#### What caused friction (agent side)
+
+- `missing-context` — The original planning session (prior to this one) used `WidgetAgent[]` as the input type without checking which fields `assembleWidgetState` actually reads.
+  The `code-design` skill already says "do not pass a shared dependency bag to functions that only use a subset of it" but the principle wasn't applied to the proposed function signature.
+  Impact: required a full plan revision session; no rework in implementation because it was caught before TDD started.
+- `wrong-abstraction` — The original plan proposed `dispose` → `clearWidget` delegation as "eliminating duplication" without evaluating whether the two methods have the same lifecycle semantics.
+  `dispose` uses unconditional teardown (shutdown correctness); `clearWidget` uses guarded calls (avoiding redundant SDK calls during repeated timer ticks).
+  Impact: same as above — caught in revision, no implementation rework.
+
+#### What caused friction (user side)
+
+- The user's "I don't yet trust the plan" intervention was the key moment that improved the design.
+  Without it, the plan would have been implemented with the wider type and the `dispose` delegation.
+  This was effective judgment — the user identified that a mechanical plan for a mechanical refactoring still warranted critical design review.
+
+### Changes made
+
+1. Added two sentences to `.pi/prompts/plan-issue.md` Design Overview section: ISP check for new function parameter types, and structural-duplication check when consolidating methods into a shared helper.
