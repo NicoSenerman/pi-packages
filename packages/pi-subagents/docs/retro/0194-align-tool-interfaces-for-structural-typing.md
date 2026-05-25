@@ -34,3 +34,29 @@ The `pnpm run check` type-gate caught a previously-unnoticed `test/helpers/make-
 - The `NotificationManager` constructor takes `updateWidget` as a positional callback parameter name — this does NOT need renaming (it's not a structural interface member).
 - The rename from `updateWidget` → `update` is safe because the `WidgetLike` interface in `runtime.ts` already uses `update()` — no naming conflict within the class.
 - All three changes are independent of each other and could be committed in any order, but the plan sequences them for clean `pnpm run check` passes at each step.
+
+## Stage: Final Retrospective (2026-05-24T21:15:00Z)
+
+### Session summary
+
+Planning, TDD implementation, and shipping completed in one continuous session.
+Released as `pi-subagents-v7.2.1` with zero rework or deviations from the plan.
+
+### Observations
+
+#### What went well
+
+- Clean execution end-to-end: 3 refactor commits + 1 docs commit, all planned in advance.
+- The `pnpm run check` gate after step 2 caught `test/helpers/make-deps.test.ts` — a file the plan didn't list — preventing a broken intermediate state.
+  This validates the "run type-check after each step" pattern for interface-alignment work.
+- Phased architecture approach paid off: Layers 0 and 1 being done made Layer 2 entirely mechanical.
+
+#### What caused friction (agent side)
+
+- None identified.
+  The issue scope was tight, the plan was unambiguous, and no rabbit-holes arose.
+
+#### What caused friction (user side)
+
+- None identified.
+  The issue body and architecture doc provided complete context with no ambiguity.
