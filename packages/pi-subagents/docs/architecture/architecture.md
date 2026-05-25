@@ -627,21 +627,16 @@ Health score target: 80+ (A).
 | Overwrite guard duplicated across UI modules (20 lines)          | A: Redundant   | 2      | 1    | 10       |
 | `settings.ts` calls SDK function `getAgentDir()` at module level | C: Coupling    | 2      | 1    | 10       |
 
-### Step 1: Convert remaining closure factories to classes — [#214]
+### Step 1: Convert remaining closure factories to classes — [#214] ✓
 
-Three closure factories survived Phase 11 — each captures deps in closure scope and returns a method bag, the exact pattern Phase 11 eliminated elsewhere.
+Three closure factories converted to classes in [#214].
 
-| Factory                       | File                          | Captures                                 | Returns                                     |
-| ----------------------------- | ----------------------------- | ---------------------------------------- | ------------------------------------------- |
-| `createAgentConfigEditor()`   | `ui/agent-config-editor.ts`   | `fileOps`, `registry`, 2 dirs            | `{ showAgentDetail }` (7 nested async fns)  |
-| `createAgentCreationWizard()` | `ui/agent-creation-wizard.ts` | `fileOps`, `manager`, `registry`, 2 dirs | `{ showCreateWizard }` (3 nested async fns) |
-| `createSubagentsService()`    | `service/service-adapter.ts`  | `manager`, `resolveModel`, `runtime`     | 7-method `SubagentsService`                 |
+| Factory → Class                                        | File                          | Captures                                 |
+| ------------------------------------------------------ | ----------------------------- | ---------------------------------------- |
+| `createAgentConfigEditor()` → `AgentConfigEditor`      | `ui/agent-config-editor.ts`   | `fileOps`, `registry`, 2 dirs            |
+| `createAgentCreationWizard()` → `AgentCreationWizard`  | `ui/agent-creation-wizard.ts` | `fileOps`, `manager`, `registry`, 2 dirs |
+| `createSubagentsService()` → `SubagentsServiceAdapter` | `service/service-adapter.ts`  | `manager`, `resolveModel`, `runtime`     |
 
-Convert each to a class: deps become constructor parameters stored as private fields, nested functions become private methods.
-`AgentsMenuHandler` already stores the factory return values as private fields, so the consumer side is already class-shaped.
-`createNotificationRenderer()` is excluded — it returns a pure render function with no captured state.
-
-- Target: `src/ui/agent-config-editor.ts`, `src/ui/agent-creation-wizard.ts`, `src/service/service-adapter.ts`
 - Smell: C (coupling — deps hidden in closure scope instead of explicit on class)
 - Outcome: 0 remaining closure factories (excluding pure-function factories), deps visible as constructor parameters
 
