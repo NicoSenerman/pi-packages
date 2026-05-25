@@ -14,8 +14,6 @@ describe("SessionLifecycleHandler", () => {
   let mockUnpublishService: ReturnType<typeof vi.fn<() => void>>;
   let handler: SessionLifecycleHandler;
 
-  const fakePi = { name: "fake-pi" };
-
   beforeEach(() => {
     mockSetSessionContext = vi.fn();
     mockClearSessionContext = vi.fn();
@@ -36,7 +34,6 @@ describe("SessionLifecycleHandler", () => {
     };
 
     handler = new SessionLifecycleHandler(
-      fakePi,
       runtime,
       manager,
       mockDisposeNotifications,

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument -- Pi SDK types are not fully exported; see upstream Pi SDK for type improvements */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument -- Pi SDK types are not fully exported; see upstream Pi SDK for type improvements */
 /**
  * pi-agents — A pi extension providing Claude Code-style autonomous sub-agents.
  *
@@ -35,7 +35,7 @@ import { publishSubagentsService, unpublishSubagentsService } from "#src/service
 import { createSubagentsService } from "#src/service/service-adapter";
 import { detectEnv } from "#src/session/env";
 
-import { type ModelRegistry, resolveModel } from "#src/session/model-resolver";
+import { resolveModel } from "#src/session/model-resolver";
 import { buildAgentPrompt } from "#src/session/prompts";
 import { deriveSubagentSessionDir } from "#src/session/session-dir";
 import { preloadSkills } from "#src/session/skill-loader";
@@ -162,16 +162,10 @@ export default function (pi: ExtensionAPI) {
 
   // Typed service published via Symbol.for() for cross-extension access.
   // Consumers: const { getSubagentsService } = await import("@gotgenes/pi-subagents");
-  const service = createSubagentsService(
-    manager,
-    resolveModel,
-    () => runtime.currentCtx,
-    () => (runtime.currentCtx?.ctx as { modelRegistry?: ModelRegistry } | undefined)?.modelRegistry,
-  );
+  const service = createSubagentsService(manager, resolveModel, runtime);
   publishSubagentsService(service);
 
   const lifecycle = new SessionLifecycleHandler(
-    pi,
     runtime,
     manager,
     () => notifications.dispose(),
@@ -209,19 +203,9 @@ export default function (pi: ExtensionAPI) {
     registry,
     agentDir: getAgentDir(),
     settings,
-    buildSnapshot: (inheritContext) =>
-      buildParentSnapshot(
-        runtime.currentCtx?.ctx as import("@earendil-works/pi-coding-agent").ExtensionContext,
-        inheritContext,
-      ),
-    getModelInfo: () => ({
-      parentModel: (runtime.currentCtx?.ctx as any)?.model,
-      modelRegistry: (runtime.currentCtx?.ctx as any)?.modelRegistry,
-    }),
-    getSessionInfo: () => ({
-      parentSessionFile: (runtime.currentCtx?.ctx as any)?.sessionManager?.getSessionFile() ?? "",
-      parentSessionId: (runtime.currentCtx?.ctx as any)?.sessionManager?.getSessionId() ?? "",
-    }),
+    buildSnapshot: runtime.buildSnapshot.bind(runtime),
+    getModelInfo: runtime.getModelInfo.bind(runtime),
+    getSessionInfo: runtime.getSessionInfo.bind(runtime),
   })));
 
   // ---- get_subagent_result tool ----

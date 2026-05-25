@@ -24,7 +24,6 @@ export interface LifecycleRuntime {
  * Handles session lifecycle events.
  *
  * Constructor deps:
- * - `pi` — the ExtensionAPI instance (unused after SessionContext migration; kept for interface compat)
  * - `runtime` — owns session context state
  * - `manager` — manages agent lifecycle (clear, abort, dispose)
  * - `disposeNotifications` — tears down the notification system on shutdown
@@ -32,7 +31,6 @@ export interface LifecycleRuntime {
  */
 export class SessionLifecycleHandler {
   constructor(
-    private readonly pi: unknown,
     private readonly runtime: LifecycleRuntime,
     private readonly manager: LifecycleManager,
     private readonly disposeNotifications: () => void,
