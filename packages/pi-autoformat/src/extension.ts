@@ -59,7 +59,6 @@ type AutoformatExtensionContext = Pick<
  * name so any downstream importer that pinned to the old alias keeps working.
  * Internal usage prefers `ExtensionAPI` directly.
  */
-// fallow-ignore-next-line unused-type
 export type ExtensionApiLike = ExtensionAPI;
 
 const AUTOFORMAT_STATUS_KEY = AUTOFORMAT_EXTENSION_ID;
