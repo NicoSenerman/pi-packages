@@ -97,6 +97,7 @@ They are ordered from most impactful (structural) to least (cosmetic).
 | `vi.mock()` at module level | Module-level mocking in test files       | Inject dependency via IO interface        |
 | `as any` casts in tests     | Constructing wide mocks for narrow usage | Narrow the interface the code depends on  |
 | Test duplication (high)     | fallow dupes in test/                    | Extract shared fixtures or test factories |
+| Shared factory complexity   | Factory needs its own unit tests         | Narrow the production interface (ISP)     |
 | Untestable pure logic       | Logic embedded in stateful class         | Extract as pure function                  |
 
 ### Category E: Naming and organization

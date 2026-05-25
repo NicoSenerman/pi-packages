@@ -27,6 +27,8 @@ Load this skill when writing, debugging, or planning tests.
   Use `vi.advanceTimersByTimeAsync(ms)` with a specific duration instead.
 - When a test factory returns an object satisfying a production interface (e.g., `RunnerIO`, `AssemblerIO`), do not annotate the return type with that interface — the annotation erases `Mock<...>` methods (`mockResolvedValue`, `mock.calls`, etc.) from the inferred type.
   Leave the return type unannotated so callers retain full mock access.
+- When a shared test factory's return value must structurally satisfy a production interface (e.g., passed to `runAgent(..., io)`), add typed implementations to every `vi.fn()` stub — `vi.fn((_param: Type): ReturnType => default)`, not `vi.fn().mockReturnValue(default)`.
+  Bare `vi.fn()` and chained `.mockReturnValue()` produce `Mock<Procedure>` which is not assignable to specific function signatures.
 - When a test factory accepts overrides via `Partial<ProductionInterface>`, the spread `{ ...defaults, ...overrides }` creates a union type that also erases mock methods.
   Either remove the `Partial<ProductionInterface>` annotation (let TypeScript infer from the spread) or drop the overrides parameter and configure mocks on the returned object directly.
 - Prefer reading `process.env` inside functions rather than capturing it as a module-level constant — `vi.stubEnv()` alone cannot change a constant already evaluated at import time.
