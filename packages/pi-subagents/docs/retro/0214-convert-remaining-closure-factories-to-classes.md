@@ -38,3 +38,29 @@ Test count held at 913 (57 files) — no new tests needed, no tests removed.
 - Adding the `SpawnOptions` import to `service-adapter.ts` was required for the `spawn` method signature; the plan anticipated this correctly.
 - The `sed -i` command required the macOS `-i ''` form (no in-place backup extension) rather than the GNU `sed -i` form.
 - Dead-code gate (`pnpm fallow dead-code`) passed cleanly from the repo root — no suppression needed.
+
+## Stage: Final Retrospective (2026-05-25T22:00:00Z)
+
+### Session summary
+
+Shipped `pi-subagents-v7.3.2` with 3 refactor commits converting all remaining closure factories to classes.
+All 4 lifecycle stages (plan → TDD → ship → retro) completed in a single day with zero rework and zero deviations from the plan.
+
+### Observations
+
+#### What went well
+
+- Strong precedent from Phase 11 (#195, #196) made this issue zero-friction — the plan, implementation, and test updates all followed an established template.
+- The plan's prediction of a `makeWizard(deps)` helper for `agent-creation-wizard.test.ts` kept the step-2 diff readable by centralizing 14 inline constructor calls.
+- `SubagentsServiceAdapter implements SubagentsService` gave compile-time contract verification, catching any interface drift immediately via `pnpm run check`.
+- The plan correctly anticipated the `SpawnOptions` import need in `service-adapter.ts`.
+
+#### What caused friction (agent side)
+
+- None.
+  This was a textbook mechanical refactoring with no behavioral changes, no edge cases, and no test rework.
+
+#### What caused friction (user side)
+
+- None.
+  The issue was well-scoped with explicit target files and a clear precedent to follow.
