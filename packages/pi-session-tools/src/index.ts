@@ -4,10 +4,15 @@
  * Tools:
  *   set_session_name — Set the session display name (shown in session selector)
  *   get_session_name — Get the current session name
+ *   read_session — Read the current session's raw entries (survives compaction)
  */
 
 import { Type } from "@earendil-works/pi-ai";
-import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import {
+  defineTool,
+  type ExtensionAPI,
+  type ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 
 export default function sessionTools(pi: ExtensionAPI): void {
   pi.registerTool(
@@ -57,6 +62,58 @@ export default function sessionTools(pi: ExtensionAPI): void {
                 : "No session name set.",
             },
           ],
+          details: undefined,
+        };
+      },
+    }),
+  );
+
+  pi.registerTool(
+    defineTool({
+      name: "read_session",
+      label: "Read Session",
+      description:
+        "Read the current session's raw entries from the session file. " +
+        "Returns JSONL entries that survive context compaction — use this to inspect " +
+        "the full session history including messages, model changes, compaction events, and custom entries.",
+      parameters: Type.Object({
+        types: Type.Optional(
+          Type.Array(
+            Type.String({
+              description:
+                'Entry type to include (e.g., "message", "compaction", "model_change", "custom")',
+            }),
+            {
+              description:
+                "Filter entries by type. When omitted, all entry types are returned.",
+            },
+          ),
+        ),
+        limit: Type.Optional(
+          Type.Number({
+            description:
+              "Return only the most recent N entries (after type filtering). When omitted, all matching entries are returned.",
+          }),
+        ),
+      }),
+      // eslint-disable-next-line @typescript-eslint/require-await -- satisfies async tool interface; no actual async work
+      async execute(
+        _toolCallId: string,
+        params: { types?: string[]; limit?: number },
+        _signal: unknown,
+        _onUpdate: unknown,
+        ctx: ExtensionContext,
+      ) {
+        let entries = ctx.sessionManager.getEntries();
+        if (params.types) {
+          const allowed = new Set(params.types);
+          entries = entries.filter((e) => allowed.has(e.type));
+        }
+        if (params.limit != null) {
+          entries = entries.slice(-params.limit);
+        }
+        return {
+          content: [{ type: "text", text: JSON.stringify(entries, null, 2) }],
           details: undefined,
         };
       },
