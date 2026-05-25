@@ -127,6 +127,27 @@ export function renderRunningLines(
 /** Maximum number of rendered lines before overflow collapse kicks in. */
 const MAX_WIDGET_LINES = 12;
 
+interface AgentCategories {
+	running: WidgetAgent[];
+	queued: WidgetAgent[];
+	finished: WidgetAgent[];
+}
+
+/** Partition agents into rendering buckets. */
+function categorizeAgents(
+	agents: readonly WidgetAgent[],
+	shouldShowFinished: (agentId: string, status: string) => boolean,
+): AgentCategories {
+	return {
+		running: agents.filter(a => a.status === "running"),
+		queued: agents.filter(a => a.status === "queued"),
+		finished: agents.filter(
+			a => a.status !== "running" && a.status !== "queued" && a.completedAt != null
+				&& shouldShowFinished(a.id, a.status),
+		),
+	};
+}
+
 /** Pure rendering of the widget body. Returns lines to display. */
 export function renderWidgetLines(params: {
 	agents: readonly WidgetAgent[];
@@ -139,12 +160,7 @@ export function renderWidgetLines(params: {
 }): string[] {
 	const { agents, activityMap, registry, spinnerFrame, terminalWidth, theme, shouldShowFinished } = params;
 
-	const running = agents.filter(a => a.status === "running");
-	const queued = agents.filter(a => a.status === "queued");
-	const finished = agents.filter(a =>
-		a.status !== "running" && a.status !== "queued" && a.completedAt
-		&& shouldShowFinished(a.id, a.status),
-	);
+	const { running, queued, finished } = categorizeAgents(agents, shouldShowFinished);
 
 	const hasActive = running.length > 0 || queued.length > 0;
 	const hasFinished = finished.length > 0;
