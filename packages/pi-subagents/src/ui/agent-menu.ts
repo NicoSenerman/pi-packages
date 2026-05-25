@@ -2,7 +2,8 @@
 import { wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
-import type { ModelRegistry } from "#src/session/model-resolver";
+import { type ModelRegistry, resolveModel } from "#src/session/model-resolver";
+import { getModelLabelFromConfig } from "#src/tools/helpers";
 import type { AgentConfig, AgentRecord } from "#src/types";
 import type { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
 import { createAgentConfigEditor } from "#src/ui/agent-config-editor";
@@ -10,7 +11,7 @@ import { createAgentCreationWizard } from "#src/ui/agent-creation-wizard";
 import type { AgentFileOps } from "#src/ui/agent-file-ops";
 import { formatDuration, getDisplayName } from "#src/ui/display";
 
-// ---- Deps interface ----
+// ---- Narrow interfaces ----
 
 /** Narrow manager interface for menu operations. */
 export interface AgentMenuManager {
@@ -43,19 +44,6 @@ export interface AgentActivityReader {
   get(id: string): AgentActivityTracker | undefined;
 }
 
-export interface AgentMenuDeps {
-  manager: AgentMenuManager;
-  registry: AgentTypeRegistry;
-  agentActivity: AgentActivityReader;
-  /** Resolve model label for a given agent type + registry. */
-  getModelLabel: (type: string, registry?: ModelRegistry) => string;
-  /** Settings manager — owns in-memory values and persistence. */
-  settings: AgentMenuSettings;
-  fileOps: AgentFileOps;
-  personalAgentsDir: string;
-  projectAgentsDir: string;
-}
-
 // ---- Narrow UI context types ----
 
 /** Narrow UI interface — only the ctx.ui methods menu handlers actually call. */
@@ -68,48 +56,74 @@ export interface MenuUI {
   custom<R>(component: any, options?: any): Promise<R>;
 }
 
-// ---- Factory ----
+// ---- Class ----
 
 /**
- * Create the `/agents` command handler.
- * Returns a function suitable for `pi.registerCommand("agents", { handler })`.
+ * Handler for the `/agents` slash command.
+ *
+ * Call `handle(ctx)` from the Pi command registration to open the interactive menu.
  */
-export function createAgentsMenuHandler({
-  manager,
-  registry,
-  agentActivity,
-  getModelLabel,
-  settings,
-  fileOps,
-  personalAgentsDir,
-  projectAgentsDir,
-}: AgentMenuDeps) {
-  const editor = createAgentConfigEditor(
-    fileOps,
-    registry,
-    personalAgentsDir,
-    projectAgentsDir,
-  );
+export class AgentsMenuHandler {
+  private readonly editor: ReturnType<typeof createAgentConfigEditor>;
+  private readonly wizard: ReturnType<typeof createAgentCreationWizard>;
 
-  const wizard = createAgentCreationWizard({
-    fileOps,
-    manager,
-    registry,
-    personalAgentsDir,
-    projectAgentsDir,
-  });
+  constructor(
+    private readonly manager: AgentMenuManager,
+    private readonly registry: AgentTypeRegistry,
+    private readonly agentActivity: AgentActivityReader,
+    private readonly settings: AgentMenuSettings,
+    private readonly fileOps: AgentFileOps,
+    private readonly personalAgentsDir: string,
+    private readonly projectAgentsDir: string,
+  ) {
+    this.editor = createAgentConfigEditor(
+      fileOps,
+      registry,
+      personalAgentsDir,
+      projectAgentsDir,
+    );
+    this.wizard = createAgentCreationWizard({
+      fileOps,
+      manager,
+      registry,
+      personalAgentsDir,
+      projectAgentsDir,
+    });
+  }
 
-  async function showAgentsMenu(
+  async handle({
+    ui,
+    modelRegistry,
+    parentSnapshot,
+  }: {
+    ui: MenuUI;
+    modelRegistry: ModelRegistry;
+    parentSnapshot: ParentSnapshot;
+  }): Promise<void> {
+    await this.showAgentsMenu(ui, modelRegistry, parentSnapshot);
+  }
+
+  private getModelLabel(type: string, modelRegistry?: ModelRegistry): string {
+    const cfg = this.registry.resolveAgentConfig(type);
+    if (!cfg.model) return "inherit";
+    if (modelRegistry) {
+      const resolved = resolveModel(cfg.model, modelRegistry);
+      if (typeof resolved === "string") return "inherit";
+    }
+    return getModelLabelFromConfig(cfg.model);
+  }
+
+  private async showAgentsMenu(
     ui: MenuUI,
     modelRegistry: ModelRegistry,
     parentSnapshot: ParentSnapshot,
-  ) {
-    registry.reload();
-    const allNames = registry.getAllTypes();
+  ): Promise<void> {
+    this.registry.reload();
+    const allNames = this.registry.getAllTypes();
 
     const options: string[] = [];
 
-    const agents = manager.listAgents();
+    const agents = this.manager.listAgents();
     if (agents.length > 0) {
       const running = agents.filter(
         (a) => a.status === "running" || a.status === "queued",
@@ -144,21 +158,21 @@ export function createAgentsMenuHandler({
     if (!choice) return;
 
     if (choice.startsWith("Running agents (")) {
-      await showRunningAgents(ui);
-      await showAgentsMenu(ui, modelRegistry, parentSnapshot);
+      await this.showRunningAgents(ui);
+      await this.showAgentsMenu(ui, modelRegistry, parentSnapshot);
     } else if (choice.startsWith("Agent types (")) {
-      await showAllAgentsList(ui, modelRegistry);
-      await showAgentsMenu(ui, modelRegistry, parentSnapshot);
+      await this.showAllAgentsList(ui, modelRegistry);
+      await this.showAgentsMenu(ui, modelRegistry, parentSnapshot);
     } else if (choice === "Create new agent") {
-      await wizard.showCreateWizard(ui, parentSnapshot);
+      await this.wizard.showCreateWizard(ui, parentSnapshot);
     } else if (choice === "Settings") {
-      await showSettings(ui);
-      await showAgentsMenu(ui, modelRegistry, parentSnapshot);
+      await this.showSettings(ui);
+      await this.showAgentsMenu(ui, modelRegistry, parentSnapshot);
     }
   }
 
-  async function showAllAgentsList(ui: MenuUI, modelRegistry: ModelRegistry) {
-    const allNames = registry.getAllTypes();
+  private async showAllAgentsList(ui: MenuUI, modelRegistry: ModelRegistry): Promise<void> {
+    const allNames = this.registry.getAllTypes();
     if (allNames.length === 0) {
       ui.notify("No agents.", "info");
       return;
@@ -173,9 +187,9 @@ export function createAgentsMenuHandler({
     };
 
     const entries = allNames.map((name) => {
-      const cfg = registry.resolveAgentConfig(name);
+      const cfg = this.registry.resolveAgentConfig(name);
       const disabled = cfg.enabled === false;
-      const model = getModelLabel(name, modelRegistry);
+      const model = this.getModelLabel(name, modelRegistry);
       const indicator = sourceIndicator(cfg);
       const prefix = `${indicator}${name} · ${model}`;
       const desc = disabled ? "(disabled)" : cfg.description;
@@ -184,11 +198,11 @@ export function createAgentsMenuHandler({
     const maxPrefix = Math.max(...entries.map((e) => e.prefix.length));
 
     const hasCustom = allNames.some((n) => {
-      const c = registry.resolveAgentConfig(n);
+      const c = this.registry.resolveAgentConfig(n);
       return !c.isDefault && c.enabled !== false;
     });
     const hasDisabled = allNames.some(
-      (n) => registry.resolveAgentConfig(n).enabled === false,
+      (n) => this.registry.resolveAgentConfig(n).enabled === false,
     );
     const legendParts: string[] = [];
     if (hasCustom) legendParts.push("• = project  ◦ = global");
@@ -207,21 +221,21 @@ export function createAgentsMenuHandler({
       .split(" · ")[0]
       .replace(/^[•◦✕\s]+/, "")
       .trim();
-    if (registry.resolveType(agentName) != null) {
-      await editor.showAgentDetail(ui, agentName);
-      await showAllAgentsList(ui, modelRegistry);
+    if (this.registry.resolveType(agentName) != null) {
+      await this.editor.showAgentDetail(ui, agentName);
+      await this.showAllAgentsList(ui, modelRegistry);
     }
   }
 
-  async function showRunningAgents(ui: MenuUI) {
-    const agents = manager.listAgents();
+  private async showRunningAgents(ui: MenuUI): Promise<void> {
+    const agents = this.manager.listAgents();
     if (agents.length === 0) {
       ui.notify("No agents.", "info");
       return;
     }
 
     const options = agents.map((a) => {
-      const dn = getDisplayName(a.type, registry);
+      const dn = getDisplayName(a.type, this.registry);
       const dur = formatDuration(a.startedAt, a.completedAt);
       return `${dn} (${a.description}) · ${a.toolUses} tools · ${a.status} · ${dur}`;
     });
@@ -233,11 +247,11 @@ export function createAgentsMenuHandler({
     if (idx < 0) return;
     const record = agents[idx];
 
-    await viewAgentConversation(ui, record);
-    await showRunningAgents(ui);
+    await this.viewAgentConversation(ui, record);
+    await this.showRunningAgents(ui);
   }
 
-  async function viewAgentConversation(ui: MenuUI, record: AgentRecord) {
+  private async viewAgentConversation(ui: MenuUI, record: AgentRecord): Promise<void> {
     const session = record.session;
     if (!session) {
       ui.notify(
@@ -250,7 +264,7 @@ export function createAgentsMenuHandler({
     const { ConversationViewer, VIEWPORT_HEIGHT_PCT } = await import(
       "./conversation-viewer"
     );
-    const activity = agentActivity.get(record.id);
+    const activity = this.agentActivity.get(record.id);
 
     await ui.custom<undefined>(
       (tui: any, theme: any, _keybindings: any, done: any) => {
@@ -261,7 +275,7 @@ export function createAgentsMenuHandler({
           activity,
           theme,
           done,
-          registry,
+          registry: this.registry,
           wrapText: wrapTextWithAnsi,
         });
       },
@@ -276,23 +290,23 @@ export function createAgentsMenuHandler({
     );
   }
 
-  async function showSettings(ui: MenuUI) {
+  private async showSettings(ui: MenuUI): Promise<void> {
     const choice = await ui.select("Settings", [
-      `Max concurrency (current: ${settings.maxConcurrent})`,
-      `Default max turns (current: ${settings.defaultMaxTurns ?? "unlimited"})`,
-      `Grace turns (current: ${settings.graceTurns})`,
+      `Max concurrency (current: ${this.settings.maxConcurrent})`,
+      `Default max turns (current: ${this.settings.defaultMaxTurns ?? "unlimited"})`,
+      `Grace turns (current: ${this.settings.graceTurns})`,
     ]);
     if (!choice) return;
 
     if (choice.startsWith("Max concurrency")) {
       const val = await ui.input(
         "Max concurrent background agents",
-        String(settings.maxConcurrent),
+        String(this.settings.maxConcurrent),
       );
       if (val) {
         const n = parseInt(val, 10);
         if (n >= 1) {
-          const toast = settings.applyMaxConcurrent(n);
+          const toast = this.settings.applyMaxConcurrent(n);
           ui.notify(toast.message, toast.level);
         } else {
           ui.notify("Must be a positive integer.", "warning");
@@ -301,12 +315,12 @@ export function createAgentsMenuHandler({
     } else if (choice.startsWith("Default max turns")) {
       const val = await ui.input(
         "Default max turns before wrap-up (0 = unlimited)",
-        String(settings.defaultMaxTurns ?? 0),
+        String(this.settings.defaultMaxTurns ?? 0),
       );
       if (val) {
         const n = parseInt(val, 10);
         if (n >= 0) {
-          const toast = settings.applyDefaultMaxTurns(n);
+          const toast = this.settings.applyDefaultMaxTurns(n);
           ui.notify(toast.message, toast.level);
         } else {
           ui.notify("Must be 0 (unlimited) or a positive integer.", "warning");
@@ -315,12 +329,12 @@ export function createAgentsMenuHandler({
     } else if (choice.startsWith("Grace turns")) {
       const val = await ui.input(
         "Grace turns after wrap-up steer",
-        String(settings.graceTurns),
+        String(this.settings.graceTurns),
       );
       if (val) {
         const n = parseInt(val, 10);
         if (n >= 1) {
-          const toast = settings.applyGraceTurns(n);
+          const toast = this.settings.applyGraceTurns(n);
           ui.notify(toast.message, toast.level);
         } else {
           ui.notify("Must be a positive integer.", "warning");
@@ -328,16 +342,4 @@ export function createAgentsMenuHandler({
       }
     }
   }
-
-  return async ({
-    ui,
-    modelRegistry,
-    parentSnapshot,
-  }: {
-    ui: MenuUI;
-    modelRegistry: ModelRegistry;
-    parentSnapshot: ParentSnapshot;
-  }) => {
-    await showAgentsMenu(ui, modelRegistry, parentSnapshot);
-  };
 }

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument -- Pi SDK types are not fully exported; see upstream Pi SDK for type improvements */
+/* eslint-disable @typescript-eslint/no-unsafe-argument -- Pi SDK types are not fully exported; see upstream Pi SDK for type improvements */
 /**
  * pi-agents — A pi extension providing Claude Code-style autonomous sub-agents.
  *
@@ -41,10 +41,9 @@ import { preloadSkills } from "#src/session/skill-loader";
 import { SettingsManager } from "#src/settings";
 import { AgentTool } from "#src/tools/agent-tool";
 import { GetResultTool } from "#src/tools/get-result-tool";
-import { getModelLabelFromConfig } from "#src/tools/helpers";
 import { SteerTool } from "#src/tools/steer-tool";
 import { FsAgentFileOps } from "#src/ui/agent-file-ops";
-import { createAgentsMenuHandler } from "#src/ui/agent-menu";
+import { AgentsMenuHandler } from "#src/ui/agent-menu";
 import { AgentWidget } from "#src/ui/agent-widget";
 
 export default function (pi: ExtensionAPI) {
@@ -193,33 +192,20 @@ export default function (pi: ExtensionAPI) {
 
   // ---- /agents interactive menu ----
 
-  const agentsMenuHandler = createAgentsMenuHandler({
-    manager: {
-      listAgents: () => manager.listAgents(),
-      getRecord: (id) => manager.getRecord(id),
-      spawnAndWait: (snapshot, type, prompt, opts) => manager.spawnAndWait(snapshot, type, prompt, opts),
-    },
+  const agentsMenu = new AgentsMenuHandler(
+    manager,
     registry,
-    agentActivity: runtime.agentActivity,
-    getModelLabel: (type, modelRegistry) => {
-      const cfg = registry.resolveAgentConfig(type);
-      if (!cfg.model) return 'inherit';
-      if (modelRegistry) {
-        const resolved = resolveModel(cfg.model, modelRegistry);
-        if (typeof resolved === 'string') return 'inherit';
-      }
-      return getModelLabelFromConfig(cfg.model);
-    },
+    runtime.agentActivity,
     settings,
-    fileOps: new FsAgentFileOps(),
-    personalAgentsDir: join(getAgentDir(), 'agents'),
-    projectAgentsDir: join(process.cwd(), '.pi', 'agents'),
-  });
+    new FsAgentFileOps(),
+    join(getAgentDir(), "agents"),
+    join(process.cwd(), ".pi", "agents"),
+  );
 
-  pi.registerCommand('agents', {
-    description: 'Manage agents',
+  pi.registerCommand("agents", {
+    description: "Manage agents",
     handler: async (_args, ctx) => {
-      await agentsMenuHandler({
+      await agentsMenu.handle({
         ui: ctx.ui,
         modelRegistry: ctx.modelRegistry,
         parentSnapshot: buildParentSnapshot(ctx),
