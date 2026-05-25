@@ -466,10 +466,7 @@ Bags with 10+ fields are the highest priority for decomposition.
 
 Functions with cyclomatic complexity ≥ 21 (critical threshold):
 
-| Function            | Cyclomatic | Cognitive | File                        | Concern                         |
-| ------------------- | ---------- | --------- | --------------------------- | ------------------------------- |
-| `renderWidgetLines` | 25         | 44        | `ui/widget-renderer.ts`     | Renders widget status lines     |
-| `update`            | 21         | 31        | `ui/agent-widget.ts`        | Widget lifecycle + polling      |
+No functions remain above the critical threshold — all hotspots resolved in Phase 12.
 
 ### Churn hotspots
 
