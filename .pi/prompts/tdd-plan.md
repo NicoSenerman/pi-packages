@@ -97,7 +97,8 @@ If the deviation is large, stop and ask.
    Fix all failures — including pre-existing ones unrelated to the current change.
    Commit any fixup as part of the most recent feat commit (amend) only if you haven't pushed; otherwise as a `style:` commit.
    The fixup must NOT land in a `docs:` commit.
-4. Run the fallow dead-code gate: `pnpm fallow dead-code`.
+4. Run the fallow dead-code gate **from the repo root**: `pnpm fallow dead-code`.
+   Running from a package subdirectory detects fewer entry points than CI, producing false positives that become stale suppressions in CI.
    If it exits non-zero, fix the findings (remove dead exports, add suppressions for false positives).
    Commit fixes as part of the most recent feat commit (amend) if not yet pushed; otherwise as a `fix:` commit.
 5. Cross-check the plan's "Module-Level Changes" table against actually-changed files.
