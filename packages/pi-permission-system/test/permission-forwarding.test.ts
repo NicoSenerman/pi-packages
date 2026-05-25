@@ -4,6 +4,7 @@ import {
   SUBAGENT_PARENT_SESSION_ENV_CANDIDATES,
   SUBAGENT_PARENT_SESSION_ENV_KEY,
 } from "#src/permission-forwarding";
+import { SubagentSessionRegistry } from "#src/subagent-registry";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -144,5 +145,101 @@ describe("resolvePermissionForwardingTargetSessionId", () => {
         isSubagent: true,
       }),
     ).toBe("env-session-abc");
+  });
+});
+
+describe("resolvePermissionForwardingTargetSessionId — registry resolution", () => {
+  const sessionDir =
+    "/home/user/projects/.pi/sessions/parent/tasks/session-abc";
+
+  test("returns parentSessionId from registry when env vars are absent", () => {
+    const registry = new SubagentSessionRegistry();
+    registry.register(sessionDir, {
+      agentName: "Explore",
+      parentSessionId: "parent-from-registry",
+    });
+
+    expect(
+      resolvePermissionForwardingTargetSessionId({
+        hasUI: false,
+        isSubagent: true,
+        sessionDir,
+        registry,
+        env: {},
+      }),
+    ).toBe("parent-from-registry");
+  });
+
+  test("registry takes priority over env vars", () => {
+    const registry = new SubagentSessionRegistry();
+    registry.register(sessionDir, {
+      agentName: "Explore",
+      parentSessionId: "parent-from-registry",
+    });
+
+    expect(
+      resolvePermissionForwardingTargetSessionId({
+        hasUI: false,
+        isSubagent: true,
+        sessionDir,
+        registry,
+        env: { PI_AGENT_ROUTER_PARENT_SESSION_ID: "parent-from-env" },
+      }),
+    ).toBe("parent-from-registry");
+  });
+
+  test("falls through to env vars when registry entry has no parentSessionId", () => {
+    const registry = new SubagentSessionRegistry();
+    registry.register(sessionDir, { agentName: "Explore" }); // no parentSessionId
+
+    expect(
+      resolvePermissionForwardingTargetSessionId({
+        hasUI: false,
+        isSubagent: true,
+        sessionDir,
+        registry,
+        env: { PI_AGENT_ROUTER_PARENT_SESSION_ID: "parent-from-env" },
+      }),
+    ).toBe("parent-from-env");
+  });
+
+  test("falls through to env vars when sessionDir is not in registry", () => {
+    const registry = new SubagentSessionRegistry(); // empty
+
+    expect(
+      resolvePermissionForwardingTargetSessionId({
+        hasUI: false,
+        isSubagent: true,
+        sessionDir,
+        registry,
+        env: { PI_AGENT_ROUTER_PARENT_SESSION_ID: "parent-from-env" },
+      }),
+    ).toBe("parent-from-env");
+  });
+
+  test("returns null when registry entry has no parentSessionId and no env vars set", () => {
+    const registry = new SubagentSessionRegistry();
+    registry.register(sessionDir, { agentName: "Explore" }); // no parentSessionId
+
+    expect(
+      resolvePermissionForwardingTargetSessionId({
+        hasUI: false,
+        isSubagent: true,
+        sessionDir,
+        registry,
+        env: {},
+      }),
+    ).toBeNull();
+  });
+
+  test("omitting registry preserves existing behaviour", () => {
+    expect(
+      resolvePermissionForwardingTargetSessionId({
+        hasUI: false,
+        isSubagent: true,
+        sessionDir,
+        env: { PI_AGENT_ROUTER_PARENT_SESSION_ID: "parent-from-env" },
+      }),
+    ).toBe("parent-from-env");
   });
 });

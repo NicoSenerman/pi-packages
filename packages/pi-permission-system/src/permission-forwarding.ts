@@ -1,6 +1,7 @@
 import { join } from "node:path";
 
 import type { PermissionDecisionState } from "./permission-dialog";
+import type { SubagentSessionRegistry } from "./subagent-registry";
 
 export const PERMISSION_FORWARDING_POLL_INTERVAL_MS = 250;
 export const PERMISSION_FORWARDING_TIMEOUT_MS = 10 * 60 * 1000;
@@ -118,6 +119,10 @@ export function resolvePermissionForwardingTargetSessionId(options: {
   isSubagent: boolean;
   currentSessionId?: string | null;
   env?: NodeJS.ProcessEnv;
+  /** Session directory key for registry lookup. */
+  sessionDir?: string;
+  /** In-process subagent session registry (checked before env vars). */
+  registry?: SubagentSessionRegistry;
 }): string | null {
   if (options.hasUI) {
     return normalizePermissionForwardingSessionId(options.currentSessionId);
@@ -127,6 +132,16 @@ export function resolvePermissionForwardingTargetSessionId(options: {
     return null;
   }
 
+  // 1. Registry — in-process subagents register parentSessionId explicitly.
+  if (options.registry && options.sessionDir) {
+    const entry = options.registry.get(options.sessionDir);
+    const resolved = normalizePermissionForwardingSessionId(
+      entry?.parentSessionId,
+    );
+    if (resolved) return resolved;
+  }
+
+  // 2. Env vars — process-based subagent extensions.
   const env = options.env ?? process.env;
   for (const key of SUBAGENT_PARENT_SESSION_ENV_CANDIDATES) {
     const resolved = normalizePermissionForwardingSessionId(env[key]);
