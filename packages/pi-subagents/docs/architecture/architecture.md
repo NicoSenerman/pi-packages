@@ -259,6 +259,7 @@ src/
 │   ├── agent-record.ts             status state machine
 │   ├── parent-snapshot.ts          immutable spawn-time parent state
 │   ├── execution-state.ts          session/output phase state
+│   ├── permission-bridge.ts        optional bridge to pi-permission-system registry
 │   ├── worktree.ts                 git worktree isolation
 │   ├── worktree-state.ts           worktree phase state
 │   └── usage.ts                    token usage tracking
@@ -333,7 +334,8 @@ They declare this package as an optional peer dependency and use dynamic import 
 
 - The three tools: `Agent`, `get_subagent_result`, `steer_subagent`.
 - `AgentManager` — spawn, queue, abort, resume, concurrency control.
-- `agent-runner` — session creation, turn loop, tool filtering, extension binding (Patches 2 and 3).
+- `agent-runner` — session creation, turn loop, tool filtering, extension binding (Patches 2 and 3), permission-system registration.
+- `permission-bridge` — optional cross-extension bridge to `@gotgenes/pi-permission-system`; registers each child session with `SubagentSessionRegistry` before `bindExtensions()` so the permission system detects in-process children deterministically.
 - `session-config` — pure configuration assembler (extracted from `agent-runner`).
 - `SubagentRuntime` — session-scoped state bag with methods.
 - `ParentSnapshot` — immutable snapshot of parent session state, captured once at spawn time.
