@@ -584,7 +584,10 @@ The IO boundary was split into two focused interfaces:
 export interface EnvironmentIO {
   detectEnv: (exec: ShellExec, cwd: string) => Promise<EnvInfo>;
   getAgentDir: () => string;
-  deriveSessionDir: (parentSessionFile: string | undefined, effectiveCwd: string) => string;
+  deriveSessionDir: (
+    parentSessionFile: string | undefined,
+    effectiveCwd: string,
+  ) => string;
 }
 
 /** Session factory — create SDK objects for a child agent session. */
@@ -592,7 +595,9 @@ export interface SessionFactoryIO {
   createResourceLoader: (opts: ResourceLoaderOptions) => ResourceLoaderLike;
   createSessionManager: (cwd: string, sessionDir: string) => SessionManagerLike;
   createSettingsManager: (cwd: string, agentDir: string) => SettingsManager;
-  createSession: (opts: CreateSessionOptions) => Promise<{ session: AgentSession }>;
+  createSession: (
+    opts: CreateSessionOptions,
+  ) => Promise<{ session: AgentSession }>;
   assemblerIO: AssemblerIO;
 }
 
@@ -643,7 +648,7 @@ Three closure factories converted to classes in [#214].
 - Smell: C (coupling — deps hidden in closure scope instead of explicit on class)
 - Outcome: 0 remaining closure factories (excluding pure-function factories), deps visible as constructor parameters
 
-### Step 2: Decompose `buildParentContext` (cognitive 30) — [#215]
+### Step 2: Decompose `buildParentContext` (cognitive 30) — [#215] ✓
 
 `buildParentContext` in `session/context.ts` is the only remaining fallow refactoring target.
 The function loops over branch entries with 3 type-check branches, each with sub-branches for role or summary.
@@ -671,7 +676,7 @@ Extracted:
 - Smell: B (oversized method) + A (duplicated finalization logic in then/catch)
 - Outcome: `startAgent` reduced to ~40 LOC coordinator with zero mutable `let` bindings; `.then()`/`.catch()` are one-liners
 
-### Step 4: Extract overwrite guard from UI — [#217]
+### Step 4: Extract overwrite guard from UI — [#217] ✓
 
 The 20-line pattern duplicated between `agent-config-editor.ts:138–151` and `agent-creation-wizard.ts:231–250` checks file existence, prompts for confirmation, writes the file, reloads the registry, and notifies the user.
 Extract a shared `writeAgentFile(fileOps, ui, registry, targetPath, content, label)` function.
@@ -680,7 +685,7 @@ Extract a shared `writeAgentFile(fileOps, ui, registry, targetPath, content, lab
 - Smell: A (production duplication)
 - Outcome: 0 production clone groups
 
-### Step 5: Push SDK boundary in `settings.ts` — [#218]
+### Step 5: Push SDK boundary in `settings.ts` — [#218] ✓
 
 `globalPath()` calls `getAgentDir()` (a Pi SDK function) at invocation time.
 This hides a platform dependency inside a module that is otherwise pure configuration logic.
@@ -890,7 +895,6 @@ The upstream test suite is run periodically as a regression canary for the agent
 [earendil-works/pi#4207]: https://github.com/earendil-works/pi/issues/4207
 [gotgenes/pi-packages]: https://github.com/gotgenes/pi-packages
 [tintinweb/pi-subagents]: https://github.com/tintinweb/pi-subagents
-
 [166]: https://github.com/gotgenes/pi-packages/issues/166
 [167]: https://github.com/gotgenes/pi-packages/issues/167
 [168]: https://github.com/gotgenes/pi-packages/issues/168
