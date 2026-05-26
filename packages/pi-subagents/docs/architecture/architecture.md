@@ -727,6 +727,112 @@ flowchart LR
 2. **Track B — Complexity and coupling** (Steps 2, 5): independent, can proceed in parallel with Track A.
 3. **Track C — Duplication** (Steps 4, 6): Step 4 depends on Step 1 (overwrite guard lives in files being converted); Step 6 depends on Steps 1 and 3 (production code they test changes first).
 
+## Improvement roadmap (Phase 14)
+
+Phase 14 addresses the anemic domain model in the lifecycle layer.
+`AgentRecord` is a data bag — identity, status transitions, and stats — but no behavior.
+`AgentManager` reaches into records 37 times, doing work that belongs on the agent.
+Per-agent state (pending steers, abort logic, run lifecycle) is scattered across the manager, `RunHandle`, and a manager-level Map.
+
+The scheduling concern (queue, concurrency counter, drain) is tangled into `AgentManager` alongside collection management and run orchestration.
+`notifyConcurrencyChanged()` is a scheduling method exposed as a public API so settings can poke the queue — a cross-concern leak.
+
+### Findings summary
+
+| Finding                                                       | Category     | Impact | Risk | Priority |
+| ------------------------------------------------------------- | ------------ | ------ | ---- | -------- |
+| `AgentRecord` is anemic — no behavior, manager reaches in 37× | B: Oversized | 5      | 3    | 15       |
+| Scheduling tangled into `AgentManager` (3 fields, 3 methods)  | A: Coupling  | 4      | 2    | 12       |
+| `startAgent` uses `.then()`/`.catch()` instead of async/await | C: Callbacks | 3      | 2    | 10       |
+| `onSessionCreated` callback flows through 3 layers            | C: Callbacks | 3      | 2    | 10       |
+| `resume()` duplicates observer subscribe/unsubscribe pattern  | A: Redundant | 2      | 1    | 8        |
+| `exec`/`registry` relay-only deps on `AgentManager`           | C: Coupling  | 2      | 1    | 6        |
+
+### Step 1: Evolve AgentRecord into Agent with behavior — [#227]
+
+Rename `AgentRecord` → `Agent` (or wrap it).
+Move per-agent behavior from `AgentManager` into the agent:
+
+1. `Agent.abort()` — absorbs status-check + controller.abort + markStopped.
+2. `Agent.queueSteer(message)` / `Agent.flushPendingSteers(session)` — moves pending steers from manager map to per-agent array.
+3. `Agent.setupWorktree(worktrees, isolation)` — moves worktree creation into the agent.
+
+- Target: `src/lifecycle/agent-record.ts` → `src/lifecycle/agent.ts`, `src/lifecycle/agent-manager.ts`
+- Smell: B (anemic domain model) + C (manager reaching into records)
+- Outcome: `AgentManager` delegates via Tell-Don't-Ask; per-agent state lives on the agent
+
+### Step 2: Convert startAgent to async/await — [#228]
+
+Convert `startAgent` from synchronous (returns void, assigns `record.promise` to a `.then()`/`.catch()` chain) to `async` (returns `Promise<void>`, uses try/catch).
+`spawn()` assigns `record.promise = this.startAgent(...)` instead of calling `startAgent()` synchronously.
+
+- Depends on: #227
+- Target: `src/lifecycle/agent-manager.ts`
+- Smell: C (raw promise callbacks)
+- Outcome: zero `.then()`/`.catch()` in `agent-manager.ts`
+
+### Step 3: Replace onSessionCreated callback with observer method — [#229]
+
+Add `onSessionCreated(agent, session)` to `AgentManagerObserver`.
+Remove the `onSessionCreated` callback from `AgentSpawnConfig`.
+Tool-layer code subscribes via the observer pattern instead of passing callbacks through the spawn config.
+
+- Target: `src/lifecycle/agent-manager.ts`, `src/tools/background-spawner.ts`, `src/tools/foreground-runner.ts`
+- Smell: C (callback flowing through 3 layers)
+- Outcome: `AgentSpawnConfig` loses one callback field; session notification uses the observer pattern
+
+### Step 4: Extract ConcurrencyQueue from AgentManager — [#230]
+
+Extract `queue[]`, `runningBackground`, `_getMaxConcurrent`, `drainQueue()`, `finalizeBackgroundRun()` into a `ConcurrencyQueue` class.
+`SettingsManager` talks to the queue directly — `notifyConcurrencyChanged()` is eliminated from `AgentManager`.
+
+- Target: new `src/lifecycle/concurrency-queue.ts`, `src/lifecycle/agent-manager.ts`, `src/index.ts`
+- Smell: A (tangled concerns) + C (cross-concern leak via `notifyConcurrencyChanged`)
+- Outcome: `AgentManager` loses 3 fields, 3 methods (~40 lines); scheduling is independently testable
+
+### Step 5: Push exec/registry relay deps to runner construction — [#231]
+
+`AgentManager` receives `exec` and `registry` in its constructor but only relays them to `runner.run()` via `context`.
+Move them to `ConcreteAgentRunner` construction.
+
+- Target: `src/lifecycle/agent-manager.ts`, `src/lifecycle/agent-runner.ts`, `src/index.ts`
+- Smell: C (relay-only dependencies)
+- Outcome: `AgentManager` loses 2 fields; `AgentManagerOptions` shrinks from 7 to 5 fields
+
+### Step 6: Unify resume() with RunHandle pattern — [#232]
+
+After #227 moves `RunHandle` ownership to the `Agent`, `resume()` on `AgentManager` becomes a 4-line delegation to `agent.resume(runner, prompt, signal)`.
+The agent manages its own observer subscription lifecycle.
+
+- Depends on: #227, #228
+- Target: `src/lifecycle/agent-manager.ts`
+- Smell: A (duplicated observer subscribe/unsubscribe pattern)
+- Outcome: no manual `subscribeRecordObserver` / try-finally in the manager
+
+### Step dependency diagram
+
+```mermaid
+flowchart LR
+    S1["Step 1\nAgent with behavior"]
+    S2["Step 2\nasync startAgent"]
+    S3["Step 3\nonSessionCreated observer"]
+    S4["Step 4\nConcurrencyQueue"]
+    S5["Step 5\nrelay deps"]
+    S6["Step 6\nresume unification"]
+
+    S1 --> S2
+    S1 --> S6
+    S2 --> S6
+    S3 ~~~ S4
+    S4 ~~~ S5
+```
+
+### Tracks
+
+1. **Track A — Domain model** (Steps 1, 2, 6): Agent with behavior, async runs, resume unification.
+   Sequential — each depends on the previous.
+2. **Track B — Decoupling** (Steps 3, 4, 5): independent, can proceed in parallel with Track A.
+
 ## Refactoring history
 
 Phases 1–5 and 7–12 are complete.
@@ -764,6 +870,7 @@ Detailed records are preserved in per-phase history files:
 | Phase 11           | #192, #193, #194, #195, #196                               | SessionContext, runtime queries, interface alignment, tool classes, runner/menu classes, index.ts simplification                                         |
 | Phase 12           | #205, #206, #207, #208                                     | renderWidgetLines, showAgentDetail, widget update, shared test fixtures                                                                                  |
 | Phase 13           | #214, #215, #216, #217, #218, #219                         | Closure-to-class, buildParentContext, startAgent decomp, overwrite guard, settings SDK, test duplication                                                 |
+| Phase 14           | #227, #228, #229, #230, #231, #232                         | Agent domain model, async startAgent, onSessionCreated observer, ConcurrencyQueue, relay deps, resume unification                                        |
 
 The remaining open issue is #22 (parent-session resolution), a cross-extension track that does not gate the structural work.
 
