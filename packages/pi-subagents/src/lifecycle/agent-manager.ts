@@ -12,7 +12,7 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { debugLog } from "#src/debug";
 import { Agent } from "#src/lifecycle/agent";
-import type { AgentRunner, RunResult } from "#src/lifecycle/agent-runner";
+import type { AgentRunner } from "#src/lifecycle/agent-runner";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import type { WorktreeManager } from "#src/lifecycle/worktree";
 
@@ -20,95 +20,6 @@ import { NotificationState } from "#src/observation/notification-state";
 import { subscribeAgentObserver } from "#src/observation/record-observer";
 import type { RunConfig } from "#src/runtime";
 import type { AgentInvocation, IsolationMode, ShellExec, SubagentType, ThinkingLevel } from "#src/types";
-
-/**
- * RunHandle - per-run lifecycle object that owns cleanup state.
- *
- * Owns the observer unsubscribe and parent-signal detach handles acquired during
- * a run. Exposes `complete()` and `fail()` as the only way to finish a run,
- * eliminating mutable closure variables from `startAgent`.
- * `fireOnFinished` is idempotent - safe to call from both success and error paths.
- */
-class RunHandle {
-  private unsub?: () => void;
-  private detachFn?: () => void;
-  private onFinished?: () => void;
-
-  constructor(
-    private readonly record: Agent,
-    private readonly worktrees: WorktreeManager,
-    onFinished?: () => void,
-  ) {
-    this.onFinished = onFinished;
-  }
-
-  /** Wire a parent AbortSignal so it stops this agent when fired. */
-  wireSignal(signal: AbortSignal | undefined, onAbort: () => void): void {
-    if (!signal) return;
-    const listener = () => onAbort();
-    signal.addEventListener("abort", listener, { once: true });
-    this.detachFn = () => signal.removeEventListener("abort", listener);
-  }
-
-  /** Store the record-observer unsubscribe handle (called from onSessionCreated). */
-  attachObserver(unsub: () => void): void {
-    this.unsub = unsub;
-  }
-
-  /** Complete a run successfully - clean up, transition record, fire onFinished. */
-  complete(result: RunResult): string {
-    this.releaseListeners();
-
-    let finalResult = result.responseText;
-    if (this.record.worktreeState) {
-      const wtResult = this.record.worktreeState.performCleanup(this.worktrees, this.record.description);
-      if (wtResult.hasChanges && wtResult.branch) {
-        finalResult += `\n\n---\nChanges saved to branch \`${wtResult.branch}\`. Merge with: \`git merge ${wtResult.branch}\``;
-      }
-    }
-
-    if (result.aborted) this.record.markAborted(finalResult);
-    else if (result.steered) this.record.markSteered(finalResult);
-    else this.record.markCompleted(finalResult);
-
-    // Update execution with the final session/outputFile from the runner
-    this.record.execution = {
-      session: result.session,
-      outputFile: result.sessionFile ?? this.record.execution?.outputFile,
-    };
-
-    this.fireOnFinished();
-    return result.responseText;
-  }
-
-  /** Fail a run - mark error, best-effort worktree cleanup, fire onFinished. */
-  fail(err: unknown): void {
-    this.record.markError(err);
-    this.releaseListeners();
-
-    if (this.record.worktreeState) {
-      try {
-        this.record.worktreeState.performCleanup(this.worktrees, this.record.description);
-      } catch (cleanupErr) { debugLog("cleanupWorktree on agent error", cleanupErr); }
-    }
-
-    this.fireOnFinished();
-  }
-
-  private releaseListeners(): void {
-    this.unsub?.();
-    this.unsub = undefined;
-    this.detachFn?.();
-    this.detachFn = undefined;
-  }
-
-  /** Fire the onFinished callback at most once. */
-  private fireOnFinished(): void {
-    const fn = this.onFinished;
-    this.onFinished = undefined;
-    fn?.();
-  }
-}
 
 export type CompactionInfo = { reason: "manual" | "threshold" | "overflow"; tokensBefore: number };
 
@@ -271,11 +182,10 @@ export class AgentManager {
     if (options.isBackground) this.runningBackground++;
     this.observer?.onAgentStarted(record);
 
-    const handle = new RunHandle(
-      record, this.worktrees,
+    record.setOnRunFinished(
       options.isBackground ? () => this.finalizeBackgroundRun(record) : undefined,
     );
-    handle.wireSignal(options.signal, () => this.abort(id));
+    record.wireSignal(options.signal, () => this.abort(id));
 
     const runConfig = this.getRunConfig?.();
     record.promise = this.runner.run(snapshot, type, prompt, {
@@ -299,14 +209,14 @@ export class AgentManager {
         const outputFile = session.sessionManager?.getSessionFile?.() ?? undefined;
         record.execution = { session, outputFile };
         record.flushPendingSteers(session);
-        handle.attachObserver(subscribeAgentObserver(session, record, {
+        record.attachObserver(subscribeAgentObserver(session, record, {
           onCompact: (r, info) => this.observer?.onAgentCompacted(r, info),
         }));
         options.onSessionCreated?.(session, record);
       },
     })
-      .then((result) => { handle.complete(result); })
-      .catch((err: unknown) => { handle.fail(err); });
+      .then((result) => { record.completeRun(result, this.worktrees); })
+      .catch((err: unknown) => { record.failRun(err, this.worktrees); });
   }
 
   /** Decrement background counter, notify observer (crash-safe), and drain the queue. */
