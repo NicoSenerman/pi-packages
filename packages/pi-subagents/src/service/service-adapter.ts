@@ -18,7 +18,6 @@ export interface AgentManagerLike {
   abort(id: string): boolean;
   waitForAll(): Promise<void>;
   hasRunning(): boolean;
-  queueSteer(id: string, message: string): boolean;
 }
 
 /**
@@ -93,8 +92,9 @@ export class SubagentsServiceAdapter implements SubagentsService {
     }
     const session = record.session;
     if (!session) {
-      // Session not ready yet — queue via manager for delivery once initialized
-      return this.manager.queueSteer(id, message);
+      // Session not ready yet — buffer on the agent for delivery once initialized
+      record.queueSteer(message);
+      return true;
     }
     await session.steer(message);
     return true;

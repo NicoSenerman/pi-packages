@@ -8,7 +8,6 @@ import type { AgentRecord } from "#src/types";
 
 export interface SteerToolManager {
 	getRecord(id: string): AgentRecord | undefined;
-	queueSteer(id: string, message: string): boolean;
 }
 
 export interface SteerToolEvents {
@@ -43,8 +42,8 @@ export class SteerTool {
 		}
 		const session = record.session;
 		if (!session) {
-			// Session not ready yet — queue via manager for delivery once initialized
-			this.manager.queueSteer(record.id, params.message);
+			// Session not ready yet — buffer on the agent for delivery once initialized
+			record.queueSteer(params.message);
 			this.events.emit("subagents:steered", { id: record.id, message: params.message });
 			return textResult(
 				`Steering message queued for agent ${record.id}. It will be delivered once the session initializes.`,

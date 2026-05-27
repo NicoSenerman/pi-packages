@@ -1,5 +1,5 @@
 /**
- * agent-manager.ts — Tracks agents, background execution, resume support.
+ * agent-manager.ts - Tracks agents, background execution, resume support.
  *
  * Background agents are subject to a configurable concurrency limit (default: 4).
  * Excess agents are queued and auto-started as running agents complete.
@@ -22,12 +22,12 @@ import type { RunConfig } from "#src/runtime";
 import type { AgentInvocation, IsolationMode, ShellExec, SubagentType, ThinkingLevel } from "#src/types";
 
 /**
- * RunHandle — per-run lifecycle object that owns cleanup state.
+ * RunHandle - per-run lifecycle object that owns cleanup state.
  *
  * Owns the observer unsubscribe and parent-signal detach handles acquired during
  * a run. Exposes `complete()` and `fail()` as the only way to finish a run,
  * eliminating mutable closure variables from `startAgent`.
- * `fireOnFinished` is idempotent — safe to call from both success and error paths.
+ * `fireOnFinished` is idempotent - safe to call from both success and error paths.
  */
 class RunHandle {
   private unsub?: () => void;
@@ -55,7 +55,7 @@ class RunHandle {
     this.unsub = unsub;
   }
 
-  /** Complete a run successfully — clean up, transition record, fire onFinished. */
+  /** Complete a run successfully - clean up, transition record, fire onFinished. */
   complete(result: RunResult): string {
     this.releaseListeners();
 
@@ -81,7 +81,7 @@ class RunHandle {
     return result.responseText;
   }
 
-  /** Fail a run — mark error, best-effort worktree cleanup, fire onFinished. */
+  /** Fail a run - mark error, best-effort worktree cleanup, fire onFinished. */
   fail(err: unknown): void {
     this.record.markError(err);
     this.releaseListeners();
@@ -129,7 +129,7 @@ export interface AgentManagerOptions {
   worktrees: WorktreeManager;
   exec: ShellExec;
   registry: AgentTypeRegistry;
-  /** Injected getter for the concurrency limit — owned by SettingsManager. */
+  /** Injected getter for the concurrency limit - owned by SettingsManager. */
   getMaxConcurrent?: () => number;
   getRunConfig?: () => RunConfig;
   observer?: AgentManagerObserver;
@@ -160,20 +160,20 @@ export interface AgentSpawnConfig {
   thinkingLevel?: ThinkingLevel;
   isBackground?: boolean;
   /**
-   * Skip the maxConcurrent queue check for this spawn — start immediately even
+   * Skip the maxConcurrent queue check for this spawn - start immediately even
    * if the configured concurrency limit would otherwise queue it. Useful for
    * callers (e.g. cross-extension RPC) that must not be deferred by the queue.
    */
   bypassQueue?: boolean;
-  /** Isolation mode — "worktree" creates a temp git worktree for the agent. */
+  /** Isolation mode - "worktree" creates a temp git worktree for the agent. */
   isolation?: IsolationMode;
   /** Resolved invocation snapshot captured for UI display. */
   invocation?: AgentInvocation;
-  /** Parent abort signal — when aborted, the subagent is also stopped. */
+  /** Parent abort signal - when aborted, the subagent is also stopped. */
   signal?: AbortSignal;
-  /** Called when the agent session is created — receives the session and the agent's record. */
+  /** Called when the agent session is created - receives the session and the agent's record. */
   onSessionCreated?: (session: AgentSession, record: AgentRecord) => void;
-  /** Parent session identity — grouped fields that travel together from the tool boundary. */
+  /** Parent session identity - grouped fields that travel together from the tool boundary. */
   parentSession?: ParentSessionInfo;
 }
 
@@ -192,9 +192,6 @@ export class AgentManager {
   private queue: { id: string; args: SpawnArgs }[] = [];
   /** Number of currently running background agents. */
   private runningBackground = 0;
-  /** Steers buffered for agents whose session hasn’t been created yet. */
-  private pendingSteers = new Map<string, string[]>();
-
   constructor(options: AgentManagerOptions) {
     this.runner = options.runner;
     this.worktrees = options.worktrees;
@@ -214,19 +211,6 @@ export class AgentManager {
    */
   notifyConcurrencyChanged(): void {
     this.drainQueue();
-  }
-
-  /**
-   * Buffer a steer message for an agent whose session isn’t ready yet.
-   * Returns false if the agent id is not tracked (already cleaned up or unknown).
-   * Called by steer-tool and service-adapter when record.execution is undefined.
-   */
-  queueSteer(id: string, message: string): boolean {
-    if (!this.agents.has(id)) return false;
-    const steers = this.pendingSteers.get(id) ?? [];
-    steers.push(message);
-    this.pendingSteers.set(id, steers);
-    return true;
   }
 
   /**
@@ -263,12 +247,12 @@ export class AgentManager {
     const args: SpawnArgs = { snapshot, type, prompt, options };
 
     if (options.isBackground && !options.bypassQueue && this.runningBackground >= this._getMaxConcurrent()) {
-      // Queue it — will be started when a running agent completes
+      // Queue it - will be started when a running agent completes
       this.queue.push({ id, args });
       return id;
     }
 
-    // startAgent can throw (e.g. strict worktree-isolation failure) — clean
+    // startAgent can throw (e.g. strict worktree-isolation failure) - clean
     // up the record so callers don't see an orphan in `listAgents()`.
     try {
       this.startAgent(id, record, args);
@@ -314,7 +298,7 @@ export class AgentManager {
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- sessionManager is typed as always present but Pi SDK may not provide it
         const outputFile = session.sessionManager?.getSessionFile?.() ?? undefined;
         record.execution = { session, outputFile };
-        this.flushPendingSteers(id, session);
+        record.flushPendingSteers(session);
         handle.attachObserver(subscribeRecordObserver(session, record, {
           onCompact: (r, info) => this.observer?.onAgentCompacted(r, info),
         }));
@@ -333,22 +317,12 @@ export class AgentManager {
     const wt = this.worktrees.create(id);
     if (!wt) {
       throw new Error(
-        'Cannot run with isolation: "worktree" — not a git repo, no commits yet, or `git worktree add` failed. ' +
+        'Cannot run with isolation: "worktree" - not a git repo, no commits yet, or `git worktree add` failed. ' +
         'Initialize git and commit at least once, or omit `isolation`.',
       );
     }
     record.worktreeState = new WorktreeState(wt);
     return wt.path;
-  }
-
-  /** Flush any steers buffered before the session was ready. */
-  private flushPendingSteers(id: string, session: AgentSession): void {
-    const buffered = this.pendingSteers.get(id);
-    if (!buffered?.length) return;
-    for (const msg of buffered) {
-      session.steer(msg).catch(() => {});
-    }
-    this.pendingSteers.delete(id);
   }
 
   /** Decrement background counter, notify observer (crash-safe), and drain the queue. */
@@ -367,7 +341,7 @@ export class AgentManager {
       try {
         this.startAgent(next.id, record, next.args);
       } catch (err) {
-        // Late failure (e.g. strict worktree-isolation) — surface on the record
+        // Late failure (e.g. strict worktree-isolation) - surface on the record
         // so the user/agent can see it via /agents, then keep draining.
         record.markError(err);
         this.observer?.onAgentCompleted(record);
@@ -455,7 +429,6 @@ export class AgentManager {
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- dispose may not exist on all session implementations
     record.session?.dispose?.();
     this.agents.delete(id);
-    this.pendingSteers.delete(id);
   }
 
   private cleanup() {
@@ -513,7 +486,7 @@ export class AgentManager {
   /** Wait for all running and queued agents to complete (including queued ones). */
   // fallow-ignore-next-line unused-class-member
   async waitForAll(): Promise<void> {
-    // Loop because drainQueue respects the concurrency limit — as running
+    // Loop because drainQueue respects the concurrency limit - as running
     // agents finish they start queued ones, which need awaiting too.
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- intentional infinite loop with explicit break
     while (true) {

@@ -167,7 +167,6 @@ describe("SubagentsServiceAdapter — getRecord and listAgents", () => {
       abort: vi.fn(() => true),
       waitForAll: vi.fn(async () => {}),
       hasRunning: vi.fn(() => false),
-      queueSteer: vi.fn(() => true),
     };
   }
 
@@ -215,7 +214,6 @@ describe("SubagentsServiceAdapter — spawn", () => {
       abort: vi.fn(() => true),
       waitForAll: vi.fn(async () => {}),
       hasRunning: vi.fn(() => false),
-      queueSteer: vi.fn(() => true),
     };
   }
 
@@ -333,7 +331,6 @@ describe("SubagentsServiceAdapter — steer, abort, waitForAll, hasRunning", () 
       abort: vi.fn<AgentManagerLike["abort"]>(() => true),
       waitForAll: vi.fn(async () => {}),
       hasRunning: vi.fn(() => true),
-      queueSteer: vi.fn<AgentManagerLike["queueSteer"]>(() => true),
     };
   }
 
@@ -400,7 +397,7 @@ describe("SubagentsServiceAdapter — steer, abort, waitForAll, hasRunning", () 
       mgr.getRecord.mockReturnValue(record);
       const svc = createSvc(mgr);
       expect(await svc.steer("a-1", "do this")).toBe(true);
-      expect(mgr.queueSteer).toHaveBeenCalledWith("a-1", "do this");
+      expect(record.pendingSteerCount).toBe(1);
     });
 
     it("delegates to session.steer and returns true when session is ready", async () => {

@@ -692,45 +692,6 @@ describe("AgentManager — execution state", () => {
   });
 });
 
-describe("AgentManager — queueSteer", () => {
-  let manager: AgentManager;
-
-  afterEach(() => {
-    manager.dispose();
-  });
-
-  it("returns false for an unknown agent id", () => {
-    ({ manager } = createManager());
-    expect(manager.queueSteer("unknown-id", "hello")).toBe(false);
-  });
-
-  it("returns true and buffers the message for a known agent", () => {
-    const runner = createBlockingRunner();
-    ({ manager } = createManager({ runner }));
-
-    const id = spawnBg(manager);
-
-    expect(manager.queueSteer(id, "steer message")).toBe(true);
-    manager.abort(id);
-  });
-
-  it("flushes queued steers to the session once onSessionCreated fires", async () => {
-    const session = createMockSession();
-    const runner = createSessionRunner(session);
-    ({ manager } = createManager({ runner }));
-
-    // Queue a steer before spawn (simulated via queueSteer after spawn, before session)
-    const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "test", {
-      description: "test",
-      isBackground: false,
-    });
-
-    // Once session is created, steer should have been called
-    await manager.getRecord(id)!.promise;
-    // steer was NOT pre-queued (session was created synchronously in this mock), verify no steer was called
-    expect(session.steer).not.toHaveBeenCalled();
-  });
-});
 
 describe("AgentManager — onAgentCreated observer", () => {
   let manager: AgentManager;

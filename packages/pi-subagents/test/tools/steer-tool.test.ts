@@ -8,7 +8,6 @@ import { STUB_CTX } from "#test/helpers/stub-ctx";
 function makeManager(records: Map<string, AgentRecord> = new Map()): SteerToolManager {
 	return {
 		getRecord: (id: string) => records.get(id),
-		queueSteer: vi.fn((_id: string, _msg: string) => true),
 	};
 }
 
@@ -58,7 +57,7 @@ describe("SteerTool", () => {
 		const events = makeEvents();
 		const result = await execute(manager, events, { agent_id: "agent-1", message: "redirect" });
 		expect(result.content[0].text).toContain("queued");
-		expect(manager.queueSteer).toHaveBeenCalledWith("agent-1", "redirect");
+		expect(record.pendingSteerCount).toBe(1);
 		expect(events.emit).toHaveBeenCalledWith("subagents:steered", {
 			id: "agent-1",
 			message: "redirect",
