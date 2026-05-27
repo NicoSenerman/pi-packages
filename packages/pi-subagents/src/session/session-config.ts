@@ -19,19 +19,6 @@ import type { AgentPromptConfig, SubagentType, ThinkingLevel } from "#src/types"
 // ── Public interfaces ────────────────────────────────────────────────────────
 
 /**
- * Tool filtering configuration — consumed by `filterActiveTools` in `agent-runner.ts`.
- *
- * Groups the two fields that travel together through the assembly→runner boundary:
- * the built-in tool allowlist and the extensions setting.
- */
-export interface ToolFilterConfig {
-  /** Built-in tool name allowlist for this agent type. */
-  toolNames: string[];
-  /** Resolved extensions setting: true = inherit all, false = none. */
-  extensions: boolean;
-}
-
-/**
  * IO collaborators injected into `assembleSessionConfig`.
  *
  * Bundling the four IO-touching (or promptly testable) functions into a single
@@ -98,8 +85,10 @@ export interface SessionConfig {
   effectiveCwd: string;
   /** Fully-assembled system prompt string (ready for `systemPromptOverride`). */
   systemPrompt: string;
-  /** Tool filtering cluster — tool allowlist, denylist, and extensions setting. */
-  toolFilter: ToolFilterConfig;
+  /** Built-in tool name allowlist for this agent type. */
+  toolNames: string[];
+  /** Resolved extensions setting: true = inherit all, false = none. */
+  extensions: boolean;
   /**
    * Resolved model instance (undefined → use parent model as passed to SDK).
    * Opaque handle — the assembler passes it through without inspection.
@@ -222,7 +211,8 @@ export function assembleSessionConfig(
   return {
     effectiveCwd,
     systemPrompt,
-    toolFilter: { toolNames, extensions },
+    toolNames,
+    extensions,
     model,
     thinkingLevel,
     noSkills,

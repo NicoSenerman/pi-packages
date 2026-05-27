@@ -61,8 +61,8 @@ describe("assembleSessionConfig — default agent shape", () => {
 
     expect(result.effectiveCwd).toBe("/tmp");
     expect(result.systemPrompt).toBe("assembled system prompt");
-    expect(result.toolFilter.toolNames).toEqual(["read"]);
-    expect(result.toolFilter.extensions).toBe(false);
+    expect(result.toolNames).toEqual(["read"]);
+    expect(result.extensions).toBe(false);
     expect(result.noSkills).toBe(true);
     expect(result.model).toBeUndefined();
     expect(result.thinkingLevel).toBeUndefined();
@@ -340,7 +340,7 @@ describe("assembleSessionConfig — isolated mode", () => {
 
     const result = assembleSessionConfig("general-purpose", ctx, { isolated: true }, mockEnv, mockAgentLookup, mockIO);
 
-    expect(result.toolFilter.extensions).toBe(false);
+    expect(result.extensions).toBe(false);
     expect(result.noSkills).toBe(true);
   });
 
@@ -356,7 +356,7 @@ describe("assembleSessionConfig — isolated mode", () => {
 
     const result = assembleSessionConfig("general-purpose", ctx, {}, mockEnv, mockAgentLookup, mockIO);
 
-    expect(result.toolFilter.extensions).toBe(true);
+    expect(result.extensions).toBe(true);
   });
 
   it("isolated:true forces extensions to false even when agentConfig has extensions:true", () => {
@@ -372,7 +372,7 @@ describe("assembleSessionConfig — isolated mode", () => {
 
     const result = assembleSessionConfig("Explore", ctx, { isolated: true }, mockEnv, mockAgentLookup, mockIO);
 
-    expect(result.toolFilter.extensions).toBe(false);
+    expect(result.extensions).toBe(false);
   });
 });
 
