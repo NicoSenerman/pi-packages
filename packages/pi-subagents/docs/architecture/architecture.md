@@ -772,7 +772,17 @@ Worktree setup was hoisted to callers (`spawn`, `drainQueue`) to preserve the sy
 - Smell: C (raw promise callbacks)
 - Outcome: zero `.then()`/`.catch()` in `agent-manager.ts`; `RunHandle` deleted; Agent owns run lifecycle
 
-### Step 3: Agent born complete — Agent.run() absorbs startAgent — [#229]
+### Step 3: Push exec/registry relay deps to runner construction — [#231]
+
+`AgentManager` receives `exec` and `registry` in its constructor but only relays them to `runner.run()` via `context`.
+Move them to `ConcreteAgentRunner` construction so the runner is self-contained.
+This is a prerequisite for Step 4 — Agent holds the runner, and the runner must carry its own static dependencies.
+
+- Target: `src/lifecycle/agent-manager.ts`, `src/lifecycle/agent-runner.ts`, `src/index.ts`
+- Smell: C (relay-only dependencies)
+- Outcome: `AgentManager` loses 2 fields; `AgentManagerOptions` shrinks from 7 to 5 fields; runner is self-contained
+
+### Step 4: Agent born complete — Agent.run() absorbs startAgent — [#229]
 
 Agent receives `runner`, `worktrees`, and a lifecycle observer at construction.
 Agent creates its own `NotificationState` from `parentSession.toolCallId` — no external write.
@@ -788,7 +798,7 @@ The `onSessionCreated` callback is removed from `AgentSpawnConfig` — Agent han
 - Smell: C (manager orchestrates 10 external touches on Agent) + C (callback flowing through 3 layers)
 - Outcome: Agent owns its entire execution lifecycle; `startAgent`, `SpawnArgs`, `onSessionCreated` callback deleted; zero post-construction writes from `AgentManager`
 
-### Step 4: Extract ConcurrencyQueue from AgentManager — [#230]
+### Step 5: Extract ConcurrencyQueue from AgentManager — [#230]
 
 Extract `queue[]`, `runningBackground`, `_getMaxConcurrent`, `drainQueue()`, `finalizeBackgroundRun()` into a `ConcurrencyQueue` class.
 The queue stores agent IDs — not `SpawnArgs`.
@@ -799,16 +809,6 @@ Drain calls `agent.run()` directly — no worktree setup, no args threading.
 - Target: new `src/lifecycle/concurrency-queue.ts`, `src/lifecycle/agent-manager.ts`, `src/index.ts`
 - Smell: A (tangled concerns) + C (cross-concern leak via `notifyConcurrencyChanged`)
 - Outcome: `AgentManager` loses 3 fields, 3 methods (~40 lines); scheduling is independently testable; queue interface is trivial (agent has everything)
-
-### Step 5: Push exec/registry relay deps to runner construction — [#231]
-
-`AgentManager` receives `exec` and `registry` in its constructor but only relays them to `runner.run()` via `context`.
-Move them to `ConcreteAgentRunner` construction so the runner is self-contained.
-This is a prerequisite for Step 3 — Agent holds the runner, and the runner must carry its own static dependencies.
-
-- Target: `src/lifecycle/agent-manager.ts`, `src/lifecycle/agent-runner.ts`, `src/index.ts`
-- Smell: C (relay-only dependencies)
-- Outcome: `AgentManager` loses 2 fields; `AgentManagerOptions` shrinks from 7 to 5 fields; runner is self-contained
 
 ### Step 6: Agent.resume() with internal observer lifecycle — [#232]
 
@@ -827,31 +827,32 @@ Agent has the runner from construction.
 flowchart LR
     S1["Step 1<br/>Agent with behavior"]
     S2["Step 2<br/>async startAgent"]
-    S5["Step 5<br/>runner self-contained"]
-    S3["Step 3<br/>Agent.run()"]
-    S4["Step 4<br/>ConcurrencyQueue"]
+    S3["Step 3<br/>runner self-contained"]
+    S4["Step 4<br/>Agent.run()"]
+    S5["Step 5<br/>ConcurrencyQueue"]
     S6["Step 6<br/>Agent.resume()"]
 
     S1 --> S2
-    S2 --> S3
-    S5 --> S3
+    S2 --> S4
     S3 --> S4
-    S3 --> S6
+    S4 --> S5
+    S4 --> S6
 ```
 
 ### Tracks
 
-1. **Track A — Foundation** (Step 5): Runner becomes self-contained.
+1. **Track A — Foundation** (Step 3): Runner becomes self-contained.
    No dependencies on other Phase 15 steps; can start immediately.
-2. **Track B — Agent lifecycle** (Steps 3, 6): Agent born complete, owns run + resume.
-   Step 3 depends on Track A. Step 6 depends on Step 3.
-3. **Track C — Scheduling** (Step 4): ConcurrencyQueue extraction.
-   Depends on Step 3 (queue drains via `agent.run()`).
+2. **Track B — Agent lifecycle** (Steps 4, 6): Agent born complete, owns run + resume.
+   Step 4 depends on Track A + Step 2.
+   Step 6 depends on Step 4.
+3. **Track C — Scheduling** (Step 5): ConcurrencyQueue extraction.
+   Depends on Step 4 (queue drains via `agent.run()`).
 
 ## Improvement roadmap (Phase 16 — invert dependencies)
 
 Phase 16 completes the architectural inversion by removing the outbound permission bridge and the `extensions: false` / `isolated` concepts.
-It depends on Phase 15's observer pattern (#229) as the replacement mechanism.
+It depends on Phase 15's lifecycle observer (#229) as the replacement mechanism.
 
 Phase 16 is scoped but not yet broken into steps.
 Key changes:
@@ -911,7 +912,7 @@ Detailed records are preserved in per-phase history files:
 | Phase 12           | #205, #206, #207, #208                                     | renderWidgetLines, showAgentDetail, widget update, shared test fixtures                                                                                  |
 | Phase 13           | #214, #215, #216, #217, #218, #219                         | Closure-to-class, buildParentContext, startAgent decomp, overwrite guard, settings SDK, test duplication                                                 |
 | Phase 14           | #237, #238, #239, #242                                     | Remove disallowed_tools, remove extensions filtering, collapse filterActiveTools, rename Agent to subagent                                               |
-| Phase 15           | #227, #228, #229, #230, #231, #232                         | Agent domain model, async startAgent, onSessionCreated observer, ConcurrencyQueue, relay deps, resume unification                                        |
+| Phase 15           | #227, #228, #231, #229, #230, #232                         | Agent domain model, async startAgent, runner self-contained, Agent.run(), ConcurrencyQueue, Agent.resume()                                               |
 
 The remaining open issue is #22 (parent-session resolution), a cross-extension track that does not gate the structural work.
 
