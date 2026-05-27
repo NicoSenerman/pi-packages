@@ -21,8 +21,9 @@ The standard flow is:
 
 1. `/plan-issue #N` — read the issue, explore the codebase, produce a numbered plan, commit it.
 2. `/tdd-plan` or `/build-plan` — execute the plan (TDD for code changes, build for docs/config).
-3. `/ship-issue #N` — push, verify CI, close the issue, merge the release-please PR.
-4. `/retro` — review the session(s) for workflow improvements, persist retro notes.
+3. Pre-completion review — dispatched automatically at the end of step 2; a fresh-context `pre-completion-reviewer` subagent runs deterministic checks and a judgment checklist before recommending `/ship-issue`.
+4. `/ship-issue #N` — push, verify CI, close the issue, merge the release-please PR.
+5. `/retro` — review the session(s) for workflow improvements, persist retro notes.
 
 Each prompt template writes a stage entry to `docs/retro/NNNN-<slug>.md` (or `packages/<PKG>/docs/retro/`) before finishing.
 These entries accumulate across sessions and serve as the cross-session context bridge — when a later stage starts, it reads the retro file to pick up decisions, observations, and warnings from prior sessions.
@@ -96,6 +97,12 @@ issue_title: "Extract ExtensionPaths value object"
 
 The `### Diagnostic details` subsection is optional — include it only when the `/retro` prompt's diagnostic lenses produce actionable findings.
 Omit it when all lenses find nothing notable.
+
+### Pre-completion reviewer
+
+The `pre-completion-reviewer` agent (`.pi/agents/pre-completion-reviewer.md`) is dispatched automatically by `/tdd-plan` and `/build-plan` after all implementation steps are complete.
+It runs as a fresh-context subagent (no implementation bias) and produces a PASS / WARN / FAIL report covering: deterministic checks (`pnpm run check`, `pnpm run lint`, `pnpm vitest run`, `pnpm fallow dead-code`), acceptance criteria verification, conventional commits, documentation staleness, code design, test artifacts, and Mermaid diagrams.
+The `pre-completion` skill (`.pi/skills/pre-completion/SKILL.md`) encodes the dispatch protocol loaded by both templates.
 
 Use `/retro-note` to capture quick observations mid-session without interrupting the workflow.
 Use `scripts/issue-context.sh <N>` to gather all available context for an issue (plan, retro, commits, branches) when bootstrapping a new session.
