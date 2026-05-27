@@ -47,9 +47,7 @@ export function buildEjectContent(cfg: AgentConfig): string {
   if (cfg.thinking) fmFields.push(`thinking: ${cfg.thinking}`);
   if (cfg.maxTurns) fmFields.push(`max_turns: ${cfg.maxTurns}`);
   fmFields.push(`prompt_mode: ${cfg.promptMode}`);
-  if (cfg.extensions === false) fmFields.push("extensions: false");
-  else if (Array.isArray(cfg.extensions))
-    fmFields.push(`extensions: ${cfg.extensions.join(", ")}`);
+  if (!cfg.extensions) fmFields.push("extensions: false");
   if (cfg.skills === false) fmFields.push("skills: false");
   else if (Array.isArray(cfg.skills))
     fmFields.push(`skills: ${cfg.skills.join(", ")}`);
