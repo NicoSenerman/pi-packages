@@ -90,6 +90,7 @@ Check in both directions:
 - `AGENTS.md` — is any section outdated by the changes?
 - Skills (`.pi/skills/`) — are new skills referenced where agents need them?
   Are existing skills that describe what you changed still accurate?
+  When the change renames a symbol (tool name, export, config key), grep `.pi/skills/` and `.pi/prompts/` for the old name.
 - Prompt templates (`.pi/prompts/`) — if agent infrastructure changed, are stale references updated?
 - READMEs — check the root `README.md` and any package `README.md` files that describe affected modules.
 - Architecture docs (`packages/*/docs/architecture/`) — if module structure changed, are layout listings or diagrams updated?

@@ -29,7 +29,7 @@ Note:
 
 ## Step 2: Dispatch the reviewer
 
-Dispatch the `pre-completion-reviewer` subagent via the `Agent` tool:
+Dispatch the `pre-completion-reviewer` subagent via the `subagent` tool:
 
 - `subagent_type`: `"pre-completion-reviewer"`
 - `description`: `"Pre-completion review for issue #N"`
