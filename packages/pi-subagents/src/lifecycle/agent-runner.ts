@@ -15,37 +15,22 @@ import { registerChildSession, unregisterChildSession } from "#src/lifecycle/per
 import { extractAssistantContent } from "#src/session/content-items";
 import { extractText } from "#src/session/context";
 import type { EnvInfo } from "#src/session/env";
-import { type AssemblerIO, assembleSessionConfig, type ToolFilterConfig } from "#src/session/session-config";
+import { type AssemblerIO, assembleSessionConfig } from "#src/session/session-config";
 import type { ShellExec, SubagentType, ThinkingLevel } from "#src/types";
 
 /** Names of tools registered by this extension that subagents must NOT inherit. */
 const EXCLUDED_TOOL_NAMES = ["subagent", "get_subagent_result", "steer_subagent"];
 
 /**
- * Filter the session's active tool names according to extension rules.
+ * Filter the session's active tool names: remove recursion-guard tools.
  *
- * Run twice - once before `bindExtensions` (filters built-in tools) and once after
- * (filters extension-registered tools, which only join the active set during
- * `bindExtensions`). Extracting this keeps the two callsites consistent and makes
- * the post-bind re-filter trivial.
+ * Run once after `bindExtensions` so extension-registered tools (added during
+ * `bindExtensions`) are also covered by the guard.
  *
  * @param activeTools  Names currently active on the session.
- * @param config       Tool filtering configuration from the assembled session config.
  */
-function filterActiveTools(
-  activeTools: string[],
-  config: ToolFilterConfig,
-): string[] {
-  const { toolNames, extensions } = config;
-  if (!extensions) {
-    return activeTools;
-  }
-  const builtinToolNameSet = new Set(toolNames);
-  return activeTools.filter((t) => {
-    if (EXCLUDED_TOOL_NAMES.includes(t)) return false;
-    if (builtinToolNameSet.has(t)) return true;
-    return true;
-  });
+function filterActiveTools(activeTools: string[]): string[] {
+  return activeTools.filter((t) => !EXCLUDED_TOOL_NAMES.includes(t));
 }
 
 /** Normalize max turns. undefined or 0 = unlimited, otherwise minimum 1. */
@@ -305,7 +290,7 @@ export async function runAgent(
   const loader = io.createResourceLoader({
     cwd: cfg.effectiveCwd,
     agentDir,
-    noExtensions: !cfg.toolFilter.extensions,
+    noExtensions: !cfg.extensions,
     noSkills: cfg.noSkills,
     noPromptTemplates: true,
     noThemes: true,
@@ -329,17 +314,10 @@ export async function runAgent(
     settingsManager: io.createSettingsManager(cfg.effectiveCwd, agentDir),
     modelRegistry: snapshot.modelRegistry,
     model: cfg.model,
-    tools: cfg.toolFilter.toolNames,
+    tools: cfg.toolNames,
     resourceLoader: loader,
     thinkingLevel: cfg.thinkingLevel,
   });
-
-  // Filter active tools: remove our own tools to prevent nesting.
-  // First pass - over built-in tools, before bindExtensions registers extension tools.
-  if (cfg.toolFilter.extensions) {
-    const filtered = filterActiveTools(session.getActiveToolNames(), cfg.toolFilter);
-    session.setActiveToolsByName(filtered);
-  }
 
   // Register with pi-permission-system's SubagentSessionRegistry before
   // bindExtensions() so isSubagentExecutionContext() hits the registry on the
@@ -356,14 +334,13 @@ export async function runAgent(
   // respect the active tool set. All ExtensionBindings fields are optional.
   await session.bindExtensions({});
 
-  // Patch 2 (RepOne #443): re-filter active tools after bindExtensions.
-  // Extension-registered tools (added during bindExtensions) are not in the
-  // session's active set when the first filter pass runs above. Without this
-  // re-filter, EXCLUDED_TOOL_NAMES would not be applied to extension-registered
-  // tools. Run the same filter against the post-bind active set.
-  if (cfg.toolFilter.extensions) {
-    const refiltered = filterActiveTools(session.getActiveToolNames(), cfg.toolFilter);
-    session.setActiveToolsByName(refiltered);
+  // Apply recursion guard: remove our own tools from the child's active set.
+  // Runs after bindExtensions so extension-registered tools are included in the
+  // post-bind active set. Only needed when extensions are loaded (extensions: false
+  // means no extension tools were registered, so the guard is a no-op).
+  if (cfg.extensions) {
+    const filtered = filterActiveTools(session.getActiveToolNames());
+    session.setActiveToolsByName(filtered);
   }
 
   options.onSessionCreated?.(session);
