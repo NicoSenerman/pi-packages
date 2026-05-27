@@ -175,7 +175,7 @@ All fields are optional — sensible defaults for everything.
 | `description`       | filename       | Agent description shown in tool listings                                                                                                                                                               |
 | `display_name`      | —              | Display name for UI (e.g. widget, agent list)                                                                                                                                                          |
 | `tools`             | all 7          | Comma-separated built-in tools: read, bash, edit, write, grep, find, ls. `none` for no tools                                                                                                           |
-| `extensions`        | `true`         | Inherit MCP/extension tools. `false` to disable                                                                                                                                                        |
+| `extensions`        | `true`         | `true` to inherit all MCP/extension tools, `false` to disable                                                                                                                                          |
 | `skills`            | `true`         | Inherit skills from parent. Can be a comma-separated list of skill names to preload (see [Skill Preloading](#skill-preloading) for discovery locations)                                                |
 | `memory`            | —              | Persistent agent memory scope: `project`, `local`, or `user`. Auto-detects read-only agents                                                                                                            |
 | `isolation`         | —              | Set to `worktree` to run in an isolated git worktree                                                                                                                                                   |
@@ -479,8 +479,7 @@ Each has a corresponding upstream PR:
 1. **Peer-dep migration to `@earendil-works/pi-*`** — `peerDependencies` and all imports point at `@earendil-works/pi-ai`, `@earendil-works/pi-coding-agent`, and `@earendil-works/pi-tui` (the active scope on npm) instead of the deprecated `@mariozechner/pi-*` scope.
    Also fixes a latent bug where `ThinkingLevel` was imported from `pi-agent-core` (an undeclared transitive dep that breaks under pnpm).
    Upstream PR: [tintinweb/pi-subagents#71](https://github.com/tintinweb/pi-subagents/pull/71).
-2. **Post-`bindExtensions` active-tool re-filter** (`src/agent-runner.ts`) — `runAgent` re-runs its active-tool filter after `session.bindExtensions(...)` so extension-registered tools join the child's active tool set.
-   Without this, the `extensions: string[]` allowlist branch was functionally dead for extension tools.
+2. **Post-`bindExtensions` active-tool re-filter** (`src/agent-runner.ts`) — `runAgent` re-runs its active-tool filter after `session.bindExtensions(...)` so the `EXCLUDED_TOOL_NAMES` recursion guard applies to extension-registered tools (which join the active set during `bindExtensions`).
    Upstream PR: [tintinweb/pi-subagents#72](https://github.com/tintinweb/pi-subagents/pull/72).
 3. **`<active_agent>` system-prompt tag** (`src/prompts.ts`) — `buildAgentPrompt` prepends `<active_agent name="${config.name}"/>` to every assembled child system prompt (both `replace` and `append` modes).
    Downstream extensions like [`@gotgenes/pi-permission-system`](https://github.com/gotgenes/pi-permission-system) parse this tag to resolve per-agent `permission:` frontmatter inside the child session.
