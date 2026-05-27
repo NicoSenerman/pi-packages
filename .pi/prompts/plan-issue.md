@@ -92,6 +92,8 @@ Then an H1 title (e.g., `# <short descriptive title>`) — required by markdownl
   Fix upstream API gaps in the plan before planning the extraction.
   When a new exported function accepts domain objects, verify the parameter type follows ISP — list which fields the function reads and confirm the type doesn't carry unused fields.
   When the plan consolidates code from multiple methods into a shared helper, verify the methods have the same lifecycle semantics — different guards, cleanup scopes, or shutdown-vs-normal-operation contexts indicate structural duplication that should not be extracted.
+  When the issue proposes moving or relocating a class to a new owner, list every method's callers and what fields/state each method touches.
+  If most methods operate on the target owner's fields, the class may be an intermediary that should be dissolved into the owner rather than relocated intact.
 - **Module-Level Changes** — file-by-file list of what's added, changed, or removed.
   When a step removes or renames an export, grep all `src/` and `test/` files for every removed symbol before finalizing the file list.
   When a step removes a call to a private (non-exported) function, grep the file for other callers — if the removed call was the sole call site, list the function for removal in the same step.
