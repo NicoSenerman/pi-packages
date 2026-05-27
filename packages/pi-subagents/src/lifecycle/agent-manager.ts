@@ -15,7 +15,7 @@ import { AgentRecord } from "#src/lifecycle/agent-record";
 import type { AgentRunner, RunResult } from "#src/lifecycle/agent-runner";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import type { WorktreeManager } from "#src/lifecycle/worktree";
-import { WorktreeState } from "#src/lifecycle/worktree-state";
+
 import { NotificationState } from "#src/observation/notification-state";
 import { subscribeRecordObserver } from "#src/observation/record-observer";
 import type { RunConfig } from "#src/runtime";
@@ -265,7 +265,7 @@ export class AgentManager {
 
   /** Actually start an agent (called immediately or from queue drain). */
   private startAgent(id: string, record: AgentRecord, { snapshot, type, prompt, options }: SpawnArgs) {
-    const worktreeCwd = this.setupWorktree(id, record, options.isolation);
+    const worktreeCwd = record.setupWorktree(this.worktrees, options.isolation);
 
     record.markRunning(Date.now());
     if (options.isBackground) this.runningBackground++;
@@ -307,22 +307,6 @@ export class AgentManager {
     })
       .then((result) => handle.complete(result))
       .catch((err: unknown) => { handle.fail(err); return ""; });
-  }
-
-  /** Create a worktree for isolated agents. Throws (strict) if isolation is requested but impossible. */
-  private setupWorktree(
-    id: string, record: AgentRecord, isolation: IsolationMode | undefined,
-  ): string | undefined {
-    if (isolation !== "worktree") return undefined;
-    const wt = this.worktrees.create(id);
-    if (!wt) {
-      throw new Error(
-        'Cannot run with isolation: "worktree" - not a git repo, no commits yet, or `git worktree add` failed. ' +
-        'Initialize git and commit at least once, or omit `isolation`.',
-      );
-    }
-    record.worktreeState = new WorktreeState(wt);
-    return wt.path;
   }
 
   /** Decrement background counter, notify observer (crash-safe), and drain the queue. */
