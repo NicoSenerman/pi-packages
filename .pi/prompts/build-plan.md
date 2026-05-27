@@ -51,6 +51,7 @@ Before executing the plan, load skills relevant to the change:
 - Load the `package-<PKG>` skill (e.g., `package-pi-permission-system`) for package-specific architecture, priorities, and testing context.
 - Load the `code-design` skill if the plan touches code.
 - Load the `markdown-conventions` skill if the plan touches markdown or docs.
+- Load the `pre-completion` skill — you will use it after the final step to dispatch the quality reviewer.
 
 ## Verify green baseline
 
@@ -96,6 +97,11 @@ If the deviation is large, stop and ask.
    Commit any fixup as `style:` if you haven't pushed yet.
 4. **Do not edit `CHANGELOG.md`** — release-please owns it and will generate entries from your Conventional Commit messages on the next release.
 
+## Pre-completion review
+
+Load the `pre-completion` skill and follow the dispatch protocol.
+Proceed to "Summarize" only after the reviewer returns PASS or WARN.
+
 ## Summarize
 
 Print:
@@ -103,6 +109,7 @@ Print:
 - `git log --oneline <N>` for the commits you just made (N = number of steps).
 - One-line summary of what changed.
 - Any deviations from the plan.
+- Pre-completion reviewer verdict (PASS / WARN / FAIL with one-line summary).
 
 ## Write stage notes
 
@@ -133,6 +140,7 @@ Before stopping, persist implementation observations for cross-session continuit
    ### Observations
 
    Note deviations from the plan, unexpected issues, and any decisions made during implementation.
+   Include the pre-completion reviewer's verdict (PASS / WARN / FAIL) and any WARN findings.
    If the session was cut short (not all steps completed), note which steps remain.
    ```
 
