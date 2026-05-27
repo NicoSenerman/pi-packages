@@ -107,6 +107,7 @@ Then an H1 title (e.g., `# <short descriptive title>`) — required by markdownl
   When a refactor replaces a type, interface, or function that a large test file depends on, use lift-and-shift: introduce the new thing alongside the old, migrate callers and fixtures incrementally across steps, then remove the old in a final step.
   Never plan a single step that requires rewriting an entire large test file at once.
   When a step removes a factory or export that has a single call site (e.g., `index.ts`), include the call-site update in the same step — the type checker will not allow them in separate commits.
+  When a step removes fields from an interface and a downstream file constructs an object literal satisfying that interface, include the call-site update in the same step — TypeScript's excess property checking rejects the stale fields immediately.
 - **Risks and Mitigations** — concrete risks and how the plan addresses each.
 - **Open Questions** — defer-until-needed items.
 

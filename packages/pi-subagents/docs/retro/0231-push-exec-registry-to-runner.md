@@ -38,3 +38,34 @@ Pre-completion reviewer returned PASS.
   Fixed as a lint cleanup in the doc commit.
 - The `sed`-based bulk replacement for `runAgent(..., io)` → `runAgent(..., { io, exec, registry: mockAgentLookup })` missed one multi-line call site (the `rejects.toThrow` test wrapping the call in `expect()`).
   Caught immediately by the test run.
+
+## Stage: Final Retrospective (2026-05-27T22:43:52Z)
+
+### Session summary
+
+Shipped #231 cleanly: CI passed on first push, issue closed, release `pi-subagents-v10.2.1` published.
+The entire issue (plan → TDD → ship) completed in one sitting with no user intervention needed.
+
+### Observations
+
+#### What went well
+
+- The `RunnerDeps` design was unambiguous — the `ask_user` gate in planning correctly identified the one genuine design choice (`RunContext` fate) and got user input before proceeding.
+- Pre-completion reviewer returned PASS with zero findings, confirming the mechanical refactoring was clean.
+- Merging plan steps 3–5 during TDD was the right call; the testing skill rule about single-call-site interfaces caught the plan's error before any broken commit landed.
+
+#### What caused friction (agent side)
+
+- `wrong-abstraction` — The plan listed steps 3, 4, and 5 as separate commits and claimed "each commit is independently valid," but removing fields from `RunContext` (step 3) immediately caused TypeScript excess-property errors in `AgentManager` (step 4) and `index.ts` (step 5).
+  The existing `/plan-issue` rule (line 109) covers removing exports with single call sites, but did not trigger recognition because this was *shrinking* an interface, not removing one.
+  Impact: the TDD agent had to merge three steps on the fly — no rework, but the plan was misleading.
+- `missing-context` — The `sed`-based bulk replacement for `runAgent(..., io)` missed one multi-line call site where `}, io)` appeared on a different line than the opening `runAgent(`.
+  Impact: one extra manual edit; caught immediately by the test run.
+
+#### What caused friction (user side)
+
+- No friction observed — the user's involvement was limited to confirming the `RunContext` design choice during planning.
+
+### Changes made
+
+1. `.pi/prompts/plan-issue.md` — added a rule under TDD Order: when a step removes fields from an interface, include downstream object-literal call-site updates in the same step (TypeScript excess property checking).
