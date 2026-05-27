@@ -21,14 +21,12 @@ import type { AgentPromptConfig, SubagentType, ThinkingLevel } from "#src/types"
 /**
  * Tool filtering configuration — consumed by `filterActiveTools` in `agent-runner.ts`.
  *
- * Groups the three fields that travel together through the assembly→runner boundary:
- * the built-in tool allowlist, the optional denylist, and the extensions setting.
+ * Groups the two fields that travel together through the assembly→runner boundary:
+ * the built-in tool allowlist and the extensions setting.
  */
 export interface ToolFilterConfig {
   /** Built-in tool name allowlist for this agent type. */
   toolNames: string[];
-  /** Disallowed tool set from agentConfig. undefined when empty. */
-  disallowedSet: Set<string> | undefined;
   /** Resolved extensions setting: false | true | string[] allowlist. */
   extensions: boolean | string[];
 }
@@ -210,11 +208,6 @@ export function assembleSessionConfig(
   // tell the resource loader not to load them again.
   const noSkills = skills === false || Array.isArray(skills);
 
-  // Disallowed tools set (for filterActiveTools in runAgent)
-  const disallowedSet = agentConfig.disallowedTools
-    ? new Set(agentConfig.disallowedTools)
-    : undefined;
-
   // Model resolution: explicit option > config model string > parent model
   const model =
     options.model ??
@@ -229,7 +222,7 @@ export function assembleSessionConfig(
   return {
     effectiveCwd,
     systemPrompt,
-    toolFilter: { toolNames, disallowedSet, extensions },
+    toolFilter: { toolNames, extensions },
     model,
     thinkingLevel,
     noSkills,

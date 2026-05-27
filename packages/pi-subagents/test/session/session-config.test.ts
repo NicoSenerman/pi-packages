@@ -64,7 +64,6 @@ describe("assembleSessionConfig — default agent shape", () => {
     expect(result.toolFilter.toolNames).toEqual(["read"]);
     expect(result.toolFilter.extensions).toBe(false);
     expect(result.noSkills).toBe(true);
-    expect(result.toolFilter.disallowedSet).toBeUndefined();
     expect(result.model).toBeUndefined();
     expect(result.thinkingLevel).toBeUndefined();
     expect(result.extras).toEqual({});
@@ -80,23 +79,6 @@ describe("assembleSessionConfig — default agent shape", () => {
     const result = assembleSessionConfig("Explore", ctx, {}, mockEnv, mockAgentLookup, mockIO);
 
     expect(result.effectiveCwd).toBe("/tmp");
-  });
-
-  it("builds disallowedSet from agentConfig.disallowedTools", () => {
-    mockResolveAgentConfig.mockReturnValueOnce({
-      name: "Explore",
-      description: "test",
-      builtinToolNames: ["read"],
-      extensions: false as const,
-      skills: false as const,
-      systemPrompt: "prompt",
-      promptMode: "replace" as const,
-      disallowedTools: ["write", "bash"],
-    });
-
-    const result = assembleSessionConfig("Explore", ctx, {}, mockEnv, mockAgentLookup, mockIO);
-
-    expect(result.toolFilter.disallowedSet).toEqual(new Set(["write", "bash"]));
   });
 
   it("systemPrompt reflects the parentSystemPrompt passed to buildAgentPrompt", () => {
