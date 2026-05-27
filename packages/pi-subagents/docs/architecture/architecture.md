@@ -680,7 +680,7 @@ Removing it simplifies `runAgent`, shrinks `AgentConfig` and `SessionConfig`, an
 | `filterActiveTools` runs twice (pre-bind + post-bind) to catch extension-registered tools | B: Complexity | 3      | 1    | 6        |
 | `ToolFilterConfig` exists solely to carry filtering state through the runner              | C: Accidental | 2      | 1    | 4        |
 
-### Step 1: Remove `disallowed_tools`
+### Step 1: Remove `disallowed_tools` — [#237]
 
 Remove the `disallowedTools` field from `AgentConfig` and all code that processes it.
 
@@ -697,7 +697,7 @@ Remove the `disallowedTools` field from `AgentConfig` and all code that processe
 - Smell: A (responsibility overlap with pi-permission-system)
 - Outcome: users migrate to `permission:` frontmatter for tool restrictions; single source of truth for access control
 
-### Step 2: Remove `extensions` filtering
+### Step 2: Remove `extensions` filtering — [#238]
 
 Remove the `extensions: string[]` allowlist and simplify the field to a boolean.
 The `extensions: false` case (used by `isolated`) is retained in this step and removed in Phase 16.
@@ -712,7 +712,7 @@ The `extensions: false` case (used by `isolated`) is retained in this step and r
 - Smell: A (tool filtering disguised as extension lifecycle control)
 - Outcome: `filterActiveTools` reduces to two concerns: recursion guard and `extensions: false` passthrough
 
-### Step 3: Collapse `filterActiveTools` to recursion guard
+### Step 3: Collapse `filterActiveTools` to recursion guard — [#239]
 
 With Steps 1–2 complete, `filterActiveTools` has only two remaining branches: the `EXCLUDED_TOOL_NAMES` recursion guard and the `extensions === false` passthrough.
 Inline the `extensions === false` passthrough into the callsite and reduce the function to its essential purpose.
@@ -742,6 +742,10 @@ flowchart LR
 
 Steps 1 and 2 are independent and can proceed in parallel.
 Step 3 depends on both.
+
+[#237]: https://github.com/gotgenes/pi-packages/issues/237
+[#238]: https://github.com/gotgenes/pi-packages/issues/238
+[#239]: https://github.com/gotgenes/pi-packages/issues/239
 
 ## Improvement roadmap (Phase 15 — domain model evolution)
 
@@ -875,25 +879,25 @@ Phases 1–5 and 7–12 are complete.
 Phase 6 (UI extraction to a separate package) is deferred.
 Detailed records are preserved in per-phase history files:
 
-| Phase | Title                                               | Status              | History                                                                              |
-| ----- | --------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------ |
-| 1     | Export SubagentsService API boundary                | Complete            | [phase-1-api-boundary.md](history/phase-1-api-boundary.md)                           |
-| 2     | Remove scheduling subsystem                         | Complete            | [phase-2-remove-scheduling.md](history/phase-2-remove-scheduling.md)                 |
-| 3     | Remove group-join, RPC; replace output-file         | Complete            | [phase-3-remove-rpc-groupjoin.md](history/phase-3-remove-rpc-groupjoin.md)           |
-| 4     | Implement and publish SubagentsService              | Complete            | [phase-4-implement-service.md](history/phase-4-implement-service.md)                 |
-| 5     | Decompose index.ts                                  | Complete            | [phase-5-decompose-index.md](history/phase-5-decompose-index.md)                     |
-| 6     | Extract UI to separate package                      | Deferred → Phase 17 | —                                                                                    |
-| 7     | Encapsulation and dependency narrowing              | Complete            | [phase-7-encapsulation.md](history/phase-7-encapsulation.md)                         |
-| 8     | Testability, display extraction, menu decomposition | Complete            | [phase-8-testability.md](history/phase-8-testability.md)                             |
-| 9     | Observation consolidation, ctx elimination          | Complete            | [phase-9-observation-ctx.md](history/phase-9-observation-ctx.md)                     |
-| 10    | Domain organization, bag decomposition, complexity  | Complete            | [phase-10-structural-decomposition.md](history/phase-10-structural-decomposition.md) |
-| 11    | Closure factories to classes                        | Complete            | [phase-11-closure-to-class.md](history/phase-11-closure-to-class.md)                 |
-| 12    | Complexity reduction and test fixture extraction    | Complete            | [phase-12-complexity-test-fixtures.md](history/phase-12-complexity-test-fixtures.md) |
-| 13    | Remaining structural smells                         | Complete            | [phase-13-remaining-smells.md](history/phase-13-remaining-smells.md)                 |
-| 14    | Strip policy from core                              | Planned             | —                                                                                    |
-| 15    | Domain model evolution                              | Planned             | —                                                                                    |
-| 16    | Invert dependencies                                 | Planned             | —                                                                                    |
-| 17    | Extract UI to separate package                      | Planned             | —                                                                                    |
+| Phase    | Title                                               | Status                                                                           | History                                                                              |
+| -------- | --------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| 1        | Export SubagentsService API boundary                | Complete                                                                         | [phase-1-api-boundary.md](history/phase-1-api-boundary.md)                           |
+| 2        | Remove scheduling subsystem                         | Complete                                                                         | [phase-2-remove-scheduling.md](history/phase-2-remove-scheduling.md)                 |
+| 3        | Remove group-join, RPC; replace output-file         | Complete                                                                         | [phase-3-remove-rpc-groupjoin.md](history/phase-3-remove-rpc-groupjoin.md)           |
+| 4        | Implement and publish SubagentsService              | Complete                                                                         | [phase-4-implement-service.md](history/phase-4-implement-service.md)                 |
+| 5        | Decompose index.ts                                  | Complete                                                                         | [phase-5-decompose-index.md](history/phase-5-decompose-index.md)                     |
+| 6        | Extract UI to separate package                      | Deferred → Phase 17                                                              | —                                                                                    |
+| 7        | Encapsulation and dependency narrowing              | Complete                                                                         | [phase-7-encapsulation.md](history/phase-7-encapsulation.md)                         |
+| 8        | Testability, display extraction, menu decomposition | Complete                                                                         | [phase-8-testability.md](history/phase-8-testability.md)                             |
+| 9        | Observation consolidation, ctx elimination          | Complete                                                                         | [phase-9-observation-ctx.md](history/phase-9-observation-ctx.md)                     |
+| 10       | Domain organization, bag decomposition, complexity  | Complete                                                                         | [phase-10-structural-decomposition.md](history/phase-10-structural-decomposition.md) |
+| 11       | Closure factories to classes                        | Complete                                                                         | [phase-11-closure-to-class.md](history/phase-11-closure-to-class.md)                 |
+| 12       | Complexity reduction and test fixture extraction    | Complete                                                                         | [phase-12-complexity-test-fixtures.md](history/phase-12-complexity-test-fixtures.md) |
+| 13       | Remaining structural smells                         | Complete                                                                         | [phase-13-remaining-smells.md](history/phase-13-remaining-smells.md)                 |
+| 14       | Strip policy from core                              | Planned                                                                          | —                                                                                    |
+| 15       | Domain model evolution                              | Planned                                                                          | —                                                                                    |
+| 16       | Invert dependencies                                 | Planned                                                                          | —                                                                                    |
+| 17       | Extract UI to separate package                      | Planned                                                                          | —                                                                                    |
 
 ### Structural refactoring issues
 
@@ -911,6 +915,7 @@ Detailed records are preserved in per-phase history files:
 | Phase 11           | #192, #193, #194, #195, #196                               | SessionContext, runtime queries, interface alignment, tool classes, runner/menu classes, index.ts simplification                                         |
 | Phase 12           | #205, #206, #207, #208                                     | renderWidgetLines, showAgentDetail, widget update, shared test fixtures                                                                                  |
 | Phase 13           | #214, #215, #216, #217, #218, #219                         | Closure-to-class, buildParentContext, startAgent decomp, overwrite guard, settings SDK, test duplication                                                 |
+| Phase 14           | #237, #238, #239                                           | Remove disallowed_tools, remove extensions filtering, collapse filterActiveTools                                                                         |
 | Phase 15           | #227, #228, #229, #230, #231, #232                         | Agent domain model, async startAgent, onSessionCreated observer, ConcurrencyQueue, relay deps, resume unification                                        |
 
 The remaining open issue is #22 (parent-session resolution), a cross-extension track that does not gate the structural work.
