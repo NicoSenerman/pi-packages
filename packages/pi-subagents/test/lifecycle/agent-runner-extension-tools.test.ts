@@ -101,7 +101,7 @@ describe("post-bind recursion guard", () => {
     );
     io.createSession.mockResolvedValue({ session });
 
-    await runAgent(STUB_SNAPSHOT, "test-agent", "go", { context: { exec, registry: mockAgentLookup } }, io);
+    await runAgent(STUB_SNAPSHOT, "test-agent", "go", { context: { exec, registry: mockAgentLookup } }, { io, exec, registry: mockAgentLookup });
 
     // Should be called exactly once: post-bind.
     expect(session.setActiveToolsByName).toHaveBeenCalledTimes(1);
@@ -121,7 +121,7 @@ describe("post-bind recursion guard", () => {
     );
     io.createSession.mockResolvedValue({ session });
 
-    await runAgent(STUB_SNAPSHOT, "test-agent", "go", { context: { exec, registry: mockAgentLookup } }, io);
+    await runAgent(STUB_SNAPSHOT, "test-agent", "go", { context: { exec, registry: mockAgentLookup } }, { io, exec, registry: mockAgentLookup });
 
     // Post-bind call should include the extension-registered tool.
     const postBindArgs = session.setActiveToolsByName.mock.calls[0][0];
@@ -137,7 +137,7 @@ describe("post-bind recursion guard", () => {
     );
     io.createSession.mockResolvedValue({ session });
 
-    await runAgent(STUB_SNAPSHOT, "test-agent", "go", { context: { exec, registry: mockAgentLookup } }, io);
+    await runAgent(STUB_SNAPSHOT, "test-agent", "go", { context: { exec, registry: mockAgentLookup } }, { io, exec, registry: mockAgentLookup });
 
     const postBindArgs = session.setActiveToolsByName.mock.calls[0][0];
     expect(postBindArgs).toContain("read");
@@ -157,7 +157,7 @@ describe("post-bind recursion guard", () => {
     );
     io.createSession.mockResolvedValue({ session });
 
-    await runAgent(STUB_SNAPSHOT, "test-agent", "go", { context: { exec, registry: mockAgentLookup } }, io);
+    await runAgent(STUB_SNAPSHOT, "test-agent", "go", { context: { exec, registry: mockAgentLookup } }, { io, exec, registry: mockAgentLookup });
 
     expect(session.setActiveToolsByName).not.toHaveBeenCalled();
   });

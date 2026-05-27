@@ -56,7 +56,7 @@ describe("agent-runner final output capture", () => {
     const { session } = createSession("LOCKED");
     io.createSession.mockResolvedValue({ session });
 
-    const result = await runAgent(STUB_SNAPSHOT, "Explore", "Say LOCKED", { context: { exec, registry: mockAgentLookup } }, io);
+    const result = await runAgent(STUB_SNAPSHOT, "Explore", "Say LOCKED", { context: { exec, registry: mockAgentLookup } }, { io, exec, registry: mockAgentLookup });
 
     expect(result.responseText).toBe("LOCKED");
   });
@@ -65,7 +65,7 @@ describe("agent-runner final output capture", () => {
     const { session } = createSession("BOUND");
     io.createSession.mockResolvedValue({ session });
 
-    await runAgent(STUB_SNAPSHOT, "Explore", "Say BOUND", { context: { exec, registry: mockAgentLookup } }, io);
+    await runAgent(STUB_SNAPSHOT, "Explore", "Say BOUND", { context: { exec, registry: mockAgentLookup } }, { io, exec, registry: mockAgentLookup });
 
     expect(session.bindExtensions).toHaveBeenCalledTimes(1);
     expect(session.bindExtensions).toHaveBeenCalledWith({});
@@ -79,7 +79,7 @@ describe("agent-runner final output capture", () => {
     const { session } = createSession("CONFIGURED");
     io.createSession.mockResolvedValue({ session });
 
-    await runAgent(STUB_SNAPSHOT, "Explore", "Say CONFIGURED", { context: { exec, registry: mockAgentLookup, cwd: "/tmp/worktree" } }, io);
+    await runAgent(STUB_SNAPSHOT, "Explore", "Say CONFIGURED", { context: { exec, registry: mockAgentLookup, cwd: "/tmp/worktree" } }, { io, exec, registry: mockAgentLookup });
 
     expect(io.getAgentDir).toHaveBeenCalledTimes(1);
     expect(io.createResourceLoader).toHaveBeenCalledWith(expect.objectContaining({
@@ -98,7 +98,7 @@ describe("agent-runner final output capture", () => {
     const { session } = createSession("ISOLATED");
     io.createSession.mockResolvedValue({ session });
 
-    await runAgent(STUB_SNAPSHOT, "Explore", "Say ISOLATED", { context: { exec, registry: mockAgentLookup } }, io);
+    await runAgent(STUB_SNAPSHOT, "Explore", "Say ISOLATED", { context: { exec, registry: mockAgentLookup } }, { io, exec, registry: mockAgentLookup });
 
     // noContextFiles skips AGENTS.md/CLAUDE.md at the loader source;
     // appendSystemPromptOverride suppresses APPEND_SYSTEM.md (no flag equivalent).
@@ -117,7 +117,7 @@ describe("agent-runner final output capture", () => {
     const { session } = createSession("WITH_FILE");
     io.createSession.mockResolvedValue({ session });
 
-    const result = await runAgent(STUB_SNAPSHOT, "Explore", "go", { context: { exec, registry: mockAgentLookup } }, io);
+    const result = await runAgent(STUB_SNAPSHOT, "Explore", "go", { context: { exec, registry: mockAgentLookup } }, { io, exec, registry: mockAgentLookup });
 
     expect(result.sessionFile).toBe("/sessions/child.jsonl");
   });
@@ -132,7 +132,7 @@ describe("agent-runner final output capture", () => {
         registry: mockAgentLookup,
         parentSession: { parentSessionFile: "/sessions/parent.jsonl", parentSessionId: "parent-id-123" },
       },
-    }, io);
+    }, { io, exec, registry: mockAgentLookup });
 
     const sm = io.createSessionManager.mock.results[0].value;
     expect(sm.newSession).toHaveBeenCalledWith({ parentSession: "parent-id-123" });
@@ -176,7 +176,7 @@ describe("agent-runner RunOptions — defaultMaxTurns and graceTurns", () => {
       context: { exec, registry: mockAgentLookup },
       defaultMaxTurns: 2,
       graceTurns: 1,
-    }, io);
+    }, { io, exec, registry: mockAgentLookup });
 
     expect(session.steer).toHaveBeenCalledWith(expect.stringContaining("turn limit"));
     expect(session.abort).toHaveBeenCalled();
@@ -199,7 +199,7 @@ describe("agent-runner RunOptions — defaultMaxTurns and graceTurns", () => {
       context: { exec, registry: mockAgentLookup },
       defaultMaxTurns: 1,
       graceTurns: 3,
-    }, io);
+    }, { io, exec, registry: mockAgentLookup });
 
     // Steered at turn 1, but not aborted (turn 3 < 1+3=4)
     expect(result.steered).toBe(true);
@@ -223,7 +223,7 @@ describe("agent-runner RunOptions — defaultMaxTurns and graceTurns", () => {
       maxTurns: 3, // explicit per-call limit
       defaultMaxTurns: 1, // should be overridden
       graceTurns: 1,
-    }, io);
+    }, { io, exec, registry: mockAgentLookup });
 
     // Only 2 turns fired, maxTurns=3, so steer should NOT be called
     expect(session.steer).not.toHaveBeenCalled();
@@ -244,7 +244,7 @@ describe("agent-runner permission bridge", () => {
 
     await runAgent(STUB_SNAPSHOT, "Explore", "go", {
       context: { exec, registry: mockAgentLookup },
-    }, io);
+    }, { io, exec, registry: mockAgentLookup });
 
     expect(mockRegisterChildSession).toHaveBeenCalledOnce();
     const registerOrder = mockRegisterChildSession.mock.invocationCallOrder[0];
@@ -265,7 +265,7 @@ describe("agent-runner permission bridge", () => {
           parentSessionId: "parent-session-42",
         },
       },
-    }, io);
+    }, { io, exec, registry: mockAgentLookup });
 
     expect(mockRegisterChildSession).toHaveBeenCalledWith(
       expect.any(String),
@@ -279,7 +279,7 @@ describe("agent-runner permission bridge", () => {
 
     await runAgent(STUB_SNAPSHOT, "Explore", "go", {
       context: { exec, registry: mockAgentLookup },
-    }, io);
+    }, { io, exec, registry: mockAgentLookup });
 
     expect(mockUnregisterChildSession).toHaveBeenCalledOnce();
     const sessionKey = mockRegisterChildSession.mock.calls[0][0];
@@ -294,7 +294,7 @@ describe("agent-runner permission bridge", () => {
     await expect(
       runAgent(STUB_SNAPSHOT, "Explore", "go", {
         context: { exec, registry: mockAgentLookup },
-      }, io),
+      }, { io, exec, registry: mockAgentLookup }),
     ).rejects.toThrow("prompt failed");
 
     expect(mockUnregisterChildSession).toHaveBeenCalledOnce();
@@ -307,7 +307,7 @@ describe("agent-runner permission bridge", () => {
 
     await runAgent(STUB_SNAPSHOT, "Explore", "go", {
       context: { exec, registry: mockAgentLookup },
-    }, io);
+    }, { io, exec, registry: mockAgentLookup });
 
     expect(mockRegisterChildSession).toHaveBeenCalledWith(
       "/custom/session/dir",

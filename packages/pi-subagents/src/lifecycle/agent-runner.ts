@@ -114,6 +114,18 @@ export interface SessionFactoryIO {
  */
 export type RunnerIO = EnvironmentIO & SessionFactoryIO;
 
+/**
+ * Dependencies owned by the runner — injected at construction time.
+ *
+ * Groups the IO boundary with the two static domain deps (exec, registry)
+ * that every run() call needs but that do not vary per call.
+ */
+export interface RunnerDeps {
+  io: RunnerIO;
+  exec: ShellExec;
+  registry: AgentConfigLookup;
+}
+
 // ── Public interfaces ─────────────────────────────────────────────────────────
 
 /**
@@ -190,7 +202,11 @@ export class ConcreteAgentRunner implements AgentRunner {
   constructor(private readonly io: RunnerIO) {}
 
   run(snapshot: ParentSnapshot, type: SubagentType, prompt: string, options: RunOptions): Promise<RunResult> {
-    return runAgent(snapshot, type, prompt, options, this.io);
+    return runAgent(snapshot, type, prompt, options, {
+      io: this.io,
+      exec: options.context.exec,
+      registry: options.context.registry,
+    });
   }
 
   resume(session: AgentSession, prompt: string, options?: ResumeOptions): Promise<string> {
@@ -253,11 +269,11 @@ export async function runAgent(
   type: SubagentType,
   prompt: string,
   options: RunOptions,
-  io: RunnerIO,
+  deps: RunnerDeps,
 ): Promise<RunResult> {
   // Resolve working directory upfront - needed for detectEnv before assembly.
   const effectiveCwd = options.context.cwd ?? snapshot.cwd;
-  const env = await io.detectEnv(options.context.exec, effectiveCwd);
+  const env = await deps.io.detectEnv(deps.exec, effectiveCwd);
 
   // Assemble session configuration (synchronous, no SDK objects).
   const cfg = assembleSessionConfig(
@@ -275,11 +291,11 @@ export async function runAgent(
       thinkingLevel: options.thinkingLevel,
     },
     env,
-    options.context.registry,
-    io.assemblerIO,
+    deps.registry,
+    deps.io.assemblerIO,
   );
 
-  const agentDir = io.getAgentDir();
+  const agentDir = deps.io.getAgentDir();
 
   // Load extensions/skills: true → load; false → don't.
   // Suppress AGENTS.md/CLAUDE.md and APPEND_SYSTEM.md - upstream's
@@ -287,7 +303,7 @@ export async function runAgent(
   // would defeat prompt_mode: replace and isolated: true. Parent context, if
   // wanted, reaches the subagent via prompt_mode: append (parentSystemPrompt
   // is embedded in systemPromptOverride) or inherit_context (conversation).
-  const loader = io.createResourceLoader({
+  const loader = deps.io.createResourceLoader({
     cwd: cfg.effectiveCwd,
     agentDir,
     noExtensions: !cfg.extensions,
@@ -303,15 +319,15 @@ export async function runAgent(
   // Create a persisted SessionManager so transcripts are written in Pi's
   // official JSONL format. Falls back to a temp directory when the parent
   // session is not persisted (e.g. headless/API mode).
-  const sessionDir = io.deriveSessionDir(options.context.parentSession?.parentSessionFile, cfg.effectiveCwd);
-  const sessionManager = io.createSessionManager(cfg.effectiveCwd, sessionDir);
+  const sessionDir = deps.io.deriveSessionDir(options.context.parentSession?.parentSessionFile, cfg.effectiveCwd);
+  const sessionManager = deps.io.createSessionManager(cfg.effectiveCwd, sessionDir);
   sessionManager.newSession({ parentSession: options.context.parentSession?.parentSessionId });
 
-  const { session } = await io.createSession({
+  const { session } = await deps.io.createSession({
     cwd: cfg.effectiveCwd,
     agentDir,
     sessionManager,
-    settingsManager: io.createSettingsManager(cfg.effectiveCwd, agentDir),
+    settingsManager: deps.io.createSettingsManager(cfg.effectiveCwd, agentDir),
     modelRegistry: snapshot.modelRegistry,
     model: cfg.model,
     tools: cfg.toolNames,
