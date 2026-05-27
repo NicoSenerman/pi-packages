@@ -37,16 +37,13 @@ function filterActiveTools(
   config: ToolFilterConfig,
 ): string[] {
   const { toolNames, extensions } = config;
-  if (extensions === false) {
+  if (!extensions) {
     return activeTools;
   }
   const builtinToolNameSet = new Set(toolNames);
   return activeTools.filter((t) => {
     if (EXCLUDED_TOOL_NAMES.includes(t)) return false;
     if (builtinToolNameSet.has(t)) return true;
-    if (Array.isArray(extensions)) {
-      return extensions.some((ext) => t.startsWith(ext) || t.includes(ext));
-    }
     return true;
   });
 }
@@ -299,7 +296,7 @@ export async function runAgent(
 
   const agentDir = io.getAgentDir();
 
-  // Load extensions/skills: true or string[] → load; false → don't.
+  // Load extensions/skills: true → load; false → don't.
   // Suppress AGENTS.md/CLAUDE.md and APPEND_SYSTEM.md - upstream's
   // buildSystemPrompt() re-appends both AFTER systemPromptOverride, which
   // would defeat prompt_mode: replace and isolated: true. Parent context, if
@@ -308,7 +305,7 @@ export async function runAgent(
   const loader = io.createResourceLoader({
     cwd: cfg.effectiveCwd,
     agentDir,
-    noExtensions: cfg.toolFilter.extensions === false,
+    noExtensions: !cfg.toolFilter.extensions,
     noSkills: cfg.noSkills,
     noPromptTemplates: true,
     noThemes: true,
@@ -337,10 +334,9 @@ export async function runAgent(
     thinkingLevel: cfg.thinkingLevel,
   });
 
-  // Filter active tools: remove our own tools to prevent nesting,
-  // apply extension allowlist if specified.
+  // Filter active tools: remove our own tools to prevent nesting.
   // First pass - over built-in tools, before bindExtensions registers extension tools.
-  if (cfg.toolFilter.extensions !== false) {
+  if (cfg.toolFilter.extensions) {
     const filtered = filterActiveTools(session.getActiveToolNames(), cfg.toolFilter);
     session.setActiveToolsByName(filtered);
   }
@@ -363,9 +359,9 @@ export async function runAgent(
   // Patch 2 (RepOne #443): re-filter active tools after bindExtensions.
   // Extension-registered tools (added during bindExtensions) are not in the
   // session's active set when the first filter pass runs above. Without this
-  // re-filter, the `extensions: string[]` allowlist branch never matches any
-  // extension tools. Run the same filter against the post-bind active set.
-  if (cfg.toolFilter.extensions !== false) {
+  // re-filter, EXCLUDED_TOOL_NAMES would not be applied to extension-registered
+  // tools. Run the same filter against the post-bind active set.
+  if (cfg.toolFilter.extensions) {
     const refiltered = filterActiveTools(session.getActiveToolNames(), cfg.toolFilter);
     session.setActiveToolsByName(refiltered);
   }
