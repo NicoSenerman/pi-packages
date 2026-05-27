@@ -110,14 +110,6 @@ function csvList(val: unknown, defaults: string[]): string[] {
 }
 
 /**
- * Parse an optional comma-separated list field.
- * omitted → undefined; "none"/empty → undefined; csv → listed items.
- */
-function csvListOptional(val: unknown): string[] | undefined {
-  return parseCsvField(val);
-}
-
-/**
  * Parse an inherit field (extensions, skills).
  * omitted/true → true (inherit all); false/"none"/empty → false; csv → listed names.
  */
