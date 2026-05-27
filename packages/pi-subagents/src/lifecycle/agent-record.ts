@@ -199,6 +199,18 @@ export class AgentRecord {
 	}
 
 	/**
+	 * Abort a running agent: fire AbortController and transition to stopped.
+	 * Returns false if the agent is not running.
+	 * Queue removal stays on AgentManager until #230 extracts ConcurrencyQueue.
+	 */
+	abort(): boolean {
+		if (this._status !== "running") return false;
+		this.abortController?.abort();
+		this.markStopped();
+		return true;
+	}
+
+	/**
 	 * Buffer a steer message for delivery once the session is ready.
 	 * Called when steer is requested before onSessionCreated fires.
 	 */

@@ -417,6 +417,38 @@ describe("AgentRecord — queueSteer", () => {
 	});
 });
 
+describe("AgentRecord — abort", () => {
+	it("returns false and does nothing when not running", () => {
+		const record = new AgentRecord({ id: "1", type: "general-purpose", description: "test", status: "queued" });
+		expect(record.abort()).toBe(false);
+		expect(record.status).toBe("queued");
+	});
+
+	it("fires the AbortController, marks stopped, and returns true when running", () => {
+		const abortController = new AbortController();
+		const record = new AgentRecord({ id: "1", type: "general-purpose", description: "test", status: "running", abortController });
+		expect(record.abort()).toBe(true);
+		expect(abortController.signal.aborted).toBe(true);
+		expect(record.status).toBe("stopped");
+	});
+
+	it("marks stopped and returns true even without an AbortController", () => {
+		const record = new AgentRecord({ id: "1", type: "general-purpose", description: "test", status: "running" });
+		expect(record.abort()).toBe(true);
+		expect(record.status).toBe("stopped");
+	});
+
+	it("returns false when already stopped", () => {
+		const record = new AgentRecord({ id: "1", type: "general-purpose", description: "test", status: "stopped" });
+		expect(record.abort()).toBe(false);
+	});
+
+	it("returns false when completed", () => {
+		const record = new AgentRecord({ id: "1", type: "general-purpose", description: "test", status: "completed" });
+		expect(record.abort()).toBe(false);
+	});
+});
+
 describe("AgentRecord — flushPendingSteers", () => {
 	it("calls session.steer for each buffered message and clears the buffer", async () => {
 		const record = new AgentRecord({ id: "1", type: "general-purpose", description: "test" });
