@@ -363,7 +363,7 @@ export class Agent {
 	/**
 	 * Abort a running agent: fire AbortController and transition to stopped.
 	 * Returns false if the agent is not running.
-	 * Queue removal stays on AgentManager until #230 extracts ConcurrencyQueue.
+	 * Queue removal is handled by AgentManager via ConcurrencyQueue.dequeue().
 	 */
 	abort(): boolean {
 		if (this._status !== "running") return false;

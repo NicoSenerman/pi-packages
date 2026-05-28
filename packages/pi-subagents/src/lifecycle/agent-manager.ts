@@ -11,6 +11,7 @@ import type { Model } from "@earendil-works/pi-ai";
 import { debugLog } from "#src/debug";
 import { Agent, type AgentLifecycleObserver } from "#src/lifecycle/agent";
 import type { AgentRunner } from "#src/lifecycle/agent-runner";
+import type { ConcurrencyQueue } from "#src/lifecycle/concurrency-queue";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import type { WorktreeManager } from "#src/lifecycle/worktree";
 
@@ -27,14 +28,11 @@ export interface AgentManagerObserver {
   onAgentCreated(record: Agent): void;
 }
 
-/** Default max concurrent background agents. */
-const DEFAULT_MAX_CONCURRENT = 4;
-
 export interface AgentManagerOptions {
   runner: AgentRunner;
   worktrees: WorktreeManager;
-  /** Injected getter for the concurrency limit - owned by SettingsManager. */
-  getMaxConcurrent?: () => number;
+  /** Concurrency queue — owns scheduling, limit checks, and drain logic. */
+  queue: ConcurrencyQueue;
   getRunConfig?: () => RunConfig;
   observer?: AgentManagerObserver;
 }
@@ -71,44 +69,35 @@ export class AgentManager {
   private readonly observer?: AgentManagerObserver;
   private readonly runner: AgentRunner;
   private readonly worktrees: WorktreeManager;
-  private readonly _getMaxConcurrent: () => number;
+  private readonly queue: ConcurrencyQueue;
   private getRunConfig?: () => RunConfig;
 
-  /** Queue of background agent IDs waiting to start. */
-  private queue: string[] = [];
-  /** Number of currently running background agents. */
-  private runningBackground = 0;
   constructor(options: AgentManagerOptions) {
     this.runner = options.runner;
     this.worktrees = options.worktrees;
+    this.queue = options.queue;
     this.observer = options.observer;
     this.getRunConfig = options.getRunConfig;
-    this._getMaxConcurrent = options.getMaxConcurrent ?? (() => DEFAULT_MAX_CONCURRENT);
     // Cleanup completed agents after 10 minutes (but keep sessions for resume)
     this.cleanupInterval = setInterval(() => this.cleanup(), 60_000);
     this.cleanupInterval.unref();
-  }
-
-  /**
-   * Drain the concurrency queue after SettingsManager has updated maxConcurrent.
-   * Call this whenever the concurrency limit increases so queued agents can start.
-   */
-  notifyConcurrencyChanged(): void {
-    this.drainQueue();
   }
 
   /** Compose a per-agent lifecycle observer from manager and spawn-config concerns. */
   private buildObserver(options: AgentSpawnConfig): AgentLifecycleObserver {
     return {
       onStarted: (agent) => {
-        if (options.isBackground) this.runningBackground++;
+        if (options.isBackground) this.queue.markStarted();
         this.observer?.onAgentStarted(agent);
       },
       onSessionCreated: options.observer?.onSessionCreated
         ? (agent, session) => options.observer!.onSessionCreated!(agent, session)
         : undefined,
       onRunFinished: (agent) => {
-        if (options.isBackground) this.finalizeBackgroundRun(agent);
+        if (options.isBackground) {
+          this.queue.markFinished();
+          try { this.observer?.onAgentCompleted(agent); } catch (err) { debugLog("onAgentCompleted observer", err); }
+        }
       },
       onCompacted: (agent, info) => {
         this.observer?.onAgentCompacted(agent, info);
@@ -156,31 +145,14 @@ export class AgentManager {
       this.observer?.onAgentCreated(record);
     }
 
-    if (options.isBackground && !options.bypassQueue && this.runningBackground >= this._getMaxConcurrent()) {
+    if (options.isBackground && !options.bypassQueue && this.queue.isFull()) {
       // Queue it - will be started when a running agent completes
-      this.queue.push(id);
+      this.queue.enqueue(id);
       return id;
     }
 
     record.promise = record.run();
     return id;
-  }
-
-  /** Decrement background counter, notify observer (crash-safe), and drain the queue. */
-  private finalizeBackgroundRun(record: Agent): void {
-    this.runningBackground--;
-    try { this.observer?.onAgentCompleted(record); } catch (err) { debugLog("onAgentCompleted observer", err); }
-    this.drainQueue();
-  }
-
-  /** Start queued agents up to the concurrency limit. */
-  private drainQueue() {
-    while (this.queue.length > 0 && this.runningBackground < this._getMaxConcurrent()) {
-      const id = this.queue.shift()!;
-      const record = this.agents.get(id);
-      if (record?.status !== "queued") continue;
-      record.promise = record.run();
-    }
   }
 
   /**
@@ -247,7 +219,7 @@ export class AgentManager {
 
     // Remove from queue if queued
     if (record.status === "queued") {
-      this.queue = this.queue.filter(qid => qid !== id);
+      this.queue.dequeue(id);
       record.markStopped();
       return true;
     }
@@ -295,14 +267,14 @@ export class AgentManager {
   abortAll(): number {
     let count = 0;
     // Clear queued agents first
-    for (const id of this.queue) {
+    for (const id of this.queue.queuedIds) {
       const record = this.agents.get(id);
       if (record) {
         record.markStopped();
         count++;
       }
     }
-    this.queue = [];
+    this.queue.clear();
     // Abort running agents
     for (const record of this.agents.values()) {
       if (record.abort()) count++;
@@ -317,7 +289,7 @@ export class AgentManager {
     // agents finish they start queued ones, which need awaiting too.
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- intentional infinite loop with explicit break
     while (true) {
-      this.drainQueue();
+      this.queue.drain();
       const pending = [...this.agents.values()]
         .filter(r => r.status === "running" || r.status === "queued")
         .map(r => r.promise)
@@ -330,7 +302,7 @@ export class AgentManager {
   dispose() {
     clearInterval(this.cleanupInterval);
     // Clear queue
-    this.queue = [];
+    this.queue.clear();
     for (const record of this.agents.values()) {
       record.session?.dispose();
     }

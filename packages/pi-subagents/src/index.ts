@@ -25,6 +25,7 @@ import { loadCustomAgents } from "#src/config/custom-agents";
 import { SessionLifecycleHandler, ToolStartHandler } from "#src/handlers/index";
 import { AgentManager, type AgentManagerObserver } from "#src/lifecycle/agent-manager";
 import { ConcreteAgentRunner, type RunnerDeps } from "#src/lifecycle/agent-runner";
+import { ConcurrencyQueue } from "#src/lifecycle/concurrency-queue";
 import { buildParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { GitWorktreeManager } from "#src/lifecycle/worktree";
 import { buildEventData, type NotificationDetails, NotificationManager } from "#src/observation/notification";
@@ -66,12 +67,12 @@ export default function (pi: ExtensionAPI) {
   );
 
   // Settings: owns all three in-memory values and handles load/save/emit.
-  // onMaxConcurrentChanged is wired after manager is constructed (closure captures by reference).
+  // onMaxConcurrentChanged is wired to the queue directly (closure captures by reference).
   const settings = new SettingsManager({
     emit: (event, payload) => pi.events.emit(event, payload),
     cwd: process.cwd(),
     agentDir: getAgentDir(),
-    onMaxConcurrentChanged: () => manager.notifyConcurrencyChanged(),
+    onMaxConcurrentChanged: () => queue.drain(),
   });
   settings.load();
 
@@ -150,11 +151,22 @@ export default function (pi: ExtensionAPI) {
     registry,
   };
 
+  // ConcurrencyQueue: scheduling extracted from AgentManager.
+  // startAgent callback forward-references manager via closure (safe — drain is never called during construction).
+  const queue = new ConcurrencyQueue(
+    () => settings.maxConcurrent,
+    (id) => {
+      const agent = manager.getRecord(id);
+      if (agent?.status !== "queued") return;
+      agent.promise = agent.run();
+    },
+  );
+
   const manager = new AgentManager({
     runner: new ConcreteAgentRunner(runnerDeps),
     worktrees: new GitWorktreeManager(process.cwd()),
     observer,
-    getMaxConcurrent: () => settings.maxConcurrent,
+    queue,
     getRunConfig: () => settings,
   });
 

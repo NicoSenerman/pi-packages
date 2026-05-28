@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentManager, type AgentManagerObserver } from "#src/lifecycle/agent-manager";
 import type { AgentRunner } from "#src/lifecycle/agent-runner";
+import { ConcurrencyQueue } from "#src/lifecycle/concurrency-queue";
 import type { WorktreeManager } from "#src/lifecycle/worktree";
 import { NotificationState } from "#src/observation/notification-state";
 import type { RunConfig } from "#src/runtime";
@@ -8,6 +9,9 @@ import type { Agent } from "#src/types";
 import { createBlockingRunner, createMockWorktrees, createRunResult, createSessionRunner } from "#test/helpers/manager-stubs";
 import { createMockSession } from "#test/helpers/mock-session";
 import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
+
+/** Default max concurrent background agents (matches production default). */
+const DEFAULT_MAX_CONCURRENT = 4;
 
 /** Test helper: construct an AgentManager with injected stubs. */
 function createManager(overrides?: {
@@ -39,14 +43,25 @@ function createManager(overrides?: {
         onAgentCreated: overrides.observer.onAgentCreated ?? (() => {}),
       }
     : undefined;
-  const manager = new AgentManager({
+  // Forward-reference via closure — safe because drain is never called during construction.
+  // eslint-disable-next-line prefer-const -- forward reference: must be declared before queue, assigned after
+  let mgr: AgentManager;
+  const queue = new ConcurrencyQueue(
+    overrides?.getMaxConcurrent ?? (() => DEFAULT_MAX_CONCURRENT),
+    (id) => {
+      const record = mgr.getRecord(id);
+      if (record?.status !== "queued") return;
+      record.promise = record.run();
+    },
+  );
+  mgr = new AgentManager({
     runner,
     worktrees,
     observer,
-    getMaxConcurrent: overrides?.getMaxConcurrent,
+    queue,
     getRunConfig: overrides?.getRunConfig,
   });
-  return { manager, runner, worktrees };
+  return { manager: mgr, runner, worktrees, queue };
 }
 
 /** Spawn a background agent using STUB_SNAPSHOT. */
