@@ -112,7 +112,7 @@ classDiagram
         +toolUses: number
         +lifetimeUsage: LifetimeUsage
         +execution?: ExecutionState
-        +worktreeState?: WorktreeState
+        +worktree?: WorktreeIsolation
         +notification?: NotificationState
         +markRunning()
         +markCompleted()
@@ -126,9 +126,8 @@ classDiagram
         +abort(): boolean
         +queueSteer(message)
         +flushPendingSteers(session)
-        +setupWorktree(worktrees, isolation)
-        +completeRun(result, worktrees)
-        +failRun(err, worktrees)
+        +completeRun(result)
+        +failRun(err)
         +wireSignal(signal, onAbort)
         +attachObserver(unsub)
         +releaseListeners()
@@ -277,7 +276,7 @@ src/
 │   ├── execution-state.ts          session/output phase state
 │   ├── permission-bridge.ts        optional bridge to pi-permission-system registry
 │   ├── worktree.ts                 git worktree isolation
-│   ├── worktree-state.ts           worktree phase state
+│   ├── worktree-isolation.ts       worktree lifecycle collaborator
 │   └── usage.ts                    token usage tracking
 │
 ├── observation/                    progress tracking and notification
