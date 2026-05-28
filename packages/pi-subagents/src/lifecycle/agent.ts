@@ -26,6 +26,7 @@ import { addUsage } from "#src/lifecycle/usage";
 import type { WorktreeManager } from "#src/lifecycle/worktree";
 import { WorktreeState } from "#src/lifecycle/worktree-state";
 import { NotificationState } from "#src/observation/notification-state";
+import { subscribeAgentObserver } from "#src/observation/record-observer";
 import type { RunConfig } from "#src/runtime";
 import type { AgentInvocation, CompactionInfo, IsolationMode, ParentSessionInfo, SubagentType, ThinkingLevel } from "#src/types";
 
@@ -136,7 +137,6 @@ export class Agent {
 	private readonly _thinkingLevel?: ThinkingLevel;
 	private readonly _isolation?: IsolationMode;
 	private readonly _parentSession?: ParentSessionInfo;
-	private readonly _isBackground?: boolean;
 	private readonly _signal?: AbortSignal;
 
 	// Phase-specific collaborators — each born complete when their info becomes available
@@ -218,12 +218,70 @@ export class Agent {
 		this._thinkingLevel = init.thinkingLevel;
 		this._isolation = init.isolation;
 		this._parentSession = init.parentSession;
-		this._isBackground = init.isBackground;
 		this._signal = init.signal;
 
 		// Notification state — created from parentSession.toolCallId if present
 		if (init.parentSession?.toolCallId) {
 			this.notification = new NotificationState(init.parentSession.toolCallId);
+		}
+	}
+
+	/**
+	 * Execute the full agent lifecycle: worktree setup, runner invocation,
+	 * session-creation handling, observer wiring, worktree cleanup, and
+	 * status transitions.
+	 *
+	 * Requires runner and snapshot to be set at construction.
+	 * The returned promise always resolves (errors are captured internally).
+	 */
+	async run(): Promise<void> {
+		if (!this._runner) {
+			throw new Error("Agent not configured for execution — missing runner");
+		}
+		if (!this._snapshot || !this._prompt) {
+			throw new Error("Agent not configured for execution — missing snapshot or prompt");
+		}
+
+		this.markRunning(Date.now());
+		this.observer?.onStarted?.(this);
+		this.wireSignal(this._signal, () => this.abort());
+
+		try {
+			this.setupWorktree();
+		} catch (err) {
+			this.markError(err);
+			this.observer?.onRunFinished?.(this);
+			return;
+		}
+
+		const runConfig = this._getRunConfig?.();
+		try {
+			const result = await this._runner.run(this._snapshot, this.type, this._prompt, {
+				context: {
+					cwd: this.worktreeState?.path,
+					parentSession: this._parentSession,
+				},
+				model: this._model,
+				maxTurns: this._maxTurns,
+				defaultMaxTurns: runConfig?.defaultMaxTurns,
+				graceTurns: runConfig?.graceTurns,
+				isolated: this._isolated,
+				thinkingLevel: this._thinkingLevel,
+				signal: this.abortController.signal,
+				onSessionCreated: (session) => {
+					// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- sessionManager is typed as always present but Pi SDK may not provide it
+					const outputFile = session.sessionManager?.getSessionFile?.() ?? undefined;
+					this.execution = { session, outputFile };
+					this.flushPendingSteers(session);
+					this.attachObserver(subscribeAgentObserver(session, this, {
+						onCompact: (r, info) => this.observer?.onCompacted?.(r, info),
+					}));
+					this.observer?.onSessionCreated?.(this, session);
+				},
+			});
+			this.completeRun(result);
+		} catch (err) {
+			this.failRun(err);
 		}
 	}
 

@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { Agent, type AgentLifecycleObserver } from "#src/lifecycle/agent";
-import type { RunResult } from "#src/lifecycle/agent-runner";
+import type { AgentRunner, RunResult } from "#src/lifecycle/agent-runner";
+import type { WorktreeManager } from "#src/lifecycle/worktree";
 import { WorktreeState } from "#src/lifecycle/worktree-state";
+import { createMockSession, toAgentSession } from "#test/helpers/mock-session";
+import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 
 describe("Agent — constructor", () => {
 	it("sets required fields from init", () => {
@@ -723,5 +726,161 @@ describe("Agent — resetForResume releases listeners", () => {
 		record.markCompleted("done");
 		record.resetForResume(Date.now());
 		expect(unsub).toHaveBeenCalledOnce();
+	});
+});
+
+// ── Agent.run() ──────────────────────────────────────────────────────────────
+
+/** Create a mock runner for Agent.run() tests. */
+function createMockRunner(overrides?: Partial<AgentRunner>): AgentRunner {
+	const session = createMockSession();
+	return {
+		run: vi.fn((_snapshot, _type, _prompt, opts: { onSessionCreated?: (s: any) => void }) => {
+			opts.onSessionCreated?.(toAgentSession(session));
+			return Promise.resolve({
+				responseText: "done",
+				session: toAgentSession(session),
+				aborted: false,
+				steered: false,
+			});
+		}) as AgentRunner["run"],
+		resume: vi.fn().mockResolvedValue("resumed"),
+		...overrides,
+	};
+}
+
+/** Create a complete Agent ready for run(). */
+function createRunnableAgent(overrides?: {
+	runner?: AgentRunner;
+	worktrees?: WorktreeManager;
+	observer?: AgentLifecycleObserver;
+	getRunConfig?: () => { defaultMaxTurns: number | undefined; graceTurns: number };
+	isolation?: "worktree";
+	parentSession?: { toolCallId?: string; parentSessionFile?: string; parentSessionId?: string };
+	signal?: AbortSignal;
+}) {
+	const runner = overrides?.runner ?? createMockRunner();
+	const worktrees: WorktreeManager = overrides?.worktrees ?? { create: vi.fn(), cleanup: vi.fn(() => ({ hasChanges: false })), prune: vi.fn() };
+	const observer = overrides?.observer ?? {};
+	return new Agent({
+		id: "run-1",
+		type: "general-purpose",
+		description: "run test",
+		runner,
+		worktrees,
+		observer,
+		snapshot: STUB_SNAPSHOT,
+		prompt: "do something",
+		getRunConfig: overrides?.getRunConfig,
+		isolation: overrides?.isolation,
+		parentSession: overrides?.parentSession,
+		signal: overrides?.signal,
+	});
+}
+
+describe("Agent.run() — happy path", () => {
+	it("transitions through running → completed", async () => {
+		const agent = createRunnableAgent();
+		await agent.run();
+		expect(agent.status).toBe("completed");
+		expect(agent.result).toBe("done");
+	});
+
+	it("fires observer callbacks in order: onStarted → onSessionCreated → onRunFinished", async () => {
+		const callOrder: string[] = [];
+		const observer: AgentLifecycleObserver = {
+			onStarted: () => callOrder.push("started"),
+			onSessionCreated: () => callOrder.push("sessionCreated"),
+			onRunFinished: () => callOrder.push("runFinished"),
+		};
+		const agent = createRunnableAgent({ observer });
+		await agent.run();
+		expect(callOrder).toEqual(["started", "sessionCreated", "runFinished"]);
+	});
+
+	it("sets execution state with session and outputFile", async () => {
+		const agent = createRunnableAgent();
+		await agent.run();
+		expect(agent.execution).toBeDefined();
+		expect(agent.execution!.session).toBeDefined();
+	});
+
+	it("flushes pending steers when session is created", async () => {
+		const agent = createRunnableAgent();
+		agent.queueSteer("hurry up");
+		expect(agent.pendingSteerCount).toBe(1);
+		await agent.run();
+		expect(agent.pendingSteerCount).toBe(0);
+	});
+});
+
+describe("Agent.run() — worktree", () => {
+	it("sets up worktree when isolation is 'worktree'", async () => {
+		const worktrees: WorktreeManager = {
+			create: vi.fn(() => ({ path: "/tmp/wt", branch: "pi-agent-run-1" })),
+			cleanup: vi.fn(() => ({ hasChanges: false })),
+			prune: vi.fn(),
+		};
+		const agent = createRunnableAgent({ worktrees, isolation: "worktree" });
+		await agent.run();
+		expect(worktrees.create).toHaveBeenCalledWith("run-1");
+		expect(agent.worktreeState).toBeDefined();
+		expect(worktrees.cleanup).toHaveBeenCalledOnce();
+	});
+
+	it("marks error and fires onRunFinished when worktree setup fails", async () => {
+		const worktrees: WorktreeManager = {
+			create: vi.fn(() => undefined),
+			cleanup: vi.fn(() => ({ hasChanges: false })),
+			prune: vi.fn(),
+		};
+		const onRunFinished = vi.fn();
+		const agent = createRunnableAgent({ worktrees, isolation: "worktree", observer: { onRunFinished } });
+		await agent.run();
+		expect(agent.status).toBe("error");
+		expect(agent.error).toContain("Cannot run with isolation");
+		expect(onRunFinished).toHaveBeenCalledOnce();
+	});
+});
+
+describe("Agent.run() — error handling", () => {
+	it("transitions to error when runner throws", async () => {
+		const runner = createMockRunner();
+		(runner.run as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("runner exploded"));
+		const agent = createRunnableAgent({ runner });
+		await agent.run();
+		expect(agent.status).toBe("error");
+		expect(agent.error).toBe("runner exploded");
+	});
+
+	it("throws when runner is missing", async () => {
+		const agent = new Agent({ id: "1", type: "general-purpose", description: "test", snapshot: STUB_SNAPSHOT, prompt: "go" });
+		await expect(agent.run()).rejects.toThrow(/missing runner/);
+	});
+});
+
+describe("Agent.run() — abort signal forwarding", () => {
+	it("wires parent signal so aborting it stops the agent", async () => {
+		const parentController = new AbortController();
+		const runner = createMockRunner({
+			run: vi.fn(() => {
+				parentController.abort();
+				return Promise.reject(new Error("aborted"));
+			}),
+		});
+		const agent = createRunnableAgent({ runner, signal: parentController.signal });
+		await agent.run();
+		expect(agent.abortController.signal.aborted).toBe(true);
+	});
+});
+
+describe("Agent.run() — RunConfig threading", () => {
+	it("passes defaultMaxTurns and graceTurns to runner.run", async () => {
+		const runner = createMockRunner();
+		const agent = createRunnableAgent({ runner, getRunConfig: () => ({ defaultMaxTurns: 10, graceTurns: 3 }) });
+		await agent.run();
+		const runOpts = (runner.run as ReturnType<typeof vi.fn>).mock.calls[0][3];
+		expect(runOpts.defaultMaxTurns).toBe(10);
+		expect(runOpts.graceTurns).toBe(3);
 	});
 });
