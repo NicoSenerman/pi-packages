@@ -285,7 +285,7 @@ export class AgentManager {
   /** Wait for all running and queued agents to complete (including queued ones). */
   // fallow-ignore-next-line unused-class-member
   async waitForAll(): Promise<void> {
-    // Loop because drainQueue respects the concurrency limit - as running
+    // Loop because queue.drain() respects the concurrency limit - as running
     // agents finish they start queued ones, which need awaiting too.
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- intentional infinite loop with explicit break
     while (true) {

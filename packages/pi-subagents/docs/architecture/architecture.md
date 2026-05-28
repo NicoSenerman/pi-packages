@@ -53,7 +53,8 @@ flowchart TB
 
     subgraph lifecycle["Lifecycle domain"]
         direction TB
-        AgentManager["AgentManager<br/>(spawn, queue, abort)"]
+        AgentManager["AgentManager<br/>(spawn, abort, collection)"]
+        ConcurrencyQueue["ConcurrencyQueue<br/>(scheduling, drain)"]
         AgentRunner["agent-runner<br/>(session, turns, results)"]
         Agent["Agent<br/>(status, behavior: abort/steer/worktree/run lifecycle)"]
         ParentSnapshot["ParentSnapshot<br/>(frozen parent state)"]
@@ -266,9 +267,10 @@ src/
 │   └── session-dir.ts              session directory derivation
 │
 ├── lifecycle/                      agent execution and state tracking
-│   ├── agent-manager.ts            collection manager + concurrency controller
+│   ├── agent-manager.ts            collection manager + observer wiring
 │   ├── agent-runner.ts             session creation, turn loop, tool filtering
 │   ├── agent.ts                    owns full execution lifecycle (run, abort, steer, worktree)
+│   ├── concurrency-queue.ts        background agent scheduling with configurable concurrency limit
 │   ├── parent-snapshot.ts          immutable spawn-time parent state
 │   ├── execution-state.ts          session/output phase state
 │   ├── permission-bridge.ts        optional bridge to pi-permission-system registry
@@ -346,7 +348,8 @@ They declare this package as an optional peer dependency and use dynamic import 
 ### What the core owns
 
 - The three tools: `subagent` (née `Agent`), `get_subagent_result`, `steer_subagent`.
-- `AgentManager` — spawn, queue, abort, resume, concurrency control.
+- `AgentManager` — spawn, abort, resume, collection management, observer wiring.
+- `ConcurrencyQueue` — background agent scheduling with configurable concurrency limit.
 - `agent-runner` — session creation, turn loop, extension binding.
 - `permission-bridge` — optional cross-extension bridge to `@gotgenes/pi-permission-system`; registers each child session with `SubagentSessionRegistry` before `bindExtensions()` so the permission system detects in-process children deterministically.
   Scheduled for removal in Phase 16 — replaced by lifecycle events that consumers listen for.
@@ -712,7 +715,7 @@ Agent receives three concerns at construction:
 5. Clean up worktree on completion or error.
 6. Transition status.
 
-`AgentManager` becomes a collection manager + concurrency controller:
+`AgentManager` becomes a collection manager + observer wiring:
 
 - Creates complete Agent objects, stores them in the map.
 - Decides when to run (immediate or queue) and calls `agent.run()`.
