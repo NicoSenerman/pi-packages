@@ -13,7 +13,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runAgent } from "#src/lifecycle/agent-runner";
-import { createRunnerIO } from "#test/helpers/runner-io";
+import { createRunnerDeps, createRunnerIO } from "#test/helpers/runner-io";
 import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 
 const agentConfigMock = {
@@ -101,7 +101,7 @@ describe("post-bind recursion guard", () => {
     );
     io.createSession.mockResolvedValue({ session });
 
-    await runAgent(STUB_SNAPSHOT, "test-agent", "go", { context: {} }, { io, exec, registry: mockAgentLookup });
+    await runAgent(STUB_SNAPSHOT, "test-agent", "go", { context: {} }, createRunnerDeps({ io, exec, registry: mockAgentLookup }));
 
     // Should be called exactly once: post-bind.
     expect(session.setActiveToolsByName).toHaveBeenCalledTimes(1);
@@ -121,7 +121,7 @@ describe("post-bind recursion guard", () => {
     );
     io.createSession.mockResolvedValue({ session });
 
-    await runAgent(STUB_SNAPSHOT, "test-agent", "go", { context: {} }, { io, exec, registry: mockAgentLookup });
+    await runAgent(STUB_SNAPSHOT, "test-agent", "go", { context: {} }, createRunnerDeps({ io, exec, registry: mockAgentLookup }));
 
     // Post-bind call should include the extension-registered tool.
     const postBindArgs = session.setActiveToolsByName.mock.calls[0][0];
@@ -137,7 +137,7 @@ describe("post-bind recursion guard", () => {
     );
     io.createSession.mockResolvedValue({ session });
 
-    await runAgent(STUB_SNAPSHOT, "test-agent", "go", { context: {} }, { io, exec, registry: mockAgentLookup });
+    await runAgent(STUB_SNAPSHOT, "test-agent", "go", { context: {} }, createRunnerDeps({ io, exec, registry: mockAgentLookup }));
 
     const postBindArgs = session.setActiveToolsByName.mock.calls[0][0];
     expect(postBindArgs).toContain("read");
@@ -157,7 +157,7 @@ describe("post-bind recursion guard", () => {
     );
     io.createSession.mockResolvedValue({ session });
 
-    await runAgent(STUB_SNAPSHOT, "test-agent", "go", { context: {} }, { io, exec, registry: mockAgentLookup });
+    await runAgent(STUB_SNAPSHOT, "test-agent", "go", { context: {} }, createRunnerDeps({ io, exec, registry: mockAgentLookup }));
 
     expect(session.setActiveToolsByName).not.toHaveBeenCalled();
   });

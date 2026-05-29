@@ -1,6 +1,7 @@
 import { vi } from "vitest";
+import type { AgentConfigLookup } from "#src/config/agent-types";
 import type { PreloadedSkill } from "#src/session/skill-loader";
-import type { AgentConfig } from "#src/types";
+import type { AgentConfig, ShellExec } from "#src/types";
 
 /** Default AgentConfig returned by createAgentLookup. Matches the Explore stub used in runner tests. */
 const DEFAULT_AGENT_CONFIG: AgentConfig = {
@@ -73,11 +74,20 @@ export function createAgentLookup(configOverrides?: Partial<AgentConfig>) {
  *
  * Bundles createRunnerIO(), a no-op exec stub, and a default agent lookup
  * into the RunnerDeps shape expected by runAgent() and ConcreteAgentRunner.
+ *
+ * Each field accepts an override so tests can supply a locally-configured `io`
+ * (e.g. one whose createSession mock is pre-armed), a shared exec, or a custom
+ * agent lookup. The `io` override keeps its mock methods (the param type is the
+ * unannotated createRunnerIO() shape), so callers can still assert on it.
  */
-export function createRunnerDeps(overrides?: { registry?: ReturnType<typeof createAgentLookup> }) {
+export function createRunnerDeps(overrides?: {
+	io?: ReturnType<typeof createRunnerIO>;
+	exec?: ShellExec;
+	registry?: AgentConfigLookup;
+}) {
 	return {
-		io: createRunnerIO(),
-		exec: vi.fn(),
+		io: overrides?.io ?? createRunnerIO(),
+		exec: overrides?.exec ?? vi.fn(),
 		registry: overrides?.registry ?? createAgentLookup(),
 	};
 }
