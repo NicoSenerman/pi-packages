@@ -275,6 +275,7 @@ src/
 │   ├── parent-snapshot.ts          immutable spawn-time parent state
 │   ├── execution-state.ts          session/output phase state
 │   ├── child-lifecycle.ts          child-execution lifecycle event publisher
+│   ├── workspace.ts                workspace provider seam (generative extension surface)
 │   ├── worktree.ts                 git worktree isolation
 │   ├── worktree-isolation.ts       worktree lifecycle collaborator
 │   └── usage.ts                    token usage tracking
@@ -355,6 +356,8 @@ They declare this package as an optional peer dependency and use dynamic import 
 - `child-lifecycle` — publishes the child-execution lifecycle (`spawning`, `session-created` before `bindExtensions()`, `completed`, `disposed`) on `pi.events`.
   Reactive consumers subscribe: `@gotgenes/pi-permission-system` registers each child session on `session-created` and unregisters it on `disposed`.
   This replaced the former outbound `permission-bridge` (#261, ADR 0002) — the core no longer looks up a named consumer.
+- `workspace` — the single generative seam (#262, ADR 0002): a registered `WorkspaceProvider` supplies a child's cwd plus bracketed `dispose()` at run-start.
+  With no provider, children run in the parent cwd (default unchanged); the git worktree strategy moves behind this seam in #263.
 - `session-config` — pure configuration assembler (extracted from `agent-runner`).
 - `SubagentRuntime` — session-scoped state bag with methods.
 - `ParentSnapshot` — immutable snapshot of parent session state, captured once at spawn time.
@@ -759,12 +762,16 @@ Migrate `@gotgenes/pi-permission-system` to subscribe to `session-created`/`disp
 - Outcome: the core stops reaching out to a named consumer; permission detection rides events.
 - Deferred: removing the now-caller-less `registerSubagentSession`/`unregisterSubagentSession` from `PermissionsService` → #267; registry-detected resume ("executing now" → "exists" semantics) → #265.
 
-#### Step 2: Define the `WorkspaceProvider` seam — [#262]
+#### Step 2: Define the `WorkspaceProvider` seam — [#262] ✅ Delivered
 
-Add the `WorkspaceProvider` / `Workspace` interfaces and `SubagentsService.registerWorkspaceProvider`.
-At run-start the core consults the registered provider (if any) for the child's cwd and a disposal handle; with no provider, the child runs in the parent's cwd.
+Added the `WorkspaceProvider` / `Workspace` interfaces (`src/lifecycle/workspace.ts`) and `SubagentsService.registerWorkspaceProvider` (single provider, throws on duplicate, returns an unregister disposer).
+Only `WorkspaceProvider` is named-re-exported from `service.ts`; `Workspace` and the context types resolve via inference when a consumer assigns to `WorkspaceProvider` (the worktrees package adds named re-exports in #263 when it imports them by name).
+At run-start `Agent.run()` consults the registered provider (provider-first precedence) for the child's cwd and a disposal handle; with no provider it falls back to the legacy worktree collaborator, and with neither the child runs in the parent's cwd.
+On completion the core calls `Workspace.dispose({ status, description })` and appends the returned `resultAddendum` verbatim — the provider owns the wording.
 
+- The seam is additive and non-breaking: the existing `isolation: "worktree"` path is untouched (its eviction is Step 3).
 - Land alongside its first consumer (Step 3) to avoid a vacant hook — the "no vacant hooks" rule.
+  Within #262 the seam is exercised only by test fakes; do not cut a release containing the seam without `@gotgenes/pi-subagents-worktrees`.
 - Outcome: a single generative seam; the core no longer knows what an "isolation strategy" is.
 
 #### Step 3: Extract worktrees to `@gotgenes/pi-subagents-worktrees` — [#263]
