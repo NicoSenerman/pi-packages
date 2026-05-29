@@ -894,7 +894,3 @@ The upstream test suite is run periodically as a regression canary for the agent
 [#218]: https://github.com/gotgenes/pi-packages/issues/218
 [#219]: https://github.com/gotgenes/pi-packages/issues/219
 [#231]: https://github.com/gotgenes/pi-packages/issues/231
-[#256]: https://github.com/gotgenes/pi-packages/issues/256
-[#257]: https://github.com/gotgenes/pi-packages/issues/257
-[#258]: https://github.com/gotgenes/pi-packages/issues/258
-[#259]: https://github.com/gotgenes/pi-packages/issues/259
