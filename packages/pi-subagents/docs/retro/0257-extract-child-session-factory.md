@@ -5,6 +5,8 @@ issue_title: "Extract ChildSessionFactory from runner"
 
 # Retro: #257 — Extract ChildSessionFactory from runner
 
+> Superseded — #257 closed `not_planned`; the work was reframed as Phase 16 "invert dependencies" (ADR 0002, issues #261–#265).
+
 ## Stage: Planning (2026-05-29T00:32:12Z)
 
 ### Session summary

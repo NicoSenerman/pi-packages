@@ -5,6 +5,11 @@ issue_title: "Extract ChildSessionFactory from runner"
 
 # Extract ChildSessionFactory from runner
 
+> Superseded — issue #257 was closed `not_planned`.
+> Planning this extraction exposed that worktree isolation does not belong in the core; see [ADR 0002](../decisions/0002-extensions-on-a-minimal-core.md) and the reclaimed Phase 16 roadmap in [`docs/architecture/architecture.md`](../architecture/architecture.md).
+> The structural goal is recovered by #265.
+> This plan is retained for historical context only.
+
 ## Problem Statement
 
 `runAgent()` in `src/lifecycle/agent-runner.ts` conflates two concerns.
