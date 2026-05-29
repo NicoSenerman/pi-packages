@@ -761,7 +761,7 @@ Migrate `@gotgenes/pi-permission-system` to subscribe to `session-created`/`disp
 #### Step 2: Define the `WorkspaceProvider` seam — [#262] ✅ Delivered
 
 Added the `WorkspaceProvider` / `Workspace` interfaces (`src/lifecycle/workspace.ts`) and `SubagentsService.registerWorkspaceProvider` (single provider, throws on duplicate, returns an unregister disposer).
-Only `WorkspaceProvider` is named-re-exported from `service.ts`; `Workspace` and the context types resolve via inference when a consumer assigns to `WorkspaceProvider` (named re-exports of the collaborator types are tracked in #272).
+All five workspace types are named-re-exported from `service.ts`: `WorkspaceProvider`, `Workspace`, `WorkspacePrepareContext`, `WorkspaceDisposeOutcome`, and `WorkspaceDisposeResult` (added in #272).
 At run-start `Agent.run()` consults the registered provider for the child's cwd and a disposal handle; with no provider the child runs in the parent's cwd (the legacy worktree-collaborator fallback was removed when worktrees left the core in #263).
 On completion the core calls `Workspace.dispose({ status, description })` and appends the returned `resultAddendum` verbatim — the provider owns the wording.
 
@@ -778,7 +778,7 @@ Removed `worktree.ts`, `worktree-isolation.ts`, `GitWorktreeManager`, and the `i
 
 - Supersedes #256.
   New package registered in `release-please-config.json` and `.pi/settings.json` (after pi-subagents); consumes the published `@gotgenes/pi-subagents` from the registry (`linkWorkspacePackages: false`), since `exports.types` resolves to the shipped declaration bundle.
-  Only `WorkspaceProvider` is importable by name from 11.6.0; the collaborator types are recovered via inference until #272 adds named re-exports.
+  From the release carrying #272, all five workspace types are importable by name: `WorkspaceProvider`, `Workspace`, `WorkspacePrepareContext`, `WorkspaceDisposeOutcome`, and `WorkspaceDisposeResult`.
 - Outcome: git leaves the core; worktree users install one package, everyone else pays nothing.
 
 #### Step 4: Remove `isolated` / `extensions: false` / `noSkills` — [#264]
