@@ -53,11 +53,11 @@
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": ">=0.75.0",
-    "@gotgenes/pi-subagents": ">=11.5.0"
+    "@gotgenes/pi-subagents": ">=11.6.0"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
-    "@gotgenes/pi-subagents": "workspace:*",
+    "@gotgenes/pi-subagents": "^11.6.0",
     "@types/node": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

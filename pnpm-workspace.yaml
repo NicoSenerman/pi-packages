@@ -1,6 +1,13 @@
 packages:
   - "packages/*"
 
+# pi-subagents-* extension packages consume their siblings from the npm registry
+# (the published tarball ships the bundled dist/public.d.ts), not via workspace
+# symlinks — a symlinked sibling would resolve exports.types to the gitignored,
+# unbuilt dist on a fresh checkout. Cross-package links must opt in explicitly
+# with the workspace: protocol.
+linkWorkspacePackages: false
+
 # Centralize version management across all packages.
 # In each package.json, use "catalog:" as the version specifier
 # to pull from here (e.g. "vitest": "catalog:").
