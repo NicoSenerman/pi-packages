@@ -8,30 +8,20 @@
  * child to run in the parent cwd. On worktree-creation failure for an opted-in
  * agent it throws, failing the run loudly rather than silently running
  * unisolated (preserving the core's former strict behavior).
- *
- * @gotgenes/pi-subagents@11.6.0 exports only `WorkspaceProvider` by name; its
- * collaborator types (the prepare context, the prepared workspace) are reachable
- * only through it, so we recover them with indexed-access aliases rather than
- * named imports. Once #272 ships named re-exports, replace the aliases below
- * with direct imports and bump the dependency.
  */
 
-import type { WorkspaceProvider } from "@gotgenes/pi-subagents";
+import type {
+  Workspace,
+  WorkspaceDisposeOutcome,
+  WorkspacePrepareContext,
+  WorkspaceProvider,
+} from "@gotgenes/pi-subagents";
 import type { WorktreesConfig } from "#src/config";
 import {
   cleanupWorktree,
   createWorktree,
   type WorktreeInfo,
 } from "#src/worktree";
-
-/** The context the core hands `prepare()` — derived from the seam's only named export. */
-type WorkspacePrepareContext = Parameters<WorkspaceProvider["prepare"]>[0];
-
-/** A prepared workspace the core consumes — derived from the seam's only named export. */
-type Workspace = NonNullable<Awaited<ReturnType<WorkspaceProvider["prepare"]>>>;
-
-/** The outcome the core reports to `dispose()`. */
-type WorkspaceDisposeOutcome = Parameters<Workspace["dispose"]>[0];
 
 /** A prepared git worktree plus its bracketed teardown. Born complete. */
 class WorktreeWorkspace implements Workspace {
