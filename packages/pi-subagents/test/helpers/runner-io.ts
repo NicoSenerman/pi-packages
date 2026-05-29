@@ -1,5 +1,6 @@
 import { vi } from "vitest";
 import type { AgentConfigLookup } from "#src/config/agent-types";
+import type { ChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
 import type { PreloadedSkill } from "#src/session/skill-loader";
 import type { AgentConfig, ShellExec } from "#src/types";
 
@@ -84,11 +85,29 @@ export function createRunnerDeps(overrides?: {
 	io?: ReturnType<typeof createRunnerIO>;
 	exec?: ShellExec;
 	registry?: AgentConfigLookup;
+	lifecycle?: ReturnType<typeof createChildLifecycleMock>;
 }) {
 	return {
 		io: overrides?.io ?? createRunnerIO(),
 		exec: overrides?.exec ?? vi.fn(),
 		registry: overrides?.registry ?? createAgentLookup(),
+		lifecycle: overrides?.lifecycle ?? createChildLifecycleMock(),
+	};
+}
+
+/**
+ * Mock ChildLifecyclePublisher for runner tests.
+ *
+ * Each method is a vi.fn() so tests can assert emit calls and ordering
+ * (via mock.invocationCallOrder) relative to session.bindExtensions().
+ * Return type is unannotated so the vi.fn() Mock<...> methods survive.
+ */
+export function createChildLifecycleMock() {
+	return {
+		spawning: vi.fn<ChildLifecyclePublisher["spawning"]>(),
+		sessionCreated: vi.fn<ChildLifecyclePublisher["sessionCreated"]>(),
+		completed: vi.fn<ChildLifecyclePublisher["completed"]>(),
+		disposed: vi.fn<ChildLifecyclePublisher["disposed"]>(),
 	};
 }
 

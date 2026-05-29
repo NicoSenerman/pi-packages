@@ -25,6 +25,7 @@ import { loadCustomAgents } from "#src/config/custom-agents";
 import { SessionLifecycleHandler, ToolStartHandler } from "#src/handlers/index";
 import { AgentManager, type AgentManagerObserver } from "#src/lifecycle/agent-manager";
 import { ConcreteAgentRunner, type RunnerDeps } from "#src/lifecycle/agent-runner";
+import { createChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
 import { ConcurrencyQueue } from "#src/lifecycle/concurrency-queue";
 import { buildParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { GitWorktreeManager } from "#src/lifecycle/worktree";
@@ -149,6 +150,7 @@ export default function (pi: ExtensionAPI) {
     },
     exec: (cmd, args, opts) => pi.exec(cmd, args, opts),
     registry,
+    lifecycle: createChildLifecyclePublisher((channel, data) => pi.events.emit(channel, data)),
   };
 
   // ConcurrencyQueue: scheduling extracted from AgentManager.

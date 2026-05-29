@@ -9,8 +9,8 @@ import {
   type SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import type { AgentConfigLookup } from "#src/config/agent-types";
+import type { ChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
-import { registerChildSession, unregisterChildSession } from "#src/lifecycle/permission-bridge";
 import { extractAssistantContent } from "#src/session/content-items";
 import { extractText } from "#src/session/context";
 import type { EnvInfo } from "#src/session/env";
@@ -123,6 +123,8 @@ export interface RunnerDeps {
   io: RunnerIO;
   exec: ShellExec;
   registry: AgentConfigLookup;
+  /** Publishes the child-execution lifecycle so consumers can observe it. */
+  lifecycle: ChildLifecyclePublisher;
 }
 
 // ── Public interfaces ─────────────────────────────────────────────────────────
@@ -263,6 +265,9 @@ export async function runAgent(
   options: RunOptions,
   deps: RunnerDeps,
 ): Promise<RunResult> {
+  const parentSessionId = options.context.parentSession?.parentSessionId;
+  deps.lifecycle.spawning({ agentName: type, parentSessionId });
+
   // Resolve working directory upfront - needed for detectEnv before assembly.
   const effectiveCwd = options.context.cwd ?? snapshot.cwd;
   const env = await deps.io.detectEnv(deps.exec, effectiveCwd);
@@ -327,14 +332,13 @@ export async function runAgent(
     thinkingLevel: cfg.thinkingLevel,
   });
 
-  // Register with pi-permission-system's SubagentSessionRegistry before
-  // bindExtensions() so isSubagentExecutionContext() hits the registry on the
-  // first check during child extension initialization. Unregistered in the
+  // Publish session-created before bindExtensions() so observers (e.g. the
+  // permission system) can register the child synchronously and have their
+  // entry in place for the first permission check during child extension
+  // initialization. The event bus dispatches synchronously, so a synchronous
+  // subscriber completes before this returns. Paired with disposed() in the
   // finally block below to guarantee cleanup on both success and error paths.
-  registerChildSession(sessionDir, {
-    agentName: type,
-    parentSessionId: options.context.parentSession?.parentSessionId,
-  });
+  deps.lifecycle.sessionCreated({ sessionDir, agentName: type, parentSessionId });
 
   // Bind extensions so that session_start fires and extensions can initialize
   // (e.g. loading credentials, setting up state). Placed after tool filtering
@@ -389,11 +393,12 @@ export async function runAgent(
 
   try {
     await session.prompt(effectivePrompt);
+    deps.lifecycle.completed({ sessionDir, agentName: type, aborted, steered: softLimitReached });
   } finally {
     unsubTurns();
     collector.unsubscribe();
     cleanupAbort();
-    unregisterChildSession(sessionDir);
+    deps.lifecycle.disposed({ sessionDir });
   }
 
   const responseText =

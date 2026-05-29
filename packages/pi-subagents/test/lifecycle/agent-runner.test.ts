@@ -1,18 +1,12 @@
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resumeAgent, runAgent } from "#src/lifecycle/agent-runner";
-
-const mockRegisterChildSession = vi.hoisted(() =>
-  vi.fn<(key: string, info: { parentSessionId?: string; agentName: string }) => void>(),
-);
-const mockUnregisterChildSession = vi.hoisted(() => vi.fn<(key: string) => void>());
-
-vi.mock("#src/lifecycle/permission-bridge", () => ({
-  registerChildSession: mockRegisterChildSession,
-  unregisterChildSession: mockUnregisterChildSession,
-}));
-
-import { createAgentLookup, createRunnerDeps, createRunnerIO } from "#test/helpers/runner-io";
+import {
+  createAgentLookup,
+  createChildLifecycleMock,
+  createRunnerDeps,
+  createRunnerIO,
+} from "#test/helpers/runner-io";
 import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 
 /** Mock AgentConfigLookup injected via RunOptions.registry. */
@@ -229,30 +223,43 @@ describe("agent-runner RunOptions — defaultMaxTurns and graceTurns", () => {
   });
 });
 
-// ─── Permission bridge integration (issue #101) ───────────────────────────────
-describe("agent-runner permission bridge", () => {
-  beforeEach(() => {
-    mockRegisterChildSession.mockReset();
-    mockUnregisterChildSession.mockReset();
-  });
-
-  it("registers the child session before bindExtensions()", async () => {
+// ─── Child-execution lifecycle events (issue #261) ────────────────────────────
+describe("agent-runner child lifecycle events", () => {
+  it("emits session-created before bindExtensions()", async () => {
     const { session } = createSession("PERM");
     io.createSession.mockResolvedValue({ session });
+    const lifecycle = createChildLifecycleMock();
 
     await runAgent(STUB_SNAPSHOT, "Explore", "go", {
       context: {},
-    }, createRunnerDeps({ io, exec, registry: mockAgentLookup }));
+    }, createRunnerDeps({ io, exec, registry: mockAgentLookup, lifecycle }));
 
-    expect(mockRegisterChildSession).toHaveBeenCalledOnce();
-    const registerOrder = mockRegisterChildSession.mock.invocationCallOrder[0];
+    expect(lifecycle.sessionCreated).toHaveBeenCalledOnce();
+    const createdOrder = lifecycle.sessionCreated.mock.invocationCallOrder[0];
     const bindOrder = session.bindExtensions.mock.invocationCallOrder[0];
-    expect(registerOrder).toBeLessThan(bindOrder);
+    expect(createdOrder).toBeLessThan(bindOrder);
   });
 
-  it("passes agentName (the subagent type) and parentSessionId to registerChildSession", async () => {
+  it("emits spawning before session-created", async () => {
     const { session } = createSession("PERM");
     io.createSession.mockResolvedValue({ session });
+    const lifecycle = createChildLifecycleMock();
+
+    await runAgent(STUB_SNAPSHOT, "Explore", "go", {
+      context: {},
+    }, createRunnerDeps({ io, exec, registry: mockAgentLookup, lifecycle }));
+
+    expect(lifecycle.spawning).toHaveBeenCalledOnce();
+    const spawnOrder = lifecycle.spawning.mock.invocationCallOrder[0];
+    const createdOrder = lifecycle.sessionCreated.mock.invocationCallOrder[0];
+    expect(spawnOrder).toBeLessThan(createdOrder);
+  });
+
+  it("carries the agent name and parent session id in session-created", async () => {
+    const { session } = createSession("PERM");
+    io.createSession.mockResolvedValue({ session });
+    io.deriveSessionDir.mockReturnValue("/custom/session/dir");
+    const lifecycle = createChildLifecycleMock();
 
     await runAgent(STUB_SNAPSHOT, "Explore", "go", {
       context: {
@@ -261,53 +268,61 @@ describe("agent-runner permission bridge", () => {
           parentSessionId: "parent-session-42",
         },
       },
-    }, createRunnerDeps({ io, exec, registry: mockAgentLookup }));
+    }, createRunnerDeps({ io, exec, registry: mockAgentLookup, lifecycle }));
 
-    expect(mockRegisterChildSession).toHaveBeenCalledWith(
-      expect.any(String),
-      { agentName: "Explore", parentSessionId: "parent-session-42" },
-    );
+    expect(lifecycle.sessionCreated).toHaveBeenCalledWith({
+      sessionDir: "/custom/session/dir",
+      agentName: "Explore",
+      parentSessionId: "parent-session-42",
+    });
   });
 
-  it("unregisters the child session after a successful run", async () => {
+  it("emits disposed with the session directory after a successful run", async () => {
     const { session } = createSession("PERM");
     io.createSession.mockResolvedValue({ session });
+    io.deriveSessionDir.mockReturnValue("/custom/session/dir");
+    const lifecycle = createChildLifecycleMock();
 
     await runAgent(STUB_SNAPSHOT, "Explore", "go", {
       context: {},
-    }, createRunnerDeps({ io, exec, registry: mockAgentLookup }));
+    }, createRunnerDeps({ io, exec, registry: mockAgentLookup, lifecycle }));
 
-    expect(mockUnregisterChildSession).toHaveBeenCalledOnce();
-    const sessionKey = mockRegisterChildSession.mock.calls[0][0];
-    expect(mockUnregisterChildSession).toHaveBeenCalledWith(sessionKey);
+    expect(lifecycle.disposed).toHaveBeenCalledOnce();
+    expect(lifecycle.disposed).toHaveBeenCalledWith({ sessionDir: "/custom/session/dir" });
   });
 
-  it("unregisters the child session even when session.prompt() throws", async () => {
+  it("emits completed on the success path with the run outcome", async () => {
+    const { session } = createSession("PERM");
+    io.createSession.mockResolvedValue({ session });
+    io.deriveSessionDir.mockReturnValue("/custom/session/dir");
+    const lifecycle = createChildLifecycleMock();
+
+    await runAgent(STUB_SNAPSHOT, "Explore", "go", {
+      context: {},
+    }, createRunnerDeps({ io, exec, registry: mockAgentLookup, lifecycle }));
+
+    expect(lifecycle.completed).toHaveBeenCalledOnce();
+    expect(lifecycle.completed).toHaveBeenCalledWith({
+      sessionDir: "/custom/session/dir",
+      agentName: "Explore",
+      aborted: false,
+      steered: false,
+    });
+  });
+
+  it("emits disposed even when session.prompt() throws, and skips completed", async () => {
     const { session } = createSession("PERM");
     io.createSession.mockResolvedValue({ session });
     session.prompt = vi.fn().mockRejectedValue(new Error("prompt failed"));
+    const lifecycle = createChildLifecycleMock();
 
     await expect(
       runAgent(STUB_SNAPSHOT, "Explore", "go", {
         context: {},
-      }, createRunnerDeps({ io, exec, registry: mockAgentLookup })),
+      }, createRunnerDeps({ io, exec, registry: mockAgentLookup, lifecycle })),
     ).rejects.toThrow("prompt failed");
 
-    expect(mockUnregisterChildSession).toHaveBeenCalledOnce();
-  });
-
-  it("registers using the session directory as the session key", async () => {
-    const { session } = createSession("PERM");
-    io.createSession.mockResolvedValue({ session });
-    io.deriveSessionDir.mockReturnValue("/custom/session/dir");
-
-    await runAgent(STUB_SNAPSHOT, "Explore", "go", {
-      context: {},
-    }, createRunnerDeps({ io, exec, registry: mockAgentLookup }));
-
-    expect(mockRegisterChildSession).toHaveBeenCalledWith(
-      "/custom/session/dir",
-      expect.any(Object),
-    );
+    expect(lifecycle.disposed).toHaveBeenCalledOnce();
+    expect(lifecycle.completed).not.toHaveBeenCalled();
   });
 });
