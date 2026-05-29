@@ -42,3 +42,46 @@ All deterministic gates green: `check`, `lint`, `test`, and `fallow dead-code` (
 - Used `git commit --fixup` + `--autosquash` rebase twice (unpushed history) to fold the fallow trim into the Step 1 `feat` commit and the reviewer's doc-wording fix into the Step 3 `docs` commit, keeping each commit self-consistent.
 - Pre-completion reviewer: WARN — all blocking checks pass; one non-blocking doc finding (architecture.md overstated that `Workspace` is re-exported).
   Addressed before finishing.
+
+## Stage: Final Retrospective (2026-05-29T15:40:54Z)
+
+### Session summary
+
+Shipped #262: pushed, CI green, closed the issue, and merged release-please PR #269 → `pi-subagents-v11.5.0`.
+Mid-session the user asked what `model: claude-sonnet-4-6-20260526` in `.pi/agents/pre-completion-reviewer.md` resolved to; investigation found it had no entry in Pi's model registry and was silently falling back to the parent session model, and the fix (`anthropic/claude-sonnet-4-6`) landed in `1e46c5f4`.
+Across all stages the plan's risk predictions held and TDD verification was incremental.
+
+### Observations
+
+#### What went well
+
+- The planning-stage "vacant hook" risk prediction manifested exactly as predicted at the `fallow dead-code` gate: the plan named the failure (speculative re-exports flagged dead) before it happened, and the fix (re-export only `WorkspaceProvider`) was already reasoned out — a clean closed loop from planning risk to implementation gate.
+- Incremental verification during TDD: `check` / `test` / `lint` ran after each step plus per-file vitest red→green, not just at the end.
+- The model-spec question surfaced and fixed a latent silent bug — the reviewer's configured `model:` had no registry entry and was inheriting the parent model, so the misconfiguration produced no error.
+- Cost discipline: the session model was switched to `opencode-go/deepseek-v4-flash` for the mechanical shipping stage — appropriate model-to-task matching.
+
+#### What caused friction (agent side)
+
+- `rabbit-hole` — the model-resolution investigation (≈30 tool calls, turns 119–160) grepped the Pi core monorepo (`~/development/pi/pi/packages/coding-agent`) for `.pi/agents/` frontmatter handling that does not live there, before landing on `pi-prompt-template-model/model-selection.ts` (a `pi-packages` dependency) plus the `models.generated.ts` registry.
+  Impact: long detour on a user tangent; no rework, but the answer was reachable far sooner.
+- `other` (minor, recurring) — the pre-commit `trim trailing whitespace` hook reformatted files on the first `git commit`, failing it; the immediate retry succeeded (turns 55→56 and 95→96).
+  Impact: one wasted commit attempt per occurrence, no rework.
+
+#### What caused friction (user side)
+
+- The broken model spec was pre-existing config; because the failure mode is a silent fallback, such typos never surface on their own.
+  Opportunity (not criticism): a short convention note so future `.pi/agents/*.md` authoring uses the registry-resolvable `provider/id` form.
+
+### Diagnostic details
+
+- **Model-performance correlation** — the `pre-completion-reviewer` subagent was dispatched (turn 90) while the parent model was `anthropic/claude-opus-4-8`; because its `model:` frontmatter did not resolve, it ran on opus-4-8 (strong reasoning, appropriate for judgment-heavy review) rather than the configured Sonnet.
+  No quality mismatch in outcome, but the risk was latent: a weaker parent model would have silently degraded the reviewer.
+  The shipping stage ran on `deepseek-v4-flash` (mechanical git/CI/release ops) — appropriate.
+- **Escalation-delay tracking** — the model-resolution `rabbit-hole` ran ≈30 consecutive search calls on the same goal, far past the 5-call threshold; consulting the `prompt-template-authoring` skill or reading `model-selection.ts` first would have shortcut it.
+- **Unused-tool detection** — for that investigation the `prompt-template-authoring` skill (documents template/agent `model:` format) and `code_search` were available but not used; grep over two monorepos was used instead.
+- **Feedback-loop gap analysis** — none; verification ran incrementally after each TDD step, not only at the end.
+
+### Changes made
+
+1. `AGENTS.md` (Pre-completion reviewer subsection) — added a one-line guardrail: agent `model:` frontmatter must use the `provider/id` alias form the Pi CLI/UI accepts, because an ID absent from the model registry silently falls back to the parent session model.
+2. `packages/pi-subagents/docs/retro/0262-add-workspace-provider-seam.md` — this Final Retrospective stage entry.
