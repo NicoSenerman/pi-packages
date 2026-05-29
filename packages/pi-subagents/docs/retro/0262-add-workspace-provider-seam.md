@@ -22,3 +22,23 @@ Three TDD steps (two `feat`, one `docs`).
 - Headline risk is the ADR "no vacant hooks" rule: within #262 the seam is exercised only by test fakes, so it must land **alongside** #263 (`@gotgenes/pi-subagents-worktrees`) and not ship in a release on its own.
 - Step 1 bundles the entire registration surface (types, `SubagentsService` method, adapter impl, `AgentManagerLike`, required `baseCwd`) into one commit because the interface method forces the adapter and the required field forces both construction sites — splitting would not type-check.
 - Verified `test/service/service.test.ts` casts its mock `as unknown as SubagentsService`, so adding an interface method does not break it; flagged the `createManager` and `AgentManagerLike` mock updates for the `baseCwd` and registration additions.
+
+## Stage: Implementation — TDD (2026-05-29T15:09:49Z)
+
+### Session summary
+
+Implemented the `WorkspaceProvider` seam across three TDD cycles (two `feat`, one `docs`): the registration surface (`AgentManager.registerWorkspaceProvider` + service/adapter delegation + `workspace.ts` types), run-start consumption in `Agent.run()` with provider-first precedence and `dispose`/`resultAddendum`, and an architecture-doc update.
+Test count went from 1049 to 1061 (+12 new tests; +6 in `agent.test.ts`, +4 registration in `agent-manager.test.ts`, +1 adapter delegation, plus existing-helper additions).
+All deterministic gates green: `check`, `lint`, `test`, and `fallow dead-code` (run from repo root).
+
+### Observations
+
+- Deviation from plan (Module-Level Changes): the plan said `service.ts` would re-export "the five seam types and `AgentStatus`", but `fallow dead-code` flagged those five re-exports as unused (no consumer until #263), and AGENTS.md forbids speculative re-exports.
+  Resolved by re-exporting only `WorkspaceProvider` — a consumer assigning to it gets `Workspace` and the context types via inference; #263 adds named re-exports when it imports them.
+  This is the concrete manifestation of the plan's headline "vacant hook" risk surfacing in the dead-code gate.
+- Lint surprise: `WorkspaceDisposeResult | void` tripped eslint `no-invalid-void-type`.
+  Changed the `dispose` return type to `WorkspaceDisposeResult | undefined` (equivalent — a side-effecting `dispose` that falls off the end returns `undefined`); minor divergence from the issue's literal `| void`.
+- Three test mock factories implement `AgentManagerLike` in `service-adapter.test.ts` (`createMockManager`, `defaultManager`, `createTestManager`) — all three needed the new `registerWorkspaceProvider` stub; `tsc` caught the third after the first two were updated.
+- Used `git commit --fixup` + `--autosquash` rebase twice (unpushed history) to fold the fallow trim into the Step 1 `feat` commit and the reviewer's doc-wording fix into the Step 3 `docs` commit, keeping each commit self-consistent.
+- Pre-completion reviewer: WARN — all blocking checks pass; one non-blocking doc finding (architecture.md overstated that `Workspace` is re-exported).
+  Addressed before finishing.
