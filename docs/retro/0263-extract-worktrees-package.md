@@ -85,3 +85,59 @@ Pre-completion reviewer: **PASS**.
   Both left as-is to preserve the verbatim lift-and-shift; worth a future cleanup.
 - **Follow-ups filed:** #272 (named seam-type re-exports).
   The `npm:` settings entry and the README's install instructions become accurate once the package first publishes.
+
+## Stage: Final Retrospective (2026-05-29T23:17:50Z)
+
+### Session summary
+
+Shipped #263 across four stages (plan → TDD-paused → #270 prerequisite → TDD-resumed → ship): a new `@gotgenes/pi-subagents-worktrees` package implements the `WorkspaceProvider` seam, and the legacy worktree path plus the `isolation` axis were evicted from the core.
+Released `pi-subagents-v12.0.0` (breaking) and `pi-subagents-worktrees-v0.1.0`; pre-completion reviewer returned PASS.
+The dominant story was a cross-package *consumability* blocker that was flagged as a planning risk but only proven at implementation time, spawning the #270 prerequisite.
+
+### Observations
+
+#### What went well
+
+- **Escalating the blocker to a prerequisite instead of chasing it.**
+  When the sibling-import failure surfaced under `tsc` in the first TDD session, the response was to stop, file #270, and pause #263 — not to bolt a build step onto #263.
+  Clean scope control; the paused Steps 2–3 stayed green and independent.
+- **The retro file worked as the cross-session bridge.**
+  The resumed session read #270's "no workspace trickery / consume the published release" directive straight from the retro stage notes and applied it without re-litigating.
+- **Indexed-access aliases as a principled workaround.**
+  Recovering the unexported seam collaborator types via `Parameters<WorkspaceProvider["prepare"]>[0]` / `NonNullable<Awaited<ReturnType<…>>>` unblocked the consumer against the published `11.6.0` without forcing a premature re-publish, and the proper fix was filed as #272.
+- **Autosquash kept history clean under mid-session discovery.**
+  `IsolationMode` (caught orphaned by `fallow`) folded into the Step 8 eviction commit; the `settings.json` `npm:` fix folded into Step 6 — both via `--fixup` + `--autosquash`, so the shipped history reads as coherent steps.
+
+#### What caused friction (agent side)
+
+- `missing-context` — the `.pi/settings.json` `npm:` entry for the still-unpublished package made the subagent harness try to `npm install @gotgenes/pi-subagents-worktrees`, failing the `pre-completion-reviewer` dispatch **twice** before it was diagnosed and the entry removed.
+  Impact: two failed subagent dispatches (~7 min) plus a Step 6 fixup commit.
+  Self-identified (diagnosed from the install error).
+- `missing-context` — first proposed `.npmrc` for `linkWorkspacePackages` when this repo centralizes every pnpm setting (`catalog`, `allowBuilds`) in `pnpm-workspace.yaml`.
+  Impact: no rework — the user redirected before implementation.
+  User-caught.
+- `missing-context` — the consumability failure (stale `exports` path + `#src` alias collision) was *flagged as a risk* in planning ("first intra-repo package import") but the plan committed to `workspace:*` without an empirical probe; the real failure mode only appeared at TDD Step 4 under `tsc`.
+  Impact: paused #263, spun up the full #270 plan/build/ship cycle, reverted Steps 1 and 4.
+  Self-identified.
+- `other` (under-communicated workaround) — applied the indexed-access alias workaround and left a code comment, but did not proactively file the follow-up issue; #272 was only filed after the user asked "why did we not stop to fix the types… create a GitHub Issue."
+  Impact: no rework, but the follow-up would have been missed without the prompt.
+  User-caught.
+
+#### What caused friction (user side)
+
+- The "no workspace trickery / use the released version" constraint was settled in #270 and arrived in this session as a retro note — a clean handoff, not friction.
+  The user's two mid-session interventions ("why `.npmrc`?"
+  and "create a GitHub Issue") were both *redirecting questions* that landed before rework, which is the cheap place to catch things — worth repeating.
+
+### Diagnostic details
+
+- **Model-performance correlation** — the only subagent dispatch was the `pre-completion-reviewer` (judgment-heavy review, appropriate model); its two early failures were infra (`npm install`), not a model mismatch.
+- **Escalation-delay** — no error sequence exceeded 5 consecutive tool calls; the reviewer-dispatch failure resolved in 2 attempts, and the consumability blocker was escalated to #270 rather than chased.
+- **Feedback-loop** — healthy and incremental: `pnpm run check` after each core-eviction edit batch, full suite after each step, `verify:public-types` for the public-surface change, and `fallow dead-code` at the end (which caught orphaned `IsolationMode`).
+  Running `fallow` right after Step 8 would have caught it one step earlier, but the final gate sufficed.
+
+### Changes made
+
+1. `AGENTS.md` (Code Style, pnpm bullets) — added a rule that pnpm settings (`catalog`, `allowBuilds`, `linkWorkspacePackages`) live in `pnpm-workspace.yaml`, not `.npmrc`.
+2. `.pi/skills/package-pi-subagents/SKILL.md` (Build section) — added a note that sibling packages consume the published registry release (`linkWorkspacePackages: false`), not a workspace symlink, with `@gotgenes/pi-subagents-worktrees` as the reference.
+3. Declined proposal B (`.pi/settings.json` registration timing) and the `plan-issue` "probe first-of-its-kind integrations" note — the `settings.json` `npm:`-entry caveat remains captured in this retro's stage notes only.

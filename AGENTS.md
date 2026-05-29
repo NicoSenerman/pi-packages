@@ -119,6 +119,7 @@ Use `scripts/issue-context.sh <N>` to gather all available context for an issue 
 - Prefer explicit configuration over hidden behavior.
 - This project uses **pnpm** exclusively — never `npm` or `npx`.
 - When you change a `package.json` dependency, run `pnpm install` and commit the updated `pnpm-lock.yaml` in the same commit — CI installs with `--frozen-lockfile`.
+- pnpm settings (`catalog`, `allowBuilds`, `linkWorkspacePackages`) live in `pnpm-workspace.yaml`, not `.npmrc` — pnpm 11 reads them there.
 - The tsconfig target is ES2024 (`noEmit: true`).
   ES2023 APIs (`findLast`, `findLastIndex`, `toReversed`, `toSorted`, `toSpliced`, `with`) and ES2024 APIs (`Promise.withResolvers`, `Object.groupBy`, `Map.groupBy`, `Array.fromAsync`) are available and preferred.
   Do not use APIs introduced after ES2024.

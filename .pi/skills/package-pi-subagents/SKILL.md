@@ -61,6 +61,8 @@ This package is otherwise ship-source (Pi runs `./src/index.ts` directly), but i
 The bundle is gitignored, regenerated at `prepack`, and shipped via the `package.json` `files` allowlist; `exports["."].types` points at it while `exports["."].default` serves the `.ts` source.
 Never commit `dist/`.
 `pnpm run verify:public-types` (`scripts/verify-public-types.sh`, also a CI step) packs the tarball and type-checks a throwaway consumer against it — run it after any change to the public surface, the `exports` map, or the rollup config.
+Sibling packages consume this one from the **published** registry release (the repo sets `linkWorkspacePackages: false`), not via a workspace symlink — a symlink resolves `exports.types` to the gitignored, unbuilt `dist/public.d.ts`.
+See `@gotgenes/pi-subagents-worktrees` for the pattern.
 
 ## Testing
 
