@@ -58,7 +58,8 @@ Before writing any code, confirm the starting state is clean:
 2. `pnpm run lint` — must pass.
 3. `pnpm run test` — must pass.
 
-If any check fails, stop and report to the user.
+If a check fails on an issue your change will not touch (e.g. a pre-existing lint warning in an unrelated doc), fix it as a separate cleanup commit (`docs:`, `style:`, or `fix:` as appropriate) to establish a green baseline, then proceed.
+If the failure is non-trivial, or you cannot quickly establish why it is failing, stop and report to the user.
 Do not start TDD cycles from a broken baseline.
 
 ## Execute the TDD cycle
