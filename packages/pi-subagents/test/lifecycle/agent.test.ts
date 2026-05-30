@@ -459,6 +459,103 @@ describe("convenience getters", () => {
 	});
 });
 
+describe("Agent — session-encapsulation methods", () => {
+	describe("isSessionReady", () => {
+		it("returns false when no subagentSession", () => {
+			const agent = new Agent({ id: "1", type: "general-purpose", description: "test" });
+			expect(agent.isSessionReady()).toBe(false);
+		});
+
+		it("returns true when subagentSession is set", () => {
+			const agent = new Agent({ id: "1", type: "general-purpose", description: "test" });
+			agent.subagentSession = toSubagentSession(createSubagentSessionStub());
+			expect(agent.isSessionReady()).toBe(true);
+		});
+	});
+
+	describe("steer", () => {
+		it("buffers message and returns false when session not ready", async () => {
+			const agent = new Agent({ id: "1", type: "general-purpose", description: "test" });
+			const delivered = await agent.steer("hello");
+			expect(delivered).toBe(false);
+			expect(agent.pendingSteerCount).toBe(1);
+		});
+
+		it("delivers message to session and returns true when session is ready", async () => {
+			const agent = new Agent({ id: "1", type: "general-purpose", description: "test" });
+			const stub = createSubagentSessionStub();
+			agent.subagentSession = toSubagentSession(stub);
+			const delivered = await agent.steer("go faster");
+			expect(delivered).toBe(true);
+			expect(stub.steer).toHaveBeenCalledWith("go faster");
+			expect(agent.pendingSteerCount).toBe(0);
+		});
+	});
+
+	describe("getConversation", () => {
+		it("returns undefined when no session", () => {
+			const agent = new Agent({ id: "1", type: "general-purpose", description: "test" });
+			expect(agent.getConversation()).toBeUndefined();
+		});
+
+		it("delegates to SubagentSession.getConversation when session is ready", () => {
+			const agent = new Agent({ id: "1", type: "general-purpose", description: "test" });
+			const stub = createSubagentSessionStub();
+			stub.getConversation.mockReturnValue("[User]: hi");
+			agent.subagentSession = toSubagentSession(stub);
+			expect(agent.getConversation()).toBe("[User]: hi");
+		});
+	});
+
+	describe("getContextPercent", () => {
+		it("returns null when no session", () => {
+			const agent = new Agent({ id: "1", type: "general-purpose", description: "test" });
+			expect(agent.getContextPercent()).toBeNull();
+		});
+
+		it("delegates to SubagentSession.getContextPercent when session is ready", () => {
+			const agent = new Agent({ id: "1", type: "general-purpose", description: "test" });
+			const stub = createSubagentSessionStub();
+			stub.getContextPercent.mockReturnValue(55);
+			agent.subagentSession = toSubagentSession(stub);
+			expect(agent.getContextPercent()).toBe(55);
+		});
+	});
+
+	describe("subscribeToUpdates", () => {
+		it("returns undefined when no session", () => {
+			const agent = new Agent({ id: "1", type: "general-purpose", description: "test" });
+			expect(agent.subscribeToUpdates(vi.fn())).toBeUndefined();
+		});
+
+		it("delegates to SubagentSession.subscribe when session is ready", () => {
+			const agent = new Agent({ id: "1", type: "general-purpose", description: "test" });
+			const stub = createSubagentSessionStub();
+			agent.subagentSession = toSubagentSession(stub);
+			const fn = vi.fn();
+			const unsub = agent.subscribeToUpdates(fn);
+			expect(stub.subscribe).toHaveBeenCalledWith(fn);
+			expect(typeof unsub).toBe("function");
+		});
+	});
+
+	describe("messages", () => {
+		it("returns empty array when no session", () => {
+			const agent = new Agent({ id: "1", type: "general-purpose", description: "test" });
+			expect(agent.messages).toEqual([]);
+		});
+
+		it("delegates to SubagentSession.messages when session is ready", () => {
+			const agent = new Agent({ id: "1", type: "general-purpose", description: "test" });
+			const session = createMockSession();
+			session.messages.push({ role: "user", content: "hi" });
+			const stub = createSubagentSessionStub(session);
+			agent.subagentSession = toSubagentSession(stub);
+			expect(agent.messages).toEqual([{ role: "user", content: "hi" }]);
+		});
+	});
+});
+
 describe("Agent — queueSteer", () => {
 	it("buffers a steer message", () => {
 		const record = new Agent({ id: "1", type: "general-purpose", description: "test" });

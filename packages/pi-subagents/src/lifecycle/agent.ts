@@ -19,7 +19,7 @@
  */
 
 import type { Model } from "@earendil-works/pi-ai";
-import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { debugLog } from "#src/debug";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
@@ -162,6 +162,47 @@ export class Agent {
 	/** Path to the agent's session JSONL file, or undefined if not yet available. */
 	get outputFile(): string | undefined {
 		return this.subagentSession?.outputFile;
+	}
+
+	/** Returns true when a SubagentSession is available (session is ready). */
+	isSessionReady(): boolean {
+		return this.subagentSession != null;
+	}
+
+	/**
+	 * Deliver or buffer a steer message.
+	 * Returns true when delivered immediately; false when buffered for later delivery.
+	 */
+	async steer(message: string): Promise<boolean> {
+		if (!this.subagentSession) {
+			this.queueSteer(message);
+			return false;
+		}
+		await this.subagentSession.steer(message);
+		return true;
+	}
+
+	/** Return the session conversation as formatted text, or undefined if no session. */
+	getConversation(): string | undefined {
+		return this.subagentSession?.getConversation();
+	}
+
+	/** Return the session context window utilization (0-100), or null if unavailable. */
+	getContextPercent(): number | null {
+		return this.subagentSession?.getContextPercent() ?? null;
+	}
+
+	/**
+	 * Subscribe to session events for live updates (e.g., conversation viewer).
+	 * Returns an unsubscribe function, or undefined if no session is available.
+	 */
+	subscribeToUpdates(fn: (event: AgentSessionEvent) => void): (() => void) | undefined {
+		return this.subagentSession?.subscribe(fn);
+	}
+
+	/** The session's message history, or an empty array if no session. */
+	get messages(): readonly unknown[] {
+		return this.subagentSession?.messages ?? [];
 	}
 
 	constructor(init: AgentInit) {
