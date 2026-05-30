@@ -202,7 +202,7 @@ export class AgentManager {
     signal?: AbortSignal,
   ): Promise<Agent | undefined> {
     const agent = this.agents.get(id);
-    if (!agent?.session) return undefined;
+    if (!agent?.isSessionReady()) return undefined;
     await agent.resume(prompt, signal);
     return agent;
   }

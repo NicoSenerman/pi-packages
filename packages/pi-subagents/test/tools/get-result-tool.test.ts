@@ -119,8 +119,9 @@ describe("GetResultTool", () => {
 
 	it("includes conversation when verbose=true", async () => {
 		const record = createTestAgent();
-		const session = createMockSession({ messages: [{ role: "user", content: "hello" }] });
-		record.subagentSession = toSubagentSession(createSubagentSessionStub(session));
+		const stub = createSubagentSessionStub();
+		stub.getConversation.mockReturnValue("[User]: hello");
+		record.subagentSession = toSubagentSession(stub);
 		const records = new Map([["agent-1", record]]);
 		const result = await execute(makeManager(records), makeNotifications(), { agent_id: "agent-1", verbose: true });
 		expect(result.content[0].text).toContain("--- Agent Conversation ---");

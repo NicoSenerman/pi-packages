@@ -1,5 +1,5 @@
 import { debugLog } from "#src/debug";
-import { getLifetimeTotal, getSessionContextPercent } from "#src/lifecycle/usage";
+import { getLifetimeTotal } from "#src/lifecycle/usage";
 import type { Agent } from "#src/types";
 import type { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
 
@@ -46,7 +46,7 @@ export function formatTaskNotification(record: Agent, resultMaxLen: number): str
   const status = getStatusLabel(record.status, record.error);
   const durationMs = record.completedAt ? record.completedAt - record.startedAt : 0;
   const totalTokens = getLifetimeTotal(record.lifetimeUsage);
-  const contextPercent = getSessionContextPercent(record.session);
+  const contextPercent = record.getContextPercent();
   const ctxXml = contextPercent !== null ? `<context_percent>${Math.round(contextPercent)}</context_percent>` : "";
   const compactXml = record.compactionCount ? `<compactions>${record.compactionCount}</compactions>` : "";
 

@@ -108,7 +108,7 @@ export class AgentTool {
 					`Agent not found: "${params.resume}". It may have been cleaned up.`,
 				);
 			}
-			if (!existing.session) {
+			if (!existing.isSessionReady()) {
 				return textResult(
 					`Agent "${params.resume}" has no active session to resume.`,
 				);

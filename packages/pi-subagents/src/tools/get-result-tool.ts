@@ -1,8 +1,6 @@
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import type { AgentConfigLookup } from "#src/config/agent-types";
-import { getSessionContextPercent } from "#src/lifecycle/usage";
-import { getAgentConversation } from "#src/session/conversation";
 import { formatLifetimeTokens, textResult } from "#src/tools/helpers";
 import type { Agent } from "#src/types";
 import { formatDuration, getDisplayName } from "#src/ui/display";
@@ -53,7 +51,7 @@ export class GetResultTool {
 		const displayName = getDisplayName(record.type, this.registry);
 		const duration = formatDuration(record.startedAt, record.completedAt);
 		const tokens = formatLifetimeTokens(record);
-		const contextPercent = getSessionContextPercent(record.session);
+		const contextPercent = record.getContextPercent();
 		const statsParts = [`Tool uses: ${record.toolUses}`];
 		if (tokens) statsParts.push(tokens);
 		if (contextPercent !== null) statsParts.push(`Context: ${Math.round(contextPercent)}%`);
@@ -80,11 +78,9 @@ export class GetResultTool {
 		}
 
 		// Verbose: include full conversation
-		if (params.verbose && record.session) {
-			const conversation = getAgentConversation(record.session);
-			if (conversation) {
-				output += `\n\n--- Agent Conversation ---\n${conversation}`;
-			}
+		const conversation = params.verbose ? record.getConversation() : undefined;
+		if (conversation) {
+			output += `\n\n--- Agent Conversation ---\n${conversation}`;
 		}
 
 		return textResult(output);
