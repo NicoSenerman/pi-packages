@@ -95,7 +95,7 @@ Then an H1 title (e.g., `# <short descriptive title>`) — required by markdownl
   When the issue proposes moving or relocating a class to a new owner, list every method's callers and what fields/state each method touches.
   If most methods operate on the target owner's fields, the class may be an intermediary that should be dissolved into the owner rather than relocated intact.
 - **Module-Level Changes** — file-by-file list of what's added, changed, or removed.
-  When a step removes or renames an export, grep all `src/` and `test/` files for every removed symbol before finalizing the file list.
+  When a step removes or renames an export, grep all `src/` and `test/` files — plus `.pi/skills/package-*/SKILL.md`, which document package internals — for every removed symbol before finalizing the file list.
   When a step removes a call to a private (non-exported) function, grep the file for other callers — if the removed call was the sole call site, list the function for removal in the same step.
   When the change adds, removes, or moves a module, check `packages/<PKG>/docs/architecture/` for layout listings, complexity tables, health metrics, or domain diagrams that reference the affected files and list them as doc updates.
   When a file appears in Module-Level Changes, verify it is not also claimed as unchanged in Non-Goals — contradictions between these sections cause confusion during implementation.

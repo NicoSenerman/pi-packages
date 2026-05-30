@@ -46,3 +46,47 @@ All deterministic checks pass: `pnpm run check`, `pnpm run lint`, `pnpm -r run t
 - **Historical plan preserved**: `docs/plans/0221-subagent-session-registry.md` retains references to the removed methods — appropriate, as archival plans are records of decisions, not current-state docs.
 - **SKILL.md straggler**: pre-completion reviewer (verdict: WARN) flagged a stale "removal tracked in #267" sentence in `.pi/skills/package-pi-permission-system/SKILL.md`; removed in a follow-up `docs:` commit.
   No other warnings.
+
+## Stage: Final Retrospective (2026-05-30T21:00:00Z)
+
+### Session summary
+
+Shipped #267 end-to-end across four stages (plan → TDD → ship → retro): removed the inbound `registerSubagentSession` / `unregisterSubagentSession` surface from `PermissionsService`, reconciled three pi-permission-system docs, and refreshed the `@gotgenes/pi-subagents` `README.md`.
+Released `pi-permission-system` 7.4.1 → 8.0.0 (breaking) and `pi-subagents` 13.2.0 → 13.2.1 (docs) via release-please PR #284.
+A notably clean session: one breaking `feat!:` commit plus doc commits, no rework, CI green on first push.
+
+### Observations
+
+#### What went well
+
+- **Load-order investigation (novel win)**: the user raised a load-order concern during planning; instead of accepting the framing or mechanically editing settings, the agent traced the actual event lifecycle (load-time subscription vs. runtime emission) to prove ordering is irrelevant, then confirmed both settings files already list `pi-permission-system` before `pi-subagents`.
+  Prevented an unnecessary, misleading change and produced a documented Risks entry.
+- **`ask_user` scope gate (planning)**: the bridge-only vs. full-README-refresh question cleanly surfaced a real scope boundary (#263/#265 drift) rather than guessing; the user chose full refresh.
+- **Pre-completion reviewer earned its keep**: it caught the stale `SKILL.md` sentence that the TDD grep-sweep missed — a real straggler, fixed before ship rather than landing on `main`.
+- **Incremental verification**: `check` / `lint` / `test` / `fallow` ran after the code step and `lint` after each doc step, not just at the end; the pre-existing `[#283]` lint failure was handled as a separate baseline-cleanup commit per the prompt.
+
+#### What caused friction (agent side)
+
+- `missing-context` — the TDD straggler-sweep grep covered `src/`, `test/`, and specific doc files but not `.pi/skills/package-*/SKILL.md`, so the stale `package-pi-permission-system` skill reference slipped past the sweep and was only caught by the reviewer.
+  Impact: one extra `docs:` commit; no `main` breakage (caught at WARN).
+  Self-identified?
+  No — reviewer-caught.
+- `other` (tool mechanics) — first `Edit` to `test/service.test.ts` was rejected because two edits targeted adjacent/overlapping regions; merged into one contiguous replacement on retry.
+  Impact: one retry, no rework.
+- `missing-context` (minor) — the first architecture-doc edit used a bare relative link `subagent-integration.md` from `docs/architecture/`; markdownlint MD057 caught it; fixed to `../subagent-integration.md` within the same commit.
+  Impact: one extra edit, no separate commit.
+
+#### What caused friction (user side)
+
+- None.
+  The load-order concern was raised early and as a question, which is the ideal collaboration shape — it prompted a verification rather than a correction after the fact.
+
+### Diagnostic details
+
+- **Model-performance correlation** — one subagent dispatch (`pre-completion-reviewer`, 171.6s, 30 tool uses) on judgment-heavy doc/code review; appropriate model for the task, no mismatch.
+- **Feedback-loop gap** — verification cadence was incremental and healthy; the only gap was *scope*, not *timing*: the removed-symbol sweep omitted `.pi/skills/`.
+  Other lenses (escalation-delay, unused-tool) found nothing notable — no error sequence exceeded two tool calls.
+
+### Changes made
+
+1. `.pi/prompts/plan-issue.md` — extended the removed-symbol grep-sweep guidance (Module-Level Changes) to include `.pi/skills/package-*/SKILL.md`, closing the blind spot that let a stale skill reference slip past the TDD sweep.
