@@ -45,8 +45,6 @@ flowchart TB
         SessionConfig["assembleSessionConfig<br/>(pure assembler)"]
         Prompts["prompts<br/>(system prompt)"]
         Context["context<br/>(parent history)"]
-        SafeFs["safe-fs<br/>(symlink/name guards)"]
-        SkillLoader["skill-loader<br/>(preload skills)"]
         Env["env<br/>(git/platform)"]
         ModelResolver["model-resolver<br/>(fuzzy match)"]
     end
@@ -90,8 +88,7 @@ flowchart TB
     AgentManager --> AgentRunner
     AgentRunner --> SessionConfig
     SessionConfig --> AgentTypeRegistry
-    SessionConfig --> Prompts & SkillLoader & Env
-    SkillLoader --> SafeFs
+    SessionConfig --> Prompts & Env
     AgentTypeRegistry --> DefaultAgents & CustomAgents
     RecordObserver -.->|subscribes| AgentRunner
     UIObserver -.->|subscribes| AgentRunner
@@ -260,8 +257,6 @@ src/
 │   ├── prompts.ts                  system prompt building
 │   ├── content-items.ts            shared message content parsing (tool-call names, assistant content)
 │   ├── context.ts                  parent conversation extraction
-│   ├── safe-fs.ts                  symlink rejection and safe file reads
-│   ├── skill-loader.ts             skill preloading
 │   ├── env.ts                      git/platform detection
 │   ├── model-resolver.ts           fuzzy model name resolution
 │   └── session-dir.ts              session directory derivation
@@ -415,7 +410,7 @@ Key types:
 
 - `SubagentsService` — `spawn`, `getRecord`, `listAgents`, `abort`, `steer`, `waitForAll`, `hasRunning`.
 - `SubagentRecord` — serializable agent snapshot (no live session objects).
-- `SpawnOptions` — `description`, `model`, `maxTurns`, `thinkingLevel`, `isolated`, `inheritContext`, `foreground`, `bypassQueue`.
+- `SpawnOptions` — `description`, `model`, `maxTurns`, `thinkingLevel`, `inheritContext`, `foreground`, `bypassQueue`.
 - `SUBAGENT_EVENTS` — channel constants for `pi.events` subscriptions.
 
 ### Accessor pattern
@@ -482,11 +477,11 @@ Latent extensibility is the deliverable; a vacant hook is not.
 ### Core responsibilities (keep)
 
 - **Agent definitions** — name, model, thinking, system prompt, tools list.
-- **Prompt composition** — system prompt assembly, skill preloading into prompt.
+- **Prompt composition** — system prompt assembly.
 - **Session lifecycle** — create child sessions, bind extensions, run conversation loop, track results.
 - **Concurrency management** — queue, abort, resume, max concurrency.
 - **Recursion guard** — remove pi-subagents' own three tools from child sessions (prevent infinite nesting).
-  With `isolated` removed, children always load the parent's resources, so the guard becomes unconditional rather than gated on `cfg.extensions`.
+  With `isolated` removed (#264), children always load the parent's resources, so the guard is unconditional rather than gated on `cfg.extensions`.
   This is the core defending its own invariant, keyed off its own tool names — not policy.
 - **Lifecycle events** — emit awaited, ordered events when child sessions spawn, are created, complete, and are disposed.
 - **Workspace provider seam** — accept a registered `WorkspaceProvider` and consult it for the child's cwd; default to the parent's cwd when none is registered.
@@ -499,7 +494,8 @@ Latent extensibility is the deliverable; a vacant hook is not.
 - **Worktree isolation** (`worktree.ts`, `worktree-isolation.ts`, `GitWorktreeManager`, the `isolation: "worktree"` spawn mode) — environment policy, not core.
   Git worktrees are one *strategy* for choosing the child's working directory; containers, throwaway tmpdirs, and remote sandboxes are others.
   Evicted to `@gotgenes/pi-subagents-worktrees` (#263), the first consumer of the workspace provider seam.
-- **Extension lifecycle control** (`extensions: false`, `isolated`, `noSkills`) — deny-at-use (the in-child permission layer blocking disallowed tool calls) covers what `isolated` pretended to do for tools.
+- **Extension lifecycle control** (`extensions: false`, `isolated`, `noSkills`) — removed in #264.
+  Deny-at-use (the in-child permission layer blocking disallowed tool calls) covers what `isolated` pretended to do for tools.
   Prevent-load (refusing to bind an extension because of load-time side effects, cost, or true sandboxing) is genuinely generative and is left as a *latent* (un-built) provider seam, added only if a real consumer needs it.
 
 ### Composition model
@@ -536,20 +532,20 @@ This is achieved across phases: Phase 14 (strip policy), Phase 16 (invert depend
 These interfaces carry hidden dependencies that obscure true coupling.
 Bags with 10+ fields are the highest priority for decomposition.
 
-| Interface                   | Fields                                                 | Consumers                                         | Severity  |
-| --------------------------- | ------------------------------------------------------ | ------------------------------------------------- | --------- |
-| `ResolvedSpawnConfig`       | 3 nested                                               | foreground-runner, background-spawner, agent-tool | ✓ done    |
-| `AgentSpawnConfig`          | 13 → 13 (ParentSessionInfo nested)                     | agent-manager (internal)                          | ✓ done    |
-| `RunOptions`                | 9 (`RunContext` nested)                                | agent-runner                                      | ✓ done    |
-| `SessionConfig`             | 8 (flat fields, ToolFilterConfig removed)              | agent-runner (output of assembler)                | ✓ done    |
-| `NotificationDetails`       | 10                                                     | notification                                      | Low (DTO) |
-| `ResourceLoaderOptions`     | 10                                                     | agent-runner (SDK bridge)                         | Low (SDK) |
-| `RunnerIO`                  | split → `EnvironmentIO` (3) + `SessionFactoryIO` (5+1) | agent-runner                                      | ✓ done    |
-| `CreateSessionOptions`      | 9                                                      | agent-runner (SDK bridge)                         | Low (SDK) |
-| `AgentToolDeps`             | 8                                                      | agent-tool                                        | ✓ done    |
-| `AgentMenuDeps`             | 8                                                      | agent-menu                                        | ✓ done    |
-| `ConversationViewerOptions` | 8                                                      | conversation-viewer                               | Low       |
-| `AgentInit`                 | 8                                                      | agent                                             | Low       |
+| Interface                   | Fields                                                      | Consumers                                         | Severity  |
+| --------------------------- | ----------------------------------------------------------- | ------------------------------------------------- | --------- |
+| `ResolvedSpawnConfig`       | 3 nested                                                    | foreground-runner, background-spawner, agent-tool | ✓ done    |
+| `AgentSpawnConfig`          | 13 → 13 (ParentSessionInfo nested)                          | agent-manager (internal)                          | ✓ done    |
+| `RunOptions`                | 9 (`RunContext` nested)                                     | agent-runner                                      | ✓ done    |
+| `SessionConfig`             | 6 (flat fields; extensions/noSkills/extras removed in #264) | agent-runner (output of assembler)                | ✓ done    |
+| `NotificationDetails`       | 10                                                          | notification                                      | Low (DTO) |
+| `ResourceLoaderOptions`     | 10                                                          | agent-runner (SDK bridge)                         | Low (SDK) |
+| `RunnerIO`                  | split → `EnvironmentIO` (3) + `SessionFactoryIO` (5+1)      | agent-runner                                      | ✓ done    |
+| `CreateSessionOptions`      | 9                                                           | agent-runner (SDK bridge)                         | Low (SDK) |
+| `AgentToolDeps`             | 8                                                           | agent-tool                                        | ✓ done    |
+| `AgentMenuDeps`             | 8                                                           | agent-menu                                        | ✓ done    |
+| `ConversationViewerOptions` | 8                                                           | conversation-viewer                               | Low       |
+| `AgentInit`                 | 8                                                           | agent                                             | Low       |
 
 ### Complexity hotspots
 
@@ -604,7 +600,6 @@ interface SpawnExecution {
   thinking: ThinkingLevel | undefined;
   inheritContext: boolean;
   runInBackground: boolean;
-  isolated: boolean;
   agentInvocation: AgentInvocation;
 }
 
@@ -648,7 +643,7 @@ export interface RunContext {
 }
 ```
 
-The remaining `RunOptions` fields (`model`, `maxTurns`, `signal`, `isolated`, `thinkingLevel`, `defaultMaxTurns`, `graceTurns`, `onSessionCreated`) are genuine execution parameters.
+The remaining `RunOptions` fields (`model`, `maxTurns`, `signal`, `thinkingLevel`, `defaultMaxTurns`, `graceTurns`, `onSessionCreated`) are genuine execution parameters.
 `RunOptions` now has 9 fields: 1 nested `context: RunContext` (2 per-call fields) plus 8 flat execution fields.
 
 #### SessionConfig (11 fields → extract ToolFilterConfig) — done ([#168][168])
@@ -781,13 +776,14 @@ Removed `worktree.ts`, `worktree-isolation.ts`, `GitWorktreeManager`, and the `i
   From the release carrying #272, all five workspace types are importable by name: `WorkspaceProvider`, `Workspace`, `WorkspacePrepareContext`, `WorkspaceDisposeOutcome`, and `WorkspaceDisposeResult`.
 - Outcome: git leaves the core; worktree users install one package, everyone else pays nothing.
 
-#### Step 4: Remove `isolated` / `extensions: false` / `noSkills` — [#264]
+#### Step 4: Remove `isolated` / `extensions: false` / `noSkills` — [#264] ✅ Delivered
 
-Children always load the parent's extensions and skills; the recursion guard becomes unconditional.
+Children always load the parent's extensions and skills; the recursion guard is now unconditional.
 Deny-at-use (the in-child permission layer) covers tool restriction; prevent-load is left as a latent provider seam (not shipped).
+The `skills` curation axis collapsed symmetrically with `extensions`: `AgentConfig.skills`, the skill-preload path (`skill-loader.ts`, `safe-fs.ts`, `preloadSkills`, `PromptExtras`), `SessionConfig.{extensions,noSkills,extras}`, and the `isolated:` / `extensions:` / `skills:` custom-agent frontmatter keys are all gone.
 
-- Depends on: Step 1 (deny-at-use over events).
-- Outcome: the `isolated`/`extensions`/`noSkills` axis is gone; one fewer conditional in the guard.
+- Depended on: Step 1 (deny-at-use over events).
+- Outcome: the `isolated`/`extensions`/`noSkills`/`skills` axis is gone; the guard is unconditional.
 
 #### Step 5: Born-complete child execution; dissolve the runner — [#265]
 

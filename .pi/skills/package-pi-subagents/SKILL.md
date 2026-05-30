@@ -86,12 +86,12 @@ Refactoring history is preserved in `docs/architecture/history/` (one file per c
 
 ### Domain organization
 
-The extension is organized into six domains (56 files, 8,382 LOC):
+The extension is organized into six domains (54 files):
 
 | Domain      | Directory                                                                                                                                                               | Modules | Responsibility                                                                                                                         |
 | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | Config      | `agent-types.ts`, `default-agents.ts`, `custom-agents.ts`, `invocation-config.ts`                                                                                       | 4       | Agent type registry, built-in/custom configs, per-call merge                                                                           |
-| Session     | `session-config.ts`, `prompts.ts`, `context.ts`, `safe-fs.ts`, `skill-loader.ts`, `env.ts`, `model-resolver.ts`, `session-dir.ts`                                       | 8       | Pure session assembly: prompts, context, skills, environment, model resolution                                                         |
+| Session     | `session-config.ts`, `prompts.ts`, `context.ts`, `env.ts`, `model-resolver.ts`, `session-dir.ts`                                                                        | 6       | Pure session assembly: prompts, context, environment, model resolution                                                                 |
 | Lifecycle   | `agent-manager.ts`, `agent-runner.ts`, `agent.ts`, `concurrency-queue.ts`, `parent-snapshot.ts`, `execution-state.ts`, `child-lifecycle.ts`, `workspace.ts`, `usage.ts` | 9       | Spawn, abort, resume, scheduling, turn loop, status state machine, per-agent behavior, child-lifecycle events, workspace provider seam |
 | Observation | `record-observer.ts`, `notification.ts`, `notification-state.ts`, `renderer.ts`                                                                                         | 4       | Session-event stats, completion nudges, notification rendering                                                                         |
 | Tools       | `tools/`                                                                                                                                                                | 8       | LLM-facing tools: Agent, get_subagent_result, steer_subagent, spawn-config, result-renderer, helpers                                   |
