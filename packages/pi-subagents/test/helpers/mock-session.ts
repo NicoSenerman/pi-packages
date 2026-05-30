@@ -19,7 +19,7 @@ export interface MockSession {
  * can ignore the rest. Pass `overrides` to replace or extend specific fields.
  */
 /**
- * Cast a MockSession to AgentSession for use in ExecutionState.
+ * Cast a MockSession to AgentSession for use as a SubagentSession's session.
  *
  * AgentSession is a class with private fields — no plain object satisfies it
  * without a type bridge. Centralising the cast here keeps test files free of

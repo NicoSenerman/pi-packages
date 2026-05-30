@@ -1,10 +1,10 @@
 /**
  * session-config.ts — Pure configuration assembler for agent sessions.
  *
- * `assembleSessionConfig()` is the pure core extracted from `runAgent()`.
- * It accepts resolved inputs (agent type, narrow context, run options, env info)
- * and returns everything `runAgent()` needs to create the SDK session — without
- * importing or constructing any Pi SDK types.
+ * `assembleSessionConfig()` is the pure assembly core called by
+ * `createSubagentSession()`. It accepts resolved inputs (agent type, narrow
+ * context, run options, env info) and returns everything the factory needs to
+ * create the SDK session — without importing or constructing any Pi SDK types.
  *
  * The only async IO in the assembly phase (`detectEnv`) is handled by the caller
  * before invoking this function, keeping the assembler synchronous.
@@ -22,7 +22,7 @@ import type { AgentPromptConfig, SubagentType, ThinkingLevel } from "#src/types"
  * Bundling the IO-touching (or promptly testable) function into a single
  * interface keeps the assembler free of direct module imports and makes it
  * trivially testable without `vi.mock()` — callers inject real implementations
- * at the edge (`agent-runner.ts`) or stubs in tests.
+ * at the edge (`create-subagent-session.ts`) or stubs in tests.
  */
 export interface AssemblerIO {
   buildAgentPrompt: (
@@ -57,7 +57,7 @@ export interface AssemblerContext {
 }
 
 /**
- * Narrow slice of RunOptions execution fields consumed by the assembler.
+ * Narrow slice of per-spawn execution fields consumed by the assembler.
  * All fields are optional — callers pass only what they have.
  */
 export interface AssemblerOptions {
@@ -70,7 +70,7 @@ export interface AssemblerOptions {
 }
 
 /**
- * Assembled configuration returned to `runAgent()`.
+ * Assembled configuration returned to `createSubagentSession()`.
  * Contains everything needed to create the SDK session and filter tools —
  * with no SDK object references.
  */
@@ -173,7 +173,7 @@ export function assembleSessionConfig(
   // Thinking level: explicit option > agent config > undefined (inherit)
   const thinkingLevel = options.thinkingLevel ?? agentConfig.thinking;
 
-  // Per-agent max turns (combined with options.maxTurns and defaultMaxTurns by runAgent)
+  // Per-agent max turns (combined with per-call maxTurns and defaultMaxTurns by SubagentSession.runTurnLoop)
   const agentMaxTurns = agentConfig.maxTurns;
 
   return {

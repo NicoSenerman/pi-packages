@@ -1,17 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentConfig } from "#src/types";
-import { createAgentLookup, createRunnerIO } from "./runner-io";
+import { createAgentLookup, createSubagentSessionIO } from "./subagent-session-io";
 
-describe("createRunnerIO", () => {
+describe("createSubagentSessionIO", () => {
 	it("returns a stub with all EnvironmentIO methods", () => {
-		const io = createRunnerIO();
+		const io = createSubagentSessionIO();
 		expect(typeof io.detectEnv).toBe("function");
 		expect(typeof io.getAgentDir).toBe("function");
 		expect(typeof io.deriveSessionDir).toBe("function");
 	});
 
 	it("returns a stub with all SessionFactoryIO methods", () => {
-		const io = createRunnerIO();
+		const io = createSubagentSessionIO();
 		expect(typeof io.createResourceLoader).toBe("function");
 		expect(typeof io.createSessionManager).toBe("function");
 		expect(typeof io.createSettingsManager).toBe("function");
@@ -19,43 +19,43 @@ describe("createRunnerIO", () => {
 	});
 
 	it("assemblerIO has buildAgentPrompt only", () => {
-		const io = createRunnerIO();
+		const io = createSubagentSessionIO();
 		expect(typeof io.assemblerIO.buildAgentPrompt).toBe("function");
 		expect(Object.keys(io.assemblerIO)).toEqual(["buildAgentPrompt"]);
 	});
 
 	it("assemblerIO defaults return sensible stub values", () => {
-		const io = createRunnerIO();
+		const io = createSubagentSessionIO();
 		expect(io.assemblerIO.buildAgentPrompt).toBeDefined();
 	});
 
 	it("detectEnv resolves to a stub EnvInfo", async () => {
-		const io = createRunnerIO();
+		const io = createSubagentSessionIO();
 		const env = await io.detectEnv(vi.fn(), "/cwd");
 		expect(env).toEqual({ isGitRepo: false, branch: "", platform: "linux" });
 	});
 
 	it("getAgentDir returns /mock/agent-dir", () => {
-		const io = createRunnerIO();
+		const io = createSubagentSessionIO();
 		expect(io.getAgentDir()).toBe("/mock/agent-dir");
 	});
 
 	it("createSessionManager returns a stub with newSession and getSessionFile", () => {
-		const io = createRunnerIO();
+		const io = createSubagentSessionIO();
 		const mgr = io.createSessionManager("/cwd", "/sessions");
 		expect(typeof mgr.newSession).toBe("function");
 		expect(typeof mgr.getSessionFile).toBe("function");
 	});
 
 	it("assemblerIO methods can be configured after creation", () => {
-		const io = createRunnerIO();
+		const io = createSubagentSessionIO();
 		io.assemblerIO.buildAgentPrompt.mockReturnValue("custom prompt");
 		const result = io.assemblerIO.buildAgentPrompt({}, "/cwd", {});
 		expect(result).toBe("custom prompt");
 	});
 
 	it("stubs retain Mock methods (vi.fn())", () => {
-		const io = createRunnerIO();
+		const io = createSubagentSessionIO();
 		io.detectEnv.mockResolvedValue({ isGitRepo: true, branch: "main", platform: "darwin" });
 		expect(io.detectEnv.mock).toBeDefined();
 	});

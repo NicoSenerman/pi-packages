@@ -25,7 +25,7 @@ export interface WidgetLike {
 }
 
 /**
- * Narrow config subset read by AgentManager when constructing RunOptions execution fields.
+ * Narrow config subset read by Agent when driving the turn loop (defaultMaxTurns, graceTurns).
  * Kept separate so callers can satisfy it without depending on the full runtime.
  */
 export interface RunConfig {

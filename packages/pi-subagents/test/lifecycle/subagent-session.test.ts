@@ -1,7 +1,7 @@
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SubagentSession } from "#src/lifecycle/subagent-session";
-import { createChildLifecycleMock } from "#test/helpers/runner-io";
+import { createChildLifecycleMock } from "#test/helpers/subagent-session-io";
 
 // ── Session mock factory ───────────────────────────────────────────────────────
 

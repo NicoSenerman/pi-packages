@@ -1,18 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createSubagentSession } from "#src/lifecycle/create-subagent-session";
 import { SubagentSession } from "#src/lifecycle/subagent-session";
+import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 import {
   createAgentLookup,
   createChildLifecycleMock,
-  createRunnerDeps,
-  createRunnerIO,
-} from "#test/helpers/runner-io";
-import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
+  createSubagentSessionDeps,
+  createSubagentSessionIO,
+} from "#test/helpers/subagent-session-io";
 
 /** Mock AgentConfigLookup. */
 const mockAgentLookup = createAgentLookup();
 
-let io: ReturnType<typeof createRunnerIO>;
+let io: ReturnType<typeof createSubagentSessionIO>;
 
 // ── Session mock factory ───────────────────────────────────────────────────────
 
@@ -34,7 +34,7 @@ function createSession() {
 const exec = vi.fn();
 
 beforeEach(() => {
-  io = createRunnerIO();
+  io = createSubagentSessionIO();
 });
 
 describe("createSubagentSession — assembly", () => {
@@ -44,7 +44,7 @@ describe("createSubagentSession — assembly", () => {
 
     const sub = await createSubagentSession(
       { snapshot: STUB_SNAPSHOT, type: "Explore" },
-      createRunnerDeps({ io, exec, registry: mockAgentLookup }),
+      createSubagentSessionDeps({ io, exec, registry: mockAgentLookup }),
     );
 
     expect(sub).toBeInstanceOf(SubagentSession);
@@ -57,7 +57,7 @@ describe("createSubagentSession — assembly", () => {
 
     const sub = await createSubagentSession(
       { snapshot: STUB_SNAPSHOT, type: "Explore" },
-      createRunnerDeps({ io, exec, registry: mockAgentLookup }),
+      createSubagentSessionDeps({ io, exec, registry: mockAgentLookup }),
     );
 
     expect(sub.outputFile).toBe("/sessions/child.jsonl");
@@ -69,7 +69,7 @@ describe("createSubagentSession — assembly", () => {
 
     await createSubagentSession(
       { snapshot: STUB_SNAPSHOT, type: "Explore" },
-      createRunnerDeps({ io, exec, registry: mockAgentLookup }),
+      createSubagentSessionDeps({ io, exec, registry: mockAgentLookup }),
     );
 
     expect(session.bindExtensions).toHaveBeenCalledTimes(1);
@@ -82,7 +82,7 @@ describe("createSubagentSession — assembly", () => {
 
     await createSubagentSession(
       { snapshot: STUB_SNAPSHOT, type: "Explore", cwd: "/tmp/worktree" },
-      createRunnerDeps({ io, exec, registry: mockAgentLookup }),
+      createSubagentSessionDeps({ io, exec, registry: mockAgentLookup }),
     );
 
     expect(io.getAgentDir).toHaveBeenCalledTimes(1);
@@ -102,7 +102,7 @@ describe("createSubagentSession — assembly", () => {
 
     await createSubagentSession(
       { snapshot: STUB_SNAPSHOT, type: "Explore" },
-      createRunnerDeps({ io, exec, registry: mockAgentLookup }),
+      createSubagentSessionDeps({ io, exec, registry: mockAgentLookup }),
     );
 
     expect(io.createResourceLoader).toHaveBeenCalledWith(
@@ -125,7 +125,7 @@ describe("createSubagentSession — assembly", () => {
         type: "Explore",
         parentSession: { parentSessionFile: "/sessions/parent.jsonl", parentSessionId: "parent-id-123" },
       },
-      createRunnerDeps({ io, exec, registry: mockAgentLookup }),
+      createSubagentSessionDeps({ io, exec, registry: mockAgentLookup }),
     );
 
     const sm = io.createSessionManager.mock.results[0].value;
@@ -141,7 +141,7 @@ describe("createSubagentSession — lifecycle ordering", () => {
 
     await createSubagentSession(
       { snapshot: STUB_SNAPSHOT, type: "Explore" },
-      createRunnerDeps({ io, exec, registry: mockAgentLookup, lifecycle }),
+      createSubagentSessionDeps({ io, exec, registry: mockAgentLookup, lifecycle }),
     );
 
     expect(lifecycle.spawning).toHaveBeenCalledOnce();
@@ -157,7 +157,7 @@ describe("createSubagentSession — lifecycle ordering", () => {
 
     await createSubagentSession(
       { snapshot: STUB_SNAPSHOT, type: "Explore" },
-      createRunnerDeps({ io, exec, registry: mockAgentLookup, lifecycle }),
+      createSubagentSessionDeps({ io, exec, registry: mockAgentLookup, lifecycle }),
     );
 
     expect(lifecycle.sessionCreated).toHaveBeenCalledOnce();
@@ -181,7 +181,7 @@ describe("createSubagentSession — lifecycle ordering", () => {
           parentSessionId: "parent-session-42",
         },
       },
-      createRunnerDeps({ io, exec, registry: mockAgentLookup, lifecycle }),
+      createSubagentSessionDeps({ io, exec, registry: mockAgentLookup, lifecycle }),
     );
 
     expect(lifecycle.sessionCreated).toHaveBeenCalledWith({
@@ -198,7 +198,7 @@ describe("createSubagentSession — lifecycle ordering", () => {
 
     await createSubagentSession(
       { snapshot: STUB_SNAPSHOT, type: "Explore" },
-      createRunnerDeps({ io, exec, registry: mockAgentLookup, lifecycle }),
+      createSubagentSessionDeps({ io, exec, registry: mockAgentLookup, lifecycle }),
     );
 
     expect(lifecycle.completed).not.toHaveBeenCalled();
@@ -217,7 +217,7 @@ describe("createSubagentSession — dispose on creation failure", () => {
     await expect(
       createSubagentSession(
         { snapshot: STUB_SNAPSHOT, type: "Explore" },
-        createRunnerDeps({ io, exec, registry: mockAgentLookup, lifecycle }),
+        createSubagentSessionDeps({ io, exec, registry: mockAgentLookup, lifecycle }),
       ),
     ).rejects.toThrow("bind failed");
 

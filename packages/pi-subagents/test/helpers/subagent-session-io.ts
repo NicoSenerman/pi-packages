@@ -3,7 +3,7 @@ import type { AgentConfigLookup } from "#src/config/agent-types";
 import type { ChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
 import type { AgentConfig, ShellExec } from "#src/types";
 
-/** Default AgentConfig returned by createAgentLookup. Matches the Explore stub used in runner tests. */
+/** Default AgentConfig returned by createAgentLookup. Matches the Explore stub used in factory tests. */
 const DEFAULT_AGENT_CONFIG: AgentConfig = {
 	name: "Explore",
 	description: "Explore",
@@ -15,7 +15,7 @@ const DEFAULT_AGENT_CONFIG: AgentConfig = {
 };
 
 /**
- * Shared RunnerIO stub factory for agent-runner tests.
+ * Shared SubagentSessionIO stub factory for createSubagentSession tests.
  *
  * Return type is deliberately unannotated so vi.fn() stubs retain their
  * Mock<...> methods (mockResolvedValue, mock.calls, etc.).
@@ -25,10 +25,10 @@ const DEFAULT_AGENT_CONFIG: AgentConfig = {
  * buildReadOnlyMemoryBlock stubs from older test files are intentionally omitted.
  *
  * To customize assemblerIO methods after creation, configure the returned Mock:
- *   const io = createRunnerIO();
+ *   const io = createSubagentSessionIO();
  *   io.assemblerIO.buildAgentPrompt.mockReturnValue("custom");
  */
-export function createRunnerIO() {
+export function createSubagentSessionIO() {
 	return {
 		detectEnv: vi.fn().mockResolvedValue({ isGitRepo: false, branch: "", platform: "linux" }),
 		getAgentDir: vi.fn().mockReturnValue("/mock/agent-dir"),
@@ -49,11 +49,10 @@ export function createRunnerIO() {
 /**
  * Shared AgentConfigLookup stub.
  *
- * Returns the default Explore config (same as the static mock used in
- * agent-runner.test.ts and concrete-agent-runner.test.ts). Pass a partial
- * config to override specific fields.
+ * Returns the default Explore config (same as the static mock used in the
+ * createSubagentSession tests). Pass a partial config to override specific fields.
  *
- * Tests that need per-test config mutation (agent-runner-extension-tools)
+ * Tests that need per-test config mutation (create-subagent-session-extension-tools)
  * keep their local mutable wrapper and use DEFAULT_AGENT_CONFIG as a starting
  * point if needed.
  */
@@ -66,24 +65,24 @@ export function createAgentLookup(configOverrides?: Partial<AgentConfig>) {
 }
 
 /**
- * Shared RunnerDeps stub factory for tests that call runAgent() or construct ConcreteAgentRunner.
+ * Shared SubagentSessionDeps stub factory for tests that call createSubagentSession().
  *
- * Bundles createRunnerIO(), a no-op exec stub, and a default agent lookup
- * into the RunnerDeps shape expected by runAgent() and ConcreteAgentRunner.
+ * Bundles createSubagentSessionIO(), a no-op exec stub, and a default agent
+ * lookup into the SubagentSessionDeps shape expected by createSubagentSession().
  *
  * Each field accepts an override so tests can supply a locally-configured `io`
  * (e.g. one whose createSession mock is pre-armed), a shared exec, or a custom
  * agent lookup. The `io` override keeps its mock methods (the param type is the
- * unannotated createRunnerIO() shape), so callers can still assert on it.
+ * unannotated createSubagentSessionIO() shape), so callers can still assert on it.
  */
-export function createRunnerDeps(overrides?: {
-	io?: ReturnType<typeof createRunnerIO>;
+export function createSubagentSessionDeps(overrides?: {
+	io?: ReturnType<typeof createSubagentSessionIO>;
 	exec?: ShellExec;
 	registry?: AgentConfigLookup;
 	lifecycle?: ReturnType<typeof createChildLifecycleMock>;
 }) {
 	return {
-		io: overrides?.io ?? createRunnerIO(),
+		io: overrides?.io ?? createSubagentSessionIO(),
 		exec: overrides?.exec ?? vi.fn(),
 		registry: overrides?.registry ?? createAgentLookup(),
 		lifecycle: overrides?.lifecycle ?? createChildLifecycleMock(),
@@ -91,7 +90,7 @@ export function createRunnerDeps(overrides?: {
 }
 
 /**
- * Mock ChildLifecyclePublisher for runner tests.
+ * Mock ChildLifecyclePublisher for lifecycle tests.
  *
  * Each method is a vi.fn() so tests can assert emit calls and ordering
  * (via mock.invocationCallOrder) relative to session.bindExtensions().

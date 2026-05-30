@@ -13,8 +13,8 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createSubagentSession } from "#src/lifecycle/create-subagent-session";
-import { createRunnerDeps, createRunnerIO } from "#test/helpers/runner-io";
 import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
+import { createSubagentSessionDeps, createSubagentSessionIO } from "#test/helpers/subagent-session-io";
 
 const agentConfigMock = {
   current: {
@@ -38,7 +38,7 @@ const mockAgentLookup = {
   getToolNamesForType: vi.fn((): string[] => agentConfigMock.current.builtinToolNames ?? ["read"]), // eslint-disable-line @typescript-eslint/no-unnecessary-condition -- builtinToolNames is always defined in type but may be absent at runtime
 };
 
-let io: ReturnType<typeof createRunnerIO>;
+let io: ReturnType<typeof createSubagentSessionIO>;
 
 /**
  * Build a mock session where `getActiveToolNames` returns one set before
@@ -71,7 +71,7 @@ function createSessionWithExtensionToolRegistration(
 const exec = vi.fn();
 
 beforeEach(() => {
-  io = createRunnerIO();
+  io = createSubagentSessionIO();
   agentConfigMock.current = {
     name: "test-agent",
     description: "Test agent",
@@ -91,7 +91,7 @@ describe("post-bind recursion guard", () => {
 
     await createSubagentSession(
       { snapshot: STUB_SNAPSHOT, type: "test-agent" },
-      createRunnerDeps({ io, exec, registry: mockAgentLookup }),
+      createSubagentSessionDeps({ io, exec, registry: mockAgentLookup }),
     );
 
     expect(session.setActiveToolsByName).toHaveBeenCalledTimes(1);
@@ -106,7 +106,7 @@ describe("post-bind recursion guard", () => {
 
     await createSubagentSession(
       { snapshot: STUB_SNAPSHOT, type: "test-agent" },
-      createRunnerDeps({ io, exec, registry: mockAgentLookup }),
+      createSubagentSessionDeps({ io, exec, registry: mockAgentLookup }),
     );
 
     const postBindArgs = session.setActiveToolsByName.mock.calls[0][0];
@@ -123,7 +123,7 @@ describe("post-bind recursion guard", () => {
 
     await createSubagentSession(
       { snapshot: STUB_SNAPSHOT, type: "test-agent" },
-      createRunnerDeps({ io, exec, registry: mockAgentLookup }),
+      createSubagentSessionDeps({ io, exec, registry: mockAgentLookup }),
     );
 
     const postBindArgs = session.setActiveToolsByName.mock.calls[0][0];
@@ -140,7 +140,7 @@ describe("post-bind recursion guard", () => {
 
     await createSubagentSession(
       { snapshot: STUB_SNAPSHOT, type: "test-agent" },
-      createRunnerDeps({ io, exec, registry: mockAgentLookup }),
+      createSubagentSessionDeps({ io, exec, registry: mockAgentLookup }),
     );
 
     expect(session.setActiveToolsByName).toHaveBeenCalledTimes(1);
