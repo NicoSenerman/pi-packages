@@ -427,10 +427,10 @@ When [`@gotgenes/pi-permission-system`](https://github.com/gotgenes/pi-permissio
 - **Tool filtering** — the permission system's `before_agent_start` handler removes denied tools from the child session before the agent starts.
 - **`ask`-state forwarding** — when a child session triggers an `ask` permission, the prompt forwards to the parent session's UI.
   The parent approves or denies, and the child resumes.
-- **Deterministic child detection** — every child session registers with the permission system's `SubagentSessionRegistry` before `bindExtensions()` fires, so detection does not rely on env vars or filesystem heuristics.
+- **Deterministic child detection** — this extension publishes `subagents:child:session-created` before `bindExtensions()` fires; the permission system subscribes and registers the child session synchronously, so detection does not rely on env vars or filesystem heuristics.
 
 No configuration is required.
-When `@gotgenes/pi-permission-system` is not installed, the registration calls are silent no-ops.
+When `@gotgenes/pi-permission-system` is not installed, the lifecycle events have no subscriber — a harmless no-op.
 
 ## Architecture
 
@@ -451,19 +451,27 @@ src/
     session-config.ts               # Session configuration assembler
     prompts.ts                      # Config-driven system prompt builder
     context.ts                      # Parent conversation context for inherit_context
-    skill-loader.ts                 # Preload skills from Pi-standard + Agent Skills spec
+    conversation.ts                 # Render a session's messages as formatted text
+    content-items.ts                # Shared message content parsing
     env.ts                          # Environment detection (git, platform)
     model-resolver.ts               # Fuzzy model matching
+    session-dir.ts                  # Session directory derivation
   lifecycle/                        # Agent execution and state tracking
-    agent-manager.ts                # Spawn, queue, abort, resume, concurrency
-    agent-runner.ts                 # Session creation, turn loop, tool filtering
-    agent-record.ts                 # Status state machine
+    agent-manager.ts                # Collection manager + observer wiring
+    agent.ts                        # Full execution lifecycle (run, abort, steer, workspace)
+    create-subagent-session.ts      # Assembly factory: session creation, binding, tool filtering
+    subagent-session.ts             # Born-complete child session: turn loop, steer, dispose
+    child-lifecycle.ts              # Child-execution lifecycle event publisher
+    concurrency-queue.ts            # Background agent scheduling
     parent-snapshot.ts              # Immutable spawn-time parent state
-    permission-bridge.ts            # Optional bridge to pi-permission-system registry
-    worktree.ts                     # Git worktree isolation
+    turn-limits.ts                  # Turn-count policy (normalizeMaxTurns)
+    workspace.ts                    # Workspace provider seam
+    usage.ts                        # Token usage tracking
   observation/                      # Progress tracking and notification
     record-observer.ts              # Session-event stats observer
     notification.ts                 # Completion nudges
+    notification-state.ts           # Notification state tracking
+    renderer.ts                     # Notification rendering
   service/                          # Cross-extension API boundary
     service.ts                      # SubagentsService interface + Symbol.for() accessors
     service-adapter.ts              # SubagentsService wrapper around AgentManager
@@ -484,8 +492,9 @@ Each has a corresponding upstream PR:
 3. **`<active_agent>` system-prompt tag** (`src/prompts.ts`) — `buildAgentPrompt` prepends `<active_agent name="${config.name}"/>` to every assembled child system prompt (both `replace` and `append` modes).
    Downstream extensions like [`@gotgenes/pi-permission-system`](https://github.com/gotgenes/pi-permission-system) parse this tag to resolve per-agent `permission:` frontmatter inside the child session.
    Upstream PR: [tintinweb/pi-subagents#73](https://github.com/tintinweb/pi-subagents/pull/73).
-4. **Permission-system registration** (`src/lifecycle/permission-bridge.ts`) — `runAgent` registers every child session with `@gotgenes/pi-permission-system`'s `SubagentSessionRegistry` before `bindExtensions()` and unregisters in the `finally` block.
-   This enables deterministic child detection and `ask`-state forwarding to the parent UI.
+4. **Child-execution lifecycle events** (`src/lifecycle/child-lifecycle.ts`) — the child-session execution lifecycle is published as ordered events on `pi.events` (`subagents:child:spawning`, `session-created`, `completed`, `disposed`).
+   `session-created` fires synchronously before `bindExtensions()` so consumers (e.g. `@gotgenes/pi-permission-system`) can register the child session before binding proceeds.
+   This inverts the former outbound `permission-bridge` pattern (ADR 0002 / [#261]) — the core publishes, consumers subscribe.
    No upstream equivalent — this feature is specific to the `@gotgenes` fork.
 
 The upstream `vitest` suite plus tests added for each patch all pass on every commit.
