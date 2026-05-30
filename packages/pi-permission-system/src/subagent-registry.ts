@@ -23,9 +23,9 @@ export interface SubagentSessionInfo {
 /**
  * Registry of active in-process subagent sessions.
  *
- * Owned by `ExtensionRuntime`; exposed to external callers through the
- * `PermissionsService` interface (`registerSubagentSession` /
- * `unregisterSubagentSession`).
+ * Owned by `ExtensionRuntime`; written exclusively by `subscribeSubagentLifecycle`
+ * via the `subagents:child:session-created` / `subagents:child:disposed` event
+ * subscription (ADR 0002 — the core publishes, consumers observe).
  *
  * Concurrent background agents are safe because each session has a unique
  * directory path as its key — no scalar global flag is needed.

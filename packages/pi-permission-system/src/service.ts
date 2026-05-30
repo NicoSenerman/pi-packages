@@ -11,10 +11,9 @@
  * reference — this ensures resilience across `/reload` and load-order edge cases.
  */
 
-import type { SubagentSessionInfo } from "./subagent-registry";
 import type { PermissionCheckResult, PermissionState } from "./types";
 
-export type { PermissionCheckResult, PermissionState, SubagentSessionInfo };
+export type { PermissionCheckResult, PermissionState };
 
 /** Process-global key for the service slot. */
 const SERVICE_KEY = Symbol.for("@gotgenes/pi-permission-system:service");
@@ -43,27 +42,6 @@ export interface PermissionsService {
     value?: string,
     agentName?: string,
   ): PermissionCheckResult;
-
-  /**
-   * Register an in-process subagent session.
-   *
-   * Call this before `bindExtensions()` so that `isSubagentExecutionContext()`
-   * and permission-forwarding target resolution can detect the child session.
-   * Always pair with `unregisterSubagentSession()` in a `finally` block.
-   *
-   * @param sessionKey - Unique session identifier (use the session directory path).
-   * @param info       - Agent name and optional parent session ID.
-   */
-  registerSubagentSession(sessionKey: string, info: SubagentSessionInfo): void;
-
-  /**
-   * Remove a previously registered in-process subagent session.
-   *
-   * Safe to call even if `registerSubagentSession` was never called for this key.
-   *
-   * @param sessionKey - The same key passed to `registerSubagentSession`.
-   */
-  unregisterSubagentSession(sessionKey: string): void;
 
   /**
    * Query the tool-level permission state for pre-filtering tools before

@@ -118,12 +118,6 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
         sessionRules,
       );
     },
-    registerSubagentSession(sessionKey, info) {
-      subagentRegistry.register(sessionKey, info);
-    },
-    unregisterSubagentSession(sessionKey) {
-      subagentRegistry.unregister(sessionKey);
-    },
     getToolPermission(toolName, agentName) {
       return runtime.permissionManager.getToolPermission(toolName, agentName);
     },

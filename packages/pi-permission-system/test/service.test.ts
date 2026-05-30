@@ -6,7 +6,6 @@ import {
   publishPermissionsService,
   unpublishPermissionsService,
 } from "#src/service";
-import { SubagentSessionRegistry } from "#src/subagent-registry";
 import type { PermissionCheckResult } from "#src/types";
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -16,8 +15,6 @@ function makeService(
 ): PermissionsService {
   return {
     checkPermission: vi.fn(),
-    registerSubagentSession: vi.fn(),
-    unregisterSubagentSession: vi.fn(),
     getToolPermission: vi.fn(),
     ...overrides,
   };
@@ -130,61 +127,12 @@ describe("service adapter delegation", () => {
     );
   });
 
-  it("registerSubagentSession delegates to the registry", () => {
-    const registry = new SubagentSessionRegistry();
-    const service: PermissionsService = {
-      checkPermission: vi.fn(),
-      registerSubagentSession(key, info) {
-        registry.register(key, info);
-      },
-      unregisterSubagentSession(key) {
-        registry.unregister(key);
-      },
-      getToolPermission: vi.fn((): "allow" => "allow"),
-    };
-
-    publishPermissionsService(service);
-    getPermissionsService()!.registerSubagentSession("/sessions/task-1", {
-      agentName: "Explore",
-      parentSessionId: "parent-abc",
-    });
-
-    expect(registry.has("/sessions/task-1")).toBe(true);
-    expect(registry.get("/sessions/task-1")).toEqual({
-      agentName: "Explore",
-      parentSessionId: "parent-abc",
-    });
-  });
-
-  it("unregisterSubagentSession delegates to the registry", () => {
-    const registry = new SubagentSessionRegistry();
-    const service: PermissionsService = {
-      checkPermission: vi.fn(),
-      registerSubagentSession(key, info) {
-        registry.register(key, info);
-      },
-      unregisterSubagentSession(key) {
-        registry.unregister(key);
-      },
-      getToolPermission: vi.fn((): "allow" => "allow"),
-    };
-
-    publishPermissionsService(service);
-    const svc = getPermissionsService()!;
-    svc.registerSubagentSession("/sessions/task-1", { agentName: "Explore" });
-    svc.unregisterSubagentSession("/sessions/task-1");
-
-    expect(registry.has("/sessions/task-1")).toBe(false);
-  });
-
   it("getToolPermission delegates to the permission manager", () => {
     const getToolPermissionFn = vi.fn(
       (_t: string, _a?: string): "deny" => "deny",
     );
     const service: PermissionsService = {
       checkPermission: vi.fn(),
-      registerSubagentSession: vi.fn(),
-      unregisterSubagentSession: vi.fn(),
       getToolPermission(toolName, agentName) {
         return getToolPermissionFn(toolName, agentName);
       },
@@ -206,8 +154,6 @@ describe("service adapter delegation", () => {
     );
     const service: PermissionsService = {
       checkPermission: vi.fn(),
-      registerSubagentSession: vi.fn(),
-      unregisterSubagentSession: vi.fn(),
       getToolPermission(toolName, agentName) {
         return getToolPermissionFn(toolName, agentName);
       },
