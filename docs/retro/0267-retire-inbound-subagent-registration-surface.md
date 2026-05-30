@@ -28,3 +28,21 @@ The plan covers the interface/impl/test removal in one breaking (`feat!:`) commi
 [#261]: https://github.com/gotgenes/pi-packages/issues/261
 [#263]: https://github.com/gotgenes/pi-packages/issues/263
 [#265]: https://github.com/gotgenes/pi-packages/issues/265
+
+## Stage: Implementation — TDD (2026-05-30T20:10:00Z)
+
+### Session summary
+
+Completed all three TDD steps from the plan: (1) removed `registerSubagentSession` / `unregisterSubagentSession` from `PermissionsService` plus their `index.ts` implementation, `SubagentSessionInfo` re-export, and the two delegation tests — one `feat!:` commit with all related call-site/test changes bundled; (2) reconciled pi-permission-system docs (`cross-extension-api.md`, `subagent-integration.md`, `architecture.md`); (3) refreshed the stale `@gotgenes/pi-subagents` `README.md` (permission-integration section, Deviation #4, full file-tree refresh).
+Test count: 1512 → 1510 in pi-permission-system (two delegation tests removed); all other packages unchanged.
+All deterministic checks pass: `pnpm run check`, `pnpm run lint`, `pnpm -r run test`, `pnpm fallow dead-code`.
+
+### Observations
+
+- **Pre-existing lint failure** in `docs/architecture/architecture.md` (unused `[#283]` reference) blocked the green baseline; fixed as a separate cleanup commit before step 1.
+- **Single-commit constraint held**: interface removal + `index.ts` literal + `test/service.test.ts` cleanup all landed in one commit — TypeScript excess-property checking enforces this.
+- **Edit-tool overlap**: the first attempt to edit `test/service.test.ts` failed because edits 2 and 3 targeted adjacent regions; merged into a single contiguous replacement on the second attempt.
+- **Relative-link bug**: the initial doc edit wrote `subagent-integration.md` (bare filename) in `docs/architecture/architecture.md`; lint (MD057) caught it; corrected to `../subagent-integration.md` in the same commit.
+- **Historical plan preserved**: `docs/plans/0221-subagent-session-registry.md` retains references to the removed methods — appropriate, as archival plans are records of decisions, not current-state docs.
+- **SKILL.md straggler**: pre-completion reviewer (verdict: WARN) flagged a stale "removal tracked in #267" sentence in `.pi/skills/package-pi-permission-system/SKILL.md`; removed in a follow-up `docs:` commit.
+  No other warnings.
