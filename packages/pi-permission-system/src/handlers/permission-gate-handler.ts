@@ -58,30 +58,13 @@ export class PermissionGateHandler {
   ): Promise<{ block?: true; reason?: string }> {
     this.session.activate(ctx);
 
+    const validation = validateRequestedTool(event, this.toolRegistry.getAll());
+    if (validation.status === "block") {
+      return { block: true, reason: validation.reason };
+    }
+    const toolName = validation.toolName;
+
     const agentName = this.session.resolveAgentName(ctx);
-    const toolName = getToolNameFromValue(event);
-
-    if (!toolName) {
-      return { block: true, reason: formatMissingToolNameReason() };
-    }
-
-    const registrationCheck = checkRequestedToolRegistration(
-      toolName,
-      this.toolRegistry.getAll(),
-    );
-    if (registrationCheck.status === "missing-tool-name") {
-      return { block: true, reason: formatMissingToolNameReason() };
-    }
-
-    if (registrationCheck.status === "unregistered") {
-      return {
-        block: true,
-        reason: formatUnknownToolReason(
-          registrationCheck.requestedToolName,
-          registrationCheck.availableToolNames,
-        ),
-      };
-    }
 
     const input = getEventInput(event);
     const toolCallId =
@@ -352,7 +335,46 @@ export class PermissionGateHandler {
   }
 }
 
-// ── Pure helpers (re-exported from original modules) ──────────────────────
+// ── Pure helpers ─────────────────────────────────────────────────────────
+
+/** Discriminated result of validating a tool-call event's name and registration. */
+export type RequestedToolValidation =
+  | { status: "ok"; toolName: string }
+  | { status: "block"; reason: string };
+
+/**
+ * Validate the tool name from a raw event against the registered tool list.
+ *
+ * Composes `getToolNameFromValue` + `checkRequestedToolRegistration` + the
+ * two reason formatters and returns a discriminated result so `handleToolCall`
+ * reads as a straight validate → proceed path without nested early-returns.
+ *
+ * Returns the **raw** tool name (not the normalised form) so that
+ * `ToolCallContext.toolName` stays identical to the pre-extraction behaviour.
+ */
+export function validateRequestedTool(
+  event: unknown,
+  availableTools: readonly unknown[],
+): RequestedToolValidation {
+  const toolName = getToolNameFromValue(event);
+  if (!toolName) {
+    return { status: "block", reason: formatMissingToolNameReason() };
+  }
+  const check = checkRequestedToolRegistration(toolName, availableTools);
+  if (check.status === "missing-tool-name") {
+    return { status: "block", reason: formatMissingToolNameReason() };
+  }
+  if (check.status === "unregistered") {
+    return {
+      status: "block",
+      reason: formatUnknownToolReason(
+        check.requestedToolName,
+        check.availableToolNames,
+      ),
+    };
+  }
+  return { status: "ok", toolName };
+}
 
 /**
  * Extract the tool input from an event, checking both `input` and `arguments`
