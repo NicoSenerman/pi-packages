@@ -665,7 +665,7 @@ All findings are `fallow`-confirmed and untracked before this phase.
 | 3   | ✅ `runGateCheck` carried the full check→log→emit→approve cycle as six inline phases — cognitive 32 — resolved by [#287]                                                                             | B: god function                  | `handlers/gates/runner.ts`              | 4      | 2    | 16       |
 | 4   | ✅ Two token classifiers share a 31-line rejection prelude (production clone); `collectPathCandidateTokens` (37) and `collectPatternCommandTokens` (33) are complexity hotspots — resolved by [#289] | A: duplication / B: god function | `handlers/gates/bash-path-extractor.ts` | 4      | 3    | 12       |
 | 5   | ✅ `stripJsonComments` is a five-variable character scanner — cognitive 31 — resolved by [#290]                                                                                                      | B: god function                  | `config-loader.ts`                      | 2      | 2    | 8        |
-| 6   | 9.1% duplication concentrated in the test tree — the single largest health deduction (-4.1)                                                                                                          | D: test duplication              | `test/` (clone families)                | 3      | 1    | 15       |
+| 6   | ✅ 9.1% duplication concentrated in the test tree — the single largest health deduction (-4.1) — resolved by [#288]                                                                                  | D: test duplication              | `test/` (clone families)                | 3      | 1    | 15       |
 
 ### Steps
 
@@ -700,12 +700,11 @@ All findings are `fallow`-confirmed and untracked before this phase.
    - Outcome: `stripJsonComments` no longer appears as a refactoring target; `config-loader.ts` dropped from the CRAP-risk list; refactoring targets 4 → 3.
    - Commits: `test: add direct stripJsonComments unit tests`, `refactor: model stripJsonComments as consume helpers`
 
-6. **Extract shared test fixtures** ([#288])
-   - Extract handler/session setup, ruleset, and event-payload factories into `test/helpers/`, then migrate the top clone families (`permission-system.test.ts`, the external-directory tests, the handler-event tests, `bash-path.test.ts`, `runner.test.ts`).
-   - Lift-and-shift: introduce fixtures alongside existing tests, migrate incrementally, remove duplicated blocks last; one clone family per commit.
+6. ✅ **Extract shared test fixtures** ([#288]) — **completed**
+   - Created `test/helpers/handler-fixtures.ts` (`makeCtx`, `makeEvents`, `makeSession`, `makeToolRegistry`, `makeToolCallEvent`, `makeCheckResult`, `makeHandler`, `getDecisionEvents`), `test/helpers/gate-fixtures.ts` (`makeDescriptor`, `makeRunnerDeps`, `makeTcc`, `makeGateCheckResult`), and `test/helpers/manager-harness.ts` (`createManager`).
+   - Migrated handler-event clone family (`tool-call-events.test.ts`, `tool-call.test.ts`, `input-events.test.ts`, `input.test.ts`, `permission-session.test.ts`), external-directory family, gate family (`runner.test.ts`, `bash-path.test.ts`, `path.test.ts`), manager harness (`permission-system.test.ts`), and lifecycle setup (`before-agent-start.test.ts`, `lifecycle.test.ts`).
    - Category: D (test duplication)
-   - Outcome: duplication 9.1% → single digits low; the -4.1 health deduction shrinks.
-   - Commit: `test: extract shared permission fixtures (per clone family)`
+   - Outcome: duplication 9.1% → 7.1%; clone groups 122 → 113; health deduction -4.1 → -2.1.
 
 ### Step dependency diagram
 
