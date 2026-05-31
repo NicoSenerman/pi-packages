@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { evaluate } from "#src/rule";
+import { SessionApproval } from "#src/session-approval";
 import { deriveApprovalPattern, SessionRules } from "#src/session-rules";
 
 // ── SessionRules ───────────────────────────────────────────────────────────
@@ -63,6 +64,54 @@ describe("SessionRules", () => {
       rules.approve("external_directory", "/new/path/*");
       expect(rules.getRuleset()).toHaveLength(1);
       expect(rules.getRuleset()[0].pattern).toBe("/new/path/*");
+    });
+  });
+
+  describe("record", () => {
+    it("records a single-pattern approval as one rule", () => {
+      const rules = new SessionRules();
+      rules.record(SessionApproval.single("bash", "git *"));
+      expect(rules.getRuleset()).toEqual([
+        {
+          surface: "bash",
+          pattern: "git *",
+          action: "allow",
+          layer: "session",
+          origin: "session",
+        },
+      ]);
+    });
+
+    it("records a multi-pattern approval as one rule per pattern", () => {
+      const rules = new SessionRules();
+      rules.record(
+        SessionApproval.multiple("external_directory", [
+          "/outside/a/*",
+          "/outside/b/*",
+        ]),
+      );
+      expect(rules.getRuleset()).toHaveLength(2);
+      expect(rules.getRuleset()[0].pattern).toBe("/outside/a/*");
+      expect(rules.getRuleset()[1].pattern).toBe("/outside/b/*");
+    });
+
+    it("records each rule with the correct surface", () => {
+      const rules = new SessionRules();
+      rules.record(
+        SessionApproval.multiple("external_directory", [
+          "/outside/a/*",
+          "/outside/b/*",
+        ]),
+      );
+      for (const rule of rules.getRuleset()) {
+        expect(rule.surface).toBe("external_directory");
+      }
+    });
+
+    it("records nothing for an empty patterns list", () => {
+      const rules = new SessionRules();
+      rules.record(SessionApproval.multiple("external_directory", []));
+      expect(rules.getRuleset()).toEqual([]);
     });
   });
 

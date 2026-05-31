@@ -1,6 +1,7 @@
 import { dirname, sep } from "node:path";
 
 import type { Ruleset } from "./rule";
+import type { SessionApproval } from "./session-approval";
 
 /**
  * Ephemeral in-memory store of session-scoped permission approvals.
@@ -27,6 +28,18 @@ export class SessionRules {
   /** Return a defensive copy of the current session ruleset. */
   getRuleset(): Ruleset {
     return [...this.rules];
+  }
+
+  /**
+   * Record all patterns from a `SessionApproval` value object.
+   *
+   * The loop lives here so callers never need to know whether an approval
+   * carries one pattern or many — they just tell the store to record it.
+   */
+  record(approval: SessionApproval): void {
+    for (const pattern of approval.patterns) {
+      this.approve(approval.surface, pattern);
+    }
   }
 
   /** Remove all session approvals. */
