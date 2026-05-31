@@ -1,7 +1,9 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
+
 import { SessionLifecycleHandler } from "#src/handlers/lifecycle";
 import type { PermissionSession } from "#src/permission-session";
+
+import { makeCtx } from "#test/helpers/handler-fixtures";
 
 // ── status stub ────────────────────────────────────────────────────────────
 vi.mock("../../src/status", () => ({
@@ -11,25 +13,6 @@ vi.mock("../../src/status", () => ({
 }));
 
 // ── helpers ────────────────────────────────────────────────────────────────
-
-function makeCtx(overrides: Partial<ExtensionContext> = {}): ExtensionContext {
-  return {
-    cwd: "/test/project",
-    hasUI: true,
-    ui: {
-      setStatus: vi.fn(),
-      notify: vi.fn(),
-      select: vi.fn(),
-      input: vi.fn(),
-    },
-    sessionManager: {
-      getEntries: vi.fn().mockReturnValue([]),
-      getSessionDir: vi.fn().mockReturnValue("/sessions/test"),
-      addEntry: vi.fn(),
-    },
-    ...overrides,
-  } as unknown as ExtensionContext;
-}
 
 function makeSession(
   overrides: Partial<Record<keyof PermissionSession, unknown>> = {},
