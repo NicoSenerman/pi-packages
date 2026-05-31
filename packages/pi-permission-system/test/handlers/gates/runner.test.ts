@@ -2,76 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { DenialContext } from "#src/denial-messages";
 import { EXTENSION_TAG } from "#src/denial-messages";
-import type {
-  GateDescriptor,
-  GateRunnerDeps,
-} from "#src/handlers/gates/descriptor";
+import type { GateDescriptor } from "#src/handlers/gates/descriptor";
 import { runGateCheck } from "#src/handlers/gates/runner";
 import { SessionApproval } from "#src/session-approval";
-import type { PermissionCheckResult } from "#src/types";
-
-// ── helpers ────────────────────────────────────────────────────────────────
-
-function makeDescriptor(
-  overrides: Partial<GateDescriptor> = {},
-): GateDescriptor {
-  return {
-    surface: "read",
-    input: {},
-    denialContext: {
-      kind: "tool",
-      check: makeCheckResult("deny"),
-    },
-    promptDetails: {
-      source: "tool_call",
-      agentName: null,
-      message: "Allow tool 'read'?",
-      toolCallId: "tc-1",
-      toolName: "read",
-    },
-    logContext: {
-      source: "tool_call",
-      toolCallId: "tc-1",
-      toolName: "read",
-    },
-    decision: {
-      surface: "read",
-      value: "read",
-    },
-    ...overrides,
-  };
-}
-
-function makeCheckResult(
-  state: "allow" | "deny" | "ask",
-  overrides: Partial<PermissionCheckResult> = {},
-): PermissionCheckResult {
-  return {
-    state,
-    toolName: "read",
-    source: "tool",
-    origin: "builtin",
-    matchedPattern: "*",
-    ...overrides,
-  };
-}
-
-function makeRunnerDeps(
-  overrides: Partial<GateRunnerDeps> = {},
-): GateRunnerDeps {
-  return {
-    checkPermission: vi.fn().mockReturnValue(makeCheckResult("allow")),
-    getSessionRuleset: vi.fn().mockReturnValue([]),
-    recordSessionApproval: vi.fn(),
-    writeReviewLog: vi.fn(),
-    emitDecision: vi.fn(),
-    canConfirm: vi.fn().mockReturnValue(true),
-    promptPermission: vi
-      .fn()
-      .mockResolvedValue({ approved: true, state: "approved" }),
-    ...overrides,
-  };
-}
+import { makeDescriptor, makeRunnerDeps } from "#test/helpers/gate-fixtures";
+import { makeCheckResult } from "#test/helpers/handler-fixtures";
 
 // ── tests ──────────────────────────────────────────────────────────────────
 
@@ -92,7 +27,11 @@ describe("runGateCheck", () => {
 
   it("returns block and emits policy_deny when policy is deny", async () => {
     const deps = makeRunnerDeps({
-      checkPermission: vi.fn().mockReturnValue(makeCheckResult("deny")),
+      checkPermission: vi
+        .fn()
+        .mockReturnValue(
+          makeCheckResult({ state: "deny", matchedPattern: "*" }),
+        ),
     });
     const result = await runGateCheck(makeDescriptor(), null, "tc-1", deps);
     expect(result).toMatchObject({ action: "block" });
@@ -110,12 +49,11 @@ describe("runGateCheck", () => {
 
   it("returns allow and emits session_approved on session hit", async () => {
     const deps = makeRunnerDeps({
-      checkPermission: vi.fn().mockReturnValue(
-        makeCheckResult("allow", {
-          source: "session",
-          matchedPattern: "git *",
-        }),
-      ),
+      checkPermission: vi
+        .fn()
+        .mockReturnValue(
+          makeCheckResult({ source: "session", matchedPattern: "git *" }),
+        ),
     });
     const result = await runGateCheck(
       makeDescriptor({
@@ -145,7 +83,11 @@ describe("runGateCheck", () => {
 
   it("returns allow and emits user_approved when ask + user approves", async () => {
     const deps = makeRunnerDeps({
-      checkPermission: vi.fn().mockReturnValue(makeCheckResult("ask")),
+      checkPermission: vi
+        .fn()
+        .mockReturnValue(
+          makeCheckResult({ state: "ask", matchedPattern: "*" }),
+        ),
       promptPermission: vi
         .fn()
         .mockResolvedValue({ approved: true, state: "approved" }),
@@ -162,7 +104,11 @@ describe("runGateCheck", () => {
 
   it("returns allow, emits user_approved_for_session, and records session rule on approved_for_session", async () => {
     const deps = makeRunnerDeps({
-      checkPermission: vi.fn().mockReturnValue(makeCheckResult("ask")),
+      checkPermission: vi
+        .fn()
+        .mockReturnValue(
+          makeCheckResult({ state: "ask", matchedPattern: "*" }),
+        ),
       promptPermission: vi
         .fn()
         .mockResolvedValue({ approved: true, state: "approved_for_session" }),
@@ -184,7 +130,11 @@ describe("runGateCheck", () => {
 
   it("calls recordSessionApproval once with the full SessionApproval when sessionApproval has multiple patterns", async () => {
     const deps = makeRunnerDeps({
-      checkPermission: vi.fn().mockReturnValue(makeCheckResult("ask")),
+      checkPermission: vi
+        .fn()
+        .mockReturnValue(
+          makeCheckResult({ state: "ask", matchedPattern: "*" }),
+        ),
       promptPermission: vi
         .fn()
         .mockResolvedValue({ approved: true, state: "approved_for_session" }),
@@ -202,7 +152,11 @@ describe("runGateCheck", () => {
 
   it("returns block and emits user_denied when ask + user denies", async () => {
     const deps = makeRunnerDeps({
-      checkPermission: vi.fn().mockReturnValue(makeCheckResult("ask")),
+      checkPermission: vi
+        .fn()
+        .mockReturnValue(
+          makeCheckResult({ state: "ask", matchedPattern: "*" }),
+        ),
       promptPermission: vi
         .fn()
         .mockResolvedValue({ approved: false, state: "denied" }),
@@ -219,7 +173,11 @@ describe("runGateCheck", () => {
 
   it("returns block and emits confirmation_unavailable when ask + no UI", async () => {
     const deps = makeRunnerDeps({
-      checkPermission: vi.fn().mockReturnValue(makeCheckResult("ask")),
+      checkPermission: vi
+        .fn()
+        .mockReturnValue(
+          makeCheckResult({ state: "ask", matchedPattern: "*" }),
+        ),
       canConfirm: vi.fn().mockReturnValue(false),
     });
     const result = await runGateCheck(makeDescriptor(), null, "tc-1", deps);
@@ -234,7 +192,11 @@ describe("runGateCheck", () => {
 
   it("emits auto_approved resolution when decision has autoApproved flag", async () => {
     const deps = makeRunnerDeps({
-      checkPermission: vi.fn().mockReturnValue(makeCheckResult("ask")),
+      checkPermission: vi
+        .fn()
+        .mockReturnValue(
+          makeCheckResult({ state: "ask", matchedPattern: "*" }),
+        ),
       promptPermission: vi.fn().mockResolvedValue({
         approved: true,
         state: "approved",
@@ -304,7 +266,11 @@ describe("runGateCheck", () => {
 
   it("passes requestId from toolCallId to promptPermission", async () => {
     const deps = makeRunnerDeps({
-      checkPermission: vi.fn().mockReturnValue(makeCheckResult("ask")),
+      checkPermission: vi
+        .fn()
+        .mockReturnValue(
+          makeCheckResult({ state: "ask", matchedPattern: "*" }),
+        ),
     });
     await runGateCheck(makeDescriptor(), null, "tc-42", deps);
     expect(deps.promptPermission).toHaveBeenCalledWith(
@@ -314,7 +280,11 @@ describe("runGateCheck", () => {
 
   it("does not call recordSessionApproval when user approves once (no sessionApproval)", async () => {
     const deps = makeRunnerDeps({
-      checkPermission: vi.fn().mockReturnValue(makeCheckResult("ask")),
+      checkPermission: vi
+        .fn()
+        .mockReturnValue(
+          makeCheckResult({ state: "ask", matchedPattern: "*" }),
+        ),
       promptPermission: vi
         .fn()
         .mockResolvedValue({ approved: true, state: "approved" }),
@@ -326,7 +296,8 @@ describe("runGateCheck", () => {
   it("uses preCheck result directly instead of calling checkPermission", async () => {
     const deps = makeRunnerDeps();
     const descriptor = makeDescriptor({
-      preCheck: makeCheckResult("deny", {
+      preCheck: makeCheckResult({
+        state: "deny",
         origin: "global",
         matchedPattern: "rm *",
       }),
@@ -345,7 +316,11 @@ describe("runGateCheck", () => {
 
   it("does not call recordSessionApproval when user approves for session but no sessionApproval on descriptor", async () => {
     const deps = makeRunnerDeps({
-      checkPermission: vi.fn().mockReturnValue(makeCheckResult("ask")),
+      checkPermission: vi
+        .fn()
+        .mockReturnValue(
+          makeCheckResult({ state: "ask", matchedPattern: "*" }),
+        ),
       promptPermission: vi
         .fn()
         .mockResolvedValue({ approved: true, state: "approved_for_session" }),
@@ -386,11 +361,15 @@ describe("runGateCheck", () => {
 
     it("uses denialContext to format denyReason with extension tag", async () => {
       const deps = makeRunnerDeps({
-        checkPermission: vi.fn().mockReturnValue(makeCheckResult("deny")),
+        checkPermission: vi
+          .fn()
+          .mockReturnValue(
+            makeCheckResult({ state: "deny", matchedPattern: "*" }),
+          ),
       });
       const ctx: DenialContext = {
         kind: "tool",
-        check: makeCheckResult("deny"),
+        check: makeCheckResult({ state: "deny", matchedPattern: "*" }),
         agentName: "test-agent",
       };
       const result = await runGateCheck(
@@ -408,12 +387,16 @@ describe("runGateCheck", () => {
 
     it("uses denialContext to format unavailableReason with extension tag", async () => {
       const deps = makeRunnerDeps({
-        checkPermission: vi.fn().mockReturnValue(makeCheckResult("ask")),
+        checkPermission: vi
+          .fn()
+          .mockReturnValue(
+            makeCheckResult({ state: "ask", matchedPattern: "*" }),
+          ),
         canConfirm: vi.fn().mockReturnValue(false),
       });
       const ctx: DenialContext = {
         kind: "tool",
-        check: makeCheckResult("ask"),
+        check: makeCheckResult({ state: "ask", matchedPattern: "*" }),
       };
       const result = await runGateCheck(
         makeDenialContextDescriptor(ctx),
@@ -430,7 +413,11 @@ describe("runGateCheck", () => {
 
     it("uses denialContext to format userDeniedReason with extension tag", async () => {
       const deps = makeRunnerDeps({
-        checkPermission: vi.fn().mockReturnValue(makeCheckResult("ask")),
+        checkPermission: vi
+          .fn()
+          .mockReturnValue(
+            makeCheckResult({ state: "ask", matchedPattern: "*" }),
+          ),
         promptPermission: vi.fn().mockResolvedValue({
           approved: false,
           state: "denied",
@@ -439,7 +426,7 @@ describe("runGateCheck", () => {
       });
       const ctx: DenialContext = {
         kind: "tool",
-        check: makeCheckResult("ask"),
+        check: makeCheckResult({ state: "ask", matchedPattern: "*" }),
       };
       const result = await runGateCheck(
         makeDenialContextDescriptor(ctx),

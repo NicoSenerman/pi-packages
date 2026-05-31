@@ -15,38 +15,17 @@ import type {
   GateDescriptor,
 } from "#src/handlers/gates/descriptor";
 import { isGateBypass, isGateDescriptor } from "#src/handlers/gates/descriptor";
-import type { ToolCallContext } from "#src/handlers/gates/types";
 import type { Rule } from "#src/rule";
 import type { PermissionCheckResult } from "#src/types";
+
+import {
+  makeGateCheckResult as makeCheckResult,
+  makeTcc,
+} from "#test/helpers/gate-fixtures";
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
-
-// ── helpers ────────────────────────────────────────────────────────────────
-
-function makeTcc(overrides: Partial<ToolCallContext> = {}): ToolCallContext {
-  return {
-    toolName: "bash",
-    agentName: null,
-    input: { command: "cat .env" },
-    toolCallId: "tc-1",
-    cwd: "/test/project",
-    ...overrides,
-  };
-}
-
-function makeCheckResult(
-  overrides: Partial<PermissionCheckResult> = {},
-): PermissionCheckResult {
-  return {
-    toolName: "path",
-    state: "allow",
-    source: "special",
-    origin: "global",
-    ...overrides,
-  };
-}
 
 type CheckPermissionFn = (
   surface: string,

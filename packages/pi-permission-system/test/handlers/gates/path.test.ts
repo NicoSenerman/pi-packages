@@ -7,8 +7,11 @@ import type { ToolCallContext } from "#src/handlers/gates/types";
 import type { Rule } from "#src/rule";
 import type { PermissionCheckResult } from "#src/types";
 
+import { makeGateCheckResult as makeCheckResult } from "#test/helpers/gate-fixtures";
+
 // ── helpers ────────────────────────────────────────────────────────────────
 
+// path.test.ts uses read-tool defaults; the shared makeTcc uses bash defaults.
 function makeTcc(overrides: Partial<ToolCallContext> = {}): ToolCallContext {
   return {
     toolName: "read",
@@ -16,18 +19,6 @@ function makeTcc(overrides: Partial<ToolCallContext> = {}): ToolCallContext {
     input: { path: ".env" },
     toolCallId: "tc-1",
     cwd: "/test/project",
-    ...overrides,
-  };
-}
-
-function makeCheckResult(
-  overrides: Partial<PermissionCheckResult> = {},
-): PermissionCheckResult {
-  return {
-    toolName: "path",
-    state: "allow",
-    source: "special",
-    origin: "global",
     ...overrides,
   };
 }
