@@ -592,6 +592,7 @@ Filtered to what blocks or complicates [#266]:
    - `describeToolGate(tcc, check, formatter)` — accepts the formatter
    - `formatAskPrompt(result, agentName, input, formatter)` — accepts the formatter
    - `PermissionGateHandler` constructs the formatter from config and passes it to gate descriptors
+   - Ordering: do [#285] (Phase 2) first — it decomposes `handleToolCall`, which holds the `describeToolGate` call site this step modifies, so threading the formatter through the already-decomposed pipeline avoids a rebase
    - Category: C (parameter relay → single-object injection)
    - Outcome: config reaches formatting with one parameter instead of threading two numbers through 5 layers
    - Commit: `refactor: thread ToolPreviewFormatter through gate descriptor chain`
@@ -643,6 +644,8 @@ Phase 1 is scoped to enabling [#266] (the preview formatter).
 Phase 2 is a distinct theme: it eliminates the five `fallow` refactoring targets and drives down the test-tree duplication.
 Four of the five targets sit on the security-critical `tool_call` decision path, where high untested complexity is a correctness risk, not only a maintainability one.
 
+The two phases are otherwise independent and can run in either order, with one exception: do [#285] before Phase 1 step 2, since both modify the `describeToolGate` call site inside `handleToolCall`, and decomposing that function first lets the formatter thread through a clean pipeline.
+
 ### Current health metrics
 
 | Metric               | Value                                                        |
@@ -675,6 +678,7 @@ All findings are `fallow`-confirmed and untracked before this phase.
    - Extract a `runGate(descriptor)` helper closing over `tcc` and `runnerDeps` that handles the bypass log/emit branch, calls `runGateCheck`, and returns a block result or `undefined`.
    - Extract the tool-name validation prelude into a helper returning a discriminated result.
    - The body collapses to validate → build context → ordered gate pipeline that short-circuits on the first block.
+   - Ordering: recommended before Phase 1 step 2 (formatter threading), which adds an argument to the `describeToolGate` call this step relocates — decompose-then-extend is cheaper than the reverse.
    - Category: B (god function on the security path)
    - Outcome: cognitive 52 → target < 15; CRAP 172 falls as the repeated block dissolves.
    - Commit: `refactor: decompose handleToolCall into a gate pipeline`
