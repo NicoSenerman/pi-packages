@@ -22,3 +22,22 @@ The plan is behavior-preserving, adds direct unit tests for the already-exported
 - `design-review` skill judged not applicable: the change is one self-contained pure function with no shared-interface or layer-wiring impact.
 - Block-comment scan is planned to switch from a character loop to `indexOf("*/")` (behavior-identical, including the unterminated-to-EOF branch) — flagged as a risk with a dedicated test.
 - markdownlint is not installed locally (`markdownlint-cli2` not found; no `.markdownlint*` config); relied on the `markdown-conventions` skill. `rumdl fmt` ran in the pre-commit hook and passed.
+
+## Stage: Implementation — TDD (2026-05-31T15:23:14Z)
+
+### Session summary
+
+Completed all 3 TDD steps: pinned 14 direct unit tests for `stripJsonComments` (Step 1), replaced the five-flag scanner with the stateless dispatcher + three consume helpers (Step 2), and updated `docs/architecture/architecture.md` to mark Phase 2 Step 5 complete (Step 3).
+Test count: 1614 → 1628 (+14).
+A `style:` cleanup commit was added after the pre-completion review to fix helper ordering.
+
+### Observations
+
+- Step 1 required two assertion corrections: (1) the space before `//` is emitted verbatim, so the expected output was `'{ \n"k": 1}'` not `'{\n"k": 1}'`; (2) the combined JSONC round-trip test had a stray `,` after a stripped block comment rendering the output invalid JSON — restructured the document so comments are inline on value lines.
+  Both caught before the step 1 commit; the pre-existing implementation was never at fault.
+- ESLint auto-fixed bracket notation to dot notation (`parsed["debugLog"]` → `parsed.debugLog`) during the pre-commit hook; accepted the change.
+- The `refactor:` commit placed the three consume helpers *before* `stripJsonComments`, inverting the stepdown rule (plan said "placed directly below `stripJsonComments`").
+  The pre-completion reviewer flagged this as WARN; fixed in a `style:` commit (`4ff870a1`) after the review.
+- `fallow health --targets` confirmed `config-loader.ts` / `stripJsonComments` no longer appears as a refactoring target after the refactor; architecture doc updated accordingly (targets 4 → 3).
+- Pre-completion reviewer: **WARN** (one finding — stepdown order, resolved before final commit).
+  All deterministic checks PASS.
