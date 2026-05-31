@@ -74,3 +74,19 @@ The prior session already extracted `ToolPreviewFormatter` (#282, closed) and de
 - `toolInputLogPreviewMaxLength` (1000) is left hardcoded — the issue only asks for the two prompt-facing limits.
 - Schema (`additionalProperties: false`) forces the schema + example update into the same commit as the type change; folded into TDD step 1.
 - One open question left for implementation: whether `config.example.json` shows the issue's illustrative `400`/`120` or echoes the `200`/`80` code defaults.
+
+## Stage: Implementation — TDD (2026-05-30T23:08:00Z)
+
+### Session summary
+
+Completed all 3 TDD cycles from the plan: (1) `normalizeOptionalPositiveInt` helper + two new optional config fields in `extension-config.ts`, schema, and example config; (2) `resolveToolPreviewLimits()` in `tool-preview-formatter.ts` + handler wiring in `permission-gate-handler.ts`; (3) docs update to `docs/configuration.md` and roadmap.
+Test count grew from 1527 to 1544 (+17 tests across `extension-config.test.ts` and `tool-preview-formatter.test.ts`).
+
+### Observations
+
+- Deviation from plan: four handler test factories (`external-directory-integration`, `external-directory-session-dedup`, `tool-call`, `tool-call-events`) needed `config: DEFAULT_EXTENSION_CONFIG` added because `handleToolCall` now reads `this.session.config` — the plan's "Module-Level Changes" listed only production files, not these test files.
+  The fix was mechanical (same 2-line addition to each mock) and landed in the same commit as step 2.
+- Open question from planning (example values `400`/`120` vs. `200`/`80`) resolved: `config.example.json` uses the illustrative `400`/`120` values; the Runtime Knobs table documents the `200`/`80` code defaults accurately.
+- Pre-completion reviewer: WARN (resolved before retro commit).
+  Finding: `package-pi-permission-system/SKILL.md` alignment guideline omitted `docs/configuration.md`.
+  Fix: skill updated in a follow-up commit (`3bd6ffda`).
