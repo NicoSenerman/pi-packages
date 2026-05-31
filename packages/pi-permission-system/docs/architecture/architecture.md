@@ -503,7 +503,8 @@ src/
 │       ├── external-directory-messages.ts External-directory ask-prompt formatting (denial messages moved to denial-messages.ts)
 │       ├── bash-external-directory.ts describeBashExternalDirectoryGate — pure descriptor/bypass factory
 │       ├── bash-path.ts      describeBashPathGate — async descriptor/bypass factory for bash path rules
-│       ├── bash-path-extractor.ts Tree-sitter-bash AST parser + external/rule path extraction; cd-aware: when the command begins with `cd <dir> &&`, relative paths are resolved against `<dir>` (if it stays within cwd) rather than cwd, matching actual shell behavior
+│       ├── bash-token-classification.ts Pure token classifiers — `classifyTokenAsPathCandidate` (strict: `/`, `~/`, `..`) and `classifyTokenAsRuleCandidate` (broader: also dot-files and relative paths); shared `rejectNonPathToken` predicate
+│       ├── bash-path-extractor.ts Tree-sitter-bash AST walker + external/rule path extraction; cd-aware: relative paths are resolved against a leading `cd <dir>` target (if it stays within cwd); classifiers imported from `bash-token-classification.ts`
 │       ├── path.ts           describePathGate — pure descriptor factory for cross-cutting path rules
 │       ├── tool.ts           describeToolGate — pure descriptor factory
 │       └── index.ts          Barrel re-exports
@@ -657,14 +658,14 @@ The two phases are otherwise independent and can run in either order, with one e
 
 All findings are `fallow`-confirmed and untracked before this phase.
 
-| #   | Finding                                                                                                                                                                      | Category                         | Files                                   | Impact | Risk | Priority |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- | --------------------------------------- | ------ | ---- | -------- |
-| 1   | `handleToolCall` runs six gates with a repeated bypass/runner/short-circuit shape — cognitive 52, CRAP 172, the package's worst                                              | B: god function                  | `handlers/permission-gate-handler.ts`   | 5      | 2    | 20       |
-| 2   | ✅ `resolvePermissions` interleaves scope merge with parallel origin-map bookkeeping — cognitive 33, CRAP 97 — resolved by [#286]                                            | B: god function                  | `permission-manager.ts`                 | 4      | 2    | 16       |
-| 3   | ✅ `runGateCheck` carried the full check→log→emit→approve cycle as six inline phases — cognitive 32 — resolved by [#287]                                                     | B: god function                  | `handlers/gates/runner.ts`              | 4      | 2    | 16       |
-| 4   | Two token classifiers share a 31-line rejection prelude (production clone); `collectPathCandidateTokens` (37) and `collectPatternCommandTokens` (33) are complexity hotspots | A: duplication / B: god function | `handlers/gates/bash-path-extractor.ts` | 4      | 3    | 12       |
-| 5   | `stripJsonComments` is a five-variable character scanner — cognitive 31                                                                                                      | B: god function                  | `config-loader.ts`                      | 2      | 2    | 8        |
-| 6   | 9.1% duplication concentrated in the test tree — the single largest health deduction (-4.1)                                                                                  | D: test duplication              | `test/` (clone families)                | 3      | 1    | 15       |
+| #   | Finding                                                                                                                                                                                              | Category                         | Files                                   | Impact | Risk | Priority |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- | --------------------------------------- | ------ | ---- | -------- |
+| 1   | `handleToolCall` runs six gates with a repeated bypass/runner/short-circuit shape — cognitive 52, CRAP 172, the package's worst                                                                      | B: god function                  | `handlers/permission-gate-handler.ts`   | 5      | 2    | 20       |
+| 2   | ✅ `resolvePermissions` interleaves scope merge with parallel origin-map bookkeeping — cognitive 33, CRAP 97 — resolved by [#286]                                                                    | B: god function                  | `permission-manager.ts`                 | 4      | 2    | 16       |
+| 3   | ✅ `runGateCheck` carried the full check→log→emit→approve cycle as six inline phases — cognitive 32 — resolved by [#287]                                                                             | B: god function                  | `handlers/gates/runner.ts`              | 4      | 2    | 16       |
+| 4   | ✅ Two token classifiers share a 31-line rejection prelude (production clone); `collectPathCandidateTokens` (37) and `collectPatternCommandTokens` (33) are complexity hotspots — resolved by [#289] | A: duplication / B: god function | `handlers/gates/bash-path-extractor.ts` | 4      | 3    | 12       |
+| 5   | `stripJsonComments` is a five-variable character scanner — cognitive 31                                                                                                                              | B: god function                  | `config-loader.ts`                      | 2      | 2    | 8        |
+| 6   | 9.1% duplication concentrated in the test tree — the single largest health deduction (-4.1)                                                                                                          | D: test duplication              | `test/` (clone families)                | 3      | 1    | 15       |
 
 ### Steps
 
@@ -685,12 +686,12 @@ All findings are `fallow`-confirmed and untracked before this phase.
    - Extracted `buildDecisionEvent` into `helpers.ts` to deduplicate the `origin/agentName/matchedPattern ?? null` normalization across both emit sites.
    - Outcome: `runner.ts` no longer appears as a refactoring target; refactoring targets 4 → 3.
 
-4. **Decompose `bash-path-extractor.ts`** ([#289])
-   - Extract `rejectNonPathToken(token)` for the shared rejection prelude; each classifier keeps only its acceptance gate, removing the 31-line clone.
-   - Extract the flag-handling step from `collectPatternCommandTokens` to cut its cognitive load.
+4. ✅ **Decompose `bash-path-extractor.ts`** ([#289]) — **completed**
+   - Extracted pure token classifiers into new `src/handlers/gates/bash-token-classification.ts`; private `rejectNonPathToken` predicate eliminates the 31-line rejection-prelude clone.
+   - Extracted `classifyPatternCommandFlag` (returns a `PatternCommandFlagDirective` discriminated union) to replace the inline flag state machine in `collectPatternCommandTokens`.
+   - Extracted `collectCommandTokens`, `collectGenericCommandTokens`, `collectRedirectTokens` from `collectPathCandidateTokens`; converted both walkers from output-argument accumulator to return-based `string[]`.
    - Category: A + B (production clone + god functions)
-   - Outcome: clone removed; `collectPathCandidateTokens` (37) and `collectPatternCommandTokens` (33) drop below target.
-   - Commit: `refactor: extract shared token rejection in bash-path-extractor`
+   - Outcome: clone removed; `collectPathCandidateTokens` and `collectPatternCommandTokens` decomposed into focused helpers; `bash-token-classification.ts` has dedicated unit tests (43 tests) covering every rejection and acceptance branch.
 
 5. **Reduce `stripJsonComments` complexity** ([#290])
    - Model the scanner as an explicit small state machine or extract per-mode consume helpers.
