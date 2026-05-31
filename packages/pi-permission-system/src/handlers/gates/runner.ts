@@ -120,11 +120,8 @@ export async function runGateCheck(
   );
 
   // 6. Record session approval — tell the store; it owns the per-pattern loop
-  if (
-    gateResult.action === "allow" &&
-    hasSessionApproval &&
-    descriptor.sessionApproval
-  ) {
+  // hasSessionApproval already implies gateResult.action === "allow"
+  if (hasSessionApproval && descriptor.sessionApproval) {
     deps.recordSessionApproval(descriptor.sessionApproval);
   }
 
