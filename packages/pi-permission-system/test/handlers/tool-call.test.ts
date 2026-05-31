@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  getEventInput,
-  PermissionGateHandler,
-} from "#src/handlers/permission-gate-handler";
+import { getEventInput } from "#src/handlers/permission-gate-handler";
 
 import {
   makeCheckResult,
