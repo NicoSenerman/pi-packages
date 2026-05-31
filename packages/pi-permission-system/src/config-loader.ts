@@ -31,75 +31,82 @@ export interface UnifiedConfigLoadResult {
   issues: string[];
 }
 
-export function stripJsonComments(input: string): string {
-  let output = "";
-  let inString = false;
-  let stringQuote: '"' | "'" | "" = "";
+/** A consumed run of source: the text to emit and the index to resume scanning. */
+interface ScanSegment {
+  output: string;
+  nextIndex: number;
+}
+
+/** Consume a `//` line comment starting at `start`; drop the body, keep the newline. */
+function consumeLineComment(input: string, start: number): ScanSegment {
+  const newlineIndex = input.indexOf("\n", start);
+  if (newlineIndex === -1) return { output: "", nextIndex: input.length };
+  return { output: "\n", nextIndex: newlineIndex + 1 };
+}
+
+/** Consume a block comment starting at `start`; drop it entirely. */
+function consumeBlockComment(input: string, start: number): ScanSegment {
+  const closeIndex = input.indexOf("*/", start + 2);
+  if (closeIndex === -1) return { output: "", nextIndex: input.length };
+  return { output: "", nextIndex: closeIndex + 2 };
+}
+
+/**
+ * Consume a string literal starting at the opening quote at `start`.
+ * Honors backslash escapes so an escaped quote does not close the literal.
+ * Emits the opening quote, body, and closing quote verbatim.
+ */
+function consumeString(input: string, start: number): ScanSegment {
+  const quote = input[start];
+  let output = quote;
+  let i = start + 1;
   let escaping = false;
-  let inLineComment = false;
-  let inBlockComment = false;
-
-  for (let i = 0; i < input.length; i++) {
+  while (i < input.length) {
     const char = input[i];
-    const next = input[i + 1] || "";
-
-    if (inLineComment) {
-      if (char === "\n") {
-        inLineComment = false;
-        output += char;
-      }
-      continue;
-    }
-
-    if (inBlockComment) {
-      if (char === "*" && next === "/") {
-        inBlockComment = false;
-        i++;
-      }
-      continue;
-    }
-
-    if (!inString && char === "/" && next === "/") {
-      inLineComment = true;
-      i++;
-      continue;
-    }
-
-    if (!inString && char === "/" && next === "*") {
-      inBlockComment = true;
-      i++;
-      continue;
-    }
-
     output += char;
-
-    if (!inString && (char === '"' || char === "'")) {
-      inString = true;
-      stringQuote = char;
-      escaping = false;
-      continue;
-    }
-
-    if (!inString) {
-      continue;
-    }
-
+    i++;
     if (escaping) {
       escaping = false;
       continue;
     }
-
     if (char === "\\") {
       escaping = true;
       continue;
     }
-
-    if (char === stringQuote) {
-      inString = false;
-      stringQuote = "";
-    }
+    if (char === quote) break;
   }
+  return { output, nextIndex: i };
+}
 
+export function stripJsonComments(input: string): string {
+  let output = "";
+  let i = 0;
+  while (i < input.length) {
+    const char = input[i];
+    const next = input[i + 1] ?? "";
+
+    if (char === "/" && next === "/") {
+      const seg = consumeLineComment(input, i);
+      output += seg.output;
+      i = seg.nextIndex;
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      const seg = consumeBlockComment(input, i);
+      output += seg.output;
+      i = seg.nextIndex;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      const seg = consumeString(input, i);
+      output += seg.output;
+      i = seg.nextIndex;
+      continue;
+    }
+
+    output += char;
+    i++;
+  }
   return output;
 }
 
