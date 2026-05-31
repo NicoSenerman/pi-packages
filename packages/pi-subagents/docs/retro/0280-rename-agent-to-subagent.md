@@ -22,3 +22,21 @@ The plan is a 7-step refactor (no behavior change), each step an atomic language
 - Compound names (`AgentSession`, `AgentInvocation`, `AgentTypeRegistry`, `AgentTool`, `AgentSpawnConfig`) are not bare-word matches and are explicitly out of scope.
 - Non-breaking — `refactor:` commits throughout; `verify:public-types` runs after the status consolidation and the final step since the public bundle (`dist/public.d.ts`) is rolled from `src/service/service.ts`.
 - Also flagged the `package-pi-subagents` SKILL.md for an internals-naming update (it references `AgentManager`, `Agent`, `make-agent`).
+
+## Stage: Implementation — TDD (2026-05-31T00:38:55Z)
+
+### Session summary
+
+Completed 6 refactor commits (steps 1–6 from the plan, with step 5 folded into step 3) plus a `test:` commit for the helper rename and a `docs:` commit for the architecture doc update.
+All 973 tests pass across 59 test files with no test count delta.
+Pre-completion reviewer returned PASS with all 5 acceptance criteria verified.
+
+### Observations
+
+- Step 5 (`AgentManagerLike` → `SubagentManagerLike`) was automatically folded into step 3 because the bulk-rename Python script replaced all `AgentManager*` compounds at once — no separate commit was needed or appropriate.
+- The acceptance grep (`grep -rnE '\bAgent(Manager|Init)?\b' src/lifecycle/`) also flags bare `Agent` in comments and error strings; each rename step swept those manually since the language-service rename does not touch non-symbol text.
+- `sed` with negative lookaheads failed on macOS for the `notification.ts` file; fell back to a two-pass approach (sed for the import, then `perl -i -0pe` with negative lookahead for the body).
+- `describe("Agent — ...)` test block names used em-dashes (Unicode U+2014); `sed` with `\u2014` escape did not match on macOS — required Python `re.sub` with the literal character.
+- The `SubagentStatus` type definition was kept in `src/lifecycle/subagent.ts` (single home) and re-exported from `src/service/service.ts`, matching the existing `LifetimeUsage` / workspace re-export pattern and avoiding a `lifecycle → service` cycle.
+- Docs: the architecture doc's session-encapsulation table had misaligned Markdown table columns after the rename (cell widths changed); `rumdl fmt` auto-fixed them.
+- Pre-completion reviewer: PASS — all deterministic checks, all 5 acceptance criteria, conventional commits, docs, Mermaid diagrams, and dead-code gate confirmed clean.
