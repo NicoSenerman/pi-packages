@@ -68,6 +68,6 @@ export function makeMenuManager() {
  * Default values match the `testDefaultAgentConfig` used in agent-menu.test.ts
  * and agent-config-editor.test.ts (identical in both files).
  */
-export function createTestAgentConfig(overrides?: Partial<AgentConfig>): AgentConfig {
+export function createTestSubagentConfig(overrides?: Partial<AgentConfig>): AgentConfig {
 	return { ...DEFAULT_TEST_AGENT_CONFIG, ...overrides };
 }

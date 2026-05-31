@@ -3,7 +3,7 @@ import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { type AgentToolManager, type AgentToolRuntime, type AgentToolSettings } from "#src/tools/agent-tool";
 import { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
-import { createTestAgent } from "./make-agent";
+import { createTestSubagent } from "./make-subagent";
 import { STUB_SNAPSHOT } from "./stub-ctx";
 
 /** Minimal registry with no user agents — sufficient for tool tests that don't exercise agent-type lookup. */
@@ -60,9 +60,9 @@ export function createToolDeps(overrides: Partial<AgentToolFixture> = {}): Agent
 	return {
 		manager: {
 			spawn: vi.fn().mockReturnValue("agent-1"),
-			spawnAndWait: vi.fn().mockResolvedValue(createTestAgent()),
-			resume: vi.fn().mockResolvedValue(createTestAgent()),
-			getRecord: vi.fn().mockReturnValue(createTestAgent()),
+			spawnAndWait: vi.fn().mockResolvedValue(createTestSubagent()),
+			resume: vi.fn().mockResolvedValue(createTestSubagent()),
+			getRecord: vi.fn().mockReturnValue(createTestSubagent()),
 		},
 		runtime,
 		settings: { defaultMaxTurns: undefined as number | undefined, maxConcurrent: 4 },

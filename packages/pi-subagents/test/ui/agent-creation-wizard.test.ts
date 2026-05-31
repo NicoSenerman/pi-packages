@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { AgentCreationWizard } from "#src/ui/agent-creation-wizard";
-import { createTestAgent } from "#test/helpers/make-agent";
+import { createTestSubagent } from "#test/helpers/make-subagent";
 import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 import { makeFileOps, makeMenuManager, makeMenuUI } from "#test/helpers/ui-stubs";
 
@@ -60,7 +60,7 @@ describe("AgentCreationWizard", () => {
       const deps = makeDeps();
       deps.fileOps.exists.mockReturnValue(false).mockReturnValueOnce(false);
       deps.manager.spawnAndWait.mockResolvedValue(
-        createTestAgent({ status: "completed" }),
+        createTestSubagent({ status: "completed" }),
       );
       // After spawn, check if file exists → true (file was created by spawned agent)
       deps.fileOps.exists
@@ -95,7 +95,7 @@ describe("AgentCreationWizard", () => {
     it("notifies warning when spawn returns error status", async () => {
       const deps = makeDeps();
       deps.manager.spawnAndWait.mockResolvedValue(
-        createTestAgent({ status: "error", error: "spawn failed" }),
+        createTestSubagent({ status: "error", error: "spawn failed" }),
       );
 
       const ui = makeMenuUI([
@@ -118,7 +118,7 @@ describe("AgentCreationWizard", () => {
     it("notifies warning when file is not created after successful spawn", async () => {
       const deps = makeDeps();
       deps.manager.spawnAndWait.mockResolvedValue(
-        createTestAgent({ status: "completed" }),
+        createTestSubagent({ status: "completed" }),
       );
       // File does not exist after spawn
       deps.fileOps.exists.mockReturnValue(false);

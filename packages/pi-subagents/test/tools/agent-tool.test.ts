@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { AgentTool } from "#src/tools/agent-tool";
-import { createTestAgent } from "#test/helpers/make-agent";
 import { createToolDeps } from "#test/helpers/make-deps";
+import { createTestSubagent } from "#test/helpers/make-subagent";
 import { createMockSession, createSubagentSessionStub, toSubagentSession } from "#test/helpers/mock-session";
 
 function makeCtx(overrides: Record<string, unknown> = {}) {
@@ -90,7 +90,7 @@ describe("AgentTool — resume path", () => {
 	it("returns no-session when agent has no active session", async () => {
 		const deps = createToolDeps();
 		// No execution state set — session not yet created
-		deps.manager.getRecord = vi.fn().mockReturnValue(createTestAgent());
+		deps.manager.getRecord = vi.fn().mockReturnValue(createTestSubagent());
 		const result = await execute(deps, {
 			prompt: "continue",
 			description: "resume",
@@ -102,10 +102,10 @@ describe("AgentTool — resume path", () => {
 
 	it("returns result text on successful resume", async () => {
 		const deps = createToolDeps();
-		const resumeRecord = createTestAgent();
+		const resumeRecord = createTestSubagent();
 		resumeRecord.subagentSession = toSubagentSession(createSubagentSessionStub(createMockSession()));
 		deps.manager.getRecord = vi.fn().mockReturnValue(resumeRecord);
-		deps.manager.resume = vi.fn().mockResolvedValue(createTestAgent({ result: "Resumed output." }));
+		deps.manager.resume = vi.fn().mockResolvedValue(createTestSubagent({ result: "Resumed output." }));
 		const result = await execute(deps, {
 			prompt: "continue",
 			description: "resume",
@@ -136,7 +136,7 @@ describe("AgentTool — model resolution error", () => {
 describe("AgentTool — background execution", () => {
 	it("returns background launch message with agent ID", async () => {
 		const deps = createToolDeps();
-		const record = createTestAgent({ status: "running" });
+		const record = createTestSubagent({ status: "running" });
 		deps.manager.getRecord = vi.fn().mockReturnValue(record);
 		const result = await execute(deps, {
 			prompt: "do something",
@@ -155,7 +155,7 @@ describe("AgentTool — background execution", () => {
 		// called from SubagentManager.spawn(). Tested in subagent-manager.test.ts.
 		// This test ensures the tool no longer holds an emitEvent dep for this purpose.
 		const deps = createToolDeps();
-		deps.manager.getRecord = vi.fn().mockReturnValue(createTestAgent({ status: "running" }));
+		deps.manager.getRecord = vi.fn().mockReturnValue(createTestSubagent({ status: "running" }));
 		const result = await execute(deps, {
 			prompt: "do something",
 			description: "bg task",
@@ -168,7 +168,7 @@ describe("AgentTool — background execution", () => {
 
 	it("registers activity in agentActivity map", async () => {
 		const deps = createToolDeps();
-		deps.manager.getRecord = vi.fn().mockReturnValue(createTestAgent({ status: "running" }));
+		deps.manager.getRecord = vi.fn().mockReturnValue(createTestSubagent({ status: "running" }));
 		await execute(deps, {
 			prompt: "do something",
 			description: "bg task",
@@ -180,7 +180,7 @@ describe("AgentTool — background execution", () => {
 
 	it("passes parentSession.toolCallId to manager.spawn so the manager wires NotificationState", async () => {
 		const deps = createToolDeps();
-		deps.manager.getRecord = vi.fn().mockReturnValue(createTestAgent({ status: "running" }));
+		deps.manager.getRecord = vi.fn().mockReturnValue(createTestSubagent({ status: "running" }));
 		await execute(deps, {
 			prompt: "do something",
 			description: "bg task",
@@ -196,7 +196,7 @@ describe("AgentTool — foreground execution", () => {
 	it("returns completion message with stats", async () => {
 		const deps = createToolDeps();
 		deps.manager.spawnAndWait = vi.fn().mockResolvedValue(
-			createTestAgent({ result: "Task complete.", toolUses: 5 }),
+			createTestSubagent({ result: "Task complete.", toolUses: 5 }),
 		);
 		const result = await execute(deps, {
 			prompt: "do task",
@@ -211,7 +211,7 @@ describe("AgentTool — foreground execution", () => {
 	it("returns error message when agent fails", async () => {
 		const deps = createToolDeps();
 		deps.manager.spawnAndWait = vi.fn().mockResolvedValue(
-			createTestAgent({ status: "error", error: "Out of context" }),
+			createTestSubagent({ status: "error", error: "Out of context" }),
 		);
 		const result = await execute(deps, {
 			prompt: "do task",

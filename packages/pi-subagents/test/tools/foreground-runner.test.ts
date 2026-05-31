@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type ForegroundParams, runForeground } from "#src/tools/foreground-runner";
 import type { ResolvedSpawnConfig } from "#src/tools/spawn-config";
-import { createTestAgent } from "#test/helpers/make-agent";
 import { createToolDeps } from "#test/helpers/make-deps";
+import { createTestSubagent } from "#test/helpers/make-subagent";
 import { createMockSession, createSubagentSessionStub, toSubagentSession } from "#test/helpers/mock-session";
 import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 
@@ -76,7 +76,7 @@ describe("runForeground", () => {
 			manager: {
 				...createToolDeps().manager,
 				spawnAndWait: vi.fn().mockResolvedValue(
-					createTestAgent({ status: "error", error: "Context window exceeded" }),
+					createTestSubagent({ status: "error", error: "Context window exceeded" }),
 				),
 			},
 		});
@@ -120,7 +120,7 @@ describe("runForeground", () => {
 				...createToolDeps().manager,
 				spawnAndWait: vi.fn().mockImplementation(
 					async (_snapshot: any, _type: any, _prompt: any, opts: any) => {
-						const record = createTestAgent({ result: "done" });
+						const record = createTestSubagent({ result: "done" });
 						record.subagentSession = toSubagentSession(createSubagentSessionStub(createMockSession()));
 						opts.observer?.onSessionCreated?.(record);
 						return record;
@@ -140,7 +140,7 @@ describe("runForeground", () => {
 				...createToolDeps().manager,
 				spawnAndWait: vi.fn().mockImplementation(
 					async (_snapshot: any, _type: any, _prompt: any, opts: any) => {
-						const record = createTestAgent({ result: "done" });
+						const record = createTestSubagent({ result: "done" });
 						record.subagentSession = toSubagentSession(createSubagentSessionStub(createMockSession()));
 						opts.observer?.onSessionCreated?.(record);
 						return record;
@@ -170,7 +170,7 @@ describe("runForeground", () => {
 		await vi.advanceTimersByTimeAsync(100);
 		expect(onUpdate).toHaveBeenCalled();
 
-		resolve(createTestAgent({ result: "done" }));
+		resolve(createTestSubagent({ result: "done" }));
 		await runPromise;
 	});
 

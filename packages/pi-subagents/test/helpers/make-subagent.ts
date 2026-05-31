@@ -1,6 +1,6 @@
 import { Subagent, type SubagentInit } from "#src/lifecycle/subagent";
 
-export function createTestAgent(overrides: Partial<SubagentInit> & {
+export function createTestSubagent(overrides: Partial<SubagentInit> & {
 	/** Legacy shorthand: set toolUses via incrementToolUses(). */
 	toolUses?: number;
 	/** Legacy shorthand: set lifetimeUsage via addUsage(). */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentConfig } from "#src/types";
-import { createTestAgentConfig, makeFileOps, makeMenuManager, makeMenuUI } from "./ui-stubs";
+import { createTestSubagentConfig, makeFileOps, makeMenuManager, makeMenuUI } from "./ui-stubs";
 
 describe("makeFileOps", () => {
 	it("has all required FileOps methods", () => {
@@ -80,16 +80,16 @@ describe("makeMenuManager", () => {
 	});
 });
 
-describe("createTestAgentConfig", () => {
+describe("createTestSubagentConfig", () => {
 	it("returns a valid AgentConfig with all required fields", () => {
-		const config = createTestAgentConfig();
+		const config = createTestSubagentConfig();
 		// Required fields from AgentConfig
 		const _typeCheck: AgentConfig = config;
 		expect(_typeCheck).toBeDefined();
 	});
 
 	it("default config matches the shared test pattern", () => {
-		const config = createTestAgentConfig();
+		const config = createTestSubagentConfig();
 		expect(config.name).toBe("test-agent");
 		expect(config.description).toBe("A test agent");
 		expect(config.systemPrompt).toBe("You are a test agent.");
@@ -99,7 +99,7 @@ describe("createTestAgentConfig", () => {
 	});
 
 	it("accepts partial overrides", () => {
-		const config = createTestAgentConfig({ name: "custom", isDefault: false, source: "project" });
+		const config = createTestSubagentConfig({ name: "custom", isDefault: false, source: "project" });
 		expect(config.name).toBe("custom");
 		expect(config.isDefault).toBe(false);
 		expect(config.source).toBe("project");

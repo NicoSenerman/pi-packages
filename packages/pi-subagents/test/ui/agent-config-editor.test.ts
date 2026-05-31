@@ -6,10 +6,10 @@ import {
   buildEjectContent,
   buildMenuOptions,
 } from "#src/ui/agent-config-editor";
-import { createTestAgentConfig, makeFileOps, makeMenuUI } from "#test/helpers/ui-stubs";
+import { createTestSubagentConfig, makeFileOps, makeMenuUI } from "#test/helpers/ui-stubs";
 
-const testDefaultConfig = createTestAgentConfig();
-const testCustomConfig = createTestAgentConfig({ isDefault: false, source: "project" });
+const testDefaultConfig = createTestSubagentConfig();
+const testCustomConfig = createTestSubagentConfig({ isDefault: false, source: "project" });
 
 const testRegistry = new AgentTypeRegistry(() => new Map());
 

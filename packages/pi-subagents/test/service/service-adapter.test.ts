@@ -6,13 +6,13 @@ import type { SubagentsService } from "#src/service/service";
 import type { ServiceRuntimeLike, SubagentManagerLike } from "#src/service/service-adapter";
 import { SubagentsServiceAdapter, toSubagentRecord } from "#src/service/service-adapter";
 import type { SessionContext, Subagent } from "#src/types";
-import { createTestAgent } from "#test/helpers/make-agent";
+import { createTestSubagent } from "#test/helpers/make-subagent";
 import { createMockSession, createSubagentSessionStub, toSubagentSession } from "#test/helpers/mock-session";
 import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 
 describe("toSubagentRecord", () => {
   const baseRecord = (() => {
-    const r = createTestAgent({
+    const r = createTestSubagent({
       id: "abc-123",
       type: "Explore",
       description: "Check stale TODOs",
@@ -41,27 +41,27 @@ describe("toSubagentRecord", () => {
   });
 
   it("strips the session from the serialized record", () => {
-    const record = createTestAgent();
+    const record = createTestSubagent();
     record.subagentSession = toSubagentSession(createSubagentSessionStub(createMockSession()));
     const result = toSubagentRecord(record);
     expect(result).not.toHaveProperty("subagentSession");
   });
 
   it("strips abortController from the record", () => {
-    const record = createTestAgent();
+    const record = createTestSubagent();
     const result = toSubagentRecord(record);
     expect(result).not.toHaveProperty("abortController");
   });
 
   it("strips promise from the record", () => {
-    const record = createTestAgent();
+    const record = createTestSubagent();
     record.promise = Promise.resolve();
     const result = toSubagentRecord(record);
     expect(result).not.toHaveProperty("promise");
   });
 
   it("strips abortController, promise, and collaborator fields from the record", () => {
-    const record = createTestAgent();
+    const record = createTestSubagent();
     record.promise = Promise.resolve();
     const result = toSubagentRecord(record);
     expect(result).not.toHaveProperty("abortController");
@@ -71,7 +71,7 @@ describe("toSubagentRecord", () => {
   });
 
   it("strips invocation and collaborator fields from the serialized output", () => {
-    const record = createTestAgent({ invocation: { modelName: "haiku" } });
+    const record = createTestSubagent({ invocation: { modelName: "haiku" } });
     record.notification = new NotificationState("tc-1");
     const result = toSubagentRecord(record);
     expect(result).not.toHaveProperty("notification");
@@ -80,7 +80,7 @@ describe("toSubagentRecord", () => {
   });
 
   it("omits optional fields when undefined on the source", () => {
-    const minimal = createTestAgent({
+    const minimal = createTestSubagent({
       id: "min-1",
       description: "test",
       status: "running",
@@ -135,14 +135,14 @@ function makeRuntimeStub(override: Partial<ServiceRuntimeLike> = {}): ServiceRun
 }
 
 describe("SubagentsServiceAdapter — getRecord and listAgents", () => {
-  const recordA = createTestAgent({
+  const recordA = createTestSubagent({
     id: "a-1",
     type: "Explore",
     description: "task A",
     lifetimeUsage: { input: 10, output: 20, cacheWrite: 5 },
   });
 
-  const recordB = createTestAgent({
+  const recordB = createTestSubagent({
     id: "b-2",
     type: "Plan",
     description: "task B",
@@ -390,7 +390,7 @@ describe("SubagentsServiceAdapter — steer, abort, waitForAll, hasRunning", () 
     });
 
     it("queues message and returns true when session not ready", async () => {
-      const record = createTestAgent({ id: "a-1", status: "running" });
+      const record = createTestSubagent({ id: "a-1", status: "running" });
       const mgr = createTestManager();
       mgr.getRecord.mockReturnValue(record);
       const svc = createSvc(mgr);
@@ -400,7 +400,7 @@ describe("SubagentsServiceAdapter — steer, abort, waitForAll, hasRunning", () 
 
     it("delegates to session.steer and returns true when session is ready", async () => {
       const mockSteer = vi.fn(async () => {});
-      const record = createTestAgent({ id: "a-1", status: "running" });
+      const record = createTestSubagent({ id: "a-1", status: "running" });
       record.subagentSession = toSubagentSession(createSubagentSessionStub(createMockSession({ steer: mockSteer })));
       const mgr = createTestManager();
       mgr.getRecord.mockReturnValue(record);

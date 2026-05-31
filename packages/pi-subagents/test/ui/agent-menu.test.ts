@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { AgentsMenuHandler } from "#src/ui/agent-menu";
-import { createTestAgent } from "#test/helpers/make-agent";
+import { createTestSubagent } from "#test/helpers/make-subagent";
 import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
-import { createTestAgentConfig, makeFileOps, makeMenuManager, makeMenuUI } from "#test/helpers/ui-stubs";
+import { createTestSubagentConfig, makeFileOps, makeMenuManager, makeMenuUI } from "#test/helpers/ui-stubs";
 
-const testDefaultAgentConfig = createTestAgentConfig();
+const testDefaultAgentConfig = createTestSubagentConfig();
 
 /** Real registry for all tests. Methods are spied on per-test as needed. */
 const testRegistry = new AgentTypeRegistry(() => new Map());
@@ -110,8 +110,8 @@ describe("AgentsMenuHandler", () => {
     const { handler } = makeHandler({
       manager: {
         listAgents: vi.fn().mockReturnValue([
-          createTestAgent({ status: "running" }),
-          createTestAgent({ status: "completed", id: "agent-2" }),
+          createTestSubagent({ status: "running" }),
+          createTestSubagent({ status: "completed", id: "agent-2" }),
         ]),
         getRecord: vi.fn(),
         spawnAndWait: vi.fn(),

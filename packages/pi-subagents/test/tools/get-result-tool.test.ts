@@ -7,7 +7,7 @@ import {
 	type GetResultToolNotifications,
 } from "#src/tools/get-result-tool";
 import type { Subagent } from "#src/types";
-import { createTestAgent } from "#test/helpers/make-agent";
+import { createTestSubagent } from "#test/helpers/make-subagent";
 import { createSubagentSessionStub, toSubagentSession } from "#test/helpers/mock-session";
 import { STUB_CTX } from "#test/helpers/stub-ctx";
 
@@ -49,7 +49,7 @@ describe("GetResultTool", () => {
 	});
 
 	it("returns status and result for completed agent", async () => {
-		const records = new Map([["agent-1", createTestAgent()]]);
+		const records = new Map([["agent-1", createTestSubagent()]]);
 		const result = await execute(makeManager(records), makeNotifications(), { agent_id: "agent-1" });
 		const text = result.content[0].text;
 		expect(text).toContain("Agent: agent-1");
@@ -58,19 +58,19 @@ describe("GetResultTool", () => {
 	});
 
 	it("shows running message for in-progress agent", async () => {
-		const records = new Map([["agent-1", createTestAgent({ status: "running", completedAt: undefined })]]);
+		const records = new Map([["agent-1", createTestSubagent({ status: "running", completedAt: undefined })]]);
 		const result = await execute(makeManager(records), makeNotifications(), { agent_id: "agent-1" });
 		expect(result.content[0].text).toContain("still running");
 	});
 
 	it("shows error for failed agent", async () => {
-		const records = new Map([["agent-1", createTestAgent({ status: "error", error: "timeout" })]]);
+		const records = new Map([["agent-1", createTestSubagent({ status: "error", error: "timeout" })]]);
 		const result = await execute(makeManager(records), makeNotifications(), { agent_id: "agent-1" });
 		expect(result.content[0].text).toContain("Error: timeout");
 	});
 
 	it("marks notification consumed and cancels nudge for completed agent", async () => {
-		const record = createTestAgent();
+		const record = createTestSubagent();
 		record.notification = new NotificationState("tc-1");
 		const records = new Map([["agent-1", record]]);
 		const notifications = makeNotifications();
@@ -80,7 +80,7 @@ describe("GetResultTool", () => {
 	});
 
 	it("still cancels nudge for completed agent without NotificationState", async () => {
-		const record = createTestAgent();
+		const record = createTestSubagent();
 		const records = new Map([["agent-1", record]]);
 		const notifications = makeNotifications();
 		await execute(makeManager(records), notifications, { agent_id: "agent-1" });
@@ -88,7 +88,7 @@ describe("GetResultTool", () => {
 	});
 
 	it("does not cancel nudge for running agent", async () => {
-		const record = createTestAgent({ status: "running", completedAt: undefined });
+		const record = createTestSubagent({ status: "running", completedAt: undefined });
 		const records = new Map([["agent-1", record]]);
 		const notifications = makeNotifications();
 		await execute(makeManager(records), notifications, { agent_id: "agent-1" });
@@ -96,7 +96,7 @@ describe("GetResultTool", () => {
 	});
 
 	it("waits for promise when wait=true and agent is running", async () => {
-		const record = createTestAgent({
+		const record = createTestSubagent({
 			status: "running",
 			completedAt: undefined,
 		});
@@ -110,7 +110,7 @@ describe("GetResultTool", () => {
 	});
 
 	it("calls notification.markConsumed() when record has a NotificationState", async () => {
-		const record = createTestAgent();
+		const record = createTestSubagent();
 		record.notification = new NotificationState("tc-1");
 		const records = new Map([["agent-1", record]]);
 		await execute(makeManager(records), makeNotifications(), { agent_id: "agent-1" });
@@ -118,7 +118,7 @@ describe("GetResultTool", () => {
 	});
 
 	it("includes conversation when verbose=true", async () => {
-		const record = createTestAgent();
+		const record = createTestSubagent();
 		const stub = createSubagentSessionStub();
 		stub.getConversation.mockReturnValue("[User]: hello");
 		record.subagentSession = toSubagentSession(stub);

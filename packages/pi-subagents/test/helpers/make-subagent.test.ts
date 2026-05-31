@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createTestAgent } from "./make-agent";
+import { createTestSubagent } from "./make-subagent";
 
-describe("createTestAgent", () => {
+describe("createTestSubagent", () => {
 	it("returns a completed agent with expected defaults", () => {
-		const record = createTestAgent();
+		const record = createTestSubagent();
 		expect(record.id).toBe("agent-1");
 		expect(record.type).toBe("general-purpose");
 		expect(record.description).toBe("Test task");
@@ -17,7 +17,7 @@ describe("createTestAgent", () => {
 	});
 
 	it("applies overrides to defaults", () => {
-		const record = createTestAgent({ id: "custom-id", status: "running" });
+		const record = createTestSubagent({ id: "custom-id", status: "running" });
 		expect(record.id).toBe("custom-id");
 		expect(record.status).toBe("running");
 		// Non-overridden fields retain defaults
@@ -27,13 +27,13 @@ describe("createTestAgent", () => {
 
 	it("allows setting promise directly after construction", () => {
 		const promise = Promise.resolve();
-		const record = createTestAgent();
+		const record = createTestSubagent();
 		record.promise = promise;
 		expect(record.promise).toBe(promise);
 	});
 
 	it("allows overriding defaults to undefined", () => {
-		const record = createTestAgent({ result: undefined, completedAt: undefined });
+		const record = createTestSubagent({ result: undefined, completedAt: undefined });
 		expect(record.result).toBeUndefined();
 		expect(record.completedAt).toBeUndefined();
 	});

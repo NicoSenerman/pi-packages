@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
 import { ConversationViewer } from "#src/ui/conversation-viewer";
-import { createTestAgent } from "./helpers/make-agent";
+import { createTestSubagent } from "./helpers/make-subagent";
 import { createMockSession, createSubagentSessionStub, toSubagentSession } from "./helpers/mock-session";
 
 const testRegistry = new AgentTypeRegistry(() => new Map());
@@ -45,7 +45,7 @@ function createTestViewer(options: TestViewerOptions = {}): ConversationViewer {
   const { width = 80, messages = [], activity, wrapText = wrapTextWithAnsi } = options;
   const mockSess = createMockSession();
   mockSess.messages.push(...messages);
-  const record = createTestAgent({ status: "running" });
+  const record = createTestSubagent({ status: "running" });
   record.subagentSession = toSubagentSession(createSubagentSessionStub(mockSess));
   return new ConversationViewer({
     tui: mockTui(30, width),
