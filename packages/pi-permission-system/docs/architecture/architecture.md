@@ -524,7 +524,8 @@ src/
 ├── skill-prompt-sanitizer.ts  Skill prompt filtering by policy
 ├── denial-messages.ts         Centralized denial message formatter — DenialContext type, EXTENSION_TAG, formatDenyReason/formatUnavailableReason/formatUserDeniedReason
 ├── permission-prompts.ts      User-facing ask-prompt formatting + pre-check error messages
-├── tool-input-preview.ts      Loggable context from tool inputs
+├── tool-input-preview.ts      Pure tool-input text utilities (truncation, counting, path extraction) + default constants
+├── tool-preview-formatter.ts  ToolPreviewFormatter class — config-dependent prompt + log formatting (single injection point for #266)
 ├── tool-registry.ts           ToolRegistry interface + tool name validation
 ├── active-agent.ts            Agent name detection from session/system prompt
 ├── subagent-context.ts        Subagent execution context detection (registry + env vars + filesystem)
@@ -576,26 +577,18 @@ Filtered to what blocks or complicates [#266]:
 
 ### Steps
 
-1. **Extract `ToolPreviewFormatter` class from `tool-input-preview.ts`** ([#282])
-   - Create a new class that accepts `{ toolInputPreviewMaxLength: number; toolTextSummaryMaxLength: number }` in its constructor
-   - Move `formatToolInputForPrompt`, `formatJsonInputForPrompt`, `formatSearchInputForPrompt`, and `sanitizeInlineText` (the config-dependent functions) onto the class as methods
-   - Keep pure utility functions (`truncateInlineText`, `countTextLines`, `formatCount`, `getPromptPath`, `serializeToolInputPreview`) as standalone exports — they have no config dependency
-   - Keep `formatEditInputForPrompt`, `formatWriteInputForPrompt`, `formatReadInputForPrompt` as standalone — they also have no config dependency
-   - Move log-formatting functions (`formatGenericToolInputForLog`, `getToolInputPreviewForLog`, `getPermissionLogContext`) onto the class since they use `TOOL_INPUT_PREVIEW_MAX_LENGTH` transitively
-   - The module-level constants remain as default values
-   - Target: `tool-input-preview.ts` splits into `tool-input-preview.ts` (utilities) + `tool-preview-formatter.ts` (class)
-   - Category: B + C (oversized module → cohesive collaborator)
+1. ✅ **Extract `ToolPreviewFormatter` class from `tool-input-preview.ts`** ([#282])
+   - Created `tool-preview-formatter.ts` with `ToolPreviewFormatter` class accepting `ToolPreviewFormatterOptions` in its constructor
+   - Moved 7 config-dependent methods onto the class: `formatToolInputForPrompt`, `formatJsonInputForPrompt`, `formatSearchInputForPrompt`, `sanitizeInlineText`, `formatGenericToolInputForLog`, `getToolInputPreviewForLog`, `getPermissionLogContext`
+   - `tool-input-preview.ts` retains 8 pure utilities + 3 default constants
    - Outcome: formatter is a single injectable object; [#266] passes config by constructing the formatter with user-configured limits
-   - Commit: `refactor: extract ToolPreviewFormatter class from tool-input-preview`
 
-2. **Thread `ToolPreviewFormatter` through the gate descriptor chain** ([#282])
-   - `describeToolGate(tcc, check, formatter)` — accepts the formatter
-   - `formatAskPrompt(result, agentName, input, formatter)` — accepts the formatter
-   - `PermissionGateHandler` constructs the formatter from config and passes it to gate descriptors
-   - Ordering: do [#285] (Phase 2) first — it decomposes `handleToolCall`, which holds the `describeToolGate` call site this step modifies, so threading the formatter through the already-decomposed pipeline avoids a rebase
-   - Category: C (parameter relay → single-object injection)
-   - Outcome: config reaches formatting with one parameter instead of threading two numbers through 5 layers
-   - Commit: `refactor: thread ToolPreviewFormatter through gate descriptor chain`
+2. ✅ **Thread `ToolPreviewFormatter` through the gate descriptor chain** ([#282])
+   - `describeToolGate(tcc, check, formatter)` — accepts the formatter as third parameter
+   - `formatAskPrompt(result, agentName, input, formatter?)` — accepts an optional formatter
+   - `PermissionGateHandler.handleToolCall` constructs the formatter with default constant values and passes it to the tool gate producer
+   - `permission-prompts.test.ts` `vi.mock` removed — formatter is injected directly
+   - Outcome: config reaches formatting with one parameter instead of threading through 5 layers
 
 3. **Add numeric config normalization to `extension-config.ts`** ([#266])
    - Add a `normalizeOptionalPositiveInt(raw, defaultValue, maxValue)` helper
