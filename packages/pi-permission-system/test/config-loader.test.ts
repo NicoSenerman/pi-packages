@@ -7,7 +7,89 @@ import {
   loadAndMergeConfigs,
   loadUnifiedConfig,
   mergeUnifiedConfigs,
+  stripJsonComments,
 } from "#src/config-loader";
+
+describe("stripJsonComments", () => {
+  it("returns empty string for empty input", () => {
+    expect(stripJsonComments("")).toBe("");
+  });
+
+  it("passes through plain JSON unchanged", () => {
+    const input = '{"key": true}';
+    expect(stripJsonComments(input)).toBe(input);
+  });
+
+  it("drops a line comment body and preserves the trailing newline", () => {
+    // The space before // is emitted; the comment body is dropped; \n is kept.
+    expect(stripJsonComments('{ // comment\n"k": 1}')).toBe('{ \n"k": 1}');
+  });
+
+  it("drops a line comment that runs to EOF with no trailing newline", () => {
+    expect(stripJsonComments('{"k": 1} // trailing')).toBe('{"k": 1} ');
+  });
+
+  it("drops a block comment and nothing else", () => {
+    expect(stripJsonComments('{ /* block */ "k": 1}')).toBe('{  "k": 1}');
+  });
+
+  it("drops an unterminated block comment to EOF", () => {
+    expect(stripJsonComments("{ /* no close")).toBe("{ ");
+  });
+
+  it("preserves // inside a double-quoted string", () => {
+    expect(stripJsonComments('{"url": "http://example.com"}')).toBe(
+      '{"url": "http://example.com"}',
+    );
+  });
+
+  it("preserves block-comment markers inside a double-quoted string", () => {
+    expect(stripJsonComments('{"v": "a /* b */ c"}')).toBe(
+      '{"v": "a /* b */ c"}',
+    );
+  });
+
+  it("preserves // inside a single-quoted string", () => {
+    expect(stripJsonComments("{'url': 'http://x.com'}")).toBe(
+      "{'url': 'http://x.com'}",
+    );
+  });
+
+  it("preserves block-comment markers inside a single-quoted string", () => {
+    expect(stripJsonComments("{'v': 'a /* b */ c'}")).toBe(
+      "{'v': 'a /* b */ c'}",
+    );
+  });
+
+  it("honors a backslash-escaped quote so it does not close the string", () => {
+    // The string value is: a\"b (backslash-escaped double quote)
+    expect(stripJsonComments('{"k": "a\\"b"}')).toBe('{"k": "a\\"b"}');
+  });
+
+  it("emits an unterminated string to EOF verbatim", () => {
+    expect(stripJsonComments('{"k": "unterminated')).toBe(
+      '{"k": "unterminated',
+    );
+  });
+
+  it("preserves a lone slash that is not part of // or /*", () => {
+    expect(stripJsonComments('{"v": 1/2}')).toBe('{"v": 1/2}');
+  });
+
+  it("handles a combined JSONC document that round-trips to valid JSON", () => {
+    const jsonc = [
+      "{",
+      '  "debugLog": true, // runtime knob',
+      '  "permission": { /* the policy */ "*": "ask" }',
+      "}",
+    ].join("\n");
+    const stripped = stripJsonComments(jsonc);
+    // Must parse without throwing
+    const parsed = JSON.parse(stripped) as Record<string, unknown>;
+    expect(parsed.debugLog).toBe(true);
+    expect(parsed.permission).toEqual({ "*": "ask" });
+  });
+});
 
 describe("loadUnifiedConfig", () => {
   let tempDir: string;
