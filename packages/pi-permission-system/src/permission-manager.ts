@@ -1,7 +1,6 @@
 import { isPermissionState } from "./common";
 import { normalizeInput } from "./input-normalizer";
 import { normalizeFlatConfig } from "./normalize";
-import { mergeFlatPermissions } from "./permission-merge";
 import {
   FilePolicyLoader,
   type PolicyLoader,
@@ -10,6 +9,7 @@ import {
 } from "./policy-loader";
 import type { Rule, RuleOrigin, Ruleset } from "./rule";
 import { evaluate, evaluateFirst } from "./rule";
+import { mergeScopesWithOrigins } from "./scope-merge";
 import {
   composeRuleset,
   synthesizeBaseline,
@@ -90,58 +90,15 @@ export class PermissionManager {
     const agentConfig = this.loader.loadAgentConfig(agentName);
     const projectAgentConfig = this.loader.loadProjectAgentConfig(agentName);
 
-    // Merge permission objects across scopes (lowest → highest precedence).
-    // Build a parallel origin map that tracks which scope contributed each
-    // (surface, pattern) entry, mirroring mergeFlatPermissions() semantics.
-    type OriginMap = Map<string, Map<string, RuleOrigin>>;
-    const origins: OriginMap = new Map();
-    let mergedPermission: FlatPermissionConfig = {};
-
-    for (const [scopeName, scope] of [
+    // Merge permission objects across scopes (lowest → highest precedence),
+    // building a parallel origin map that tracks which scope contributed each
+    // (surface, pattern) entry.
+    const { mergedPermission, origins } = mergeScopesWithOrigins([
       ["global", globalConfig],
       ["project", projectConfig],
       ["agent", agentConfig],
       ["project-agent", projectAgentConfig],
-    ] as const) {
-      if (!scope.permission) continue;
-
-      for (const [surface, value] of Object.entries(scope.permission)) {
-        const baseVal = mergedPermission[surface];
-        /* eslint-disable @typescript-eslint/no-unnecessary-condition -- defensive null/type checks; config values may differ at runtime */
-        const bothObjects =
-          typeof baseVal === "object" &&
-          baseVal !== null &&
-          typeof value === "object" &&
-          value !== null;
-        /* eslint-enable @typescript-eslint/no-unnecessary-condition */
-
-        if (bothObjects) {
-          // Shallow-merge: each incoming pattern is attributed to this scope;
-          // existing patterns from lower scopes keep their earlier origin.
-          if (!origins.has(surface)) origins.set(surface, new Map());
-          for (const pattern of Object.keys(value)) {
-            origins.get(surface)?.set(pattern, scopeName);
-          }
-        } else {
-          // Full replacement: this scope takes over the entire surface entry.
-          const surfaceOrigins = new Map<string, RuleOrigin>();
-          if (typeof value === "string") {
-            surfaceOrigins.set("*", scopeName);
-            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- defensive null check
-          } else if (typeof value === "object" && value !== null) {
-            for (const pattern of Object.keys(value)) {
-              surfaceOrigins.set(pattern, scopeName);
-            }
-          }
-          origins.set(surface, surfaceOrigins);
-        }
-      }
-
-      mergedPermission = mergeFlatPermissions(
-        mergedPermission,
-        scope.permission,
-      );
-    }
+    ]);
 
     // Extract the universal fallback from permission["*"].
     // The "*" key feeds synthesizeDefaults() only — it is NOT included as a
