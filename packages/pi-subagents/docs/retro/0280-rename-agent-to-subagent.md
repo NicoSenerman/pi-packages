@@ -85,6 +85,10 @@ No release was triggered (all `refactor:`/`test:`/`docs:` commits), so no releas
 ### Changes made
 
 1. Appended this Final Retrospective stage entry to `packages/pi-subagents/docs/retro/0280-rename-agent-to-subagent.md`.
+2. Strengthened the global `APPEND_SYSTEM.md` "Shell Commands" rule to name the literal absolute-path `cd` form (e.g. `cd /Users/you/project &&`), not just `cd $CWD &&` — the existing rule failed to catch the literal-path form that agents actually emit.
+   This file is global (`~/.pi/agent/APPEND_SYSTEM.md`), outside the repo, so it is not committed here.
+3. Added a monorepo-specific line to `AGENTS.md` § Monorepo Structure: prefer `pnpm --filter @gotgenes/<pkg> run <script>` (or `pnpm -C packages/<pkg> run <script>`) from the root over `cd packages/<pkg> && pnpm run <script>`.
+   Prompted by excessive `cd` chaining observed across this session's Ship and Retro stages.
 
 ### Follow-ups considered (not applied)
 
