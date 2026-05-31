@@ -26,3 +26,20 @@ Issue #287 was amended (title + body) to match this framing.
 - Lift-and-shift chosen for the test churn: keep `SessionRules.approve(surface, pattern)` as the internal primitive so `session-rules.test.ts` is not rewritten; the type-forced cutover (descriptor type + deps reshape) is one mechanical commit because TypeScript breaks every producer, the runner, and every deps-mock simultaneously.
 - The original first draft of the plan (the rejected three-helper version) was overwritten in place before commit, so only the converged plan is in history.
 - Deferred to Open Questions: lifting phase-1 check resolution onto the descriptor — revisit only if `fallow` still flags `runner.ts` after step 3.
+
+## Stage: Implementation — TDD (2026-05-31T02:00:00Z)
+
+### Session summary
+
+Completed all four TDD steps: (1) added `SessionApproval` value object and `SessionRules.record`; (2) executed the type-forced cutover reshaping `GateDescriptor.sessionApproval`, `GateRunnerDeps.recordSessionApproval`, `PermissionSession`, five gate producers, and ~10 test files; (3) added `buildDecisionEvent` to `helpers.ts` and routed both `runner.ts` emit sites through it; (4) updated `architecture.md`.
+Test count went from 1553 → 1571 (+18 new tests across `session-approval.test.ts`, `session-rules.test.ts`, and `helpers.test.ts`).
+Pre-completion reviewer: PASS.
+
+### Observations
+
+- The plan's blast-radius estimate was accurate: the type-forced cutover (step 2) touched 5 producers + ~10 test files but was fully mechanical — no logic changes, just rename and constructor swap.
+- Three producer tests (`external-directory.test.ts`, `path.test.ts`, `tool.test.ts`) had assertions using the old `toHaveProperty("pattern")` shape on `sessionApproval`; updated to `?.surface` / `?.representativePattern` access which is clearer.
+- Four `bash-external-directory.test.ts` sites cast `desc.sessionApproval as { patterns: string[] }` — the Biome/ESLint `noNonNullAssertion` / `non-nullable-type-assertion-style` conflict forced an explicit `if (!desc.sessionApproval) return` guard (per AGENTS.md resolution).
+- The `eslint-disable` comment on `matchedPattern ?? null` was correctly omitted in `buildDecisionEvent` — with the narrowed `Pick` parameter type, ESLint no longer fires `no-unnecessary-condition` on that line.
+- Post-review cleanup: the phase-6 guard `gateResult.action === "allow" && hasSessionApproval` had a redundant term since `hasSessionApproval` already implies the action check; simplified to `if (hasSessionApproval && descriptor.sessionApproval)`.
+- `fallow health --targets` confirms `runner.ts` is no longer in the refactoring targets list; 4 → 3 targets remaining.
