@@ -113,7 +113,7 @@ function makeSession(
     checkPermission: makeCheckPermission("deny"),
     getToolPermission: vi.fn().mockReturnValue("allow"),
     getSessionRuleset: vi.fn().mockReturnValue([]),
-    approveSessionRule: vi.fn(),
+    recordSessionApproval: vi.fn(),
     getActiveSkillEntries: vi.fn().mockReturnValue([]),
     getInfrastructureDirs: vi.fn().mockReturnValue([]),
     getInfrastructureReadPaths: vi.fn().mockReturnValue([]),

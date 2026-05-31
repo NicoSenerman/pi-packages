@@ -1,5 +1,6 @@
 import { getNonEmptyString, toRecord } from "#src/common";
 import type { Rule } from "#src/rule";
+import { SessionApproval } from "#src/session-approval";
 import { deriveApprovalPattern } from "#src/session-rules";
 import type { PermissionCheckResult } from "#src/types";
 import { extractTokensForPathRules } from "./bash-path-extractor";
@@ -117,10 +118,7 @@ export async function describeBashPathGate(
       pathValue: worstToken,
       agentName: tcc.agentName ?? undefined,
     },
-    sessionApproval: {
-      surface: "path",
-      pattern,
-    },
+    sessionApproval: SessionApproval.single("path", pattern),
     promptDetails: {
       source: "tool_call",
       agentName: tcc.agentName,

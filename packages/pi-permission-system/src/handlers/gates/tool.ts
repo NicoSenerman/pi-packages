@@ -1,6 +1,7 @@
 import { getPathBearingToolPath, PATH_BEARING_TOOLS } from "#src/path-utils";
 import { suggestSessionPattern } from "#src/pattern-suggest";
 import { formatAskPrompt } from "#src/permission-prompts";
+import { SessionApproval } from "#src/session-approval";
 import type { ToolPreviewFormatter } from "#src/tool-preview-formatter";
 import type { PermissionCheckResult } from "#src/types";
 import type { GateDescriptor } from "./descriptor";
@@ -61,10 +62,10 @@ export function describeToolGate(
       agentName: tcc.agentName ?? undefined,
       input: tcc.input,
     },
-    sessionApproval: {
-      surface: suggestion.surface,
-      pattern: suggestion.pattern,
-    },
+    sessionApproval: SessionApproval.single(
+      suggestion.surface,
+      suggestion.pattern,
+    ),
     promptDetails: {
       source: "tool_call",
       agentName: tcc.agentName,

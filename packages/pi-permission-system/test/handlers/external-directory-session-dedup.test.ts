@@ -3,7 +3,7 @@
  * external path only prompt once — the session-approval recorded by the
  * first call covers the second.
  *
- * These tests use stateful mocks: `approveSessionRule` records rules,
+ * These tests use stateful mocks: `recordSessionApproval` records rules,
  * and `checkPermission` consults them via `getSessionRuleset`, mirroring
  * the real interaction between PermissionSession, SessionRules, and
  * PermissionManager.
@@ -15,6 +15,7 @@ import { DEFAULT_EXTENSION_CONFIG } from "#src/extension-config";
 import { PermissionGateHandler } from "#src/handlers/permission-gate-handler";
 import type { PermissionSession } from "#src/permission-session";
 import type { Rule } from "#src/rule";
+import type { SessionApproval } from "#src/session-approval";
 import type { ToolRegistry } from "#src/tool-registry";
 import type { PermissionCheckResult } from "#src/types";
 import { wildcardMatch } from "#src/wildcard-matcher";
@@ -53,7 +54,7 @@ function makeCtx(overrides: Partial<ExtensionContext> = {}): ExtensionContext {
  * Build a PermissionSession mock with stateful session-rule tracking.
  *
  * `checkPermission` returns "ask" for `external_directory` unless a
- * matching session rule exists (via `approveSessionRule`), in which case
+ * matching session rule exists (via `recordSessionApproval`), in which case
  * it returns "allow" with `source: "session"`. All other surfaces return
  * "allow" by default.
  */
@@ -115,16 +116,18 @@ function makeStatefulSession(
       },
     );
 
-  const approveSessionRule = vi
+  const recordSessionApproval = vi
     .fn()
-    .mockImplementation((surface: string, pattern: string) => {
-      sessionRules.push({
-        surface,
-        pattern,
-        action: "allow",
-        layer: "session",
-        origin: "session",
-      });
+    .mockImplementation((approval: SessionApproval) => {
+      for (const pattern of approval.patterns) {
+        sessionRules.push({
+          surface: approval.surface,
+          pattern,
+          action: "allow",
+          layer: "session",
+          origin: "session",
+        });
+      }
     });
 
   const getSessionRuleset = vi.fn().mockImplementation(() => [...sessionRules]);
@@ -136,7 +139,7 @@ function makeStatefulSession(
     checkPermission,
     getToolPermission: vi.fn().mockReturnValue("allow"),
     getSessionRuleset,
-    approveSessionRule,
+    recordSessionApproval,
     getActiveSkillEntries: vi.fn().mockReturnValue([]),
     getInfrastructureDirs: vi.fn().mockReturnValue([]),
     getInfrastructureReadPaths: vi.fn().mockReturnValue([]),

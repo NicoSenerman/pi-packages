@@ -93,9 +93,8 @@ describe("describeBashExternalDirectoryGate", () => {
     expect(isGateDescriptor(result)).toBe(true);
     const desc = result as GateDescriptor;
     expect(desc.sessionApproval).toBeDefined();
-    expect(desc.sessionApproval).toHaveProperty("patterns");
-    const patterns = (desc.sessionApproval as { patterns: string[] }).patterns;
-    expect(patterns.length).toBeGreaterThan(0);
+    if (!desc.sessionApproval) return;
+    expect(desc.sessionApproval.patterns.length).toBeGreaterThan(0);
   });
 
   it("returns GateBypass when all external paths are config-level allowed", async () => {
@@ -211,8 +210,9 @@ describe("describeBashExternalDirectoryGate", () => {
     );
     expect(isGateDescriptor(result)).toBe(true);
     const desc = result as GateDescriptor;
-    const patterns = (desc.sessionApproval as { patterns: string[] }).patterns;
-    expect(patterns.length).toBe(1);
+    expect(desc.sessionApproval).toBeDefined();
+    if (!desc.sessionApproval) return;
+    expect(desc.sessionApproval.patterns.length).toBe(1);
     expect(desc.preCheck?.state).toBe("ask");
   });
 
@@ -236,8 +236,9 @@ describe("describeBashExternalDirectoryGate", () => {
     const desc = result as GateDescriptor;
     expect(desc.preCheck?.state).toBe("deny");
     // Both paths are uncovered (neither is allow), so both patterns are included.
-    const patterns = (desc.sessionApproval as { patterns: string[] }).patterns;
-    expect(patterns.length).toBe(2);
+    expect(desc.sessionApproval).toBeDefined();
+    if (!desc.sessionApproval) return;
+    expect(desc.sessionApproval.patterns.length).toBe(2);
   });
 
   it("only includes uncovered paths when some are session-covered", async () => {
@@ -259,7 +260,8 @@ describe("describeBashExternalDirectoryGate", () => {
     expect(isGateDescriptor(result)).toBe(true);
     const desc = result as GateDescriptor;
     // Should have patterns only for the uncovered path
-    const patterns = (desc.sessionApproval as { patterns: string[] }).patterns;
-    expect(patterns.length).toBe(1);
+    expect(desc.sessionApproval).toBeDefined();
+    if (!desc.sessionApproval) return;
+    expect(desc.sessionApproval.patterns.length).toBe(1);
   });
 });

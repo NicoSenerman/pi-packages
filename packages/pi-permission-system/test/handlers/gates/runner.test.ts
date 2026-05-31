@@ -7,6 +7,7 @@ import type {
   GateRunnerDeps,
 } from "#src/handlers/gates/descriptor";
 import { runGateCheck } from "#src/handlers/gates/runner";
+import { SessionApproval } from "#src/session-approval";
 import type { PermissionCheckResult } from "#src/types";
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -61,7 +62,7 @@ function makeRunnerDeps(
   return {
     checkPermission: vi.fn().mockReturnValue(makeCheckResult("allow")),
     getSessionRuleset: vi.fn().mockReturnValue([]),
-    approveSessionRule: vi.fn(),
+    recordSessionApproval: vi.fn(),
     writeReviewLog: vi.fn(),
     emitDecision: vi.fn(),
     canConfirm: vi.fn().mockReturnValue(true),
@@ -167,7 +168,7 @@ describe("runGateCheck", () => {
         .mockResolvedValue({ approved: true, state: "approved_for_session" }),
     });
     const descriptor = makeDescriptor({
-      sessionApproval: { surface: "read", pattern: "*" },
+      sessionApproval: SessionApproval.single("read", "*"),
     });
     const result = await runGateCheck(descriptor, null, "tc-1", deps);
     expect(result).toEqual({ action: "allow" });
@@ -176,33 +177,27 @@ describe("runGateCheck", () => {
         resolution: "user_approved_for_session",
       }),
     );
-    expect(deps.approveSessionRule).toHaveBeenCalledWith("read", "*");
+    expect(deps.recordSessionApproval).toHaveBeenCalledWith(
+      SessionApproval.single("read", "*"),
+    );
   });
 
-  it("calls approveSessionRule once per pattern when sessionApproval has multiple patterns", async () => {
+  it("calls recordSessionApproval once with the full SessionApproval when sessionApproval has multiple patterns", async () => {
     const deps = makeRunnerDeps({
       checkPermission: vi.fn().mockReturnValue(makeCheckResult("ask")),
       promptPermission: vi
         .fn()
         .mockResolvedValue({ approved: true, state: "approved_for_session" }),
     });
-    const descriptor = makeDescriptor({
-      sessionApproval: {
-        surface: "external_directory",
-        patterns: ["/outside/a/*", "/outside/b/*"],
-      },
-    });
+    const approval = SessionApproval.multiple("external_directory", [
+      "/outside/a/*",
+      "/outside/b/*",
+    ]);
+    const descriptor = makeDescriptor({ sessionApproval: approval });
     const result = await runGateCheck(descriptor, null, "tc-1", deps);
     expect(result).toEqual({ action: "allow" });
-    expect(deps.approveSessionRule).toHaveBeenCalledTimes(2);
-    expect(deps.approveSessionRule).toHaveBeenCalledWith(
-      "external_directory",
-      "/outside/a/*",
-    );
-    expect(deps.approveSessionRule).toHaveBeenCalledWith(
-      "external_directory",
-      "/outside/b/*",
-    );
+    expect(deps.recordSessionApproval).toHaveBeenCalledTimes(1);
+    expect(deps.recordSessionApproval).toHaveBeenCalledWith(approval);
   });
 
   it("returns block and emits user_denied when ask + user denies", async () => {
@@ -317,7 +312,7 @@ describe("runGateCheck", () => {
     );
   });
 
-  it("does not call approveSessionRule when user approves once (no sessionApproval)", async () => {
+  it("does not call recordSessionApproval when user approves once (no sessionApproval)", async () => {
     const deps = makeRunnerDeps({
       checkPermission: vi.fn().mockReturnValue(makeCheckResult("ask")),
       promptPermission: vi
@@ -325,7 +320,7 @@ describe("runGateCheck", () => {
         .mockResolvedValue({ approved: true, state: "approved" }),
     });
     await runGateCheck(makeDescriptor(), null, "tc-1", deps);
-    expect(deps.approveSessionRule).not.toHaveBeenCalled();
+    expect(deps.recordSessionApproval).not.toHaveBeenCalled();
   });
 
   it("uses preCheck result directly instead of calling checkPermission", async () => {
@@ -348,7 +343,7 @@ describe("runGateCheck", () => {
     );
   });
 
-  it("does not call approveSessionRule when user approves for session but no sessionApproval on descriptor", async () => {
+  it("does not call recordSessionApproval when user approves for session but no sessionApproval on descriptor", async () => {
     const deps = makeRunnerDeps({
       checkPermission: vi.fn().mockReturnValue(makeCheckResult("ask")),
       promptPermission: vi
@@ -357,7 +352,7 @@ describe("runGateCheck", () => {
     });
     // No sessionApproval on descriptor
     await runGateCheck(makeDescriptor(), null, "tc-1", deps);
-    expect(deps.approveSessionRule).not.toHaveBeenCalled();
+    expect(deps.recordSessionApproval).not.toHaveBeenCalled();
   });
 
   describe("denialContext formatting", () => {

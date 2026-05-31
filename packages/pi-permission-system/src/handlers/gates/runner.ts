@@ -72,21 +72,6 @@ export async function runGateCheck(
   // 3. Apply the deny/ask/allow gate
   const canConfirm = deps.canConfirm();
 
-  // Resolve the first pattern for applyPermissionGate's sessionApproval param
-  const singleSessionApproval = descriptor.sessionApproval
-    ? "pattern" in descriptor.sessionApproval
-      ? {
-          surface: descriptor.sessionApproval.surface,
-          pattern: descriptor.sessionApproval.pattern,
-        }
-      : descriptor.sessionApproval.patterns.length > 0
-        ? {
-            surface: descriptor.sessionApproval.surface,
-            pattern: descriptor.sessionApproval.patterns[0],
-          }
-        : undefined
-    : undefined;
-
   // Construct messages from the centralized formatter.
   const messages = {
     denyReason: formatDenyReason(descriptor.denialContext),
@@ -99,7 +84,7 @@ export async function runGateCheck(
   const gateResult = await applyPermissionGate({
     state: check.state,
     canConfirm,
-    sessionApproval: singleSessionApproval,
+    sessionApproval: descriptor.sessionApproval?.toGateApproval(),
     promptForApproval: async () => {
       const decision = await deps.promptPermission({
         requestId: toolCallId,
@@ -136,20 +121,13 @@ export async function runGateCheck(
     matchedPattern: check.matchedPattern ?? null,
   });
 
-  // 6. Record session approval(s)
-  if (gateResult.action === "allow" && hasSessionApproval) {
-    if (descriptor.sessionApproval) {
-      if ("patterns" in descriptor.sessionApproval) {
-        for (const pattern of descriptor.sessionApproval.patterns) {
-          deps.approveSessionRule(descriptor.sessionApproval.surface, pattern);
-        }
-      } else {
-        deps.approveSessionRule(
-          descriptor.sessionApproval.surface,
-          descriptor.sessionApproval.pattern,
-        );
-      }
-    }
+  // 6. Record session approval — tell the store; it owns the per-pattern loop
+  if (
+    gateResult.action === "allow" &&
+    hasSessionApproval &&
+    descriptor.sessionApproval
+  ) {
+    deps.recordSessionApproval(descriptor.sessionApproval);
   }
 
   if (gateResult.action === "block") {

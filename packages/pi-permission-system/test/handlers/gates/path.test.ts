@@ -160,8 +160,8 @@ describe("describePathGate", () => {
       getSessionRuleset,
     ) as GateDescriptor;
     expect(result.sessionApproval).toBeDefined();
-    expect(result.sessionApproval).toHaveProperty("surface", "path");
-    expect(result.sessionApproval).toHaveProperty("pattern");
+    expect(result.sessionApproval?.surface).toBe("path");
+    expect(result.sessionApproval?.representativePattern).toBeDefined();
   });
 
   it("descriptor denialContext references the file path and tool name", () => {

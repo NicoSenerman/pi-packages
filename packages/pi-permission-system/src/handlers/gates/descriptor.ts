@@ -3,6 +3,7 @@ import type { PermissionPromptDecision } from "#src/permission-dialog";
 import type { PermissionDecisionEvent } from "#src/permission-events";
 import type { PromptPermissionDetails } from "#src/permission-prompter";
 import type { Rule } from "#src/rule";
+import type { SessionApproval } from "#src/session-approval";
 import type { PermissionCheckResult, PermissionState } from "#src/types";
 
 // ── Descriptor types ───────────────────────────────────────────────────────
@@ -22,12 +23,11 @@ export interface GateDescriptor {
   /** Structured denial context — the runner formats messages from this. */
   denialContext: DenialContext;
   /**
-   * Session-approval suggestion for "for this session" option.
-   * Single pattern or multiple patterns (bash external-directory gate).
+   * Session-approval suggestion for the "for this session" option.
+   * Wraps either a single pattern or multiple patterns behind a unified
+   * interface — the runner never needs to know which case applies.
    */
-  sessionApproval?:
-    | { surface: string; pattern: string }
-    | { surface: string; patterns: string[] };
+  sessionApproval?: SessionApproval;
   /** Details passed to the interactive permission prompt (requestId is added by the runner). */
   promptDetails: Omit<PromptPermissionDetails, "requestId">;
   /** Extra context fields written to the review log alongside gate outcomes. */
@@ -87,7 +87,7 @@ export interface GateRunnerDeps {
     sessionRules?: Rule[],
   ): PermissionCheckResult;
   getSessionRuleset(): Rule[];
-  approveSessionRule(surface: string, pattern: string): void;
+  recordSessionApproval(approval: SessionApproval): void;
   writeReviewLog(event: string, details: Record<string, unknown>): void;
   emitDecision(event: PermissionDecisionEvent): void;
   canConfirm(): boolean;

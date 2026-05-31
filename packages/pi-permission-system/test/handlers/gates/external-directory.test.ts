@@ -126,11 +126,8 @@ describe("describeExternalDirectoryGate", () => {
       ["/test/agent"],
     ) as GateDescriptor;
     expect(result.sessionApproval).toBeDefined();
-    expect(result.sessionApproval).toHaveProperty(
-      "surface",
-      "external_directory",
-    );
-    expect(result.sessionApproval).toHaveProperty("pattern");
+    expect(result.sessionApproval?.surface).toBe("external_directory");
+    expect(result.sessionApproval?.representativePattern).toBeDefined();
   });
 
   it("denialContext contains the external path and cwd", () => {

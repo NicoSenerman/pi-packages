@@ -1,5 +1,6 @@
 import { getNonEmptyString, toRecord } from "#src/common";
 import type { Rule } from "#src/rule";
+import { SessionApproval } from "#src/session-approval";
 import { deriveApprovalPattern } from "#src/session-rules";
 import type { PermissionCheckResult } from "#src/types";
 import { extractExternalPathsFromBashCommand } from "./bash-path-extractor";
@@ -106,10 +107,7 @@ export async function describeBashExternalDirectoryGate(
       cwd: tcc.cwd,
       agentName: tcc.agentName ?? undefined,
     },
-    sessionApproval: {
-      surface: "external_directory",
-      patterns,
-    },
+    sessionApproval: SessionApproval.multiple("external_directory", patterns),
     promptDetails: {
       source: "tool_call",
       agentName: tcc.agentName,

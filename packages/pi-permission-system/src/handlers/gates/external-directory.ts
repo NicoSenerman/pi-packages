@@ -4,6 +4,7 @@ import {
   isPiInfrastructureRead,
   normalizePathForComparison,
 } from "#src/path-utils";
+import { SessionApproval } from "#src/session-approval";
 import { deriveApprovalPattern } from "#src/session-rules";
 import type { GateResult } from "./descriptor";
 import { formatExternalDirectoryAskPrompt } from "./external-directory-messages";
@@ -83,10 +84,7 @@ export function describeExternalDirectoryGate(
       cwd: tcc.cwd,
       agentName: tcc.agentName ?? undefined,
     },
-    sessionApproval: {
-      surface: "external_directory",
-      pattern,
-    },
+    sessionApproval: SessionApproval.single("external_directory", pattern),
     promptDetails: {
       source: "tool_call",
       agentName: tcc.agentName,

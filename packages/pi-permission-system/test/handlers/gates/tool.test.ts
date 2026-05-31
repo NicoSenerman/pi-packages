@@ -142,8 +142,8 @@ describe("describeToolGate", () => {
       makeFormatter(),
     );
     expect(desc.sessionApproval).toBeDefined();
-    expect(desc.sessionApproval!).toHaveProperty("surface", "bash");
-    expect(desc.sessionApproval!).toHaveProperty("pattern");
+    expect(desc.sessionApproval?.surface).toBe("bash");
+    expect(desc.sessionApproval?.representativePattern).toBeDefined();
   });
 
   it("populates promptDetails with correct fields", () => {

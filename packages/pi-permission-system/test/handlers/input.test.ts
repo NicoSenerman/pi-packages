@@ -43,7 +43,7 @@ function makeSession(
     checkPermission: vi.fn().mockReturnValue({ state: "allow" }),
     getToolPermission: vi.fn().mockReturnValue("allow"),
     getSessionRuleset: vi.fn().mockReturnValue([]),
-    approveSessionRule: vi.fn(),
+    recordSessionApproval: vi.fn(),
     canPrompt: vi.fn().mockReturnValue(true),
     prompt: vi.fn().mockResolvedValue({ approved: true, state: "approved" }),
     createPermissionRequestId: vi.fn().mockReturnValue("req-id"),

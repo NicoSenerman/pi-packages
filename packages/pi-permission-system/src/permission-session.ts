@@ -12,6 +12,7 @@ import type { PermissionManager } from "./permission-manager";
 import type { PromptPermissionDetails } from "./permission-prompter";
 import type { Rule } from "./rule";
 import { createPermissionManagerForCwd } from "./runtime";
+import type { SessionApproval } from "./session-approval";
 import type { SessionLogger } from "./session-logger";
 import { SessionRules } from "./session-rules";
 import type { SkillPromptEntry } from "./skill-prompt-sanitizer";
@@ -127,8 +128,8 @@ export class PermissionSession {
     return this.sessionRules.getRuleset();
   }
 
-  approveSessionRule(surface: string, pattern: string): void {
-    this.sessionRules.approve(surface, pattern);
+  recordSessionApproval(approval: SessionApproval): void {
+    this.sessionRules.record(approval);
   }
 
   // ── Session lifecycle ────────────────────────────────────────────────────

@@ -36,6 +36,7 @@ import {
   PermissionSession,
   type PermissionSessionRuntimeDeps,
 } from "#src/permission-session";
+import { SessionApproval } from "#src/session-approval";
 import type { SessionLogger } from "#src/session-logger";
 import type { SkillPromptEntry } from "#src/skill-prompt-sanitizer";
 
@@ -219,9 +220,11 @@ describe("PermissionSession", () => {
       expect(rules).toEqual([]);
     });
 
-    it("delegates approveSessionRule to internal SessionRules", () => {
+    it("delegates recordSessionApproval to internal SessionRules", () => {
       const { session } = createSession();
-      session.approveSessionRule("bash", "/usr/bin/*");
+      session.recordSessionApproval(
+        SessionApproval.single("bash", "/usr/bin/*"),
+      );
       const rules = session.getSessionRuleset();
       expect(rules).toHaveLength(1);
       expect(rules[0]).toMatchObject({
@@ -325,7 +328,7 @@ describe("PermissionSession", () => {
   describe("shutdown", () => {
     it("clears session rules", () => {
       const { session } = createSession();
-      session.approveSessionRule("bash", "*");
+      session.recordSessionApproval(SessionApproval.single("bash", "*"));
       expect(session.getSessionRuleset()).toHaveLength(1);
 
       session.shutdown();
