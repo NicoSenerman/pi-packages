@@ -51,11 +51,11 @@ flowchart TB
 
     subgraph lifecycle["Lifecycle domain"]
         direction TB
-        AgentManager["AgentManager<br/>(spawn, abort, collection)"]
+        SubagentManager["SubagentManager<br/>(spawn, abort, collection)"]
         ConcurrencyQueue["ConcurrencyQueue<br/>(scheduling, drain)"]
         CreateSubagentSession["createSubagentSession<br/>(assembly factory)"]
         SubagentSession["SubagentSession<br/>(turn loop, steer, dispose)"]
-        Agent["Agent<br/>(status, behavior: abort/steer/run lifecycle)"]
+        Subagent["Subagent<br/>(status, behavior: abort/steer/run lifecycle)"]
         ParentSnapshot["ParentSnapshot<br/>(frozen parent state)"]
         Workspace["workspace<br/>(provider seam: child cwd + teardown)"]
     end
@@ -85,9 +85,9 @@ flowchart TB
         Menu["agent-menu<br/>(slash command)"]
     end
 
-    AgentTool --> AgentManager
-    AgentManager --> Agent
-    Agent --> CreateSubagentSession & SubagentSession
+    AgentTool --> SubagentManager
+    SubagentManager --> Subagent
+    Subagent --> CreateSubagentSession & SubagentSession
     CreateSubagentSession --> SubagentSession
     CreateSubagentSession --> SessionConfig
     SessionConfig --> AgentTypeRegistry
@@ -95,18 +95,18 @@ flowchart TB
     AgentTypeRegistry --> DefaultAgents & CustomAgents
     RecordObserver -.->|subscribes| SubagentSession
     UIObserver -.->|subscribes| SubagentSession
-    Widget -.->|polls| AgentManager
+    Widget -.->|polls| SubagentManager
 ```
 
 ### Key domain types
 
 ```mermaid
 classDiagram
-    class Agent {
+    class Subagent {
         +id: string
         +type: SubagentType
         +description: string
-        +status: AgentStatus
+        +status: SubagentStatus
         +result?: string
         +error?: string
         +toolUses: number
@@ -137,12 +137,12 @@ classDiagram
         +releaseListeners()
     }
 
-    class AgentManager {
+    class SubagentManager {
         +spawn(snapshot, type, prompt, config)
         +spawnAndWait(snapshot, type, prompt, config)
         +resume(id, prompt, signal)
-        +getRecord(id): Agent
-        +listAgents(): Agent[]
+        +getRecord(id): Subagent
+        +listAgents(): Subagent[]
         +abort(id)
     }
 
@@ -171,10 +171,10 @@ classDiagram
         +hasRunning(): boolean
     }
 
-    AgentManager --> Agent : creates/manages
-    AgentManager --> ParentSnapshot : receives at spawn
-    SubagentsService --> AgentManager : wraps via adapter
-    AgentManager --> AgentTypeRegistry : resolves types
+    SubagentManager --> Subagent : creates/manages
+    SubagentManager --> ParentSnapshot : receives at spawn
+    SubagentsService --> SubagentManager : wraps via adapter
+    SubagentManager --> AgentTypeRegistry : resolves types
 ```
 
 ## Agent lifecycle
@@ -216,8 +216,8 @@ sequenceDiagram
     participant LLM as Parent LLM
     participant Tool as subagent tool
     participant Spawn as spawn-config
-    participant Mgr as AgentManager
-    participant Ag as Agent
+    participant Mgr as SubagentManager
+    participant Ag as Subagent
     participant Factory as createSubagentSession
     participant Asm as assembleSessionConfig
     participant Sub as SubagentSession
@@ -238,8 +238,8 @@ sequenceDiagram
     Sub->>Child: prompt + drive turn loop
     Child-->>Sub: result text
     Sub-->>Ag: TurnLoopResult
-    Ag-->>Mgr: update Agent
-    Mgr-->>Tool: Agent
+    Ag-->>Mgr: update Subagent
+    Mgr-->>Tool: Subagent
     Tool-->>LLM: formatted result
     Note over Mgr: disposeSession() fires `disposed` at cleanup (resume-detectable)
 ```
@@ -277,11 +277,11 @@ src/
 │   └── session-dir.ts              session directory derivation
 │
 ├── lifecycle/                      agent execution and state tracking
-│   ├── agent-manager.ts            collection manager + observer wiring
+│   ├── subagent-manager.ts         collection manager + observer wiring
 │   ├── create-subagent-session.ts  assembly factory: session creation, binding, tool filtering
 │   ├── subagent-session.ts         born-complete child session: turn loop, steer, dispose
 │   ├── turn-limits.ts              normalizeMaxTurns (turn-count policy)
-│   ├── agent.ts                    owns full execution lifecycle (run, abort, steer, workspace)
+│   ├── subagent.ts                 owns full execution lifecycle (run, abort, steer, workspace)
 │   ├── concurrency-queue.ts        background agent scheduling with configurable concurrency limit
 │   ├── parent-snapshot.ts          immutable spawn-time parent state
 │   ├── child-lifecycle.ts          child-execution lifecycle event publisher
@@ -296,7 +296,7 @@ src/
 │
 ├── service/                        cross-extension API boundary
 │   ├── service.ts                  SubagentsService interface + Symbol.for() accessors
-│   └── service-adapter.ts          SubagentsServiceAdapter class wrapping AgentManager
+│   └── service-adapter.ts          SubagentsServiceAdapter class wrapping SubagentManager
 │
 ├── tools/                          LLM-facing tool implementations
 │   ├── agent-tool.ts               subagent tool definition, validation, dispatch
@@ -334,7 +334,7 @@ Record statistics (tool uses, token usage, compaction counts) are updated by `re
 UI streaming (active tools, response text, turn counts) is handled by `ui/ui-observer.ts`, which subscribes to the same session events independently.
 Neither observer wraps or forwards the other — both subscribe directly to the session.
 
-The widget reads agent state by polling a shared `Map<string, AgentActivityTracker>` on `SubagentRuntime` every 80 ms. The conversation viewer subscribes to session events via `Agent.subscribeToUpdates()` and reads messages via `Agent.messages` — no direct `AgentSession` reference (#277).
+The widget reads agent state by polling a shared `Map<string, AgentActivityTracker>` on `SubagentRuntime` every 80 ms. The conversation viewer subscribes to session events via `Subagent.subscribeToUpdates()` and reads messages via `Subagent.messages` — no direct `AgentSession` reference (#277).
 
 ## Cross-extension architecture
 
@@ -343,7 +343,7 @@ flowchart TD
     subgraph core["@gotgenes/pi-subagents"]
         direction TB
         exports["SubagentsService API<br/>publish / getSubagentsService<br/>SubagentRecord, SubagentStatus"]
-        engine["Tools: subagent, get_subagent_result,<br/>steer_subagent<br/>AgentManager, createSubagentSession, SubagentSession"]
+        engine["Tools: subagent, get_subagent_result,<br/>steer_subagent<br/>SubagentManager, createSubagentSession, SubagentSession"]
         ui_int["Internal UI: widget, viewer,<br/>/agents menu"]
     end
 
@@ -358,7 +358,7 @@ They declare this package as an optional peer dependency and use dynamic import 
 ### What the core owns
 
 - The three tools: `subagent` (née `Agent`), `get_subagent_result`, `steer_subagent`.
-- `AgentManager` — spawn, abort, resume, collection management, observer wiring.
+- `SubagentManager` — spawn, abort, resume, collection management, observer wiring.
 - `ConcurrencyQueue` — background agent scheduling with configurable concurrency limit.
 - `createSubagentSession` — assembly factory: session creation and extension binding; returns a born-complete `SubagentSession`.
 - `SubagentSession` — the born-complete child session: drives the turn loop (`runTurnLoop`/`resumeTurnLoop`), steers, and disposes (firing `disposed` at true session disposal, so resume executions are registry-detected).
@@ -563,7 +563,7 @@ Bags with 10+ fields are the highest priority for decomposition.
 | `AgentToolDeps`               | 8                                                            | agent-tool                                        | ✓ done    |
 | `AgentMenuDeps`               | 8                                                            | agent-menu                                        | ✓ done    |
 | `ConversationViewerOptions`   | 8                                                            | conversation-viewer                               | Low       |
-| `AgentInit`                   | 8                                                            | agent                                             | Low       |
+| `SubagentInit`                | 8                                                            | subagent                                          | Low       |
 
 ### Complexity hotspots
 
@@ -595,19 +595,19 @@ One 11-line internal clone group remains within `agent-config-editor.ts` (lines 
 
 ### Session encapsulation debt (Law of Demeter) — resolved by [#277] ✔️
 
-All consumer reach-throughs to the raw SDK `AgentSession` via `Agent.session` have been eliminated.
-`Agent.session` is removed; `SubagentSession.session` is marked `@internal` (lifecycle use only).
+All consumer reach-throughs to the raw SDK `AgentSession` via `Subagent.session` have been eliminated.
+`Subagent.session` is removed; `SubagentSession.session` is marked `@internal` (lifecycle use only).
 The intent-revealing replacements added by [#277]:
 
-| Reach-through                            | Sites                                                                              | Replacement                                      |
-| ---------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------ |
-| Steer buffer-or-deliver (was duplicated) | `service-adapter.ts`, `steer-tool.ts`                                              | `Agent.steer(message)`                           |
-| Conversation viewing                     | `get-result-tool.ts`, `agent-menu.ts`, `conversation-viewer.ts`                    | `Agent.getConversation()` / `Agent.messages`     |
-| Session-readiness guard                  | `agent-tool.ts`, `agent-manager.ts`                                                | `Agent.isSessionReady()`                         |
-| Context-window stats                     | `steer-tool.ts`, `get-result-tool.ts`, `notification.ts`, `conversation-viewer.ts` | `Agent.getContextPercent()`                      |
-| Live updates (subscription)              | `conversation-viewer.ts`                                                           | `Agent.subscribeToUpdates(fn)`                   |
-| Observer callback session param          | `background-spawner.ts`, `foreground-runner.ts`                                    | `agent.subagentSession` (narrowed callback)      |
-| Session disposal                         | `agent-manager.ts`                                                                 | `SubagentSession.dispose()` — resolved by [#265] |
+| Reach-through                            | Sites                                                                              | Replacement                                        |
+| ---------------------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Steer buffer-or-deliver (was duplicated) | `service-adapter.ts`, `steer-tool.ts`                                              | `Subagent.steer(message)`                          |
+| Conversation viewing                     | `get-result-tool.ts`, `agent-menu.ts`, `conversation-viewer.ts`                    | `Subagent.getConversation()` / `Subagent.messages` |
+| Session-readiness guard                  | `agent-tool.ts`, `subagent-manager.ts`                                             | `Subagent.isSessionReady()`                        |
+| Context-window stats                     | `steer-tool.ts`, `get-result-tool.ts`, `notification.ts`, `conversation-viewer.ts` | `Subagent.getContextPercent()`                     |
+| Live updates (subscription)              | `conversation-viewer.ts`                                                           | `Subagent.subscribeToUpdates(fn)`                  |
+| Observer callback session param          | `background-spawner.ts`, `foreground-runner.ts`                                    | `subagent.subagentSession` (narrowed callback)     |
+| Session disposal                         | `subagent-manager.ts`                                                              | `SubagentSession.dispose()` — resolved by [#265]   |
 
 ### Proposed bag decompositions
 
@@ -759,7 +759,7 @@ See [phase-15-domain-model-evolution.md](history/phase-15-domain-model-evolution
 
 Phase 16 inverted the core's outbound dependencies: worktree isolation joined permissions as an _extension_ on a minimal core, leaving pi-subagents a pure child-session orchestrator.
 The core now attaches extensions through exactly two surfaces — observational lifecycle events (unlimited) and rationed generative provider seams (today only the workspace provider) — and has zero knowledge of its consumers.
-The "runner" concept is gone: `createSubagentSession()` returns a born-complete `SubagentSession` that owns turn driving, steering, and disposal, and `Agent.run()` is coordination, not assembly.
+The "runner" concept is gone: `createSubagentSession()` returns a born-complete `SubagentSession` that owns turn driving, steering, and disposal, and `Subagent.run()` is coordination, not assembly.
 The decision and the full reasoning chain are recorded in [ADR 0002](../decisions/0002-extensions-on-a-minimal-core.md); the two-surface extension model is described under [Target architecture](#target-architecture).
 All five steps are closed: [#261], [#262], [#263], [#264], [#265].
 The earlier "agent collaborator architecture" framing (#256 superseded, #257 parked, #258 and #259 closed not-planned) was abandoned; its structural win was reached cleanly via the workspace seam.
