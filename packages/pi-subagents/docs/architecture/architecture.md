@@ -123,7 +123,7 @@ classDiagram
         +run()
         +resume(prompt, signal)
         +abort(): boolean
-        +steer(message): Promise<boolean>
+        +steer(message): Promise~boolean~
         +isSessionReady(): boolean
         +getConversation(): string | undefined
         +getContextPercent(): number | null
@@ -478,7 +478,7 @@ Extensions attach through exactly two surfaces, distinguished by the direction o
    Reactive concerns live here: permission detection, telemetry, UI, notifications.
    Adding a reactive concern never modifies the core.
 2. **Provider seams (generative) — rationed.**
-   The rare concern that must *inject* a value the core consumes synchronously registers a provider the core consults.
+   The rare concern that must _inject_ a value the core consumes synchronously registers a provider the core consults.
    Today there is exactly one: the **workspace provider** (returns the child's working directory plus bracketed setup/teardown).
    A provider seam is the only place the core is "open," so the list is kept as small as possible.
 
@@ -487,7 +487,7 @@ The discriminator when deciding how a concern attaches:
 - It only needs to **know** what happened → subscribe to a lifecycle event (observational, unlimited).
 - It must **return a value the core consumes** → register a provider (generative, rationed).
 
-The governing rule — **no vacant hooks**: the architecture must *admit* a seam without *shipping* it until a concrete consumer exists.
+The governing rule — **no vacant hooks**: the architecture must _admit_ a seam without _shipping_ it until a concrete consumer exists.
 A provider seam with no consumer is a speculative abstraction that taxes every reader and that `fallow` flags as dead.
 Latent extensibility is the deliverable; a vacant hook is not.
 
@@ -509,11 +509,11 @@ Latent extensibility is the deliverable; a vacant hook is not.
 - **Tool policy** (`disallowed_tools`) — access control belongs in pi-permission-system's `permission:` frontmatter.
 - **Extension filtering** (`extensions: string[]` allowlist) — tool visibility is pi-permission-system's job.
 - **Worktree isolation** (`worktree.ts`, `worktree-isolation.ts`, `GitWorktreeManager`, the `isolation: "worktree"` spawn mode) — environment policy, not core.
-  Git worktrees are one *strategy* for choosing the child's working directory; containers, throwaway tmpdirs, and remote sandboxes are others.
+  Git worktrees are one _strategy_ for choosing the child's working directory; containers, throwaway tmpdirs, and remote sandboxes are others.
   Evicted to `@gotgenes/pi-subagents-worktrees` (#263), the first consumer of the workspace provider seam.
 - **Extension lifecycle control** (`extensions: false`, `isolated`, `noSkills`) — removed in #264.
   Deny-at-use (the in-child permission layer blocking disallowed tool calls) covers what `isolated` pretended to do for tools.
-  Prevent-load (refusing to bind an extension because of load-time side effects, cost, or true sandboxing) is genuinely generative and is left as a *latent* (un-built) provider seam, added only if a real consumer needs it.
+  Prevent-load (refusing to bind an extension because of load-time side effects, cost, or true sandboxing) is genuinely generative and is left as a _latent_ (un-built) provider seam, added only if a real consumer needs it.
 
 ### Composition model
 
@@ -757,7 +757,7 @@ See [phase-15-domain-model-evolution.md](history/phase-15-domain-model-evolution
 
 ## Phase 16 (complete)
 
-Phase 16 inverted the core's outbound dependencies: worktree isolation joined permissions as an *extension* on a minimal core, leaving pi-subagents a pure child-session orchestrator.
+Phase 16 inverted the core's outbound dependencies: worktree isolation joined permissions as an _extension_ on a minimal core, leaving pi-subagents a pure child-session orchestrator.
 The core now attaches extensions through exactly two surfaces — observational lifecycle events (unlimited) and rationed generative provider seams (today only the workspace provider) — and has zero knowledge of its consumers.
 The "runner" concept is gone: `createSubagentSession()` returns a born-complete `SubagentSession` that owns turn driving, steering, and disposal, and `Agent.run()` is coordination, not assembly.
 The decision and the full reasoning chain are recorded in [ADR 0002](../decisions/0002-extensions-on-a-minimal-core.md); the two-surface extension model is described under [Target architecture](#target-architecture).
