@@ -52,6 +52,16 @@ interface PermissionsService {
 
   /** Query tool-level permission state for pre-filtering before session creation. */
   getToolPermission(toolName: string, agentName?: string): PermissionState;
+
+  /**
+   * Register a custom preview formatter for a specific tool name.
+   * Returns a disposer that unregisters the formatter.
+   * Throws if a formatter is already registered for that tool name.
+   */
+  registerToolInputFormatter(
+    toolName: string,
+    formatter: (input: Record<string, unknown>) => string | undefined,
+  ): () => void;
 }
 ```
 
@@ -75,6 +85,35 @@ const denied = tools.filter(
   (t) => permissions.getToolPermission(t, agentName) === "deny",
 );
 ```
+
+#### `registerToolInputFormatter`
+
+Register a custom preview formatter for a specific tool name.
+The formatter is called inside `ToolPreviewFormatter.formatToolInputForPrompt` before the built-in switch — return a string to use it as the ask-prompt preview, or `undefined` to fall through to the default.
+
+Only one formatter may be registered per tool name.
+A second call for the same name throws.
+The returned disposer unregisters the formatter; it is identity-guarded so a stale call cannot evict a later registration.
+
+```typescript
+const svc = getPermissionsService();
+const dispose = svc?.registerToolInputFormatter(
+  "my-server:batch",
+  (input) => {
+    const cmds = input.commands;
+    return Array.isArray(cmds)
+      ? `runs ${cmds.length} command${cmds.length === 1 ? "" : "s"}`
+      : undefined;
+  },
+);
+
+// On extension shutdown:
+dispose?.();
+```
+
+A built-in formatter for the `"mcp"` surface ships by default and renders a compact key/value summary of the call's `arguments`.
+Register before startup is complete to install your formatter before the built-in.
+To override the built-in `"mcp"` formatter, dispose it first (the disposer is returned by your own registration — the built-in is registered internally and cannot be disposed externally; raise an issue if you need this).
 
 #### Subagent session registration
 

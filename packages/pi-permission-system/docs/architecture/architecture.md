@@ -527,8 +527,10 @@ src/
 ├── skill-prompt-sanitizer.ts  Skill prompt filtering by policy
 ├── denial-messages.ts         Centralized denial message formatter — DenialContext type, EXTENSION_TAG, formatDenyReason/formatUnavailableReason/formatUserDeniedReason
 ├── permission-prompts.ts      User-facing ask-prompt formatting + pre-check error messages
-├── tool-input-preview.ts      Pure tool-input text utilities (truncation, counting, path extraction) + default constants
-├── tool-preview-formatter.ts  ToolPreviewFormatter class — config-dependent prompt + log formatting (single injection point for #266)
+├── tool-input-preview.ts              Pure tool-input text utilities (truncation, counting, path extraction) + default constants
+├── tool-preview-formatter.ts          ToolPreviewFormatter class — config-dependent prompt + log formatting; seam-first dispatch consults ToolInputFormatterLookup before built-in switch (#266, #283)
+├── tool-input-formatter-registry.ts   ToolInputFormatter type, ToolInputFormatterLookup interface, ToolInputFormatterRegistry class — persistent registry for custom previews (#283)
+├── builtin-tool-input-formatters.ts   Built-in formatters registered at startup: formatMcpInputForPrompt keyed to "mcp" (#283)
 ├── tool-registry.ts           ToolRegistry interface + tool name validation
 ├── active-agent.ts            Agent name detection from session/system prompt
 ├── subagent-context.ts        Subagent execution context detection (registry + env vars + filesystem)
