@@ -455,10 +455,11 @@ The extension factory publishes a `PermissionsService` object via `publishPermis
 Other extensions retrieve it with `getPermissionsService()` from `import("@gotgenes/pi-permission-system")`.
 The `package.json` `exports` field points to `src/service.ts`, which contains the interface, the accessor functions, and the `Symbol.for()` key — no extension machinery.
 
-The `PermissionsService` interface exposes two methods:
+The `PermissionsService` interface exposes three methods:
 
 - `checkPermission(surface, value?, agentName?)` — full policy query.
 - `getToolPermission(toolName, agentName?)` — tool-level permission state (`allow`/`deny`/`ask`) for pre-filtering.
+- `registerToolInputFormatter(toolName, formatter)` — register a custom ask-prompt preview for a tool name; returns a disposer (#283).
 
 The event-bus RPC (`permissions:rpc:check`) remains as a zero-dependency fallback for consumers who do not want to add an optional peer dep.
 It is deprecated in favor of the service accessor.
