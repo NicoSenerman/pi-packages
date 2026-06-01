@@ -33,13 +33,22 @@ export function isSubagentExecutionContext(
   subagentSessionsDir: string,
   registry?: SubagentSessionRegistry,
 ): boolean {
-  const sessionDir = ctx.sessionManager.getSessionDir();
-
-  // 1. Explicit registry — in-process subagent extensions register before
-  //    bindExtensions(); checked first so it takes priority over heuristics.
-  if (registry && sessionDir && registry.has(sessionDir)) {
-    return true;
+  // 1. Explicit registry — in-process subagent extensions register by child
+  //    session id before bindExtensions(); checked first so it takes priority
+  //    over heuristics. Each concurrent sibling has a unique session id, so
+  //    one sibling's disposed event cannot affect another's registration.
+  if (registry) {
+    try {
+      const sessionId = ctx.sessionManager.getSessionId();
+      if (sessionId && registry.has(sessionId)) {
+        return true;
+      }
+    } catch {
+      // getSessionId() unavailable — fall through to env/filesystem detection.
+    }
   }
+
+  const sessionDir = ctx.sessionManager.getSessionDir();
 
   // 2. Env vars — process-based subagent extensions (nicobailon/pi-subagents,
   //    HazAT/pi-interactive-subagents, pi-agent-router, etc.).

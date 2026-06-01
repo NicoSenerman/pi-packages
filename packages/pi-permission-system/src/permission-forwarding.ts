@@ -119,8 +119,8 @@ export function resolvePermissionForwardingTargetSessionId(options: {
   isSubagent: boolean;
   currentSessionId?: string | null;
   env?: NodeJS.ProcessEnv;
-  /** Session directory key for registry lookup. */
-  sessionDir?: string;
+  /** Child session id for registry lookup. */
+  sessionId?: string;
   /** In-process subagent session registry (checked before env vars). */
   registry?: SubagentSessionRegistry;
 }): string | null {
@@ -133,8 +133,8 @@ export function resolvePermissionForwardingTargetSessionId(options: {
   }
 
   // 1. Registry — in-process subagents register parentSessionId explicitly.
-  if (options.registry && options.sessionDir) {
-    const entry = options.registry.get(options.sessionDir);
+  if (options.registry && options.sessionId) {
+    const entry = options.registry.get(options.sessionId);
     const resolved = normalizePermissionForwardingSessionId(
       entry?.parentSessionId,
     );

@@ -105,7 +105,6 @@ export async function waitForForwardedPermissionApproval(
   deps: PermissionForwardingDeps,
 ): Promise<PermissionPromptDecision> {
   const requesterSessionId = getSessionId(ctx);
-  const sessionDir = ctx.sessionManager.getSessionDir();
   const targetSessionId = resolvePermissionForwardingTargetSessionId({
     hasUI: ctx.hasUI,
     isSubagent: isSubagentExecutionContext(
@@ -115,7 +114,7 @@ export async function waitForForwardedPermissionApproval(
     ),
     currentSessionId: requesterSessionId,
     env: process.env,
-    sessionDir,
+    sessionId: requesterSessionId,
     registry: deps.registry,
   });
 

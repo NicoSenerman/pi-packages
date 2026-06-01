@@ -149,13 +149,11 @@ describe("resolvePermissionForwardingTargetSessionId", () => {
 });
 
 describe("resolvePermissionForwardingTargetSessionId — registry resolution", () => {
-  const sessionDir =
-    "/home/user/projects/.pi/sessions/parent/tasks/session-abc";
+  const childSessionId = "child-session-abc";
 
   test("returns parentSessionId from registry when env vars are absent", () => {
     const registry = new SubagentSessionRegistry();
-    registry.register(sessionDir, {
-      agentName: "Explore",
+    registry.register(childSessionId, {
       parentSessionId: "parent-from-registry",
     });
 
@@ -163,7 +161,7 @@ describe("resolvePermissionForwardingTargetSessionId — registry resolution", (
       resolvePermissionForwardingTargetSessionId({
         hasUI: false,
         isSubagent: true,
-        sessionDir,
+        sessionId: childSessionId,
         registry,
         env: {},
       }),
@@ -172,8 +170,7 @@ describe("resolvePermissionForwardingTargetSessionId — registry resolution", (
 
   test("registry takes priority over env vars", () => {
     const registry = new SubagentSessionRegistry();
-    registry.register(sessionDir, {
-      agentName: "Explore",
+    registry.register(childSessionId, {
       parentSessionId: "parent-from-registry",
     });
 
@@ -181,7 +178,7 @@ describe("resolvePermissionForwardingTargetSessionId — registry resolution", (
       resolvePermissionForwardingTargetSessionId({
         hasUI: false,
         isSubagent: true,
-        sessionDir,
+        sessionId: childSessionId,
         registry,
         env: { PI_AGENT_ROUTER_PARENT_SESSION_ID: "parent-from-env" },
       }),
@@ -190,27 +187,27 @@ describe("resolvePermissionForwardingTargetSessionId — registry resolution", (
 
   test("falls through to env vars when registry entry has no parentSessionId", () => {
     const registry = new SubagentSessionRegistry();
-    registry.register(sessionDir, { agentName: "Explore" }); // no parentSessionId
+    registry.register(childSessionId, {}); // no parentSessionId
 
     expect(
       resolvePermissionForwardingTargetSessionId({
         hasUI: false,
         isSubagent: true,
-        sessionDir,
+        sessionId: childSessionId,
         registry,
         env: { PI_AGENT_ROUTER_PARENT_SESSION_ID: "parent-from-env" },
       }),
     ).toBe("parent-from-env");
   });
 
-  test("falls through to env vars when sessionDir is not in registry", () => {
+  test("falls through to env vars when sessionId is not in registry", () => {
     const registry = new SubagentSessionRegistry(); // empty
 
     expect(
       resolvePermissionForwardingTargetSessionId({
         hasUI: false,
         isSubagent: true,
-        sessionDir,
+        sessionId: childSessionId,
         registry,
         env: { PI_AGENT_ROUTER_PARENT_SESSION_ID: "parent-from-env" },
       }),
@@ -219,13 +216,13 @@ describe("resolvePermissionForwardingTargetSessionId — registry resolution", (
 
   test("returns null when registry entry has no parentSessionId and no env vars set", () => {
     const registry = new SubagentSessionRegistry();
-    registry.register(sessionDir, { agentName: "Explore" }); // no parentSessionId
+    registry.register(childSessionId, {}); // no parentSessionId
 
     expect(
       resolvePermissionForwardingTargetSessionId({
         hasUI: false,
         isSubagent: true,
-        sessionDir,
+        sessionId: childSessionId,
         registry,
         env: {},
       }),
@@ -237,7 +234,7 @@ describe("resolvePermissionForwardingTargetSessionId — registry resolution", (
       resolvePermissionForwardingTargetSessionId({
         hasUI: false,
         isSubagent: true,
-        sessionDir,
+        sessionId: childSessionId,
         env: { PI_AGENT_ROUTER_PARENT_SESSION_ID: "parent-from-env" },
       }),
     ).toBe("parent-from-env");
