@@ -505,10 +505,12 @@ src/
 │       ├── skill-read.ts     describeSkillReadGate — pure descriptor factory
 │       ├── external-directory.ts describeExternalDirectoryGate — pure descriptor/bypass factory
 │       ├── external-directory-messages.ts External-directory ask-prompt formatting (denial messages moved to denial-messages.ts)
-│       ├── bash-external-directory.ts describeBashExternalDirectoryGate — pure descriptor/bypass factory
-│       ├── bash-path.ts      describeBashPathGate — async descriptor/bypass factory for bash path rules
+│       ├── bash-external-directory.ts describeBashExternalDirectoryGate — pure descriptor/bypass factory; selects the worst uncovered path via `pickMostRestrictive`
+│       ├── bash-path.ts      describeBashPathGate — async descriptor/bypass factory for bash path rules; selects the worst uncovered token via `pickMostRestrictive`
+│       ├── candidate-check.ts `pickMostRestrictive` — pure deny > ask > allow selection over PermissionCheckResults (first-wins on ties); shared by the bash gates
 │       ├── bash-token-classification.ts Pure token classifiers — `classifyTokenAsPathCandidate` (strict: `/`, `~/`, `..`) and `classifyTokenAsRuleCandidate` (broader: also dot-files and relative paths); shared `rejectNonPathToken` predicate
-│       ├── bash-path-extractor.ts Tree-sitter-bash AST walker + external/rule path extraction; cd-aware: relative paths are resolved against a leading `cd <dir>` target (if it stays within cwd); classifiers imported from `bash-token-classification.ts`
+│       ├── bash-program.ts   `BashProgram` value object — parses a bash command once (tree-sitter-bash) and exposes typed slices (`pathTokens()`, cd-aware `externalPaths(cwd)`); owns the AST walker and `cd`-target detection; classifiers imported from `bash-token-classification.ts`
+│       ├── bash-path-extractor.ts Thin facades (`extractTokensForPathRules`, `extractExternalPathsFromBashCommand`) over `BashProgram`
 │       ├── path.ts           describePathGate — pure descriptor factory for cross-cutting path rules
 │       ├── tool.ts           describeToolGate — pure descriptor factory
 │       └── index.ts          Barrel re-exports
