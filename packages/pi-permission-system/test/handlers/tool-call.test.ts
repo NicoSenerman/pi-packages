@@ -287,3 +287,76 @@ describe("handleToolCall — bash path gate", () => {
     expect(result).toMatchObject({ block: true });
   });
 });
+
+// ── bash command chain gate ───────────────────────────────────────────────
+
+describe("handleToolCall — bash command chain gate", () => {
+  it("blocks a chain when a later sub-command is denied (#301)", async () => {
+    const checkPermission = vi
+      .fn()
+      .mockImplementation((surface: string, input: unknown) => {
+        if (surface === "bash") {
+          const command = (input as { command?: string }).command ?? "";
+          return /^npm\b/.test(command)
+            ? makeCheckResult({
+                state: "deny",
+                source: "bash",
+                command,
+                matchedPattern: "npm *",
+              })
+            : makeCheckResult({
+                state: "allow",
+                source: "bash",
+                command,
+                matchedPattern: "echo *",
+              });
+        }
+        return makeCheckResult({ state: "allow" });
+      });
+    const { handler } = makeHandler({
+      session: { checkPermission },
+      toolRegistry: {
+        getAll: vi.fn().mockReturnValue([{ name: "bash" }]),
+      },
+    });
+    const event = {
+      type: "tool_call",
+      toolCallId: "tc-bash-chain",
+      name: "bash",
+      input: { command: "echo start && npm install compromised-package" },
+    };
+    const result = await handler.handleToolCall(event, makeCtx());
+    expect(result).toMatchObject({ block: true });
+  });
+
+  it("allows a single non-chained bash command", async () => {
+    const checkPermission = vi
+      .fn()
+      .mockImplementation((surface: string, input: unknown) => {
+        if (surface === "bash") {
+          const command = (input as { command?: string }).command ?? "";
+          return makeCheckResult({
+            state: "allow",
+            source: "bash",
+            command,
+            matchedPattern: "echo *",
+          });
+        }
+        return makeCheckResult({ state: "allow" });
+      });
+    const { handler } = makeHandler({
+      session: { checkPermission },
+      toolRegistry: {
+        getAll: vi.fn().mockReturnValue([{ name: "bash" }]),
+      },
+    });
+    const event = {
+      type: "tool_call",
+      toolCallId: "tc-bash-single",
+      name: "bash",
+      input: { command: "echo hi" },
+    };
+    const result = await handler.handleToolCall(event, makeCtx());
+    expect(result).toEqual({});
+  });
+});

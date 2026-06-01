@@ -3,7 +3,7 @@ import type {
   InputEventResult,
 } from "@earendil-works/pi-coding-agent";
 
-import { toRecord } from "#src/common";
+import { getNonEmptyString, toRecord } from "#src/common";
 import {
   emitDecisionEvent,
   type PermissionEventBus,
@@ -26,6 +26,7 @@ import {
   getToolNameFromValue,
   type ToolRegistry,
 } from "#src/tool-registry";
+import { resolveBashCommandCheck } from "./gates/bash-command";
 import { describeBashExternalDirectoryGate } from "./gates/bash-external-directory";
 import { describeBashPathGate } from "./gates/bash-path";
 import type { GateResult, GateRunnerDeps } from "./gates/descriptor";
@@ -169,13 +170,25 @@ export class PermissionGateHandler {
           getSessionRuleset,
         ),
       () => describeBashPathGate(tcc, checkPermission, getSessionRuleset),
-      () => {
-        const toolCheck = checkPermission(
-          tcc.toolName,
-          tcc.input,
-          tcc.agentName ?? undefined,
-          getSessionRuleset(),
-        );
+      async () => {
+        // Bash commands may chain several sub-commands (`a && b`, `a | b`, …);
+        // evaluate each on the bash surface and select the most restrictive,
+        // rather than matching the whole program string (#301). Other tools
+        // evaluate their single input directly.
+        const toolCheck =
+          tcc.toolName === "bash"
+            ? await resolveBashCommandCheck(
+                getNonEmptyString(toRecord(tcc.input).command) ?? "",
+                tcc.agentName ?? undefined,
+                getSessionRuleset(),
+                checkPermission,
+              )
+            : checkPermission(
+                tcc.toolName,
+                tcc.input,
+                tcc.agentName ?? undefined,
+                getSessionRuleset(),
+              );
         const toolDescriptor = describeToolGate(tcc, toolCheck, formatter);
         toolDescriptor.preCheck = toolCheck;
         return toolDescriptor;
