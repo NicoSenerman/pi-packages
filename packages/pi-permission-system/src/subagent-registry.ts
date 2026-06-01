@@ -7,15 +7,22 @@
  * can detect them without relying on environment variables or filesystem
  * heuristics.
  *
- * The registry is keyed by session directory path, which is unique per
- * session and available to both producer and consumer via
- * `ctx.sessionManager.getSessionDir()`.
+ * The registry is keyed by the child's **session id**, which is unique per
+ * child and available to both producer (via `sessionManager.getSessionId()`
+ * after `newSession()` in `create-subagent-session.ts`) and consumer (via
+ * `ctx.sessionManager.getSessionId()`). Two concurrent siblings of the same
+ * parent therefore occupy distinct keys, so one sibling's `disposed` event
+ * cannot evict the entry the others depend on.
  *
  * The single registry instance is stored on `globalThis` (via `Symbol.for()`)
  * so that the parent's permission-system instance (which registers children
  * on the parent's event bus) and each child's separate jiti instance (which
  * reads the registry to detect itself and resolve its forwarding target) share
  * one store across per-session event buses. See `getSubagentSessionRegistry()`.
+ *
+ * When a future code path needs the child's agent name, read it from
+ * `tcc.agentName` (resolved from the `<active_agent>` system-prompt tag) —
+ * not from this registry.
  */
 
 /** Process-global key for the shared registry slot. */
@@ -53,8 +60,6 @@ export function getSubagentSessionRegistry(): SubagentSessionRegistry {
 export interface SubagentSessionInfo {
   /** Parent session ID for permission forwarding. Omit when unknown. */
   parentSessionId?: string;
-  /** Agent name for per-agent policy resolution. */
-  agentName: string;
 }
 
 /**
@@ -66,9 +71,9 @@ export interface SubagentSessionInfo {
  * `subagents:child:disposed` event subscription (ADR 0002 — the core
  * publishes, consumers observe).
  *
- * Keyed by session directory path. Note: concurrent sibling children of one
- * parent currently share a key (`<parent>/<basename>/tasks`); keying by child
- * session id is tracked in #298.
+ * Keyed by child session id. Each concurrent child of the same parent receives
+ * a unique session id from `sessionManager.newSession()`, so siblings occupy
+ * distinct keys and one sibling's `disposed` cannot evict another's entry.
  */
 export class SubagentSessionRegistry {
   private readonly sessions = new Map<string, SubagentSessionInfo>();
@@ -76,25 +81,25 @@ export class SubagentSessionRegistry {
   /**
    * Register an in-process subagent session.
    *
-   * If a previous entry exists for `sessionKey`, it is overwritten
+   * If a previous entry exists for `sessionId`, it is overwritten
    * (last-write-wins; single-writer expected per key).
    */
-  register(sessionKey: string, info: SubagentSessionInfo): void {
-    this.sessions.set(sessionKey, info);
+  register(sessionId: string, info: SubagentSessionInfo): void {
+    this.sessions.set(sessionId, info);
   }
 
   /** Remove a previously registered session. No-op if the key is absent. */
-  unregister(sessionKey: string): void {
-    this.sessions.delete(sessionKey);
+  unregister(sessionId: string): void {
+    this.sessions.delete(sessionId);
   }
 
-  /** Return the registered info for `sessionKey`, or `undefined` if absent. */
-  get(sessionKey: string): SubagentSessionInfo | undefined {
-    return this.sessions.get(sessionKey);
+  /** Return the registered info for `sessionId`, or `undefined` if absent. */
+  get(sessionId: string): SubagentSessionInfo | undefined {
+    return this.sessions.get(sessionId);
   }
 
-  /** Return `true` when `sessionKey` has a registered entry. */
-  has(sessionKey: string): boolean {
-    return this.sessions.has(sessionKey);
+  /** Return `true` when `sessionId` has a registered entry. */
+  has(sessionId: string): boolean {
+    return this.sessions.has(sessionId);
   }
 }

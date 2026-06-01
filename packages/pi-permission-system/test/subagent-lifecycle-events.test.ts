@@ -19,13 +19,11 @@ describe("subscribeSubagentLifecycle", () => {
     subscribeSubagentLifecycle(bus, registry);
 
     bus.emit(SUBAGENT_CHILD_SESSION_CREATED, {
-      sessionDir: "/sessions/child-abc",
-      agentName: "Explore",
+      sessionId: "child-session-abc",
       parentSessionId: "parent-42",
     });
 
-    expect(registry.get("/sessions/child-abc")).toEqual({
-      agentName: "Explore",
+    expect(registry.get("child-session-abc")).toEqual({
       parentSessionId: "parent-42",
     });
   });
@@ -40,12 +38,11 @@ describe("subscribeSubagentLifecycle", () => {
     subscribeSubagentLifecycle(bus, registry);
 
     bus.emit(SUBAGENT_CHILD_SESSION_CREATED, {
-      sessionDir: "/sessions/child-sync",
-      agentName: "Explore",
+      sessionId: "child-session-sync",
     });
 
     // No await between emit and this assertion.
-    expect(registry.has("/sessions/child-sync")).toBe(true);
+    expect(registry.has("child-session-sync")).toBe(true);
   });
 
   it("omits parentSessionId when the event does not carry one", () => {
@@ -53,12 +50,10 @@ describe("subscribeSubagentLifecycle", () => {
     subscribeSubagentLifecycle(bus, registry);
 
     bus.emit(SUBAGENT_CHILD_SESSION_CREATED, {
-      sessionDir: "/sessions/child-xyz",
-      agentName: "general-purpose",
+      sessionId: "child-session-xyz",
     });
 
-    expect(registry.get("/sessions/child-xyz")).toEqual({
-      agentName: "general-purpose",
+    expect(registry.get("child-session-xyz")).toEqual({
       parentSessionId: undefined,
     });
   });
@@ -66,11 +61,11 @@ describe("subscribeSubagentLifecycle", () => {
   it("unregisters a child session on disposed", () => {
     const bus = createEventBus();
     subscribeSubagentLifecycle(bus, registry);
-    registry.register("/sessions/child-abc", { agentName: "Explore" });
+    registry.register("child-session-abc", { parentSessionId: "parent-42" });
 
-    bus.emit(SUBAGENT_CHILD_DISPOSED, { sessionDir: "/sessions/child-abc" });
+    bus.emit(SUBAGENT_CHILD_DISPOSED, { sessionId: "child-session-abc" });
 
-    expect(registry.has("/sessions/child-abc")).toBe(false);
+    expect(registry.has("child-session-abc")).toBe(false);
   });
 
   it("detaches both handlers when the returned unsubscribe is called", () => {
@@ -80,12 +75,11 @@ describe("subscribeSubagentLifecycle", () => {
     unsubscribe();
 
     bus.emit(SUBAGENT_CHILD_SESSION_CREATED, {
-      sessionDir: "/sessions/child-abc",
-      agentName: "Explore",
+      sessionId: "child-session-abc",
     });
-    bus.emit(SUBAGENT_CHILD_DISPOSED, { sessionDir: "/sessions/child-abc" });
+    bus.emit(SUBAGENT_CHILD_DISPOSED, { sessionId: "child-session-abc" });
 
-    expect(registry.has("/sessions/child-abc")).toBe(false);
+    expect(registry.has("child-session-abc")).toBe(false);
   });
 
   it("subscribes to a fake bus on the exact channel names", () => {
@@ -109,5 +103,30 @@ describe("subscribeSubagentLifecycle", () => {
       "subagents:child:session-created",
     );
     expect(SUBAGENT_CHILD_DISPOSED).toBe("subagents:child:disposed");
+  });
+
+  // ── #298 regression: concurrent siblings must be independent ──────────────
+
+  it("disposing one sibling does not evict the other (collision regression)", () => {
+    const bus = createEventBus();
+    subscribeSubagentLifecycle(bus, registry);
+
+    // Two concurrent children of the same parent register under distinct ids.
+    bus.emit(SUBAGENT_CHILD_SESSION_CREATED, {
+      sessionId: "child-A",
+      parentSessionId: "parent-P",
+    });
+    bus.emit(SUBAGENT_CHILD_SESSION_CREATED, {
+      sessionId: "child-B",
+      parentSessionId: "parent-P",
+    });
+
+    // Sibling A finishes first.
+    bus.emit(SUBAGENT_CHILD_DISPOSED, { sessionId: "child-A" });
+
+    // B must still be detected as a registered subagent.
+    expect(registry.has("child-A")).toBe(false);
+    expect(registry.has("child-B")).toBe(true);
+    expect(registry.get("child-B")?.parentSessionId).toBe("parent-P");
   });
 });

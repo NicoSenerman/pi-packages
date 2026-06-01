@@ -32,14 +32,15 @@ interface LifecycleEventBus {
 
 /** Fields read from the `session-created` payload (ISP). */
 interface ChildSessionCreatedEvent {
-  sessionDir: string;
-  agentName: string;
+  /** Child session id — the registry key. Must match the publisher. */
+  sessionId: string;
   parentSessionId?: string;
 }
 
 /** Fields read from the `disposed` payload (ISP). */
 interface ChildDisposedEvent {
-  sessionDir: string;
+  /** Child session id — the registry key. Must match the publisher. */
+  sessionId: string;
 }
 
 /**
@@ -54,15 +55,14 @@ export function subscribeSubagentLifecycle(
 ): () => void {
   const unsubCreated = events.on(SUBAGENT_CHILD_SESSION_CREATED, (data) => {
     const event = data as ChildSessionCreatedEvent;
-    registry.register(event.sessionDir, {
-      agentName: event.agentName,
+    registry.register(event.sessionId, {
       parentSessionId: event.parentSessionId,
     });
   });
 
   const unsubDisposed = events.on(SUBAGENT_CHILD_DISPOSED, (data) => {
     const event = data as ChildDisposedEvent;
-    registry.unregister(event.sessionDir);
+    registry.unregister(event.sessionId);
   });
 
   return () => {
