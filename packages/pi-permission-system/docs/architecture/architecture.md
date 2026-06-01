@@ -416,6 +416,7 @@ This requires two detections:
 
 1. **Explicit registry** — `@gotgenes/pi-subagents` emits `subagents:child:session-created` before `bindExtensions()`; the permission system's subscriber writes the entry into `SubagentSessionRegistry` synchronously.
    The registry (keyed by session directory path) is checked first.
+   The registry is a process-global singleton (via `getSubagentSessionRegistry()`, backed by `globalThis` + `Symbol.for()`) because each session's `ResourceLoader` creates its own `pi.events` bus: the parent's instance registers the child over the parent bus, while the child's separate jiti instance reads the same global store to detect itself and resolve its forwarding target.
 2. **Env vars** (`SUBAGENT_ENV_HINT_KEYS`) — returns `true` when any key is set to a non-empty, non-whitespace value.
    Used by process-based subagent extensions.
 3. **Filesystem path** — session-directory path-based fallback (child session dir is nested under `subagentSessionsDir`).
@@ -436,6 +437,7 @@ Adding a new env var candidate when an extension adopts the convention is a one-
 
 In-process subagent extensions (e.g. `@gotgenes/pi-subagents`) call `createAgentSession()` directly — no child process is spawned and no env vars are ever set.
 `@gotgenes/pi-subagents` publishes `subagents:child:session-created` (before `bindExtensions()`) and `subagents:child:disposed` (in the run's `finally`); `src/subagent-lifecycle-events.ts` subscribes and writes/removes the entry in `SubagentSessionRegistry` synchronously.
+The registry is process-global (see `getSubagentSessionRegistry()` in `src/subagent-registry.ts`) so the child's separate jiti instance reads the same store as the parent.
 See `src/subagent-registry.ts` and [Subagent Integration](../subagent-integration.md) for details.
 
 ### External convention guide
@@ -535,7 +537,7 @@ src/
 ├── tool-registry.ts           ToolRegistry interface + tool name validation
 ├── active-agent.ts            Agent name detection from session/system prompt
 ├── subagent-context.ts        Subagent execution context detection (registry + env vars + filesystem)
-├── subagent-registry.ts       SubagentSessionRegistry class — in-process subagent session tracking
+├── subagent-registry.ts       SubagentSessionRegistry class + getSubagentSessionRegistry() process-global accessor — in-process subagent session tracking
 ├── permission-forwarding.ts   Constants for cross-session forwarding (registry + env var resolution)
 ├── forwarded-permissions/     Poll-based approval forwarding for subagents
 ├── session-logger.ts          SessionLogger interface + createSessionLogger() factory
