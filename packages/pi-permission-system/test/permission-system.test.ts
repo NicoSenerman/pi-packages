@@ -8,6 +8,7 @@ import {
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { expect, test } from "vitest";
 import {
   createActiveToolsCacheKey,
@@ -46,23 +47,16 @@ import {
   canResolveAskPermissionRequest,
   shouldAutoApprovePermissionState,
 } from "#src/yolo-mode";
+import { type FakePi, makeFakePi } from "#test/helpers/make-fake-pi";
 import {
   type CreateManagerOptions,
   createManager,
 } from "#test/helpers/manager-harness";
 
-type MockHandler = (
-  event: Record<string, unknown>,
-  ctx: Record<string, unknown>,
-) =>
-  | Promise<Record<string, unknown> | undefined>
-  | Record<string, unknown>
-  | undefined;
-
 type ExtensionHarness = {
   baseDir: string;
   cwd: string;
-  handlers: Record<string, MockHandler>;
+  pi: FakePi;
   prompts: string[];
   cleanup: () => Promise<void>;
 };
@@ -112,7 +106,6 @@ function createToolCallHarness(
   const baseDir = mkdtempSync(join(tmpdir(), "pi-permission-system-runtime-"));
   const cwd = options.cwd ?? baseDir;
   const prompts: string[] = [];
-  const handlers: Record<string, MockHandler> = {};
   const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
   const globalConfigPath = getGlobalConfigPath(baseDir);
   mkdirSync(join(baseDir, "agents"), { recursive: true });
@@ -124,22 +117,10 @@ function createToolCallHarness(
     "utf8",
   );
 
+  const pi = makeFakePi({ toolNames });
   process.env.PI_CODING_AGENT_DIR = baseDir;
   try {
-    piPermissionSystemExtension({
-      on: (name: string, handler: MockHandler): void => {
-        handlers[name] = handler;
-      },
-      registerCommand: (): void => {},
-      getAllTools: (): Array<{ name: string }> =>
-        toolNames.map((name) => ({ name })),
-      setActiveTools: (): void => {},
-      registerProvider: (): void => {},
-      events: {
-        emit: (): void => {},
-        on: (): (() => void) => () => undefined,
-      },
-    } as never);
+    piPermissionSystemExtension(pi as unknown as ExtensionAPI);
   } finally {
     if (originalAgentDir === undefined) {
       delete process.env.PI_CODING_AGENT_DIR;
@@ -151,11 +132,13 @@ function createToolCallHarness(
   return {
     baseDir,
     cwd,
-    handlers,
+    pi,
     prompts,
     cleanup: async (): Promise<void> => {
-      await Promise.resolve(
-        handlers.session_shutdown({}, createMockContext(cwd, prompts, options)),
+      await pi.fire(
+        "session_shutdown",
+        {},
+        createMockContext(cwd, prompts, options),
       );
       rmSync(baseDir, { recursive: true, force: true });
     },
@@ -192,15 +175,14 @@ async function runToolCall(
   event: Record<string, unknown>,
   options: ExtensionHarnessOptions = {},
 ): Promise<Record<string, unknown>> {
-  const handler = harness.handlers.tool_call;
-  expect(handler).toBeTypeOf("function");
-
   const result = await withIsolatedSubagentEnv(async () =>
-    Promise.resolve(
-      handler(event, createMockContext(harness.cwd, harness.prompts, options)),
+    harness.pi.fire(
+      "tool_call",
+      event,
+      createMockContext(harness.cwd, harness.prompts, options),
     ),
   );
-  return result ?? {};
+  return (result as Record<string, unknown> | undefined) ?? {};
 }
 
 test("Yolo mode only auto-approves ask-state permissions", () => {
@@ -2335,7 +2317,7 @@ test("session approval: session_shutdown clears session approvals", async () => 
       hasUI: true,
       selectResponse: "Yes",
     });
-    await Promise.resolve(harness.handlers.session_shutdown({}, shutdownCtx));
+    await harness.pi.fire("session_shutdown", {}, shutdownCtx);
 
     // Access same path again — should prompt because cache was cleared
     const result = await runToolCall(
