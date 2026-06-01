@@ -32,3 +32,24 @@ A plan was written and committed (`docs/plans/0301-evaluate-bash-command-chains.
 ### Diagnostic details
 
 - **Escalation-delay tracking** — Reversed the initial mechanism recommendation (synchronous hand-rolled splitter) after the owner's architecture-review prompt revealed it would create a second bash decomposition that can diverge from the tree-sitter one; switched to the tree-sitter-gate approach before writing the plan, not after.
+
+## Stage: Implementation — TDD (2026-06-01T21:16:29Z)
+
+### Session summary
+
+Executed the refreshed #301 plan on top of the locally-landed #304 refactor (`BashProgram` + `pickMostRestrictive`), neither yet shipped.
+Four commits: added `BashProgram.topLevelCommands()` (chain decomposition in the single parse), `resolveBashCommandCheck` (`bash-command.ts`, most-restrictive over sub-commands), wired the async bash branch into the tool-gate producer, and documented the per-command semantics.
+Full suite green (1704 tests); `check`, `lint`, and `fallow` clean; pre-completion reviewer returned PASS.
+
+### Observations
+
+- The fix stayed as small as the plan promised: `checkPermission` is untouched and synchronous; all async decomposition lives in the gate layer via `resolveBashCommandCheck`, and the existing `describeToolGate` `preCheck` seam carried the most-restrictive result with no interface changes.
+- The integration test deliberately uses `echo start && npm install …` (no path-like tokens) so the bash path / external-directory gates produce nothing and the bash command-pattern gate is the sole blocker — isolating the behavior under test.
+- `collectTopLevelCommandTexts` descends only `program`/`list`/`pipeline`/`redirected_statement`; subshells and command substitution emit whole (the documented top-level scope).
+- The `?? checkPermission(whole)` fallback in `resolveBashCommandCheck` guarantees the empty-units case is never weaker than before.
+- AST shapes for redirection, `&` background, and bare subshell were verified with a throwaway parse script before writing assertions (e.g. `npm install > out.txt` \u2192 `["npm install"]`, redirect target dropped).
+- No fallow suppression needed for the new exports — fallow treats the test files as consumers, so `resolveBashCommandCheck` and `topLevelCommands()` were clean once their tests existed.
+
+### Diagnostic details
+
+- **Feedback-loop gap analysis** — `pnpm run check` was run immediately after Step 1 (constructor signature change) and Step 3 (producer closure change), per the plan's notes; both passed first try.
