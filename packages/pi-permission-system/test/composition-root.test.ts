@@ -136,6 +136,14 @@ function makeUiCtx(cwd: string, capturedTitles: string[]): { ctx: unknown } {
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
+/** Drive the registered `session_start` handler with a ctx. */
+function fireSessionStart(
+  pi: ReturnType<typeof makeFakePi>,
+  ctx: unknown,
+): Promise<unknown> {
+  return pi.fire("session_start", { reason: "start" }, ctx);
+}
+
 /**
  * Simulate the parent UI session responding to a forwarded permission request.
  *
@@ -259,9 +267,12 @@ describe("subagent registry sharing across factory instances", () => {
 
 describe("shutdown teardown chain", () => {
   it("unpublishes the service and unsubscribes the lifecycle on shutdown", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "pi-perm-teardown-cwd-"));
     const pi = makeFakePi();
     piPermissionSystemExtension(pi as unknown as ExtensionAPI);
 
+    // The service is published at session_start, not at factory init.
+    await fireSessionStart(pi, makeChildCtx(cwd, "top-session"));
     expect(getPermissionsService()).toBeDefined();
 
     await pi.fire("session_shutdown");
@@ -275,6 +286,8 @@ describe("shutdown teardown chain", () => {
       parentSessionId: "p-late",
     });
     expect(getSubagentSessionRegistry().has("late-child")).toBe(false);
+
+    rmSync(cwd, { recursive: true, force: true });
   });
 });
 
@@ -291,14 +304,16 @@ describe("service and gate share one formatter registry", () => {
     const pi = makeFakePi({ toolNames: ["demo"] });
     piPermissionSystemExtension(pi as unknown as ExtensionAPI);
 
+    const capturedTitles: string[] = [];
+    const { ctx } = makeUiCtx(cwd, capturedTitles);
+    // The service is published at session_start; publish before resolving it.
+    await fireSessionStart(pi, ctx);
+
     const previewMarker = "PREVIEW::shared-registry-proof";
     getPermissionsService()!.registerToolInputFormatter(
       "demo",
       () => previewMarker,
     );
-
-    const capturedTitles: string[] = [];
-    const { ctx } = makeUiCtx(cwd, capturedTitles);
     const result = (await pi.fire(
       "tool_call",
       { toolName: "demo", toolCallId: "demo-ask", input: { foo: "bar" } },
@@ -316,8 +331,10 @@ describe("service and gate share one formatter registry", () => {
 
 describe("ready emitted after service publication", () => {
   // Ordering contracts exist only at the composition root: a consumer reacting
-  // to permissions:ready must be able to resolve the service immediately.
-  it("publishes the service before emitting permissions:ready", () => {
+  // to permissions:ready must be able to resolve the service immediately. The
+  // service is published and ready fires at session_start (not factory init).
+  it("publishes the service before emitting permissions:ready", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "pi-perm-ready-cwd-"));
     const seen: string[] = [];
     const pi = makeFakePi();
     pi.events.on(PERMISSIONS_READY_CHANNEL, () => {
@@ -326,39 +343,56 @@ describe("ready emitted after service publication", () => {
 
     piPermissionSystemExtension(pi as unknown as ExtensionAPI);
 
+    // ready is not emitted at load; only after session_start publishes.
+    expect(seen).toEqual([]);
+
+    await fireSessionStart(pi, makeChildCtx(cwd, "top-session"));
+
     expect(seen).toEqual(["present"]);
+
+    rmSync(cwd, { recursive: true, force: true });
   });
 });
 
 describe("multi-instance global service interplay", () => {
-  // Every instance runs publishPermissionsService at init and
-  // unpublishPermissionsService on shutdown. So a child instance's init
-  // overwrites the parent's globally published service, and the child's
-  // shutdown deletes the global slot entirely — leaving a live parent with no
-  // resolvable service. This is a characterization of current behavior; the
-  // desired behavior is tracked in the follow-up fix issue #302.
-  function runParentThenChildThenChildShutdown(): Promise<unknown> {
-    piPermissionSystemExtension(
-      makeFakePi({ events: createEventBus() }) as unknown as ExtensionAPI,
-    );
+  // The fix (#302) scopes the process-global service slot to the publishing
+  // instance. The parent publishes at its session_start; an in-process child
+  // (registered by session id) skips publishing, and its identity-scoped
+  // teardown is a no-op — so the parent's service is the one that resolves
+  // throughout the child's lifecycle and survives the child's shutdown.
+  it("keeps the parent's service published across the child's lifecycle", async () => {
+    const parentCwd = mkdtempSync(join(tmpdir(), "pi-perm-parent-cwd-"));
+    const childCwd = mkdtempSync(join(tmpdir(), "pi-perm-child-cwd-"));
+    const childSessionId = "child-session-mi";
+
+    const parentPi = makeFakePi({ events: createEventBus() });
+    piPermissionSystemExtension(parentPi as unknown as ExtensionAPI);
     const childPi = makeFakePi({ events: createEventBus() });
     piPermissionSystemExtension(childPi as unknown as ExtensionAPI);
-    return childPi.fire("session_shutdown");
-  }
 
-  it("currently leaves the parent without a resolvable service after the child shuts down", async () => {
-    await runParentThenChildThenChildShutdown();
+    // The parent is not a registered child, so it publishes its service.
+    await fireSessionStart(
+      parentPi,
+      makeChildCtx(parentCwd, "parent-session-mi"),
+    );
+    const parentService = getPermissionsService();
+    expect(parentService).toBeDefined();
 
-    // Current (buggy) behavior: the child's shutdown unpublished the global
-    // service slot, so the still-live parent's consumers see undefined.
-    expect(getPermissionsService()).toBeUndefined();
-  });
+    // The child is registered in the shared global registry before its own
+    // session_start, so it detects itself and skips publishing.
+    getSubagentSessionRegistry().register(childSessionId, {
+      parentSessionId: "parent-session-mi",
+    });
+    await fireSessionStart(childPi, makeChildCtx(childCwd, childSessionId));
 
-  // Desired behavior: a live parent's service should survive a child's
-  // shutdown. This `fails` test flips to passing once #302 is fixed (then
-  // remove the `.fails`).
-  it.fails("DESIRED: the parent's service survives a child's shutdown", async () => {
-    await runParentThenChildThenChildShutdown();
-    expect(getPermissionsService()).toBeDefined();
+    // Mid-run: the slot resolves the parent's service, never the child's.
+    expect(getPermissionsService()).toBe(parentService);
+
+    // The child's shutdown is a no-op for the slot it never owned.
+    await childPi.fire("session_shutdown");
+    expect(getPermissionsService()).toBe(parentService);
+
+    rmSync(parentCwd, { recursive: true, force: true });
+    rmSync(childCwd, { recursive: true, force: true });
   });
 });

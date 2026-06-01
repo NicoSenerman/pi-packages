@@ -18,11 +18,14 @@ interface ResourcesDiscoverPayload {
  *
  * Constructor deps:
  * - `session` — encapsulates all mutable session state
+ * - `activateService` — publishes the process-global service for this session
+ *   (skipped for in-process subagent children) and emits the ready event
  * - `cleanupRpc` — unsubscribes RPC handlers on shutdown
  */
 export class SessionLifecycleHandler {
   constructor(
     private readonly session: PermissionSession,
+    private readonly activateService: (ctx: ExtensionContext) => void,
     private readonly cleanupRpc: () => void,
   ) {}
 
@@ -47,6 +50,12 @@ export class SessionLifecycleHandler {
         cwd: ctx.cwd,
       });
     }
+
+    // Publish the process-global service now that a ctx (and therefore the
+    // session id) is available, so an in-process subagent child can be
+    // identified and excluded. Emitting ready here keeps the
+    // service-resolvable-when-ready ordering contract.
+    this.activateService(ctx);
     return Promise.resolve();
   }
 

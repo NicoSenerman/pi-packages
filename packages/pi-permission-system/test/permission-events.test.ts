@@ -279,16 +279,46 @@ describe("piPermissionSystemExtension ready event wiring", () => {
     rmSync(baseDir, { recursive: true, force: true });
   });
 
-  it("emits permissions:ready with protocolVersion when extension loads", () => {
+  it("emits permissions:ready with protocolVersion at session_start", async () => {
     const emitSpy = vi.fn();
+    const handlers = new Map<
+      string,
+      (event: unknown, ctx: unknown) => unknown
+    >();
     piPermissionSystemExtension({
-      on: vi.fn(),
+      on: vi.fn(
+        (event: string, handler: (e: unknown, c: unknown) => unknown) => {
+          handlers.set(event, handler);
+        },
+      ),
       registerCommand: vi.fn(),
       getAllTools: vi.fn().mockReturnValue([]),
       setActiveTools: vi.fn(),
       registerProvider: vi.fn(),
       events: { emit: emitSpy, on: vi.fn().mockReturnValue(() => undefined) },
     } as never);
+
+    // ready is not emitted at load — only after session_start publishes.
+    expect(
+      emitSpy.mock.calls.filter(([c]) => c === PERMISSIONS_READY_CHANNEL),
+    ).toHaveLength(0);
+
+    const ctx = {
+      cwd: baseDir,
+      hasUI: false,
+      sessionManager: {
+        getEntries: (): unknown[] => [],
+        getSessionId: (): string => "top-session",
+        getSessionDir: (): string => baseDir,
+      },
+      ui: {
+        notify: (): void => {},
+        setStatus: (): void => {},
+        select: async (): Promise<string | undefined> => undefined,
+        input: async (): Promise<string | undefined> => undefined,
+      },
+    };
+    await handlers.get("session_start")?.({ reason: "start" }, ctx);
 
     const readyCalls = emitSpy.mock.calls.filter(
       ([channel]) => channel === PERMISSIONS_READY_CHANNEL,

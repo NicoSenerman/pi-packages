@@ -36,12 +36,18 @@ function makeHandler(
 ): {
   handler: SessionLifecycleHandler;
   session: PermissionSession;
+  activateService: ReturnType<typeof vi.fn>;
   cleanupRpc: ReturnType<typeof vi.fn>;
 } {
   const session = makeSession(overrides);
+  const activateService = vi.fn();
   const cleanupRpc = vi.fn();
-  const handler = new SessionLifecycleHandler(session, cleanupRpc);
-  return { handler, session, cleanupRpc };
+  const handler = new SessionLifecycleHandler(
+    session,
+    activateService,
+    cleanupRpc,
+  );
+  return { handler, session, activateService, cleanupRpc };
 }
 
 // ── handleSessionStart ─────────────────────────────────────────────────────
@@ -104,6 +110,13 @@ describe("handleSessionStart", () => {
     const { handler, session } = makeHandler();
     await handler.handleSessionStart({ reason: "startup" }, makeCtx());
     expect(session.logger.debug).not.toHaveBeenCalled();
+  });
+
+  it("activates the service for the session with ctx", async () => {
+    const ctx = makeCtx();
+    const { handler, activateService } = makeHandler();
+    await handler.handleSessionStart({ reason: "startup" }, ctx);
+    expect(activateService).toHaveBeenCalledWith(ctx);
   });
 
   it("calls refreshConfig before resetForNewSession", async () => {
