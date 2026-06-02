@@ -744,6 +744,141 @@ flowchart TD
 | C: config-loader            | 5       | Reduce `stripJsonComments` complexity (lowest priority)                  |
 | D: Duplication              | 6       | Extract shared test fixtures; best sequenced after Tracks A and B        |
 
+## Improvement roadmap — Phase 3
+
+Goal: convert the package's remaining bags-of-state-and-closures into class-based collaborators that own their state and expose behavior (Tell-Don't-Ask), then clear the one outstanding `fallow` cohesion target and the test-tree duplication.
+
+Phases 1 and 2 already gave the core domain good collaborators — `PermissionSession`, `ForwardingManager`, `SessionRules`, `SessionApproval`, `BashProgram`, `PermissionManager`.
+Phase 3 finishes that arc where it stalled: the forwarding subsystem got a lifecycle class (`ForwardingManager`) but its behavior still lives as free functions reaching into a `PermissionForwardingDeps` bag that is assembled in two places.
+The lens for this phase is not "extract a function" but "which stateful owner is missing, such that a caller reaches into a bag instead of telling an object?".
+
+Phase 3 is independent of any open feature issue — it is a pure debt-reduction round.
+
+### Current health metrics
+
+| Metric                 | Value                                             |
+| ---------------------- | ------------------------------------------------- |
+| Health score           | 75 B                                              |
+| LOC                    | 35,515                                            |
+| Dead files / exports   | 0%                                                |
+| Avg cyclomatic         | 1.4                                               |
+| p90 cyclomatic         | 2                                                 |
+| Maintainability        | 91.3 (good)                                       |
+| Duplication            | 7.6% (2,700 lines, all in `test/`)                |
+| Churn hotspots         | 41 files                                          |
+| Refactoring targets    | 1 (medium) — `tool-input-preview.ts`              |
+| Dominant churn hotspot | `index.ts` 45.5 (accelerating) — 4× the next file |
+
+Measurement note: `bash-token-classification.ts` reports the highest src CRAP (37.1, one function above threshold), but this is an artifact — `rejectNonPathToken` is a private helper, so `fallow` estimates 0% coverage and inflates its CRAP even though the module carries 43 dedicated unit tests.
+It is not a real finding and gets no step.
+
+### Findings
+
+The headline findings are coupling smells (Category C) — anemic behavior, mutable closure state, and relay-only dependency bags — that `fallow`'s complexity metrics under-weight but the composition-root and forwarding code make obvious.
+
+| #   | Finding                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Category                                            | Files                                                                    | Impact | Risk | Priority |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------ | ------ | ---- | -------- |
+| 1   | Anemic forwarding subsystem: the forwarding lifecycle has a class (`ForwardingManager`) but its behavior is three free functions (`confirmPermission`, `waitForForwardedPermissionApproval` 132 lines, `processForwardedPermissionRequests` 144 lines) that reach into a `PermissionForwardingDeps` bag (8 members). The bag is assembled in `index.ts` and re-synthesized in `PermissionPrompter.buildForwardingDeps()` with divergent values and a cluster of `eslint-disable unbound-method` lines | C: anemic / mutable closure state / relay-only deps | `forwarded-permissions/polling.ts`, `permission-prompter.ts`, `index.ts` | 5      | 3    | 15       |
+| 2   | `tool-input-preview.ts` is a flat bag of 8 functions mixing prompt formatting (`format{Edit,Write,Read}InputForPrompt`, `getPromptPath`), text utilities (`truncateInlineText`, `countTextLines`, `formatCount`), and serialization (`serializeToolInputPreview`) — density 0.33, 6 dependents; `fallow`'s only refactoring target                                                                                                                                                                    | B: oversized / E: cohesion                          | `tool-input-preview.ts`                                                  | 4      | 2    | 16       |
+| 3   | 7.6% duplication, entirely in the test tree, is the largest single health deduction; the biggest clone families are `external-directory-integration.test.ts` (17 groups, 164 lines), `bash-path.test.ts` (9 groups, 120 lines), `runner.test.ts` (9 groups, 105 lines), and `tool-call.test.ts` (6 groups, 108 lines)                                                                                                                                                                                 | D: test duplication                                 | `test/` (clone families)                                                 | 3      | 1    | 15       |
+| 4   | `createMcpPermissionTargets` collects results through a `pushTarget` closure that mutates a local array and dedups via `includes` — mutable closure state with no owner; the surrounding 71-line if-return chain (cognitive 26, CRAP 17.6) repeats the push/dedup sequence per mode                                                                                                                                                                                                                   | C: mutable closure state                            | `mcp-targets.ts`                                                         | 3      | 2    | 12       |
+| 5   | `piPermissionSystemExtension` is a 149-line composition root with ~30 adapter closures and two overlapping forwarding bags; it is the #1 churn hotspot (45.5, accelerating, 4× the next file). Once the forwarding collaborator lands, the remaining job is injecting collaborators, not assembling closure bags                                                                                                                                                                                      | C: adapter closure density / E: wiring overhead     | `index.ts`                                                               | 4      | 3    | 12       |
+| 6   | `handleToolCall` hand-assembles a 7-member `GateRunnerDeps` closure bag where 6 members relay straight to `this.session` (`checkPermission`, `getSessionRuleset`, `recordSessionApproval`, `canConfirm`→`canPrompt`, `promptPermission`→`prompt`) — relay-only dependencies. The narrow-function shape is a deliberate test seam, so the fix is a narrow interface the session implements, not passing the concrete class                                                                             | C: relay-only dependencies                          | `handlers/permission-gate-handler.ts`, `handlers/gates/descriptor.ts`    | 3      | 3    | 9        |
+
+### Steps
+
+1. **Split `tool-input-preview.ts` into cohesive modules**
+   - Target: `src/tool-input-preview.ts` (the sole `fallow` refactoring target).
+   - Extract the three prompt formatters plus `getPromptPath` into a new `src/tool-input-prompt-formatters.ts`; leave the text utilities (`truncateInlineText`, `countTextLines`, `formatCount`), `serializeToolInputPreview`, and the three limit constants in `tool-input-preview.ts`.
+   - Update the 6 dependents (`builtin-tool-input-formatters.ts`, `tool-preview-formatter.ts`, and the test files) to import from the new boundary; verify a consumer imports each new export.
+   - Smell category: B (oversized) / E (cohesion).
+   - Outcome: `tool-input-preview.ts` drops below the 0.3 density threshold and off the refactoring-target list; refactoring targets 1 → 0.
+
+2. **Introduce a `PermissionForwarder` collaborator (own the state)**
+   - Target: new `src/forwarded-permissions/permission-forwarder.ts`; `forwarding-manager.ts`; `index.ts`.
+   - Create a `PermissionForwarder` class that owns `forwardingDir`, `subagentSessionsDir`, `registry`, `events`, `logger`, and `shouldAutoApprove` (a constructor-supplied policy, not a re-set bag field), exposing two methods: `requestApproval(ctx, message, options?, forwarded?)` and `processInbox(ctx)`.
+   - Lift-and-shift: the methods initially delegate to the existing `polling.ts` free functions, so behavior is unchanged.
+     Wire `ForwardingManager` to hold a `PermissionForwarder` and call `forwarder.processInbox(ctx)` per tick; construct the single forwarder in `index.ts`.
+   - Smell category: C (anemic domain model — give the forwarding behavior an owner).
+   - Outcome: one forwarder instance replaces the `index.ts` forwarding bag; `ForwardingManager` tells the forwarder instead of threading a deps bag.
+
+3. **Fold `PermissionPrompter.buildForwardingDeps()` into the injected forwarder**
+   - Target: `src/permission-prompter.ts`; `index.ts` (sequence after Step 2).
+   - Inject the `PermissionForwarder` (via a narrow `ApprovalRequester` interface exposing only `requestApproval`) into `PermissionPrompter`; delete `buildForwardingDeps()`, the second `PermissionForwardingDeps` synthesis, and its `eslint-disable unbound-method` cluster.
+   - Smell category: C (relay-only deps / duplicated bag construction).
+   - Outcome: the forwarding dependency set is constructed exactly once; the prompter depends on a one-method interface instead of re-deriving a bag.
+
+4. **Remove `PermissionForwardingDeps`; inline the polling logic as forwarder methods**
+   - Target: `src/forwarded-permissions/polling.ts` → `permission-forwarder.ts` (sequence after Steps 2–3).
+   - Move the bodies of `waitForForwardedPermissionApproval` and `processForwardedPermissionRequests` into the forwarder as private methods reading `this` state; extract `processSingleForwardedRequest`, `buildForwardedRequest`, and `pollForForwardedResponse` as private methods.
+     Delete the `PermissionForwardingDeps` interface once no caller threads it.
+   - Smell category: C + B (the two god functions decompose as a consequence of the state having an owner).
+   - Outcome: the 144-line and 132-line free functions become focused methods; `PermissionForwardingDeps` is gone; the forwarding subsystem is fully class-based.
+
+5. **Introduce an `McpTargetList` value object**
+   - Target: `src/mcp-targets.ts`.
+   - Replace the `pushTarget` closure and local array with a small `McpTargetList` value object (`add(value)` dedups internally, `toArray()` returns the ordered result); the per-mode branches tell the list to add rather than asking `includes`.
+   - Smell category: C (mutable closure state → value object).
+   - Outcome: `createMcpPermissionTargets` cognitive complexity drops below 15; dedup logic lives in one place; `mcp-targets.ts` leaves the CRAP-risk top of the src list.
+
+6. **Replace `GateRunnerDeps` with a narrow `GateRunnerContext` interface**
+   - Target: `src/handlers/gates/descriptor.ts`; `handlers/permission-gate-handler.ts`; `handlers/gates/runner.ts`.
+   - Define a narrow `GateRunnerContext` interface (the operations the runner actually needs) that `PermissionSession` implements directly; pass the session (typed as the interface) plus the event bus instead of hand-assembling 7 relay closures in `handleToolCall`.
+   - Keep the seam narrow (interface, not the concrete class) so gate unit tests still inject a plain mock.
+   - Smell category: C (relay-only dependencies).
+   - Outcome: the 7-closure bag in `handleToolCall` collapses to one interface reference; the runner tells the session instead of relaying through closures.
+
+7. **Reframe the `index.ts` composition root as collaborator injection**
+   - Target: `src/index.ts` (sequence after Steps 2–4 and 6).
+   - With the forwarder and gate-context collaborators in place, the remaining factory work is constructing collaborators and injecting them; group what is left into a small number of construction sites and keep only genuine SDK-boundary glue (tool registry, `pi.on` arrows) as closures.
+   - Verify wiring with `test/composition-root.test.ts` (`make-fake-pi.ts` harness): handler registration, the `session_start`-gated service publish, and the synchronous lifecycle subscription must be unchanged.
+   - Smell category: C (adapter closure density) / E (wiring overhead).
+   - Outcome: `piPermissionSystemExtension` falls well under 100 lines; new wiring touches a collaborator, not a 149-line factory, cooling the `index.ts` hotspot.
+
+8. **Continue shared test-fixture extraction**
+   - Target: the four largest remaining clone families — `external-directory-integration.test.ts`, `bash-path.test.ts`, `runner.test.ts`, `tool-call.test.ts`.
+   - Migrate them onto the existing `test/helpers/` fixtures (`handler-fixtures.ts`, `gate-fixtures.ts`, `manager-harness.ts`), extending those helpers where a shape is not yet covered rather than redefining factories inline.
+   - Smell category: D (test duplication).
+   - Outcome: duplication 7.6% → target < 6%; the test-duplication health deduction shrinks below -2.0.
+
+### Step dependency diagram
+
+The forwarding collaborator is a lift-and-shift sequence: Step 2 introduces the class, Step 3 removes the duplicated bag, Step 4 inlines the logic and deletes the interface (introduce-new-alongside-old, remove-old-last).
+Step 7 depends on the forwarding collaborator (Steps 2–4) and the gate-context interface (Step 6) being in place.
+Step 8 is best sequenced after the production refactors whose tested call sites it touches (dashed edges) — those refactors are behavior-preserving, so the soft ordering only avoids re-migrating fixtures, it does not block.
+
+```mermaid
+flowchart TD
+    S1["Step 1: Split tool-input-preview.ts"]
+    S2["Step 2: Introduce PermissionForwarder"]
+    S3["Step 3: Fold buildForwardingDeps into forwarder"]
+    S4["Step 4: Remove PermissionForwardingDeps bag"]
+    S5["Step 5: McpTargetList value object"]
+    S6["Step 6: GateRunnerContext narrow interface"]
+    S7["Step 7: Composition root as collaborator injection"]
+    S8["Step 8: Continue test-fixture extraction"]
+
+    S2 --> S3
+    S3 --> S4
+    S4 --> S7
+    S6 --> S7
+    S1 -.-> S8
+    S4 -.-> S8
+    S5 -.-> S8
+    S6 -.-> S8
+    S7 -.-> S8
+```
+
+### Tracks
+
+| Track                      | Steps     | Description                                                                                          |
+| -------------------------- | --------- | ---------------------------------------------------------------------------------------------------- |
+| A: Module cohesion         | 1         | Split the `tool-input-preview.ts` bag (independent)                                                  |
+| B: Forwarding collaborator | 2 → 3 → 4 | Give the forwarding behavior a stateful owner; delete the duplicated bag (sequential lift-and-shift) |
+| C: State encapsulation     | 5, 6      | `McpTargetList` value object and `GateRunnerContext` narrow interface (independent, parallel)        |
+| D: Composition root        | 7         | Reframe `index.ts` as collaborator injection (after Tracks B and C)                                  |
+| E: Test duplication        | 8         | Migrate the four largest clone families onto shared fixtures (best last)                             |
+
 [#266]: https://github.com/gotgenes/pi-packages/issues/266
 [#282]: https://github.com/gotgenes/pi-packages/issues/282
 [#285]: https://github.com/gotgenes/pi-packages/issues/285
