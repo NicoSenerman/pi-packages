@@ -109,7 +109,7 @@ When a call site needs different defaults from `makeCheckResult`, pass explicit 
 - Test system-prompt sanitization (denied tools removed, allowed tools preserved).
 - Test the external-directory guard for path-bearing file tools.
 - Test config loading, validation issues, and tolerance of deprecated keys.
-- To test the file-based permission-forwarding round-trip (a subagent's `ask` reaching the parent), do not `await` the child's `pi.fire("tool_call", …)` directly — `confirmPermission` polls for a response with a 10-minute timeout.
+- To test the file-based permission-forwarding round-trip (a subagent's `ask` reaching the parent), do not `await` the child's `pi.fire("tool_call", …)` directly — `PermissionForwarder.requestApproval` polls for a response with a 10-minute timeout when forwarding to the parent.
   Instead: fire without awaiting, poll the parent's `requests/` dir (`createPermissionForwardingLocation(forwardingDir, parentSessionId)`) for the child's request file, write an approval JSON to `responses/<id>.json`, then await the fire.
   See the `subagent registry sharing` test in `test/composition-root.test.ts`.
 

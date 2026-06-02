@@ -61,7 +61,7 @@ interface ApprovalRequester {
 ## Relationship to the forwarder
 
 `PermissionPrompter` delegates the UI/forwarding decision to the injected `ApprovalRequester`.
-It never constructs a `PermissionForwardingDeps` bag internally — the single `PermissionForwarder` instance (constructed in `index.ts`) is shared between the prompter and `ForwardingManager`.
+It never assembles a forwarding-dependency bag internally — the single `PermissionForwarder` instance (constructed in `index.ts` with its own `PermissionForwarderDeps`) is shared between the prompter and `ForwardingManager`.
 
 Yolo-mode is handled at the prompter level before `requestApproval` is ever reached, so the forwarder always operates in the "ask the user" path when reached from the prompter.
 

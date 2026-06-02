@@ -809,12 +809,11 @@ The headline findings are coupling smells (Category C) — anemic behavior, muta
    - Smell category: C (relay-only deps / duplicated bag construction).
    - Outcome: the forwarding dependency set is constructed exactly once; the prompter depends on a one-method interface instead of re-deriving a bag; `PermissionForwardingDeps` bag is dismantled in [#317].
 
-4. **Remove `PermissionForwardingDeps`; inline the polling logic as forwarder methods** ([#317])
+4. ✅ **Remove `PermissionForwardingDeps`; inline the polling logic as forwarder methods** ([#317])
    - Target: `src/forwarded-permissions/polling.ts` → `permission-forwarder.ts` (sequence after Steps 2–3).
-   - Move the bodies of `waitForForwardedPermissionApproval` and `processForwardedPermissionRequests` into the forwarder as private methods reading `this` state; extract `processSingleForwardedRequest`, `buildForwardedRequest`, and `pollForForwardedResponse` as private methods.
-     Delete the `PermissionForwardingDeps` interface once no caller threads it.
+   - Added `PermissionForwarderDeps` (replaces `PermissionForwardingDeps`); dissolved the bag into individual `private readonly` fields on `PermissionForwarder`; inlined `waitForForwardedPermissionApproval` and `processForwardedPermissionRequests` as private methods reading `this`; extracted `buildForwardedRequest` (returns a value object), `pollForForwardedResponse` (owns the deadline loop + file cleanup), and `processSingleForwardedRequest` (per-request workflow) as focused private helpers; moved `getSessionId`, `getContextSystemPrompt`, `formatForwardedPermissionPrompt` to module-private functions (no external callers); deleted `polling.ts`; updated `index.ts` to import `PermissionForwarderDeps` from `permission-forwarder`; rewrote `permission-forwarder.test.ts` with real behavior tests (migrated from `permission-forwarding.test.ts`); removed stale `vi.mock` for polling from `runtime.test.ts`.
    - Smell category: C + B (the two god functions decompose as a consequence of the state having an owner).
-   - Outcome: the 144-line and 132-line free functions become focused methods; `PermissionForwardingDeps` is gone; the forwarding subsystem is fully class-based.
+   - Outcome: the 144-line and 132-line free functions became focused methods; `PermissionForwardingDeps` is gone; the forwarding subsystem is fully class-based (Track B complete).
 
 5. **Introduce an `McpTargetList` value object** ([#318])
    - Target: `src/mcp-targets.ts`.
