@@ -1,17 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// ── Module mocks ────────────────────────────────────────────────────────────
+// ── Injected mock ───────────────────────────────────────────────────────────
 
-const { mockConfirmPermission } = vi.hoisted(() => ({
-  mockConfirmPermission: vi.fn(),
-}));
+const mockRequestApproval = vi.fn();
 
-vi.mock("../src/forwarded-permissions/polling", () => ({
-  confirmPermission: mockConfirmPermission,
-  processForwardedPermissionRequests: vi.fn().mockResolvedValue(undefined),
-}));
-
-// ── Imports (after mocks) ───────────────────────────────────────────────────
+// ── Imports ─────────────────────────────────────────────────────────────────
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { DEFAULT_EXTENSION_CONFIG } from "#src/extension-config";
@@ -51,12 +44,8 @@ function makeDeps(
   return {
     getConfig: () => ({ ...DEFAULT_EXTENSION_CONFIG, yoloMode: false }),
     writeReviewLog: vi.fn(),
-    subagentSessionsDir: "/sessions/subagents",
-    forwardingDir: "/sessions/permission-forwarding",
     events: { emit: vi.fn(), on: vi.fn().mockReturnValue(() => undefined) },
-    requestPermissionDecisionFromUi: vi
-      .fn()
-      .mockResolvedValue({ approved: true, state: "approved" }),
+    forwarder: { requestApproval: mockRequestApproval },
     ...overrides,
   };
 }
@@ -65,7 +54,11 @@ function makeDeps(
 
 describe("PermissionPrompter", () => {
   beforeEach(() => {
-    mockConfirmPermission.mockReset();
+    mockRequestApproval.mockReset();
+    mockRequestApproval.mockResolvedValue({
+      approved: true,
+      state: "approved",
+    });
   });
 
   // ── Yolo-mode auto-approve ───────────────────────────────────────────────
@@ -89,7 +82,7 @@ describe("PermissionPrompter", () => {
         state: "approved",
         autoApproved: true,
       });
-      expect(mockConfirmPermission).not.toHaveBeenCalled();
+      expect(mockRequestApproval).not.toHaveBeenCalled();
       expect(events.emit).not.toHaveBeenCalledWith(
         "permissions:ui_prompt",
         expect.anything(),
@@ -136,7 +129,7 @@ describe("PermissionPrompter", () => {
 
       await prompter.prompt(makeCtx(true), makeDetails());
 
-      expect(mockConfirmPermission).not.toHaveBeenCalled();
+      expect(mockRequestApproval).not.toHaveBeenCalled();
     });
   });
 
@@ -149,7 +142,7 @@ describe("PermissionPrompter", () => {
         approved: true,
         state: "approved",
       };
-      mockConfirmPermission.mockResolvedValue(approved);
+      mockRequestApproval.mockResolvedValue(approved);
       const deps = makeDeps({ writeReviewLog });
       const prompter = new PermissionPrompter(deps);
 
@@ -169,7 +162,7 @@ describe("PermissionPrompter", () => {
         emit: vi.fn(),
         on: vi.fn().mockReturnValue(() => undefined),
       };
-      mockConfirmPermission.mockResolvedValue({
+      mockRequestApproval.mockResolvedValue({
         approved: true,
         state: "approved",
       });
@@ -201,7 +194,7 @@ describe("PermissionPrompter", () => {
         emit: vi.fn(),
         on: vi.fn().mockReturnValue(() => undefined),
       };
-      mockConfirmPermission.mockResolvedValue({
+      mockRequestApproval.mockResolvedValue({
         approved: true,
         state: "approved",
       });
@@ -233,7 +226,7 @@ describe("PermissionPrompter", () => {
         emit: vi.fn(),
         on: vi.fn().mockReturnValue(() => undefined),
       };
-      mockConfirmPermission.mockResolvedValue({
+      mockRequestApproval.mockResolvedValue({
         approved: true,
         state: "approved",
       });
@@ -250,7 +243,7 @@ describe("PermissionPrompter", () => {
 
     it("logs permission_request.approved when confirmPermission returns approved", async () => {
       const writeReviewLog = vi.fn();
-      mockConfirmPermission.mockResolvedValue({
+      mockRequestApproval.mockResolvedValue({
         approved: true,
         state: "approved",
       });
@@ -270,7 +263,7 @@ describe("PermissionPrompter", () => {
 
     it("logs permission_request.denied when confirmPermission returns denied", async () => {
       const writeReviewLog = vi.fn();
-      mockConfirmPermission.mockResolvedValue({
+      mockRequestApproval.mockResolvedValue({
         approved: false,
         state: "denied",
       });
@@ -290,7 +283,7 @@ describe("PermissionPrompter", () => {
 
     it("logs permission_request.denied with denialReason when present", async () => {
       const writeReviewLog = vi.fn();
-      mockConfirmPermission.mockResolvedValue({
+      mockRequestApproval.mockResolvedValue({
         approved: false,
         state: "denied_with_reason",
         denialReason: "too sensitive",
@@ -314,7 +307,7 @@ describe("PermissionPrompter", () => {
         state: "denied_with_reason",
         denialReason: "sensitive",
       };
-      mockConfirmPermission.mockResolvedValue(decision);
+      mockRequestApproval.mockResolvedValue(decision);
       const deps = makeDeps();
       const prompter = new PermissionPrompter(deps);
 
@@ -324,7 +317,7 @@ describe("PermissionPrompter", () => {
     });
 
     it("passes sessionLabel option to confirmPermission when present", async () => {
-      mockConfirmPermission.mockResolvedValue({
+      mockRequestApproval.mockResolvedValue({
         approved: true,
         state: "approved",
       });
@@ -334,17 +327,16 @@ describe("PermissionPrompter", () => {
 
       await prompter.prompt(makeCtx(true), details);
 
-      expect(mockConfirmPermission).toHaveBeenCalledWith(
+      expect(mockRequestApproval).toHaveBeenCalledWith(
         expect.anything(),
         expect.any(String),
-        expect.anything(),
         { sessionLabel: "Yes, for 'read' tool" },
         { source: "tool_call", surface: "read", value: "read" },
       );
     });
 
     it("passes the display fields (source/surface/value) to confirmPermission", async () => {
-      mockConfirmPermission.mockResolvedValue({
+      mockRequestApproval.mockResolvedValue({
         approved: true,
         state: "approved",
       });
@@ -357,17 +349,16 @@ describe("PermissionPrompter", () => {
 
       await prompter.prompt(makeCtx(false), details);
 
-      expect(mockConfirmPermission).toHaveBeenCalledWith(
+      expect(mockRequestApproval).toHaveBeenCalledWith(
         expect.anything(),
         expect.any(String),
-        expect.anything(),
         undefined,
         { source: "tool_call", surface: "bash", value: "git push" },
       );
     });
 
     it("passes undefined options to confirmPermission when sessionLabel is absent", async () => {
-      mockConfirmPermission.mockResolvedValue({
+      mockRequestApproval.mockResolvedValue({
         approved: true,
         state: "approved",
       });
@@ -376,17 +367,16 @@ describe("PermissionPrompter", () => {
 
       await prompter.prompt(makeCtx(true), makeDetails());
 
-      expect(mockConfirmPermission).toHaveBeenCalledWith(
+      expect(mockRequestApproval).toHaveBeenCalledWith(
         expect.anything(),
         expect.any(String),
-        expect.anything(),
         undefined,
         { source: "tool_call", surface: "read", value: "read" },
       );
     });
 
     it("passes the message from details to confirmPermission", async () => {
-      mockConfirmPermission.mockResolvedValue({
+      mockRequestApproval.mockResolvedValue({
         approved: true,
         state: "approved",
       });
@@ -396,10 +386,9 @@ describe("PermissionPrompter", () => {
 
       await prompter.prompt(makeCtx(true), details);
 
-      expect(mockConfirmPermission).toHaveBeenCalledWith(
+      expect(mockRequestApproval).toHaveBeenCalledWith(
         expect.anything(),
         "Allow bash: git status?",
-        expect.anything(),
         undefined,
         { source: "tool_call", surface: "read", value: "read" },
       );
@@ -411,7 +400,7 @@ describe("PermissionPrompter", () => {
   describe("review log fields", () => {
     it("includes all standard fields in the waiting log entry", async () => {
       const writeReviewLog = vi.fn();
-      mockConfirmPermission.mockResolvedValue({
+      mockRequestApproval.mockResolvedValue({
         approved: true,
         state: "approved",
       });
@@ -448,7 +437,7 @@ describe("PermissionPrompter", () => {
 
     it("uses null for optional fields not present in details", async () => {
       const writeReviewLog = vi.fn();
-      mockConfirmPermission.mockResolvedValue({
+      mockRequestApproval.mockResolvedValue({
         approved: true,
         state: "approved",
       });
@@ -479,13 +468,13 @@ describe("PermissionPrompter", () => {
         approved: true,
         state: "approved",
       };
-      mockConfirmPermission.mockResolvedValue(forwarded);
+      mockRequestApproval.mockResolvedValue(forwarded);
       const deps = makeDeps();
       const prompter = new PermissionPrompter(deps);
 
       await prompter.prompt(makeCtx(false), makeDetails());
 
-      expect(mockConfirmPermission).toHaveBeenCalled();
+      expect(mockRequestApproval).toHaveBeenCalled();
     });
 
     it("returns the decision from confirmPermission in the subagent path", async () => {
@@ -493,7 +482,7 @@ describe("PermissionPrompter", () => {
         approved: false,
         state: "denied",
       };
-      mockConfirmPermission.mockResolvedValue(forwarded);
+      mockRequestApproval.mockResolvedValue(forwarded);
       const deps = makeDeps();
       const prompter = new PermissionPrompter(deps);
 
@@ -504,7 +493,7 @@ describe("PermissionPrompter", () => {
 
     it("logs the outcome when confirmPermission resolves via forwarding", async () => {
       const writeReviewLog = vi.fn();
-      mockConfirmPermission.mockResolvedValue({
+      mockRequestApproval.mockResolvedValue({
         approved: true,
         state: "approved",
       });

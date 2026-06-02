@@ -1,20 +1,12 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { PermissionSystemExtensionConfig } from "./extension-config";
-import type { ForwardedPermissionLogger } from "./forwarded-permissions/io";
-import {
-  confirmPermission,
-  type PermissionForwardingDeps,
-} from "./forwarded-permissions/polling";
-import type {
-  PermissionPromptDecision,
-  RequestPermissionOptions,
-} from "./permission-dialog";
+import type { ApprovalRequester } from "./forwarded-permissions/permission-forwarder";
+import type { PermissionPromptDecision } from "./permission-dialog";
 import {
   emitUiPromptEvent,
   type PermissionEventBus,
 } from "./permission-events";
 import { buildDirectUiPrompt } from "./permission-ui-prompt";
-import type { SubagentSessionRegistry } from "./subagent-registry";
 import { shouldAutoApprovePermissionState } from "./yolo-mode";
 
 export type PermissionReviewSource = "tool_call" | "skill_input" | "skill_read";
@@ -48,29 +40,18 @@ export interface PermissionPrompterApi {
  * Dependencies required by PermissionPrompter.
  *
  * Keeps the prompter's external surface narrow: callers provide config
- * access, review-log writing, path constants, and the UI dialog function.
- * The prompter synthesises the PermissionForwardingDeps it needs internally.
+ * access, review-log writing, the UI-prompt event bus, and the forwarder
+ * that owns the UI/subagent-forwarding branching logic.
  */
 export interface PermissionPrompterDeps {
   /** Read current config for yolo-mode check (called at prompt time). */
   getConfig(): PermissionSystemExtensionConfig;
   /** Write structured entries to the permission review log. */
   writeReviewLog(event: string, details: Record<string, unknown>): void;
-  /** Directory containing subagent session state. */
-  subagentSessionsDir: string;
-  /** Directory used for file-based permission forwarding requests/responses. */
-  forwardingDir: string;
-  /** In-process subagent session registry for detection and forwarding target resolution. */
-  registry?: SubagentSessionRegistry;
   /** Event bus used for UI prompt broadcasts. */
   events: PermissionEventBus;
-  /** Show the interactive permission dialog in the UI. */
-  requestPermissionDecisionFromUi(
-    ui: ExtensionContext["ui"],
-    title: string,
-    message: string,
-    options?: RequestPermissionOptions,
-  ): Promise<PermissionPromptDecision>;
+  /** Resolves the permission decision: direct UI dialog or forwarded to parent. */
+  forwarder: ApprovalRequester;
 }
 
 /**
@@ -107,10 +88,9 @@ export class PermissionPrompter implements PermissionPrompterApi {
       emitUiPromptEvent(this.deps.events, uiPrompt);
     }
 
-    const decision = await confirmPermission(
+    const decision = await this.deps.forwarder.requestApproval(
       ctx,
       details.message,
-      this.buildForwardingDeps(),
       details.sessionLabel ? { sessionLabel: details.sessionLabel } : undefined,
       {
         source: uiPrompt.source,
@@ -157,36 +137,5 @@ export class PermissionPrompter implements PermissionPrompterApi {
       resolution: details.resolution ?? null,
       denialReason: details.denialReason ?? null,
     });
-  }
-
-  /**
-   * Build a PermissionForwardingDeps to pass to confirmPermission.
-   *
-   * Yolo-mode is already handled at the prompter level, so shouldAutoApprove
-   * returns false here (confirmPermission does not call it; only
-   * processForwardedPermissionRequests does, and that has its own deps).
-   *
-   * The logger delegates writeReviewLog to deps and uses a no-op writeDebugLog
-   * (trace-level forwarding debug is deferred — see open question in the plan).
-   */
-  private buildForwardingDeps(): PermissionForwardingDeps {
-    const { deps } = this;
-    const logger: ForwardedPermissionLogger = {
-      // eslint-disable-next-line @typescript-eslint/unbound-method -- logger methods are plain function closures; no this-binding issue
-      writeReviewLog: deps.writeReviewLog,
-      writeDebugLog: () => undefined,
-    };
-    return {
-      forwardingDir: deps.forwardingDir,
-      subagentSessionsDir: deps.subagentSessionsDir,
-      registry: deps.registry,
-      events: deps.events,
-      logger,
-      // eslint-disable-next-line @typescript-eslint/unbound-method -- logger methods are plain function closures; no this-binding issue
-      writeReviewLog: deps.writeReviewLog,
-      // eslint-disable-next-line @typescript-eslint/unbound-method -- same as above
-      requestPermissionDecisionFromUi: deps.requestPermissionDecisionFromUi,
-      shouldAutoApprove: () => false,
-    };
   }
 }

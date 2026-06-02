@@ -13,6 +13,24 @@ import {
 } from "./polling";
 
 /**
+ * Narrow seam describing what `PermissionPrompter` needs from the forwarder:
+ * a single method that resolves a permission decision for the current context
+ * (prompt directly when the session has UI, otherwise forward to the parent).
+ *
+ * Depending on the interface (not the concrete `PermissionForwarder`) keeps
+ * the prompter's unit tests free of casts — they inject a plain
+ * `{ requestApproval: vi.fn() }` mock.
+ */
+export interface ApprovalRequester {
+  requestApproval(
+    ctx: ExtensionContext,
+    message: string,
+    options?: RequestPermissionOptions,
+    forwarded?: ForwardedPromptDisplay,
+  ): Promise<PermissionPromptDecision>;
+}
+
+/**
  * Narrow seam describing what `ForwardingManager` needs from the forwarder:
  * a single method that drains this session's forwarded-permission inbox.
  *
@@ -33,7 +51,7 @@ export interface InboxProcessor {
  * free function, so behavior is unchanged; a later step inlines the polling
  * bodies as methods reading `this` and removes the bag.
  */
-export class PermissionForwarder implements InboxProcessor {
+export class PermissionForwarder implements ApprovalRequester, InboxProcessor {
   constructor(private readonly deps: PermissionForwardingDeps) {}
 
   /**

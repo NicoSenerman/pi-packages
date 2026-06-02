@@ -49,16 +49,6 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
   const formatterRegistry = new ToolInputFormatterRegistry();
   registerBuiltinToolInputFormatters(formatterRegistry);
 
-  const prompter = new PermissionPrompter({
-    getConfig: () => runtime.config,
-    writeReviewLog: runtime.writeReviewLog.bind(runtime),
-    subagentSessionsDir: runtime.subagentSessionsDir,
-    forwardingDir: runtime.forwardingDir,
-    registry: subagentRegistry,
-    events: pi.events,
-    requestPermissionDecisionFromUi,
-  });
-
   const forwardingDeps: PermissionForwardingDeps = {
     forwardingDir: runtime.forwardingDir,
     subagentSessionsDir: runtime.subagentSessionsDir,
@@ -74,6 +64,13 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
       shouldAutoApprovePermissionState("ask", runtime.config),
   };
   const forwarder = new PermissionForwarder(forwardingDeps);
+
+  const prompter = new PermissionPrompter({
+    getConfig: () => runtime.config,
+    writeReviewLog: runtime.writeReviewLog.bind(runtime),
+    events: pi.events,
+    forwarder,
+  });
 
   refreshExtensionConfig(runtime);
 
