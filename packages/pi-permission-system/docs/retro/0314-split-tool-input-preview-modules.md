@@ -26,4 +26,20 @@ Confirmed via `fallow health --targets` that `tool-input-preview.ts` is the sole
   Design-review checklist found no introduced smells (no new collaborator threading, no output arguments, no LoD reach-through).
 - Docs updates target `architecture.md` (module listing, `Refactoring targets` 1 → 0, finding #2 resolved, roadmap step 1 ✅) and `v3-architecture.md` module listing, as a separate `docs:` commit.
 
+## Stage: Implementation — Build (2026-06-02T11:00:00Z)
+
+### Session summary
+
+Executed both plan steps in two commits.
+Step 1 (`refactor:`) created `src/tool-input-prompt-formatters.ts` with the three prompt formatters plus `getPromptPath`, removed them from `tool-input-preview.ts` (dropping its now-unused `./common` import), repointed `tool-preview-formatter.ts`, and relocated the four describe blocks into `test/tool-input-prompt-formatters.test.ts`.
+Step 2 (`docs:`) recorded the split in `architecture.md` (module listing, `Refactoring targets` 1 → 0, finding #2 resolved, roadmap step 1 ✅) and `v3-architecture.md`.
+
+### Observations
+
+- No deviations from the plan.
+  The consumer audit was exact: `tool-preview-formatter.ts` was the only production importer of the moved symbols, and the three other test files imported only retained constants.
+- `fallow health --targets` confirmed the outcome — the "Refactoring targets" section no longer appears (0 targets, down from 1); `tool-input-prompt-formatters.ts` reports maintainability 85.4 and `tool-input-preview.ts` is now a low cooling hotspot (2.6).
+- Full suite stayed green throughout: 79 files / 1753 tests pass; `tsc --noEmit` and `pnpm run lint` clean.
+- Pre-completion reviewer: PASS — all deterministic checks (`check`, `lint`, `test`, `fallow dead-code`) green; conventional commits valid; docs forward/reverse clean; all four new exports consumed (no dead re-export); 8 Mermaid diagrams parsed clean.
+
 [#282]: https://github.com/gotgenes/pi-packages/issues/282
