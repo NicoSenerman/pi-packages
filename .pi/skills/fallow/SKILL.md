@@ -82,3 +82,4 @@ pnpm fallow dead-code        # verify
 2. Re-export chains through barrel files are resolved correctly.
 3. `--changed-since` is additive — only new issues in changed files.
 4. Never run `fallow watch` — it is interactive and never exits.
+5. The human-readable `health --targets` output omits the "Refactoring targets" section entirely when there are zero targets — to confirm a file dropped off the list, use `--format json` and check the `targets` array is empty rather than grepping the text output.

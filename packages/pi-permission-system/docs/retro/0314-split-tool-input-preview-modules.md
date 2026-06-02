@@ -42,4 +42,55 @@ Step 2 (`docs:`) recorded the split in `architecture.md` (module listing, `Refac
 - Full suite stayed green throughout: 79 files / 1753 tests pass; `tsc --noEmit` and `pnpm run lint` clean.
 - Pre-completion reviewer: PASS — all deterministic checks (`check`, `lint`, `test`, `fallow dead-code`) green; conventional commits valid; docs forward/reverse clean; all four new exports consumed (no dead re-export); 8 Mermaid diagrams parsed clean.
 
+## Stage: Final Retrospective (2026-06-02T15:28:20Z)
+
+### Session summary
+
+The planning and build stages executed cleanly: an exact consumer audit, a behavior-preserving cohesion split landed in two commits (`refactor:` then `docs:`), full suite green throughout, and a pre-completion `PASS`.
+The one notable friction was confirming the `fallow` outcome (refactoring targets 1 → 0), which took ~10 tool calls fighting human-readable `fallow health` output.
+The user then chose to defer shipping: #314 is built but unpushed, to roll into a per-track batch ship later.
+
+### Observations
+
+#### What went well
+
+- The plan-stage consumer audit was exact and paid off at build time — `tool-preview-formatter.ts` was the only production importer of the moved symbols, the three other test files imported only retained constants, and the build hit zero surprises and zero deviations.
+- Folding the extraction, the consumer repoint, and both test-file edits into one `refactor:` commit (the [#282] lesson, carried forward in the plan) meant the type checker never saw a broken intermediate state.
+- Correctly surfaced the release-please batching reality during the shipping discussion — every push to `main` feeds the same open release-please PR, so deferring the ship is a no-op until push and per-track batching loses no releases.
+
+#### What caused friction (agent side)
+
+- `missing-context` — did not load the `fallow` skill before interpreting `fallow health` output.
+  The skill steers toward `--format json --quiet 2>/dev/null || true`, which sidesteps the human-output quirks entirely.
+  Impact: ~10 tool calls to confirm a single metric (targets = 0), instead of one JSON read.
+- `rabbit-hole` — the human-readable `fallow health --targets` output omits the "Refactoring targets" section entirely when there are zero targets, and terse `--targets` differs from full `--score --hotspots --targets`.
+  Grepping the text output returned nothing, which read as "command broke" rather than "zero targets."
+  Impact: chained ~10 calls (sed, tail, grep, bare `fallow` → command-not-found, wrong `pnpm --filter` script path) before asserting the section's absence with `grep -c`.
+
+#### What caused friction (user side)
+
+- The shipping cadence (per-issue vs. batch) is a cross-session decision for the whole #314–#321 roadmap, surfaced only after the build was fully done and reviewed.
+  Opportunity, not criticism: noting a shipping-cadence intent when the roadmap was authored in `architecture.md` would let each build session know up front whether to ship or stage.
+
+### Diagnostic details
+
+- **Model-performance correlation** — the only subagent dispatch was the `pre-completion-reviewer` on `anthropic/claude-sonnet-4-6` (29 tool uses); appropriate for judgment-heavy review (code design, docs staleness, Mermaid parsing).
+  No mismatch.
+- **Escalation-delay tracking** — the `fallow` rabbit hole ran ~10 consecutive tool calls on the same goal (confirm targets = 0), well past the 5-call threshold.
+  The trigger to change strategy (load the `fallow` skill / switch to JSON) was available from the first failed grep.
+- **Unused-tool detection** — the `fallow` skill was available and never loaded; its `--format json` guidance directly resolves the friction.
+- **Feedback-loop gap analysis** — no gap.
+  Verification ran incrementally: `check`+`lint` baseline before edits, `check`+`lint`+`test` after step 1 before committing, `lint` after step 2, then full `check`+`test`+`lint` at the end.
+
+### Changes made
+
+1. `.pi/skills/fallow/SKILL.md` — added Key gotcha #5: `health --targets` omits the "Refactoring targets" section when there are zero targets; use `--format json` to confirm a file dropped off the list.
+
+### Deferred-ship state (cross-session bridge)
+
+- #314 is **built and reviewed (`PASS`) but not shipped**: 5 commits sit on local `main`, unpushed (ahead of `origin/main` by 5).
+  No release-please PR is triggered until push.
+- Shipping decision: **batch per dependency track** — Track B (#315→#316→#317), Track C (#318, #319), Track D (#320), Track E (#321); #314 rolls into the first batch ship.
+- Build depth for the behavioral refactors (#315–#317 forwarding, #320 composition root): decide TDD vs. build per issue when each session starts.
+
 [#282]: https://github.com/gotgenes/pi-packages/issues/282
