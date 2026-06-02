@@ -83,7 +83,7 @@ export function makeCheckResult(
 export function makeSession(
   overrides: Partial<Record<keyof PermissionSession, unknown>> = {},
 ): PermissionSession {
-  return {
+  const session = {
     logger: { debug: vi.fn(), review: vi.fn(), warn: vi.fn() },
     activate: vi.fn(),
     resolveAgentName: vi.fn().mockReturnValue(null),
@@ -102,6 +102,23 @@ export function makeSession(
     createPermissionRequestId: vi.fn().mockReturnValue("req-id"),
     ...overrides,
   } as unknown as PermissionSession;
+
+  // `resolve` mirrors production: checkPermission applying the current session
+  // ruleset. Delegating to the (possibly overridden) `checkPermission` keeps the
+  // integration tests that drive gate outcomes via `checkPermission` working
+  // without each also having to override `resolve`.
+  if (!Object.hasOwn(overrides, "resolve")) {
+    (session as { resolve: unknown }).resolve = vi.fn(
+      (surface: string, input: unknown, agentName?: string) =>
+        session.checkPermission(
+          surface,
+          input,
+          agentName,
+          session.getSessionRuleset(),
+        ),
+    );
+  }
+  return session;
 }
 
 export function makeToolRegistry(

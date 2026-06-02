@@ -1,15 +1,7 @@
 import type { BashCommand } from "#src/handlers/gates/bash-program";
 import { pickMostRestrictive } from "#src/handlers/gates/candidate-check";
-import type { Rule } from "#src/rule";
+import type { PermissionResolver } from "#src/permission-resolver";
 import type { PermissionCheckResult } from "#src/types";
-
-/** Function type for checkPermission used by the resolver. */
-type CheckPermissionFn = (
-  surface: string,
-  input: unknown,
-  agentName?: string,
-  sessionRules?: Rule[],
-) => PermissionCheckResult;
 
 /**
  * Resolve the bash command-pattern decision for a (possibly chained) command.
@@ -38,20 +30,14 @@ export function resolveBashCommandCheck(
   command: string,
   commands: BashCommand[],
   agentName: string | undefined,
-  sessionRules: Rule[],
-  checkPermission: CheckPermissionFn,
+  resolver: PermissionResolver,
 ): PermissionCheckResult {
   const results = commands.map((cmd) => {
-    const result = checkPermission(
-      "bash",
-      { command: cmd.text },
-      agentName,
-      sessionRules,
-    );
+    const result = resolver.resolve("bash", { command: cmd.text }, agentName);
     return cmd.context ? { ...result, commandContext: cmd.context } : result;
   });
   return (
     pickMostRestrictive(results) ??
-    checkPermission("bash", { command }, agentName, sessionRules)
+    resolver.resolve("bash", { command }, agentName)
   );
 }

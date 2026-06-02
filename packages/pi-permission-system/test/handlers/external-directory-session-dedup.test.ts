@@ -112,7 +112,7 @@ function makeStatefulSession(
 
   const getSessionRuleset = vi.fn().mockImplementation(() => [...sessionRules]);
 
-  return {
+  const session = {
     logger: { debug: vi.fn(), review: vi.fn(), warn: vi.fn() },
     activate: vi.fn(),
     resolveAgentName: vi.fn().mockReturnValue(null),
@@ -130,6 +130,21 @@ function makeStatefulSession(
       .mockResolvedValue({ approved: true, state: "approved_for_session" }),
     ...overrides,
   } as unknown as PermissionSession;
+
+  // `resolve` mirrors production: checkPermission applying the current session
+  // ruleset, so the stateful dedup logic is exercised through resolve too.
+  if (!Object.hasOwn(overrides, "resolve")) {
+    (session as { resolve: unknown }).resolve = vi.fn(
+      (surface: string, input: unknown, agentName?: string) =>
+        session.checkPermission(
+          surface,
+          input,
+          agentName,
+          session.getSessionRuleset(),
+        ),
+    );
+  }
+  return session;
 }
 
 function makeToolRegistry(): ToolRegistry {

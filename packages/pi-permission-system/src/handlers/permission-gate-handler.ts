@@ -188,14 +188,12 @@ export class PermissionGateHandler {
                 command ?? "",
                 bashProgram.commands(),
                 tcc.agentName ?? undefined,
-                getSessionRuleset(),
-                checkPermission,
+                resolver,
               )
-            : checkPermission(
+            : resolver.resolve(
                 tcc.toolName,
                 tcc.input,
                 tcc.agentName ?? undefined,
-                getSessionRuleset(),
               );
         const toolDescriptor = describeToolGate(tcc, toolCheck, formatter);
         toolDescriptor.preCheck = toolCheck;
