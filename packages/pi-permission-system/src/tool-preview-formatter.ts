@@ -2,16 +2,18 @@ import { getNonEmptyString, toRecord } from "./common";
 import type { PermissionSystemExtensionConfig } from "./extension-config";
 import type { ToolInputFormatterLookup } from "./tool-input-formatter-registry";
 import {
-  formatEditInputForPrompt,
-  formatReadInputForPrompt,
-  formatWriteInputForPrompt,
-  getPromptPath,
   serializeToolInputPreview,
   TOOL_INPUT_LOG_PREVIEW_MAX_LENGTH,
   TOOL_INPUT_PREVIEW_MAX_LENGTH,
   TOOL_TEXT_SUMMARY_MAX_LENGTH,
   truncateInlineText,
 } from "./tool-input-preview";
+import {
+  formatEditInputForPrompt,
+  formatReadInputForPrompt,
+  formatWriteInputForPrompt,
+  getPromptPath,
+} from "./tool-input-prompt-formatters";
 import type { PermissionCheckResult } from "./types";
 
 export interface ToolPreviewFormatterOptions {
