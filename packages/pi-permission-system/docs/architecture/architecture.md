@@ -492,13 +492,15 @@ src/
 ├── permission-dialog.ts      Dialog options (once / session / deny)
 ├── permission-resolver.ts    `PermissionResolver` interface - `resolve(surface, input, agentName)`; collapses the checkPermission + getSessionRuleset relay (#319). Implemented by `PermissionSession`
 ├── decision-reporter.ts      `DecisionReporter` interface + `GateDecisionReporter` class - owns `SessionLogger` and event bus; writes review-log entries and emits decision events (#322)
-├── gate-handler-session.ts   `GateHandlerSession` interface — two-method context role `PermissionGateHandler` depends on: `activate`, `resolveAgentName` (#329). `checkPermission` + `createPermissionRequestId` moved out when `SkillInputGatePipeline` was extracted
+├── gate-handler-session.ts   `GateHandlerSession` interface — two-method context role: `activate`, `resolveAgentName(ctx, systemPrompt?)`. `resolveAgentName` widened to accept optional `systemPrompt` so `AgentPrepHandler` can reuse the role without redefining it (#329, #331). `checkPermission` + `createPermissionRequestId` moved out when `SkillInputGatePipeline` was extracted
+├── agent-prep-session.ts     `AgentPrepSession` interface — extends `GateHandlerSession` + `SkillPermissionChecker`; adds `refreshConfig`, `getToolPermission`, the active-tools + prompt-state cache-key pairs, `getPolicyCacheStamp`, `setActiveSkillEntries`. Role `AgentPrepHandler` depends on (#331)
+├── session-lifecycle-session.ts `SessionLifecycleSession` interface — `refreshConfig`, `resetForNewSession`, `logResolvedConfigPaths`, `resolveAgentName`, `getConfigIssues`, `reload`, `getRuntimeContext`, `shutdown`, `logger`. Role `SessionLifecycleHandler` depends on; intentionally omits `activate` (ISP) (#331)
 │
-├── permission-session.ts     `PermissionSession` class - encapsulates all mutable session state; implements `PermissionResolver`, `SessionApprovalRecorder`, `GatePrompter`, `GateHandlerSession`; exposes `getInfrastructureReadDirs()` and `getToolPreviewLimits()` for Tell-Don't-Ask gate inputs (#327); `createPermissionRequestId` relocated to `SkillInputGatePipeline` (#329, absorbs #330)
+├── permission-session.ts     `PermissionSession` class - encapsulates all mutable session state; implements `PermissionResolver`, `SessionApprovalRecorder`, `GatePrompter`, `GateHandlerSession`, `AgentPrepSession`, `SessionLifecycleSession`; exposes `getInfrastructureReadDirs()` and `getToolPreviewLimits()` for Tell-Don't-Ask gate inputs (#327); `createPermissionRequestId` relocated to `SkillInputGatePipeline` (#329, absorbs #330); narrowed role interfaces added for all three handlers (#325, #331)
 ├── handlers/                 Handler classes with narrow constructor injection
 │   ├── index.ts              Barrel re-exports
-│   ├── lifecycle.ts          SessionLifecycleHandler (session + cleanupRpc)
-│   ├── before-agent-start.ts AgentPrepHandler (session + toolRegistry); shouldExposeTool pure helper
+│   ├── lifecycle.ts          SessionLifecycleHandler (session: `SessionLifecycleSession` + activateService + cleanupRpc) (#331)
+│   ├── before-agent-start.ts AgentPrepHandler (session: `AgentPrepSession` + toolRegistry); shouldExposeTool pure helper (#331)
 │   ├── permission-gate-handler.ts PermissionGateHandler (session: GateHandlerSession + toolRegistry + pipeline + skillInputPipeline + runner); `GateRunner` and `GateDecisionReporter` are built in `index.ts` and injected (#325, #329); validateRequestedTool + getEventInput + extractSkillNameFromInput pure helpers
 │   └── gates/               Pure descriptor factories + runner
 │       ├── types.ts          GateOutcome, ToolCallContext
@@ -893,12 +895,12 @@ The headline findings are coupling smells (Category C) - anemic behavior, mutabl
     - `createPermissionRequestId` moved into `SkillInputGatePipeline` as the module-level `createSkillInputRequestId()` helper; removed from `PermissionSession`.
     - Outcome: `PermissionSession` sheds a stateless utility; request-id creation lives next to request creation.
 
-14. **Narrow `AgentPrepHandler` + `SessionLifecycleHandler` against role interfaces** ([#331])
-    - Target: `src/handlers/before-agent-start.ts`; `src/handlers/lifecycle.ts`; `test/handlers/before-agent-start.test.ts`; `test/handlers/lifecycle.test.ts`.
-    - Both handlers still take the concrete `PermissionSession` with `as unknown as PermissionSession` local mocks.
-      Define narrow role interfaces for each (wider than the gate handler's — config refresh, cache-key management, lifecycle — likely a couple of cohesive roles), reusing the two-method context role established by Step 12; drop the casts.
+14. ✅ **Narrow `AgentPrepHandler` + `SessionLifecycleHandler` against role interfaces** ([#331])
+    - Target: new `src/agent-prep-session.ts`; new `src/session-lifecycle-session.ts`; `src/gate-handler-session.ts`; `src/permission-session.ts`; `src/handlers/before-agent-start.ts`; `src/handlers/lifecycle.ts`; `test/handlers/before-agent-start.test.ts`; `test/handlers/lifecycle.test.ts`.
+    - Both handlers took `session: PermissionSession` with `as unknown as PermissionSession` local mocks; the same structural smell [#325] removed from `PermissionGateHandler`.
+      Introduced `AgentPrepSession` (extends `GateHandlerSession` + `SkillPermissionChecker`; adds 8 prep-specific methods) and `SessionLifecycleSession` (9-member role; intentionally omits `activate` — ISP); widened `GateHandlerSession.resolveAgentName` to accept an optional `systemPrompt` parameter so `AgentPrepHandler` reuses the shared context role without redefining it; `PermissionSession` adds both roles to its `implements` list with no method-body changes; retyped both local `makeSession` fixtures to the role with `vi.fn<T>()` per field and dropped the casts.
     - Smell category: C (concrete-class dependency forces wide mocks).
-    - Outcome: no handler depends on the concrete `PermissionSession`; the last `as unknown as PermissionSession` casts in the handler test tree are gone.
+    - Outcome: no handler depends on the concrete `PermissionSession`; the last `as unknown as PermissionSession` casts in the handler test tree are gone; mock completeness is enforced at `pnpm run check` for all three handlers.
 
 15. **Reframe the `index.ts` composition root as collaborator injection** ([#320])
     - Target: `src/index.ts` (sequence after Steps 2-4 and 6-14, once every collaborator — including the `SkillInputGatePipeline` from Step 12 — exists to be injected).
