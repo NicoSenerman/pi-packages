@@ -41,3 +41,50 @@ Pre-completion reviewer returned PASS.
 - The `PermissionResolver` import in the new pipeline test file was unused (lint caught it) — removed before commit.
 - The `makeHandlerForSession` helper in the dedup test file references `makeToolRegistry()` which is defined after it; both are `function` declarations so hoisting keeps them safe.
 - Pre-completion reviewer: PASS — no warnings.
+
+## Stage: Final Retrospective (2026-06-03T04:11:51Z)
+
+### Session summary
+
+Planned and implemented #327 across three stages (planning, TDD, retro) in a single working session: extracted `ToolCallGatePipeline` (owning tool-call gate construction and the run loop), narrowed `PermissionSession` with `getToolPreviewLimits()` / `getInfrastructureReadDirs()`, and removed the anemic `getInfrastructureDirs` / `getInfrastructureReadPaths` getters.
+Five behavior-preserving commits plus docs; the full suite went 1796 → 1807 tests, and the pre-completion reviewer returned PASS with no warnings.
+The only substantive correction came in planning — a dependency-injection misstep the user caught before any code was written.
+
+### Observations
+
+#### What went well
+
+- The planning-stage risk note ("step 3 must update every session mock on the handler/pipeline path") fired exactly as predicted in TDD step 3, and was pre-mitigated — the renamed `getInfrastructureReadDirs` / added `getToolPreviewLimits` mocks across three test files were updated in one pass with zero rework.
+  The cross-session retro bridge worked as designed: a risk recorded at planning prevented a runtime-only (non-typecheck) failure at implementation.
+- The `ask_user` gate on the `evaluate(...)` seam shape produced a decision (`evaluate(tcc, runner)`, pipeline owns the bash parse) that held unchanged through implementation — no seam churn.
+- Lift-and-shift sequencing (add new methods alongside old → introduce pipeline → inject and delegate → remove old getters) kept every one of the five commits green and type-clean; no commit left the tree broken.
+
+#### What caused friction (agent side)
+
+- `instruction-violation` — the initial plan draft constructed `ToolCallGatePipeline` inside the `PermissionGateHandler` constructor (`new ToolCallGatePipeline(...)`), violating the `code-design` skill's dependency-injection rule even though that skill was loaded.
+  Root cause: anchored on local precedent — the handler already constructs `GateRunner` and `GateDecisionReporter` internally — without recognizing that this precedent is the exact smell #320 / #325 exist to remove.
+  User-caught.
+  Impact: design correction at planning before any code was written, so no code rework; the plan's Design Overview and TDD steps were revised to inject from `index.ts` and drop the handler's `customFormatters` param.
+- `other` — the plan used reference-style issue-link definitions (`[#319]:` …) with bare `#319` body references, tripping `rumdl` MD053 (unused link definition) on first `lint:md`.
+  Self-caught via lint; fixed with one `perl` pass bracketing the body references.
+  Impact: one extra fix cycle in planning, no rework.
+  The `markdown-conventions` skill already documents this rule, so no convention change is warranted.
+
+#### What caused friction (user side)
+
+- During TDD step 3 and the docs step, execution paused after tool calls and the user had to nudge three times ("You need to keep going", "Please continue").
+  Opportunity, not criticism: these were mid-step boundaries on a long mechanical refactor (handler + `index.ts` + four test files), not decision points — the continuation was unambiguous.
+  No prompt or convention change proposed; this reads as turn-continuity friction rather than a workflow gap.
+
+### Changes made
+
+1. Added a one-sentence clause to the Dependency Inversion (DIP) section of `.pi/skills/code-design/SKILL.md`: when adding a new collaborator to a class that still constructs other collaborators internally, inject the new one anyway — existing constructor-internal construction is often the smell being removed, not a precedent to extend.
+   This addresses the user-caught DI violation where the plan draft constructed `ToolCallGatePipeline` inside the `PermissionGateHandler` constructor by mirroring the sibling `GateRunner` / `GateDecisionReporter` construction.
+
+### Diagnostic details
+
+- **Model-performance correlation** — one subagent dispatched (`pre-completion-reviewer`, 236s, 34 tool uses) on judgment-heavy review work; appropriate match, no mismatch.
+  Planning exploration (~15 `read`/`grep` calls) ran on the parent session rather than via an `Explore` subagent — acceptable here since the symbol set was known and keeping context aided the design decision.
+- **Escalation-delay tracking** — no `rabbit-hole` friction; no error or approach occupied more than one or two consecutive tool calls.
+- **Feedback-loop gap analysis** — verification ran incrementally: each TDD step ran its affected test file (red → green) then `pnpm run check`; step 3 ran the full handler test directory plus the whole suite and `check` before commit; final gates (full suite, `check`, `lint`, `fallow dead-code`) all green.
+  No end-loaded-verification gap.

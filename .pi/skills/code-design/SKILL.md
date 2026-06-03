@@ -59,6 +59,7 @@ High-level modules should not depend on low-level modules; both should depend on
 Default to dependency injection for non-trivial dependencies — accept collaborators as parameters rather than constructing them internally.
 DI is the mechanical foundation of test-driven development: without it, you cannot substitute test doubles, and without test doubles, you cannot test units in isolation.
 Design for injection from the start rather than retrofitting it later.
+When adding a new collaborator to a class that still constructs other collaborators internally, inject the new one anyway — existing constructor-internal construction is often the smell being removed, not a precedent to extend.
 
 ## Structural Design
 
