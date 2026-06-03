@@ -15,7 +15,10 @@ import {
   type ToolRegistry,
 } from "#src/tool-registry";
 import type { GateRunner } from "./gates/runner";
-import { describeSkillInputGate } from "./gates/skill-input";
+import type {
+  GateNotifier,
+  SkillInputGatePipeline,
+} from "./gates/skill-input-gate-pipeline";
 import type { ToolCallGatePipeline } from "./gates/tool-call-gate-pipeline";
 import type { ToolCallContext } from "./gates/types";
 
@@ -28,9 +31,10 @@ interface InputPayload {
  * Handles permission gate events: tool_call and input.
  *
  * Constructor deps:
- * - `session` — narrow four-method role: context binding, agent name, permission check, request id
+ * - `session` — narrow two-method context role: bind per-event context, resolve agent name
  * - `toolRegistry` — Pi tool API subset (getAll + setActive)
  * - `pipeline` — owns tool-call gate-producer assembly and the run loop
+ * - `skillInputPipeline` — owns skill-input gate assembly (pre-check, notify, run)
  * - `runner` — pre-built gate runner (constructed in the composition root)
  */
 export class PermissionGateHandler {
@@ -38,6 +42,7 @@ export class PermissionGateHandler {
     private readonly session: GateHandlerSession,
     private readonly toolRegistry: ToolRegistry,
     private readonly pipeline: ToolCallGatePipeline,
+    private readonly skillInputPipeline: SkillInputGatePipeline,
     private readonly runner: GateRunner,
   ) {}
 
@@ -87,23 +92,18 @@ export class PermissionGateHandler {
     }
 
     const agentName = this.session.resolveAgentName(ctx);
-    const check = this.session.checkPermission(
-      "skill",
-      { name: skillName },
-      agentName ?? undefined,
-    );
-
-    if (check.state === "deny" && ctx.hasUI) {
-      const notifyMessage = agentName
-        ? `Skill '${skillName}' is not permitted for agent '${agentName}'.`
-        : `Skill '${skillName}' is not permitted by the current skill policy.`;
-      ctx.ui.notify(notifyMessage, "warning");
-    }
-
-    const outcome = await this.runner.run(
-      describeSkillInputGate(skillName, agentName, check),
+    const notifier: GateNotifier = {
+      warn: (message) => {
+        if (ctx.hasUI) {
+          ctx.ui.notify(message, "warning");
+        }
+      },
+    };
+    const outcome = await this.skillInputPipeline.evaluate(
+      skillName,
       agentName,
-      this.session.createPermissionRequestId("skill-input"),
+      notifier,
+      this.runner,
     );
     return outcome.action === "block"
       ? { action: "handled" }

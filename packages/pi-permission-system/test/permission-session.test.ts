@@ -721,19 +721,4 @@ describe("PermissionSession", () => {
       expect(result).toEqual({ approved: true, state: "approved" });
     });
   });
-
-  describe("createPermissionRequestId", () => {
-    it("starts with the given prefix", () => {
-      const { session } = createSession();
-      const id = session.createPermissionRequestId("skill-input");
-      expect(id.startsWith("skill-input-")).toBe(true);
-    });
-
-    it("generates unique IDs on repeated calls", () => {
-      const { session } = createSession();
-      const id1 = session.createPermissionRequestId("test");
-      const id2 = session.createPermissionRequestId("test");
-      expect(id1).not.toBe(id2);
-    });
-  });
 });

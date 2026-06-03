@@ -15,6 +15,7 @@ import { describe, expect, it, vi } from "vitest";
 import { GateDecisionReporter } from "#src/decision-reporter";
 import { DEFAULT_EXTENSION_CONFIG } from "#src/extension-config";
 import { GateRunner } from "#src/handlers/gates/runner";
+import { SkillInputGatePipeline } from "#src/handlers/gates/skill-input-gate-pipeline";
 import { ToolCallGatePipeline } from "#src/handlers/gates/tool-call-gate-pipeline";
 import { PermissionGateHandler } from "#src/handlers/permission-gate-handler";
 import type { PromptPermissionDetails } from "#src/permission-prompter";
@@ -161,11 +162,6 @@ function makeStatefulSession(
       vi
         .fn<MockGateHandlerSession["prompt"]>()
         .mockResolvedValue({ approved: true, state: "approved_for_session" }),
-    createPermissionRequestId:
-      overrides.createPermissionRequestId ??
-      vi
-        .fn<MockGateHandlerSession["createPermissionRequestId"]>()
-        .mockReturnValue("req-id"),
     // Delegations — closures read `session` at call time so overrides win.
     resolve:
       overrides.resolve ??
@@ -202,6 +198,7 @@ function makeHandlerForSession(
     session,
     makeToolRegistry(),
     new ToolCallGatePipeline(session),
+    new SkillInputGatePipeline(session),
     runner,
   );
 }

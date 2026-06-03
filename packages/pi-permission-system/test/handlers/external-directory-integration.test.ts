@@ -17,6 +17,7 @@ import { EXTENSION_TAG } from "#src/denial-messages";
 import { DEFAULT_EXTENSION_CONFIG } from "#src/extension-config";
 import { formatExternalDirectoryAskPrompt } from "#src/handlers/gates/external-directory-messages";
 import { GateRunner } from "#src/handlers/gates/runner";
+import { SkillInputGatePipeline } from "#src/handlers/gates/skill-input-gate-pipeline";
 import { ToolCallGatePipeline } from "#src/handlers/gates/tool-call-gate-pipeline";
 import { PermissionGateHandler } from "#src/handlers/permission-gate-handler";
 import { resolveToolPreviewLimits } from "#src/tool-preview-formatter";
@@ -121,11 +122,6 @@ function makeSession(
       vi
         .fn<MockGateHandlerSession["prompt"]>()
         .mockResolvedValue({ approved: true, state: "approved" }),
-    createPermissionRequestId:
-      overrides.createPermissionRequestId ??
-      vi
-        .fn<MockGateHandlerSession["createPermissionRequestId"]>()
-        .mockReturnValue("req-id"),
     // Delegations — closures read `session` at call time so overrides win.
     resolve:
       overrides.resolve ??
@@ -181,12 +177,14 @@ function makeHandler(overrides?: {
   const events = makeEvents();
   const toolRegistry = makeToolRegistry(overrides?.toolRegistry);
   const pipeline = new ToolCallGatePipeline(session);
+  const skillInputPipeline = new SkillInputGatePipeline(session);
   const reporter = new GateDecisionReporter(session.logger, events);
   const runner = new GateRunner(session, session, session, reporter);
   const handler = new PermissionGateHandler(
     session,
     toolRegistry,
     pipeline,
+    skillInputPipeline,
     runner,
   );
   return { handler, events, session };

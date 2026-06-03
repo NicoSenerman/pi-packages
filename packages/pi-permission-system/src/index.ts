@@ -17,6 +17,7 @@ import {
   SessionLifecycleHandler,
 } from "./handlers";
 import { GateRunner } from "./handlers/gates/runner";
+import { SkillInputGatePipeline } from "./handlers/gates/skill-input-gate-pipeline";
 import { ToolCallGatePipeline } from "./handlers/gates/tool-call-gate-pipeline";
 import { buildInputForSurface } from "./input-normalizer";
 import { requestPermissionDecisionFromUi } from "./permission-dialog";
@@ -183,10 +184,12 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
     session,
     formatterRegistry,
   );
+  const skillInputGatePipeline = new SkillInputGatePipeline(session);
   const gates = new PermissionGateHandler(
     session,
     toolRegistry,
     toolCallGatePipeline,
+    skillInputGatePipeline,
     gateRunner,
   );
 

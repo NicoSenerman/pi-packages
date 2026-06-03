@@ -13,6 +13,10 @@ import type { GateHandlerSession } from "#src/gate-handler-session";
 import type { GatePrompter } from "#src/gate-prompter";
 import { GateRunner } from "#src/handlers/gates/runner";
 import {
+  type SkillInputGateInputs,
+  SkillInputGatePipeline,
+} from "#src/handlers/gates/skill-input-gate-pipeline";
+import {
   type ToolCallGateInputs,
   ToolCallGatePipeline,
 } from "#src/handlers/gates/tool-call-gate-pipeline";
@@ -40,6 +44,7 @@ import type { PermissionCheckResult } from "#src/types";
  * GateHandlerSession so the `resolve` delegation can forward session rules.
  */
 export type MockGateHandlerSession = ToolCallGateInputs &
+  SkillInputGateInputs &
   SessionApprovalRecorder &
   GatePrompter &
   GateHandlerSession & {
@@ -180,11 +185,6 @@ export function makeSession(
       vi
         .fn<MockGateHandlerSession["prompt"]>()
         .mockResolvedValue({ approved: true, state: "approved" }),
-    createPermissionRequestId:
-      overrides.createPermissionRequestId ??
-      vi
-        .fn<MockGateHandlerSession["createPermissionRequestId"]>()
-        .mockReturnValue("req-id"),
     // Delegations — closures read `session` at call time so overrides win.
     resolve:
       overrides.resolve ??
@@ -234,12 +234,14 @@ export function makeHandler(overrides?: {
   const events = makeEvents();
   const toolRegistry = makeToolRegistry(overrides?.toolRegistry);
   const pipeline = new ToolCallGatePipeline(session);
+  const skillInputPipeline = new SkillInputGatePipeline(session);
   const reporter = new GateDecisionReporter(session.logger, events);
   const runner = new GateRunner(session, session, session, reporter);
   const handler = new PermissionGateHandler(
     session,
     toolRegistry,
     pipeline,
+    skillInputPipeline,
     runner,
   );
   return { handler, events, session, toolRegistry };
