@@ -25,3 +25,23 @@ Produced a five-step lift-and-shift plan (roles + session adapters, `GateRunner`
   Step 3 adds delegating `canConfirm` → `canPrompt` / `promptPermission` → `prompt` adapters (guarded with `Object.hasOwn` like the existing `resolve` delegation) so the `prompt`-override and `session.prompt` call-count assertions in the dedup and tool-call suites keep passing.
 - The delegating-mock tactic is a known transitional smell (#319 retro); flagged as removed by #325 when the handler is retyped against the role interfaces and the `as unknown as` casts drop.
 - Scope held: behavior-preserving, no public npm export change (all `#src` internal), `handleInput` untouched, `as unknown as PermissionSession` deferred to #325.
+
+## Stage: Implementation — TDD (2026-06-03T22:27:00Z)
+
+### Session summary
+
+Executed all five TDD cycles: added `GatePrompter` and `SessionApprovalRecorder` role interfaces with `PermissionSession` stored-context adapters (+5 new tests), introduced the `GateRunner` class alongside a transitional `runGateCheck` wrapper (+6 null/bypass dispatch tests), migrated `PermissionGateHandler` to the injected runner with delegating session mocks in all three integration-test harnesses, migrated `runner.test.ts` off `makeRunnerDeps`/`runGateCheck` to `makeGateRunner`/`runner.run` and deleted the wrapper + `GateRunnerDeps` + `makeRunnerDeps`, and updated the architecture doc.
+Test count: 1770 → 1781 (+11).
+Pre-completion reviewer verdict: PASS.
+
+### Observations
+
+- Step 1 deviation: `promptPermission`’s null guard used `throw new Error(...)` initially, which is synchronous and not a rejected promise; `expect(...).rejects.toThrow(...)` requires a rejected promise.
+  Fixed by changing to `return Promise.reject(new Error(...))` — clean and avoids the `@typescript-eslint/require-await` lint rule that would fire on an `async` function with no `await`.
+- Step 2 deviation: marking `runGateCheck` with `@deprecated` JSDoc triggered `@typescript-eslint/no-deprecated` on all 19 call sites in the test file at commit time.
+  Removed the JSDoc tag and kept only a prose comment explaining the transitional nature.
+- The `#319`-retro `missing-context` lesson applied cleanly: all three `as unknown as PermissionSession` session mocks were identified at plan time and received delegating `canConfirm`/`promptPermission` adapters in step 3 before the handler was migrated.
+  The full handler integration suite (359 tests) stayed green throughout.
+- Reviewer WARNs (both pre-existing, no action needed):
+  1. `toolDescriptor.preCheck = toolCheck` patch-after-construction in the last gate producer — pre-dates this issue, out of scope.
+  2. `const resolver = this.session` alias types as `PermissionSession` rather than `PermissionResolver` — explicitly deferred to #325 in the plan’s Non-Goals.
