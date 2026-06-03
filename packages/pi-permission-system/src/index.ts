@@ -19,19 +19,18 @@ import {
 import { GateRunner } from "./handlers/gates/runner";
 import { SkillInputGatePipeline } from "./handlers/gates/skill-input-gate-pipeline";
 import { ToolCallGatePipeline } from "./handlers/gates/tool-call-gate-pipeline";
-import { buildInputForSurface } from "./input-normalizer";
 import { requestPermissionDecisionFromUi } from "./permission-dialog";
 import { registerPermissionRpcHandlers } from "./permission-event-rpc";
 import { emitReadyEvent } from "./permission-events";
 import { PermissionPrompter } from "./permission-prompter";
 import { PermissionSession } from "./permission-session";
+import { LocalPermissionsService } from "./permissions-service";
 import {
   createExtensionRuntime,
   logResolvedConfigPaths,
   refreshExtensionConfig,
   saveExtensionConfig,
 } from "./runtime";
-import type { PermissionsService } from "./service";
 import {
   publishPermissionsService,
   unpublishPermissionsService,
@@ -124,24 +123,11 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
     writeReviewLog: runtime.writeReviewLog.bind(runtime),
   });
 
-  const permissionsService: PermissionsService = {
-    checkPermission(surface, value, agentName) {
-      const input = buildInputForSurface(surface, value);
-      const sessionRules = runtime.sessionRules.getRuleset();
-      return runtime.permissionManager.checkPermission(
-        surface,
-        input,
-        agentName,
-        sessionRules,
-      );
-    },
-    getToolPermission(toolName, agentName) {
-      return runtime.permissionManager.getToolPermission(toolName, agentName);
-    },
-    registerToolInputFormatter(toolName, formatter) {
-      return formatterRegistry.register(toolName, formatter);
-    },
-  };
+  const permissionsService = new LocalPermissionsService(
+    runtime.permissionManager,
+    runtime.sessionRules,
+    formatterRegistry,
+  );
 
   // Publish the service to the process-global slot only when this instance is
   // not an in-process subagent child, then emit ready. Deferred to
