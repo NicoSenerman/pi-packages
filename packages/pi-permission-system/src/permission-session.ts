@@ -7,6 +7,7 @@ import {
 import type { PermissionSystemExtensionConfig } from "./extension-config";
 import type { ExtensionPaths } from "./extension-paths";
 import type { ForwardingController } from "./forwarding-manager";
+import type { GateHandlerSession } from "./gate-handler-session";
 import type { GatePrompter } from "./gate-prompter";
 import type { PermissionPromptDecision } from "./permission-dialog";
 import type { PermissionManager } from "./permission-manager";
@@ -62,7 +63,11 @@ export interface PermissionSessionRuntimeDeps {
  * - `PermissionSessionRuntimeDeps` — config refresh + log delegates
  */
 export class PermissionSession
-  implements PermissionResolver, SessionApprovalRecorder, GatePrompter
+  implements
+    PermissionResolver,
+    SessionApprovalRecorder,
+    GatePrompter,
+    GateHandlerSession
 {
   private context: ExtensionContext | null = null;
   private permissionManager: PermissionManager;

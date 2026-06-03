@@ -10,7 +10,9 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
+import { GateDecisionReporter } from "#src/decision-reporter";
 import { DEFAULT_EXTENSION_CONFIG } from "#src/extension-config";
+import { GateRunner } from "#src/handlers/gates/runner";
 import { ToolCallGatePipeline } from "#src/handlers/gates/tool-call-gate-pipeline";
 import { PermissionGateHandler } from "#src/handlers/permission-gate-handler";
 import type { PermissionSession } from "#src/permission-session";
@@ -167,11 +169,14 @@ function makeStatefulSession(
 function makeHandlerForSession(
   session: PermissionSession,
 ): PermissionGateHandler {
+  const events = makeEvents();
+  const reporter = new GateDecisionReporter(session.logger, events);
+  const runner = new GateRunner(session, session, session, reporter);
   return new PermissionGateHandler(
     session,
-    makeEvents(),
     makeToolRegistry(),
     new ToolCallGatePipeline(session),
+    runner,
   );
 }
 

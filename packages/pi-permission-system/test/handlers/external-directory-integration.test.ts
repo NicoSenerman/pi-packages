@@ -10,9 +10,11 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
+import { GateDecisionReporter } from "#src/decision-reporter";
 import { EXTENSION_TAG } from "#src/denial-messages";
 import { DEFAULT_EXTENSION_CONFIG } from "#src/extension-config";
 import { formatExternalDirectoryAskPrompt } from "#src/handlers/gates/external-directory-messages";
+import { GateRunner } from "#src/handlers/gates/runner";
 import { ToolCallGatePipeline } from "#src/handlers/gates/tool-call-gate-pipeline";
 import { PermissionGateHandler } from "#src/handlers/permission-gate-handler";
 import type { PermissionSession } from "#src/permission-session";
@@ -154,11 +156,13 @@ function makeHandler(overrides?: {
   const events = makeEvents();
   const toolRegistry = makeToolRegistry(overrides?.toolRegistry);
   const pipeline = new ToolCallGatePipeline(session);
+  const reporter = new GateDecisionReporter(session.logger, events);
+  const runner = new GateRunner(session, session, session, reporter);
   const handler = new PermissionGateHandler(
     session,
-    events,
     toolRegistry,
     pipeline,
+    runner,
   );
   return { handler, events, session };
 }

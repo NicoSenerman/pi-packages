@@ -5,6 +5,7 @@ import type {
 import { registerBuiltinToolInputFormatters } from "./builtin-tool-input-formatters";
 import { registerPermissionSystemCommand } from "./config-modal";
 import { getGlobalConfigPath } from "./config-paths";
+import { GateDecisionReporter } from "./decision-reporter";
 import {
   PermissionForwarder,
   type PermissionForwarderDeps,
@@ -15,6 +16,7 @@ import {
   PermissionGateHandler,
   SessionLifecycleHandler,
 } from "./handlers";
+import { GateRunner } from "./handlers/gates/runner";
 import { ToolCallGatePipeline } from "./handlers/gates/tool-call-gate-pipeline";
 import { buildInputForSurface } from "./input-normalizer";
 import { requestPermissionDecisionFromUi } from "./permission-dialog";
@@ -175,15 +177,17 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
     },
   );
   const agentPrep = new AgentPrepHandler(session, toolRegistry);
+  const reporter = new GateDecisionReporter(session.logger, pi.events);
+  const gateRunner = new GateRunner(session, session, session, reporter);
   const toolCallGatePipeline = new ToolCallGatePipeline(
     session,
     formatterRegistry,
   );
   const gates = new PermissionGateHandler(
     session,
-    pi.events,
     toolRegistry,
     toolCallGatePipeline,
+    gateRunner,
   );
 
   pi.on("session_start", (event, ctx) =>

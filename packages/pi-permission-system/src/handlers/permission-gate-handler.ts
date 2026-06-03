@@ -4,22 +4,17 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 
 import { toRecord } from "#src/common";
-import {
-  type DecisionReporter,
-  GateDecisionReporter,
-} from "#src/decision-reporter";
-import type { PermissionEventBus } from "#src/permission-events";
+import type { GateHandlerSession } from "#src/gate-handler-session";
 import {
   formatMissingToolNameReason,
   formatUnknownToolReason,
 } from "#src/permission-prompts";
-import type { PermissionSession } from "#src/permission-session";
 import {
   checkRequestedToolRegistration,
   getToolNameFromValue,
   type ToolRegistry,
 } from "#src/tool-registry";
-import { GateRunner } from "./gates/runner";
+import type { GateRunner } from "./gates/runner";
 import { describeSkillInputGate } from "./gates/skill-input";
 import type { ToolCallGatePipeline } from "./gates/tool-call-gate-pipeline";
 import type { ToolCallContext } from "./gates/types";
@@ -33,24 +28,18 @@ interface InputPayload {
  * Handles permission gate events: tool_call and input.
  *
  * Constructor deps:
- * - `session` — encapsulates all mutable session state and permission operations
- * - `events` — event bus for emitting permissions:decision broadcasts
+ * - `session` — narrow four-method role: context binding, agent name, permission check, request id
  * - `toolRegistry` — Pi tool API subset (getAll + setActive)
  * - `pipeline` — owns tool-call gate-producer assembly and the run loop
+ * - `runner` — pre-built gate runner (constructed in the composition root)
  */
 export class PermissionGateHandler {
-  private readonly reporter: DecisionReporter;
-  private readonly runner: GateRunner;
-
   constructor(
-    private readonly session: PermissionSession,
-    events: PermissionEventBus,
+    private readonly session: GateHandlerSession,
     private readonly toolRegistry: ToolRegistry,
     private readonly pipeline: ToolCallGatePipeline,
-  ) {
-    this.reporter = new GateDecisionReporter(session.logger, events);
-    this.runner = new GateRunner(session, session, session, this.reporter);
-  }
+    private readonly runner: GateRunner,
+  ) {}
 
   async handleToolCall(
     event: unknown,

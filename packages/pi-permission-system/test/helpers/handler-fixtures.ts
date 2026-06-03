@@ -7,7 +7,9 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { vi } from "vitest";
 
+import { GateDecisionReporter } from "#src/decision-reporter";
 import { DEFAULT_EXTENSION_CONFIG } from "#src/extension-config";
+import { GateRunner } from "#src/handlers/gates/runner";
 import { ToolCallGatePipeline } from "#src/handlers/gates/tool-call-gate-pipeline";
 import { PermissionGateHandler } from "#src/handlers/permission-gate-handler";
 import type { PermissionDecisionEvent } from "#src/permission-events";
@@ -163,11 +165,13 @@ export function makeHandler(overrides?: {
   const events = makeEvents();
   const toolRegistry = makeToolRegistry(overrides?.toolRegistry);
   const pipeline = new ToolCallGatePipeline(session);
+  const reporter = new GateDecisionReporter(session.logger, events);
+  const runner = new GateRunner(session, session, session, reporter);
   const handler = new PermissionGateHandler(
     session,
-    events,
     toolRegistry,
     pipeline,
+    runner,
   );
   return { handler, events, session, toolRegistry };
 }
