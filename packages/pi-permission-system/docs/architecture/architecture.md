@@ -880,47 +880,47 @@ The headline findings are coupling smells (Category C) - anemic behavior, mutabl
     - Smell category: C (concrete class dependency forces wide mocks; narrow interfaces enforce completeness at the type level).
     - Outcome: `as unknown as PermissionSession` casts are gone from the gate-handler mocks; the runner is injected, not built in the handler; a consumer calling a method the mock lacks fails at `pnpm run check`, not at runtime.
 
-12. **Reframe the `index.ts` composition root as collaborator injection** ([#320])
-    - Target: `src/index.ts` (sequence after Steps 2-4 and 6-11).
-    - With the forwarder and gate-runner collaborators in place, the remaining factory work is constructing collaborators and injecting them; group what is left into a small number of construction sites and keep only genuine SDK-boundary glue (tool registry, `pi.on` arrows) as closures.
-    - Verify wiring with `test/composition-root.test.ts` (`make-fake-pi.ts` harness): handler registration, the `session_start`-gated service publish, and the synchronous lifecycle subscription must be unchanged.
-    - Smell category: C (adapter closure density) / E (wiring overhead).
-    - Outcome: `piPermissionSystemExtension` falls well under 100 lines; new wiring touches a collaborator, not a 149-line factory, cooling the `index.ts` hotspot.
-
-13. **Continue shared test-fixture extraction** ([#321])
-    - Target: the four largest remaining clone families - `external-directory-integration.test.ts`, `bash-path.test.ts`, `runner.test.ts`, `tool-call.test.ts`.
-    - Migrate them onto the existing `test/helpers/` fixtures (`handler-fixtures.ts`, `gate-fixtures.ts`, `manager-harness.ts`), extending those helpers where a shape is not yet covered rather than redefining factories inline.
-    - Smell category: D (test duplication).
-    - Outcome: duplication 7.6% → target < 6%; the test-duplication health deduction shrinks below -2.0.
-
-14. **Extract a `SkillInputGatePipeline` collaborator** ([#329])
+12. **Extract a `SkillInputGatePipeline` collaborator** ([#329])
     - Target: new `src/handlers/gates/skill-input-gate-pipeline.ts`; `src/handlers/permission-gate-handler.ts`; `src/index.ts`; `test/handlers/input*.test.ts`.
     - `handleInput` still hand-assembles the skill-input gate (raw `checkPermission` pre-check, deny notify, `describeSkillInputGate`, request-id mint, `runner.run`) — gate-construction work with no owner, asymmetric with the `tool_call` path's `ToolCallGatePipeline` ([#327]).
       Introduce a `SkillInputGatePipeline` (constructed in `index.ts`, injected into `PermissionGateHandler`) that owns it; reduce `handleInput` to activate → resolveAgentName → extract skill name → pipeline.evaluate → map outcome.
     - Smell category: C (missing collaborator).
     - Outcome: the `input` and `tool_call` paths are symmetric; `checkPermission` + `createPermissionRequestId` leave the handler's session surface; `GateHandlerSession` collapses to a two-method context role (`activate` + `resolveAgentName`).
 
-15. **Relocate `createPermissionRequestId` onto the request-creation collaborator** ([#330])
-    - Target: `src/permission-session.ts`; the request-creation owner (likely the `SkillInputGatePipeline` from Step 14).
+13. **Relocate `createPermissionRequestId` onto the request-creation collaborator** ([#330])
+    - Target: `src/permission-session.ts`; the request-creation owner (likely the `SkillInputGatePipeline` from Step 12).
     - `createPermissionRequestId` reads `Date.now()` / `Math.random()` / `process.pid` and touches zero session state — a misplaced utility on the session god-object.
       Move it onto whatever collaborator owns permission-request creation and remove it from `PermissionSession`.
     - Smell category: C (misplaced utility).
     - Outcome: `PermissionSession` sheds a stateless utility; request-id creation lives next to request creation.
 
-16. **Narrow `AgentPrepHandler` + `SessionLifecycleHandler` against role interfaces** ([#331])
+14. **Narrow `AgentPrepHandler` + `SessionLifecycleHandler` against role interfaces** ([#331])
     - Target: `src/handlers/before-agent-start.ts`; `src/handlers/lifecycle.ts`; `test/handlers/before-agent-start.test.ts`; `test/handlers/lifecycle.test.ts`.
     - Both handlers still take the concrete `PermissionSession` with `as unknown as PermissionSession` local mocks.
-      Define narrow role interfaces for each (wider than the gate handler's — config refresh, cache-key management, lifecycle — likely a couple of cohesive roles), reusing the two-method context role established by Step 14; drop the casts.
+      Define narrow role interfaces for each (wider than the gate handler's — config refresh, cache-key management, lifecycle — likely a couple of cohesive roles), reusing the two-method context role established by Step 12; drop the casts.
     - Smell category: C (concrete-class dependency forces wide mocks).
     - Outcome: no handler depends on the concrete `PermissionSession`; the last `as unknown as PermissionSession` casts in the handler test tree are gone.
+
+15. **Reframe the `index.ts` composition root as collaborator injection** ([#320])
+    - Target: `src/index.ts` (sequence after Steps 2-4 and 6-14, once every collaborator — including the `SkillInputGatePipeline` from Step 12 — exists to be injected).
+    - With the forwarder and gate-runner collaborators in place, the remaining factory work is constructing collaborators and injecting them; group what is left into a small number of construction sites and keep only genuine SDK-boundary glue (tool registry, `pi.on` arrows) as closures.
+    - Verify wiring with `test/composition-root.test.ts` (`make-fake-pi.ts` harness): handler registration, the `session_start`-gated service publish, and the synchronous lifecycle subscription must be unchanged.
+    - Smell category: C (adapter closure density) / E (wiring overhead).
+    - Outcome: `piPermissionSystemExtension` falls well under 100 lines; new wiring touches a collaborator, not a 149-line factory, cooling the `index.ts` hotspot.
+
+16. **Continue shared test-fixture extraction** ([#321])
+    - Target: the four largest remaining clone families - `external-directory-integration.test.ts`, `bash-path.test.ts`, `runner.test.ts`, `tool-call.test.ts`.
+    - Migrate them onto the existing `test/helpers/` fixtures (`handler-fixtures.ts`, `gate-fixtures.ts`, `manager-harness.ts`), extending those helpers where a shape is not yet covered rather than redefining factories inline.
+    - Smell category: D (test duplication).
+    - Outcome: duplication 7.6% → target < 6%; the test-duplication health deduction shrinks below -2.0.
 
 ### Step dependency diagram
 
 The forwarding collaborator is a lift-and-shift sequence: Step 2 introduces the class, Step 3 removes the duplicated bag, Step 4 inlines the logic and deletes the interface (introduce-new-alongside-old, remove-old-last).
-The gate-runner rework is a sequential extraction chain: Steps 6-8 are done; Steps 9-11 unify the input gate, extract the gate pipeline, and retype the handler against narrow interfaces — each shrinks the handler's session surface before the next, so #325 lands as a small finishing move.
-Step 12 depends on the forwarding collaborator (Steps 2-4) and the gate-runner rework (Steps 6-11) being in place.
-Step 13 is best sequenced after the production refactors whose tested call sites it touches (dashed edges) - those refactors are behavior-preserving, so the soft ordering only avoids re-migrating fixtures, it does not block.
-Steps 14-16 are the [#325] follow-ups: Step 14 (`SkillInputGatePipeline`) depends on Step 11 and shrinks `GateHandlerSession` to the two-method context role; Step 15 relocates the request-id minter onto that pipeline; Step 16 narrows the remaining two handlers, reusing the context role (soft edge).
+The gate-runner rework is a sequential extraction chain: Steps 6-8 are done; Steps 9-11 unify the input gate, extract the gate pipeline, and retype the handler against narrow interfaces, then Steps 12-14 are the [#325] follow-ups that finish the arc — each shrinks the handler's session surface before the next.
+Step 12 (`SkillInputGatePipeline`) depends on Step 11 and shrinks `GateHandlerSession` to a two-method context role; Step 13 relocates the request-id minter onto that pipeline; Step 14 narrows the remaining two handlers, reusing the context role (soft edge).
+Step 15 (composition root) depends on the forwarding collaborator (Steps 2-4) and the full gate-runner/handler rework (Steps 6-14); it is sequenced after Step 12 so the `SkillInputGatePipeline` already exists to be injected, rather than re-touching `index.ts` after the reframe.
+Step 16 is best sequenced after the production refactors whose tested call sites it touches (dashed edges) - those refactors are behavior-preserving, so the soft ordering only avoids re-migrating fixtures, it does not block.
 
 ```mermaid
 flowchart TD
@@ -935,15 +935,14 @@ flowchart TD
     S9["Step 9: ✅ Unify handleInput with GateRunner (#326)"]
     S10["Step 10: ✅ Extract ToolCallGatePipeline (#327)"]
     S11["Step 11: PermissionGateHandler role-interface retyping (#325)"]
-    S12["Step 12: Composition root as collaborator injection (#320)"]
-    S13["Step 13: Continue test-fixture extraction (#321)"]
-    S14["Step 14: Extract SkillInputGatePipeline (#329)"]
-    S15["Step 15: Relocate createPermissionRequestId (#330)"]
-    S16["Step 16: Narrow remaining handlers (#331)"]
+    S12["Step 12: Extract SkillInputGatePipeline (#329)"]
+    S13["Step 13: Relocate createPermissionRequestId (#330)"]
+    S14["Step 14: Narrow remaining handlers (#331)"]
+    S15["Step 15: Composition root as collaborator injection (#320)"]
+    S16["Step 16: Continue test-fixture extraction (#321)"]
 
     S2 --> S3
     S3 --> S4
-    S4 --> S12
     S6 --> S7
     S7 --> S8
     S8 --> S9
@@ -951,15 +950,17 @@ flowchart TD
     S9 --> S11
     S10 --> S11
     S11 --> S12
-    S1 -.-> S13
-    S4 -.-> S13
-    S5 -.-> S13
-    S6 -.-> S13
-    S12 -.-> S13
+    S12 --> S13
     S11 --> S14
-    S14 --> S15
-    S11 --> S16
-    S14 -.-> S16
+    S12 -.-> S14
+    S4 --> S15
+    S11 --> S15
+    S12 --> S15
+    S1 -.-> S16
+    S4 -.-> S16
+    S5 -.-> S16
+    S6 -.-> S16
+    S15 -.-> S16
 ```
 
 ### Tracks
@@ -968,9 +969,9 @@ flowchart TD
 | -------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A: Module cohesion         | 1                                 | Split the `tool-input-preview.ts` bag (independent)                                                                                                                                                                                                                                                                        |
 | B: Forwarding collaborator | 2 → 3 → 4                         | Give the forwarding behavior a stateful owner; delete the duplicated bag (sequential lift-and-shift)                                                                                                                                                                                                                       |
-| C: State encapsulation     | 5, 6, 7, 8, 9, 10, 11, 14, 15, 16 | `McpTargetList` value object, the gate-runner collaborator rework (`PermissionResolver` → `DecisionReporter` → `GateRunner` → `handleInput` unification → `ToolCallGatePipeline` → role-interface retyping), and the #325 follow-ups (`SkillInputGatePipeline` → request-id relocation → narrowing the remaining handlers) |
-| D: Composition root        | 12                                | Reframe `index.ts` as collaborator injection (after Tracks B and C)                                                                                                                                                                                                                                                        |
-| E: Test duplication        | 13                                | Migrate the four largest clone families onto shared fixtures (best last)                                                                                                                                                                                                                                                   |
+| C: State encapsulation     | 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 | `McpTargetList` value object, the gate-runner collaborator rework (`PermissionResolver` → `DecisionReporter` → `GateRunner` → `handleInput` unification → `ToolCallGatePipeline` → role-interface retyping), and the #325 follow-ups (`SkillInputGatePipeline` → request-id relocation → narrowing the remaining handlers) |
+| D: Composition root        | 15                                | Reframe `index.ts` as collaborator injection (after Tracks B and C)                                                                                                                                                                                                                                                        |
+| E: Test duplication        | 16                                | Migrate the four largest clone families onto shared fixtures (best last)                                                                                                                                                                                                                                                   |
 
 [#266]: https://github.com/gotgenes/pi-packages/issues/266
 [#282]: https://github.com/gotgenes/pi-packages/issues/282

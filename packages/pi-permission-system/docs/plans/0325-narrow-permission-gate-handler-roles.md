@@ -27,7 +27,7 @@ This issue retypes the handler against narrow role interfaces and drops the cast
 - Relocating `createPermissionRequestId` off `PermissionSession` — tracked in [#330].
 - Narrowing `AgentPrepHandler` and `SessionLifecycleHandler` against role interfaces, or touching their local `makeSession` casts — tracked in [#331].
 - Changing the skill-input pre-check from `checkPermission` (no session rules) to `resolve` (session rules) — a behavior change, deferred to [#329].
-- Reframing `index.ts` as collaborator injection — that is Step 12 ([#320]); this plan only adds two construction sites that feed it.
+- Reframing `index.ts` as collaborator injection — that is Step 15 ([#320]); this plan only adds two construction sites that feed it.
 
 ## Background
 
