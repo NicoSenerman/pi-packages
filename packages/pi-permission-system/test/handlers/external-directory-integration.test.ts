@@ -8,6 +8,8 @@
  * Regression guard: importing the four external-directory message helpers
  * ensures the test file fails to load if any helper is removed.
  */
+
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 
 import { GateDecisionReporter } from "#src/decision-reporter";
@@ -17,13 +19,13 @@ import { formatExternalDirectoryAskPrompt } from "#src/handlers/gates/external-d
 import { GateRunner } from "#src/handlers/gates/runner";
 import { ToolCallGatePipeline } from "#src/handlers/gates/tool-call-gate-pipeline";
 import { PermissionGateHandler } from "#src/handlers/permission-gate-handler";
-import type { PermissionSession } from "#src/permission-session";
 import { resolveToolPreviewLimits } from "#src/tool-preview-formatter";
 import type { ToolRegistry } from "#src/tool-registry";
 import type { PermissionCheckResult, PermissionState } from "#src/types";
 
 import {
   getDecisionEvents,
+  type MockGateHandlerSession,
   makeCtx,
   makeEvents,
   makeToolCallEvent,
@@ -77,52 +79,75 @@ function makeCheckPermission(
 }
 
 function makeSession(
-  overrides: Partial<Record<keyof PermissionSession, unknown>> = {},
-): PermissionSession {
-  const session = {
-    logger: { debug: vi.fn(), review: vi.fn(), warn: vi.fn() },
-    activate: vi.fn(),
-    resolveAgentName: vi.fn().mockReturnValue(null),
-    checkPermission: makeCheckPermission("deny"),
-    getToolPermission: vi.fn().mockReturnValue("allow"),
-    getSessionRuleset: vi.fn().mockReturnValue([]),
-    recordSessionApproval: vi.fn(),
-    getActiveSkillEntries: vi.fn().mockReturnValue([]),
-    getInfrastructureReadDirs: vi.fn().mockReturnValue([]),
-    getToolPreviewLimits: vi
-      .fn()
-      .mockReturnValue(resolveToolPreviewLimits(DEFAULT_EXTENSION_CONFIG)),
-    config: DEFAULT_EXTENSION_CONFIG,
-    canPrompt: vi.fn().mockReturnValue(true),
-    prompt: vi.fn().mockResolvedValue({ approved: true, state: "approved" }),
-    ...overrides,
-  } as unknown as PermissionSession;
-
-  // `resolve` mirrors production: checkPermission applying the session ruleset.
-  if (!Object.hasOwn(overrides, "resolve")) {
-    (session as { resolve: unknown }).resolve = vi.fn(
-      (surface: string, input: unknown, agentName?: string) =>
+  overrides: Partial<MockGateHandlerSession> = {},
+): MockGateHandlerSession {
+  const session: MockGateHandlerSession = {
+    logger: overrides.logger ?? {
+      debug: vi.fn(),
+      review: vi.fn(),
+      warn: vi.fn(),
+    },
+    activate: overrides.activate ?? vi.fn<MockGateHandlerSession["activate"]>(),
+    resolveAgentName:
+      overrides.resolveAgentName ??
+      vi.fn<MockGateHandlerSession["resolveAgentName"]>().mockReturnValue(null),
+    checkPermission: overrides.checkPermission ?? makeCheckPermission("deny"),
+    getSessionRuleset:
+      overrides.getSessionRuleset ??
+      vi.fn<MockGateHandlerSession["getSessionRuleset"]>().mockReturnValue([]),
+    recordSessionApproval:
+      overrides.recordSessionApproval ??
+      vi.fn<MockGateHandlerSession["recordSessionApproval"]>(),
+    getActiveSkillEntries:
+      overrides.getActiveSkillEntries ??
+      vi
+        .fn<MockGateHandlerSession["getActiveSkillEntries"]>()
+        .mockReturnValue([]),
+    getInfrastructureReadDirs:
+      overrides.getInfrastructureReadDirs ??
+      vi
+        .fn<MockGateHandlerSession["getInfrastructureReadDirs"]>()
+        .mockReturnValue([]),
+    getToolPreviewLimits:
+      overrides.getToolPreviewLimits ??
+      vi
+        .fn<MockGateHandlerSession["getToolPreviewLimits"]>()
+        .mockReturnValue(resolveToolPreviewLimits(DEFAULT_EXTENSION_CONFIG)),
+    canPrompt:
+      overrides.canPrompt ??
+      vi.fn<MockGateHandlerSession["canPrompt"]>().mockReturnValue(true),
+    prompt:
+      overrides.prompt ??
+      vi
+        .fn<MockGateHandlerSession["prompt"]>()
+        .mockResolvedValue({ approved: true, state: "approved" }),
+    createPermissionRequestId:
+      overrides.createPermissionRequestId ??
+      vi
+        .fn<MockGateHandlerSession["createPermissionRequestId"]>()
+        .mockReturnValue("req-id"),
+    // Delegations — closures read `session` at call time so overrides win.
+    resolve:
+      overrides.resolve ??
+      vi.fn<MockGateHandlerSession["resolve"]>((surface, input, agentName) =>
         session.checkPermission(
           surface,
           input,
           agentName,
           session.getSessionRuleset(),
         ),
-    );
-  }
-  // GateRunner calls canConfirm() / promptPermission() — delegate to the
-  // (possibly overridden) canPrompt / prompt stubs.
-  if (!Object.hasOwn(overrides, "canConfirm")) {
-    (session as { canConfirm: unknown }).canConfirm = vi.fn(() =>
-      session.canPrompt(undefined as never),
-    );
-  }
-  if (!Object.hasOwn(overrides, "promptPermission")) {
-    (session as { promptPermission: unknown }).promptPermission = vi.fn(
-      (details: Parameters<typeof session.prompt>[1]) =>
-        session.prompt(undefined as never, details),
-    );
-  }
+      ),
+    canConfirm:
+      overrides.canConfirm ??
+      vi.fn<MockGateHandlerSession["canConfirm"]>(() =>
+        session.canPrompt(undefined as unknown as ExtensionContext),
+      ),
+    promptPermission:
+      overrides.promptPermission ??
+      vi.fn<MockGateHandlerSession["promptPermission"]>((details) =>
+        session.prompt(undefined as unknown as ExtensionContext, details),
+      ),
+  };
   return session;
 }
 
@@ -145,12 +170,12 @@ function makeToolRegistry(overrides: Partial<ToolRegistry> = {}): ToolRegistry {
 }
 
 function makeHandler(overrides?: {
-  session?: Partial<Record<keyof PermissionSession, unknown>>;
+  session?: Partial<MockGateHandlerSession>;
   toolRegistry?: Partial<ToolRegistry>;
 }): {
   handler: PermissionGateHandler;
   events: ReturnType<typeof makeEvents>;
-  session: PermissionSession;
+  session: MockGateHandlerSession;
 } {
   const session = makeSession(overrides?.session);
   const events = makeEvents();

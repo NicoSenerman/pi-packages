@@ -8,6 +8,8 @@
  * the real interaction between PermissionSession, SessionRules, and
  * PermissionManager.
  */
+
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 
 import { GateDecisionReporter } from "#src/decision-reporter";
@@ -15,7 +17,7 @@ import { DEFAULT_EXTENSION_CONFIG } from "#src/extension-config";
 import { GateRunner } from "#src/handlers/gates/runner";
 import { ToolCallGatePipeline } from "#src/handlers/gates/tool-call-gate-pipeline";
 import { PermissionGateHandler } from "#src/handlers/permission-gate-handler";
-import type { PermissionSession } from "#src/permission-session";
+import type { PromptPermissionDetails } from "#src/permission-prompter";
 import type { Rule } from "#src/rule";
 import type { SessionApproval } from "#src/session-approval";
 import { resolveToolPreviewLimits } from "#src/tool-preview-formatter";
@@ -23,7 +25,11 @@ import type { ToolRegistry } from "#src/tool-registry";
 import type { PermissionCheckResult } from "#src/types";
 import { wildcardMatch } from "#src/wildcard-matcher";
 
-import { makeCtx, makeEvents } from "#test/helpers/handler-fixtures";
+import {
+  type MockGateHandlerSession,
+  makeCtx,
+  makeEvents,
+} from "#test/helpers/handler-fixtures";
 
 // ── SDK stub ───────────────────────────────────────────────────────────────
 vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
@@ -43,12 +49,12 @@ vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
  * "allow" by default.
  */
 function makeStatefulSession(
-  overrides: Partial<Record<keyof PermissionSession, unknown>> = {},
-): PermissionSession {
+  overrides: Partial<MockGateHandlerSession> = {},
+): MockGateHandlerSession {
   const sessionRules: Rule[] = [];
 
   const checkPermission = vi
-    .fn()
+    .fn<MockGateHandlerSession["checkPermission"]>()
     .mockImplementation(
       (
         surface: string,
@@ -101,7 +107,7 @@ function makeStatefulSession(
     );
 
   const recordSessionApproval = vi
-    .fn()
+    .fn<MockGateHandlerSession["recordSessionApproval"]>()
     .mockImplementation((approval: SessionApproval) => {
       for (const pattern of approval.patterns) {
         sessionRules.push({
@@ -114,60 +120,80 @@ function makeStatefulSession(
       }
     });
 
-  const getSessionRuleset = vi.fn().mockImplementation(() => [...sessionRules]);
+  const getSessionRuleset = vi
+    .fn<MockGateHandlerSession["getSessionRuleset"]>()
+    .mockImplementation(() => [...sessionRules]);
 
-  const session = {
-    logger: { debug: vi.fn(), review: vi.fn(), warn: vi.fn() },
-    activate: vi.fn(),
-    resolveAgentName: vi.fn().mockReturnValue(null),
-    checkPermission,
-    getToolPermission: vi.fn().mockReturnValue("allow"),
-    getSessionRuleset,
-    recordSessionApproval,
-    getActiveSkillEntries: vi.fn().mockReturnValue([]),
-    getInfrastructureReadDirs: vi.fn().mockReturnValue([]),
-    getToolPreviewLimits: vi
-      .fn()
-      .mockReturnValue(resolveToolPreviewLimits(DEFAULT_EXTENSION_CONFIG)),
-    config: DEFAULT_EXTENSION_CONFIG,
-    canPrompt: vi.fn().mockReturnValue(true),
-    prompt: vi
-      .fn()
-      .mockResolvedValue({ approved: true, state: "approved_for_session" }),
-    ...overrides,
-  } as unknown as PermissionSession;
-
-  // `resolve` mirrors production: checkPermission applying the current session
-  // ruleset, so the stateful dedup logic is exercised through resolve too.
-  if (!Object.hasOwn(overrides, "resolve")) {
-    (session as { resolve: unknown }).resolve = vi.fn(
-      (surface: string, input: unknown, agentName?: string) =>
+  const session: MockGateHandlerSession = {
+    logger: overrides.logger ?? {
+      debug: vi.fn(),
+      review: vi.fn(),
+      warn: vi.fn(),
+    },
+    activate: overrides.activate ?? vi.fn<MockGateHandlerSession["activate"]>(),
+    resolveAgentName:
+      overrides.resolveAgentName ??
+      vi.fn<MockGateHandlerSession["resolveAgentName"]>().mockReturnValue(null),
+    checkPermission: overrides.checkPermission ?? checkPermission,
+    getSessionRuleset: overrides.getSessionRuleset ?? getSessionRuleset,
+    recordSessionApproval:
+      overrides.recordSessionApproval ?? recordSessionApproval,
+    getActiveSkillEntries:
+      overrides.getActiveSkillEntries ??
+      vi
+        .fn<MockGateHandlerSession["getActiveSkillEntries"]>()
+        .mockReturnValue([]),
+    getInfrastructureReadDirs:
+      overrides.getInfrastructureReadDirs ??
+      vi
+        .fn<MockGateHandlerSession["getInfrastructureReadDirs"]>()
+        .mockReturnValue([]),
+    getToolPreviewLimits:
+      overrides.getToolPreviewLimits ??
+      vi
+        .fn<MockGateHandlerSession["getToolPreviewLimits"]>()
+        .mockReturnValue(resolveToolPreviewLimits(DEFAULT_EXTENSION_CONFIG)),
+    canPrompt:
+      overrides.canPrompt ??
+      vi.fn<MockGateHandlerSession["canPrompt"]>().mockReturnValue(true),
+    prompt:
+      overrides.prompt ??
+      vi
+        .fn<MockGateHandlerSession["prompt"]>()
+        .mockResolvedValue({ approved: true, state: "approved_for_session" }),
+    createPermissionRequestId:
+      overrides.createPermissionRequestId ??
+      vi
+        .fn<MockGateHandlerSession["createPermissionRequestId"]>()
+        .mockReturnValue("req-id"),
+    // Delegations — closures read `session` at call time so overrides win.
+    resolve:
+      overrides.resolve ??
+      vi.fn<MockGateHandlerSession["resolve"]>((surface, input, agentName) =>
         session.checkPermission(
           surface,
           input,
           agentName,
           session.getSessionRuleset(),
         ),
-    );
-  }
-  // GateRunner calls canConfirm() / promptPermission() — delegate to the
-  // (possibly overridden) canPrompt / prompt stubs.
-  if (!Object.hasOwn(overrides, "canConfirm")) {
-    (session as { canConfirm: unknown }).canConfirm = vi.fn(() =>
-      session.canPrompt(undefined as never),
-    );
-  }
-  if (!Object.hasOwn(overrides, "promptPermission")) {
-    (session as { promptPermission: unknown }).promptPermission = vi.fn(
-      (details: Parameters<typeof session.prompt>[1]) =>
-        session.prompt(undefined as never, details),
-    );
-  }
+      ),
+    canConfirm:
+      overrides.canConfirm ??
+      vi.fn<MockGateHandlerSession["canConfirm"]>(() =>
+        session.canPrompt(undefined as unknown as ExtensionContext),
+      ),
+    promptPermission:
+      overrides.promptPermission ??
+      vi.fn<MockGateHandlerSession["promptPermission"]>(
+        (details: PromptPermissionDetails) =>
+          session.prompt(undefined as unknown as ExtensionContext, details),
+      ),
+  };
   return session;
 }
 
 function makeHandlerForSession(
-  session: PermissionSession,
+  session: MockGateHandlerSession,
 ): PermissionGateHandler {
   const events = makeEvents();
   const reporter = new GateDecisionReporter(session.logger, events);
