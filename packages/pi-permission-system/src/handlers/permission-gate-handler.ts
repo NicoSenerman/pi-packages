@@ -8,10 +8,7 @@ import {
   type DecisionReporter,
   GateDecisionReporter,
 } from "#src/decision-reporter";
-import {
-  emitDecisionEvent,
-  type PermissionEventBus,
-} from "#src/permission-events";
+import type { PermissionEventBus } from "#src/permission-events";
 import { applyPermissionGate } from "#src/permission-gate";
 import type { PromptPermissionDetails } from "#src/permission-prompter";
 import {
@@ -252,8 +249,8 @@ export class PermissionGateHandler {
         skillInputAutoApproved = decision.autoApproved === true;
         return decision;
       },
-      // eslint-disable-next-line @typescript-eslint/unbound-method -- logger.review is a plain function closure; no this-binding issue
-      writeLog: this.session.logger.review,
+      writeLog: (event, details) =>
+        this.reporter.writeReviewLog(event, details),
       logContext: {
         source: "skill_input",
         skillName,
@@ -268,7 +265,7 @@ export class PermissionGateHandler {
       },
     });
 
-    emitDecisionEvent(this.events, {
+    this.reporter.emitDecision({
       surface: "skill",
       value: skillName,
       result: skillInputGate.action === "allow" ? "allow" : "deny",
