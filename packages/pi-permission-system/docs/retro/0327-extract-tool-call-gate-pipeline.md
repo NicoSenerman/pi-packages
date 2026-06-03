@@ -23,3 +23,21 @@ Confirmed #326 (handleInput unification) is already landed, so the handler's `ha
   Avoided a layer inversion by **not** declaring `PermissionSession implements ToolCallGateInputs` — the structural check lives at the `new ToolCallGatePipeline(session, ...)` call site, keeping the domain module free of an upward import from the handler layer.
 - The runner is passed per-call to `evaluate` rather than injected into the pipeline, because the same `GateRunner` instance is shared with `handleInput`.
 - Key follow-on risk for `/tdd-plan`: the session mocks are cast via `as unknown as PermissionSession`, so renamed/added methods (`getInfrastructureReadDirs`, `getToolPreviewLimits`) fail at runtime, not at typecheck — step 3 must update every session mock on the handler/pipeline path and run the full suite.
+
+## Stage: Implementation — TDD (2026-06-03T04:09:24Z)
+
+### Session summary
+
+All 5 TDD steps completed across 5 commits.
+Added 14 tests (1796 → 1807 after removing the 3 deleted old-getter tests, then +14 new = 1807 net; old 2 old-getter tests subtracted).
+`ToolCallGatePipeline` with `ToolCallGateInputs` interface introduced; `makeGateInputs` added to `gate-fixtures.ts`; handler and composition root wired correctly.
+Pre-completion reviewer returned PASS.
+
+### Observations
+
+- Step 3 risk materialised exactly as predicted: `getInfrastructureDirs` and `getInfrastructureReadPaths` overrides in `test/handlers/external-directory-integration.test.ts`, `external-directory-session-dedup.test.ts`, and `tool-call-events.test.ts` were dead after the handler stopped calling them.
+  Updating all mocks and running the full suite caught this correctly (no typecheck errors, but runtime failures if mocks were missed).
+- `external-directory-session-dedup.test.ts` had 6 direct `new PermissionGateHandler(...)` calls; added a local `makeHandlerForSession(session)` helper and replaced them all with `perl` in-place substitution — cleaner than 6 individual edits.
+- The `PermissionResolver` import in the new pipeline test file was unused (lint caught it) — removed before commit.
+- The `makeHandlerForSession` helper in the dedup test file references `makeToolRegistry()` which is defined after it; both are `function` declarations so hoisting keeps them safe.
+- Pre-completion reviewer: PASS — no warnings.
