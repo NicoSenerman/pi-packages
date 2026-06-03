@@ -45,6 +45,7 @@ Load this skill when writing, debugging, or planning tests.
   A real assertion documents the limitation and lets a future fix flip the expectation.
 - When a test reveals a pre-existing bug rather than a wrong assumption, use `test.fails` to document the expected behavior and file a GitHub issue.
 - Do not insert no-op statements (`void 0;`, unused locals) in tests just to make an `Edit` tool's `oldText` unique — widen `oldText` with surrounding context instead.
+- When a non-`async` method declared `Promise<T>` must signal a precondition failure, `return Promise.reject(new Error(...))`, not `throw` — a synchronous `throw` escapes `expect(...).rejects.toThrow(...)`, and switching to `async` to fix that trips `@typescript-eslint/require-await` when the body has no `await`.
 
 ## Type checking
 
@@ -92,3 +93,4 @@ Run `pnpm run check` (`tsc --noEmit`) for type-only changes.
 - When a TDD plan extracts a locally-declared type that shadows an SDK type, verify whether the SDK exports the type before planning around the local copy.
   Dead fallback branches in the local type produce dead test cases and unnecessary complexity.
 - When a TDD step adds test infrastructure to a package that had none (vitest config, tsconfig path aliases, test scripts), run `pnpm run check` immediately after that step to catch config issues before subsequent steps depend on the infrastructure.
+- When a lift-and-shift step keeps a transitional wrapper alive for later migration, do not mark it `@deprecated` — `@typescript-eslint/no-deprecated` fires on every surviving call site at commit time; use a prose comment instead.

@@ -45,3 +45,55 @@ Pre-completion reviewer verdict: PASS.
 - Reviewer WARNs (both pre-existing, no action needed):
   1. `toolDescriptor.preCheck = toolCheck` patch-after-construction in the last gate producer — pre-dates this issue, out of scope.
   2. `const resolver = this.session` alias types as `PermissionSession` rather than `PermissionResolver` — explicitly deferred to #325 in the plan’s Non-Goals.
+
+## Stage: Final Retrospective (2026-06-03T02:31:35Z)
+
+### Session summary
+
+One continuous session carried #323 from planning through five TDD cycles to a PASS pre-completion review: the capstone-minus-one of the gate-runner collaborator rework, dissolving the `GateRunnerDeps` bag and the free `runGateCheck` function into an injected `GateRunner` class with four narrow role collaborators.
+Execution was unusually clean — 7 commits, +11 tests (1770 → 1781), zero rework of committed code, two self-caught TypeScript/lint deviations each resolved in one or two tool calls.
+The dominant theme was a planning investment (proactive mock-grep, structural lift-and-shift design) that pre-empted exactly the friction that bit the earlier #319 step.
+
+### Observations
+
+#### What went well
+
+- The `#319`-retro lesson chain closed the loop: #319 was bitten at TDD time by hand-rolled `as unknown as PermissionSession` session mocks breaking at runtime (not typecheck) when a new session method was routed through the runner.
+  For #323, planning grepped all three session mocks up front, named them in the plan's Module-Level Changes, and step 3 added delegating `canConfirm`/`promptPermission` adapters before migrating the handler — the 359-test handler suite stayed green with no surprise.
+  A retro observation prevented its own recurrence one issue later.
+- The lift-and-shift wrapper exploited a structural coincidence cleanly: because `GateRunnerDeps` already structurally satisfied all four role interfaces, `runGateCheck` collapsed to a one-line wrapper (`new GateRunner(deps, deps, deps, deps.reporter).run(...)`), letting the handler (step 3) and the 440-line `runner.test.ts` (step 4) migrate in independent green commits before the wrapper and interface were deleted together.
+- Verification was incremental and load-bearing: the affected test file ran red→green each cycle, `pnpm run check` ran after every interface-touching step (1, 2, 3), and the full suite + `check` + `lint` + `fallow dead-code` + lockfile check ran after the last step.
+  No end-only-verification gap.
+
+#### What caused friction (agent side)
+
+1. `other` (TDD step 1) — the `promptPermission` null guard was written as a synchronous `throw` inside a non-`async` method declared `Promise<…>`; `expect(...).rejects.toThrow(...)` cannot catch a synchronous throw.
+   Switched to `return Promise.reject(new Error(...))`, which also sidesteps the `@typescript-eslint/require-await` rule that an `async`-with-no-`await` workaround would trip.
+   Impact: self-caught on the first test run, ~2 tool calls, no rework of committed code.
+2. `other` (TDD step 2) — marking the transitional `runGateCheck` wrapper with `@deprecated` JSDoc triggered `@typescript-eslint/no-deprecated` on all 19 surviving call sites in `runner.test.ts` at commit time.
+   Removed the tag, kept a prose comment.
+   Impact: self-caught by the pre-commit eslint hook, one edit, no rework.
+
+#### What caused friction (user side)
+
+- None material.
+  The user issued the three workflow prompts (`/plan-issue`, `/tdd-plan`, `/retro`) and let the agent run end-to-end; the plan was prescriptive enough that no `ask_user` decision gate was needed and no redirection occurred.
+
+### Diagnostic details
+
+- **Model-performance correlation** — interleaving `model_change` with `message` entries gives the accurate attribution: planning ran on `anthropic/claude-opus-4-8`, the entire TDD execution (all ~90 turns) on `anthropic/claude-sonnet-4-6`, and this retro on `anthropic/claude-opus-4-8`.
+  The `opencode-go/deepseek-v4-flash` entry in the model-change log was a transient selection immediately overridden by a switch to opus before the next turn — **zero assistant turns ran under it**.
+  The one subagent dispatch (`pre-completion-reviewer`) ran on its default `anthropic/claude-sonnet-4-6` and did judgment-heavy work (217s, 36 tool uses, accurate PASS with two correct pre-existing WARNs) — appropriately capable.
+  TDD on sonnet was clean and planning/review on opus/sonnet was sound, so no model-quality mismatch.
+  Lens caveat: reading `model_change` entries in isolation over-counts models — a change event does not imply a turn ran under that model; attribution requires interleaving with `message` entries (this mistake produced an initial “bounced across three models” misstatement, corrected here).
+- **Escalation-delay tracking** — no rabbit-holes; both deviations resolved in ≤2 consecutive tool calls.
+  No sequence approached the 5-call threshold.
+- **Unused-tool detection** — none needed; planning's proactive mock-grep removed the one place a missing-context gap could have formed, and no subagent beyond the reviewer was warranted.
+- **Feedback-loop gap analysis** — verification ran incrementally after every change, including `pnpm run check` after each of the three interface-touching steps; the proactive handler-suite run after the step-3 mock change is the concrete payoff.
+
+### Changes made
+
+1. Added a `Promise.reject`-vs-`throw` rule to the `Test assertions` section of `.pi/skills/testing/SKILL.md` (a synchronous `throw` escapes `expect(...).rejects.toThrow(...)`; switching to `async` trips `require-await`).
+2. Added a transitional-wrapper `@deprecated` rule to the `TDD planning rules` section of `.pi/skills/testing/SKILL.md` (`@typescript-eslint/no-deprecated` fires on every surviving call site).
+3. Clarified the `Model-performance correlation` lens in `.pi/prompts/retro.md` to require interleaving `model_change` with `message` entries — a `model_change` with no assistant turn under it never ran.
+4. Corrected this retro's `Model-performance correlation` diagnostic: the `opencode-go/deepseek-v4-flash` model-change event ran zero turns (transient selection overridden by opus); TDD ran entirely on `anthropic/claude-sonnet-4-6`, planning and this retro on `anthropic/claude-opus-4-8`.

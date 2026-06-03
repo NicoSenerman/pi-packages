@@ -87,7 +87,8 @@ Skip a lens entirely when it finds nothing notable.
 
 1. **Model-performance correlation** — for each subagent dispatch (if any), note which model ran and what task it performed.
    Flag quality mismatches: a reasoning-weak model on judgment-heavy work (architecture decisions, code review), or a high-cost model on purely mechanical work (formatting, simple grep).
-   If the `read_session` or `read_parent_session` tools are available, use them to inspect model assignments from the session data.
+   If the `read_session` or `read_parent_session` tools are available, use them to inspect model assignments: interleave `model_change` with `message` entries and attribute each turn to the model label it carries.
+   A `model_change` with no assistant turn under it never ran — reading `model_change` alone over-counts transient selections.
 2. **Escalation-delay tracking** — for each `rabbit-hole` friction point, count how many consecutive tool calls the agent spent on the same error or approach before resolving or changing strategy.
    Flag sequences longer than 5 consecutive tool calls on the same error as "should have dispatched an Explore or Plan subagent" or "should have asked the user."
 3. **Unused-tool detection** — for each `rabbit-hole` or `missing-context` friction point, check whether a subagent type or tool was available that could have helped but was never dispatched.
