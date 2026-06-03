@@ -23,3 +23,18 @@ The plan extracts two genuinely anemic constructs — the inline `permissionsSer
 - Noted a pre-existing curiosity (out of scope): the runtime's service-backing `permissionManager` is created global-only at factory time and never refreshed for project cwd via `refreshExtensionConfig`; preserved verbatim.
 - `test/composition-root.test.ts` (the `make-fake-pi.ts` harness) is the behavior-preservation guard; the two new unit tests (`permissions-service.test.ts`, `service-lifecycle.test.ts`) add lower-level coverage previously only reachable through that harness.
 - The `SessionLifecycleHandler` constructor-signature change (two callbacks → one `ServiceLifecycle`) forces the collaborator, handler retype, `lifecycle.test.ts` update, and `index.ts` wiring into one commit (step 2).
+
+## Stage: Implementation — TDD (2026-06-03T19:35:00Z)
+
+### Session summary
+
+Completed all three TDD cycles: extracted `LocalPermissionsService` (step 1), introduced `PermissionServiceLifecycle` + `ServiceLifecycle` interface + retyped `SessionLifecycleHandler` (step 2), and updated `docs/architecture/architecture.md` + `SKILL.md` (step 3).
+Test count delta: 1817 → 1834 (+17 tests across two new files: `test/permissions-service.test.ts` and `test/service-lifecycle.test.ts`).
+`src/index.ts` reduced from 206 to ~170 lines.
+
+### Observations
+
+- One unplanned cleanup: a stale `emitReadyEvent` import in `src/index.ts` was not caught during step 2's commit (Biome flagged it but the pre-commit hook had already moved on); removed in the step 3 (`docs:`) commit with no behaviour change.
+- The `makeSessionRules` helper in `test/permissions-service.test.ts` initially typed its argument as `unknown[]`; `pnpm run check` caught the `Ruleset = Rule[]` mismatch and required a full `{ surface, pattern, action, origin }` fixture object.
+- `SessionLifecycleHandler` constructor-signature change (two callbacks → one `ServiceLifecycle`) correctly forced all touchpoints (collaborator impl, handler retype, handler test update, `index.ts` wiring) into one commit — consistent with the plan's prediction.
+- Pre-completion reviewer: **PASS** — all deterministic checks, conventional commits, documentation, code design, test artifacts, and Mermaid diagrams passed with no warnings.
