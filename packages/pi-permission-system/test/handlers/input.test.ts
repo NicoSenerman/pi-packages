@@ -172,8 +172,7 @@ describe("handleInput", () => {
       },
     });
     await handler.handleInput(makeInputEvent("/skill:librarian"), makeCtx());
-    expect(session.prompt).toHaveBeenCalledWith(
-      expect.anything(),
+    expect(session.promptPermission).toHaveBeenCalledWith(
       expect.objectContaining({
         agentName: "code-agent",
         skillName: "librarian",

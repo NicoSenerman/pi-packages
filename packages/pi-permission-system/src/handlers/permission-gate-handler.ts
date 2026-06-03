@@ -9,10 +9,8 @@ import {
   GateDecisionReporter,
 } from "#src/decision-reporter";
 import type { PermissionEventBus } from "#src/permission-events";
-import { applyPermissionGate } from "#src/permission-gate";
 import {
   formatMissingToolNameReason,
-  formatSkillAskPrompt,
   formatUnknownToolReason,
 } from "#src/permission-prompts";
 import type { PermissionSession } from "#src/permission-session";
@@ -34,6 +32,7 @@ import type { GateResult } from "./gates/descriptor";
 import { describeExternalDirectoryGate } from "./gates/external-directory";
 import { describePathGate } from "./gates/path";
 import { GateRunner } from "./gates/runner";
+import { describeSkillInputGate } from "./gates/skill-input";
 import { describeSkillReadGate } from "./gates/skill-read";
 import { describeToolGate } from "./gates/tool";
 import type { ToolCallContext } from "./gates/types";
@@ -186,71 +185,14 @@ export class PermissionGateHandler {
       ctx.ui.notify(notifyMessage, "warning");
     }
 
-    const skillInputMessage = formatSkillAskPrompt(
-      skillName,
-      agentName ?? undefined,
+    const outcome = await this.runner.run(
+      describeSkillInputGate(skillName, agentName, check),
+      agentName,
+      this.session.createPermissionRequestId("skill-input"),
     );
-    const skillInputCanConfirm = this.session.canPrompt(ctx);
-    let skillInputAutoApproved = false;
-    const skillInputGate = await applyPermissionGate({
-      state: check.state,
-      canConfirm: skillInputCanConfirm,
-      promptForApproval: async () => {
-        const decision = await this.session.prompt(ctx, {
-          requestId: this.session.createPermissionRequestId("skill-input"),
-          source: "skill_input",
-          agentName,
-          message: skillInputMessage,
-          skillName,
-        });
-        skillInputAutoApproved = decision.autoApproved === true;
-        return decision;
-      },
-      writeLog: (event, details) =>
-        this.reporter.writeReviewLog(event, details),
-      logContext: {
-        source: "skill_input",
-        skillName,
-        agentName,
-        message: skillInputMessage,
-      },
-      messages: {
-        denyReason: skillInputMessage,
-        unavailableReason:
-          "Skill requires approval, but no interactive UI is available.",
-        userDeniedReason: () => "User denied skill.",
-      },
-    });
-
-    this.reporter.emitDecision({
-      surface: "skill",
-      value: skillName,
-      result: skillInputGate.action === "allow" ? "allow" : "deny",
-      /* eslint-disable @typescript-eslint/no-unnecessary-condition -- defensive fallback; TypeScript narrows check.state before the ternary's else branch */
-      resolution:
-        check.state === "allow"
-          ? "policy_allow"
-          : check.state === "deny"
-            ? "policy_deny"
-            : skillInputGate.action === "allow"
-              ? skillInputAutoApproved
-                ? "auto_approved"
-                : "user_approved"
-              : skillInputCanConfirm
-                ? "user_denied"
-                : "confirmation_unavailable",
-      /* eslint-enable @typescript-eslint/no-unnecessary-condition */
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- ?? null normalises undefined to null for the log record
-      origin: check.origin ?? null,
-      agentName: agentName ?? null,
-      matchedPattern: check.matchedPattern ?? null,
-    });
-
-    if (skillInputGate.action === "block") {
-      return { action: "handled" };
-    }
-
-    return { action: "continue" };
+    return outcome.action === "block"
+      ? { action: "handled" }
+      : { action: "continue" };
   }
 }
 
