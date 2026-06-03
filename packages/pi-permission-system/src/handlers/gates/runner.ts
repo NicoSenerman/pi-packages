@@ -10,7 +10,7 @@ import { applyPermissionGate } from "#src/permission-gate";
 import type { PermissionResolver } from "#src/permission-resolver";
 import type { SessionApprovalRecorder } from "#src/session-approval-recorder";
 import type { PermissionCheckResult } from "#src/types";
-import type { GateDescriptor, GateResult, GateRunnerDeps } from "./descriptor";
+import type { GateDescriptor, GateResult } from "./descriptor";
 import { isGateBypass } from "./descriptor";
 import { buildDecisionEvent, deriveResolution } from "./helpers";
 import type { GateOutcome } from "./types";
@@ -167,23 +167,4 @@ export class GateRunner {
 
     return { action: "allow" };
   }
-}
-
-// ── Legacy wrapper (transitional) ─────────────────────────────────────────
-
-/**
- * Thin transitional wrapper — delegates to `GateRunner.run` while the
- * handler and runner tests migrate; deleted once no call sites remain.
- */
-export async function runGateCheck(
-  descriptor: GateDescriptor,
-  agentName: string | null,
-  toolCallId: string,
-  deps: GateRunnerDeps,
-): Promise<GateOutcome> {
-  return new GateRunner(deps, deps, deps, deps.reporter).run(
-    descriptor,
-    agentName,
-    toolCallId,
-  );
 }

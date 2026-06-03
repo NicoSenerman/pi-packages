@@ -1,9 +1,6 @@
-import type { DecisionReporter } from "#src/decision-reporter";
 import type { DenialContext } from "#src/denial-messages";
-import type { PermissionPromptDecision } from "#src/permission-dialog";
 import type { PermissionDecisionEvent } from "#src/permission-events";
 import type { PromptPermissionDetails } from "#src/permission-prompter";
-import type { PermissionResolver } from "#src/permission-resolver";
 import type { SessionApproval } from "#src/session-approval";
 import type { PermissionCheckResult, PermissionState } from "#src/types";
 
@@ -70,24 +67,6 @@ export interface GateBypass {
 
 /** Union of possible gate function return values. */
 export type GateResult = GateDescriptor | GateBypass | null;
-
-// ── Runner dependency interface ────────────────────────────────────────────
-
-/**
- * Infrastructure dependencies for the gate runner.
- *
- * Built once in the orchestrator and reused for all gates.
- * Handles all side effects: permission checks, logging, event emission,
- * session-rule recording.
- */
-export interface GateRunnerDeps extends PermissionResolver {
-  recordSessionApproval(approval: SessionApproval): void;
-  reporter: DecisionReporter;
-  canConfirm(): boolean;
-  promptPermission(
-    details: PromptPermissionDetails,
-  ): Promise<PermissionPromptDecision>;
-}
 
 // ── Type guard helpers ─────────────────────────────────────────────────────
 

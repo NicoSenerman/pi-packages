@@ -97,7 +97,8 @@ Do not propose module-scoped singletons or Node.js module-cache sharing as a cro
 Shared test fixtures live in `test/helpers/`:
 
 - `handler-fixtures.ts` — `makeCtx`, `makeEvents`, `makeSession`, `makeToolRegistry`, `makeToolCallEvent`, `makeCheckResult` (neutral default, override-driven), `makeHandler`, `getDecisionEvents`.
-- `gate-fixtures.ts` — `makeDescriptor`, `makeRunnerDeps`, `makeReporter` (`DecisionReporter` mock with `writeReviewLog`/`emitDecision` vi.fn stubs), `makeResolver` (`PermissionResolver` mock with an optional default check result), `makeTcc` (bash defaults), `makeGateCheckResult` (path-surface defaults: `toolName: "path"`, `source: "special"`, `origin: "global"`).
+- `gate-fixtures.ts` — `makeDescriptor`, `makeGateRunner` (constructs a `GateRunner` with four role mocks and returns `{ runner, deps }` so tests can invoke `runner.run(...)` and assert on `deps.reporter.*`, `deps.resolve`, etc.), `makeReporter` (`DecisionReporter` mock with `writeReviewLog`/`emitDecision` vi.fn stubs), `makeResolver` (`PermissionResolver` mock with an optional default check result), `makeTcc` (bash defaults), `makeGateCheckResult` (path-surface defaults: `toolName: "path"`, `source: "special"`, `origin: "global"`).
+  `makeRunnerDeps` has been deleted; `GateRunnerDeps` no longer exists.
 - `manager-harness.ts` — `createManager` (filesystem-backed `PermissionManager`).
 - `make-fake-pi.ts` — `makeFakePi` (composition-root harness): runs the real `piPermissionSystemExtension(pi)` factory against a fake `ExtensionAPI` with a real `createEventBus()`, an inspectable `handlers` map, captured `commands`, and a `fire(event, input, ctx)` driver.
   Use it for composition-root wiring tests (handler-registration completeness, shared-instance contracts, teardown, event ordering) — see `test/composition-root.test.ts`.

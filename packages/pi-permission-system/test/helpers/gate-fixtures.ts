@@ -5,10 +5,7 @@ import { vi } from "vitest";
 
 import type { DecisionReporter } from "#src/decision-reporter";
 import type { GatePrompter } from "#src/gate-prompter";
-import type {
-  GateDescriptor,
-  GateRunnerDeps,
-} from "#src/handlers/gates/descriptor";
+import type { GateDescriptor } from "#src/handlers/gates/descriptor";
 import { GateRunner } from "#src/handlers/gates/runner";
 import type { ToolCallContext } from "#src/handlers/gates/types";
 import type { PermissionResolver } from "#src/permission-resolver";
@@ -128,21 +125,6 @@ export function makeGateRunner(
       promptPermission,
       reporter,
     },
-  };
-}
-
-export function makeRunnerDeps(
-  overrides: Partial<GateRunnerDeps> = {},
-): GateRunnerDeps {
-  return {
-    resolve: vi.fn().mockReturnValue(makeCheckResult({ matchedPattern: "*" })),
-    recordSessionApproval: vi.fn(),
-    reporter: makeReporter(),
-    canConfirm: vi.fn().mockReturnValue(true),
-    promptPermission: vi
-      .fn()
-      .mockResolvedValue({ approved: true, state: "approved" }),
-    ...overrides,
   };
 }
 
