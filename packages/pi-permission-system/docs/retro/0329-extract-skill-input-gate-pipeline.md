@@ -27,3 +27,22 @@ Verified that prerequisites [#326] (`describeSkillInputGate`, `skill_input` deni
 [#326]: https://github.com/gotgenes/pi-packages/issues/326
 [#327]: https://github.com/gotgenes/pi-packages/issues/327
 [#330]: https://github.com/gotgenes/pi-packages/issues/330
+
+## Stage: Implementation — TDD (2026-06-03T17:48:00Z)
+
+### Session summary
+
+Implemented the `SkillInputGatePipeline` extraction across 3 TDD cycles.
+Step 1 added the new `skill-input-gate-pipeline.ts` module with `SkillInputGateInputs`, `GateNotifier`, `SkillInputGatePipeline`, `createSkillInputRequestId`, and `formatSkillDenyNotice`, plus test fixtures and 12 new pipeline unit tests.
+Step 2 was one atomic commit: shrank `GateHandlerSession` to two methods, rewrote `handleInput` to delegate, removed `PermissionSession.createPermissionRequestId`, updated `index.ts` and all four affected test files.
+Step 3 updated `architecture.md` (module tree, roadmap Steps 12–13 ✅) and the package SKILL fixture inventory.
+Final test count: 84 files, 1817 tests (+1 file, +10 tests from baseline).
+
+### Observations
+
+- One post-implementation lint fixup: `GateNotifier` import in `gate-fixtures.ts` became unused after the return-type annotation was dropped from `makeNotifier` (per testing-skill rule: don't annotate factory return with the interface, it erases `Mock<...>` methods).
+  Amended into the docs commit before pushing.
+- The `makeNotifier` return type is intentionally unannotated — returning `GateNotifier & { warn: ReturnType<typeof vi.fn> }` caused a type error because `(message: string) => void` is not assignable to `MockInstance<Procedure | Constructable>`.
+  Fixed by using `vi.fn<(message: string) => void>()` with no return-type annotation on the factory itself.
+- Step 2's single-commit constraint worked cleanly: the constructor-arity change, `GateHandlerSession` shrink, `createPermissionRequestId` removal, and all four call-site updates compiled as one coherent change.
+- Pre-completion reviewer: PASS (all deterministic checks green, code design clean, docs complete, Mermaid diagrams validated).
