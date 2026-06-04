@@ -23,6 +23,7 @@ import type { PermissionResolver } from "#src/permission-resolver";
 
 import {
   makeGateCheckResult as makeCheckResult,
+  makePathDispatchResolver,
   makeResolver,
   makeTcc,
 } from "#test/helpers/gate-fixtures";
@@ -69,7 +70,7 @@ describe("describeBashPathGate", () => {
 
   it("returns null when all tokens evaluate to allow", async () => {
     const result = await describeGate(
-      makeTcc({ input: { command: "cat .env" } }),
+      makeTcc(),
       makeResolver(makeCheckResult({ state: "allow" })),
     );
     expect(result).toBeNull();
@@ -77,7 +78,7 @@ describe("describeBashPathGate", () => {
 
   it("returns GateDescriptor when a token evaluates to deny", async () => {
     const result = await describeGate(
-      makeTcc({ input: { command: "cat .env" } }),
+      makeTcc(),
       makeResolver(makeCheckResult({ state: "deny", matchedPattern: "*.env" })),
     );
     expect(result).not.toBeNull();
@@ -89,7 +90,7 @@ describe("describeBashPathGate", () => {
 
   it("returns GateDescriptor when a token evaluates to ask", async () => {
     const result = await describeGate(
-      makeTcc({ input: { command: "cat .env" } }),
+      makeTcc(),
       makeResolver(makeCheckResult({ state: "ask", matchedPattern: "*" })),
     );
     expect(result).not.toBeNull();
@@ -100,7 +101,7 @@ describe("describeBashPathGate", () => {
 
   it("descriptor includes triggering token in prompt message", async () => {
     const result = (await describeGate(
-      makeTcc({ input: { command: "cat .env" } }),
+      makeTcc(),
       makeResolver(makeCheckResult({ state: "deny", matchedPattern: "*.env" })),
     )) as GateDescriptor;
     expect(result.denialContext).toMatchObject({
@@ -113,7 +114,7 @@ describe("describeBashPathGate", () => {
 
   it("descriptor decision uses surface 'path'", async () => {
     const result = (await describeGate(
-      makeTcc({ input: { command: "cat .env" } }),
+      makeTcc(),
       makeResolver(makeCheckResult({ state: "deny", matchedPattern: "*.env" })),
     )) as GateDescriptor;
     expect(result.decision.surface).toBe("path");
@@ -121,7 +122,7 @@ describe("describeBashPathGate", () => {
 
   it("returns GateBypass when session rule covers the path", async () => {
     const result = await describeGate(
-      makeTcc({ input: { command: "cat .env" } }),
+      makeTcc(),
       makeResolver(makeCheckResult({ state: "allow", source: "session" })),
     );
     expect(result).not.toBeNull();
@@ -135,14 +136,10 @@ describe("describeBashPathGate", () => {
   });
 
   it("evaluates most restrictive across multiple tokens", async () => {
-    const resolver = makeResolver();
-    resolver.resolve.mockImplementation((_surface, input) => {
-      const record = input as Record<string, unknown>;
-      if (record.path === "src/foo.ts") {
-        return makeCheckResult({ state: "allow" });
-      }
-      return makeCheckResult({ state: "deny", matchedPattern: "*.env" });
-    });
+    const resolver = makePathDispatchResolver(
+      { "src/foo.ts": makeCheckResult({ state: "allow" }) },
+      makeCheckResult({ state: "deny", matchedPattern: "*.env" }),
+    );
     const result = await describeGate(
       makeTcc({ input: { command: "cat src/foo.ts .env" } }),
       resolver,
@@ -153,14 +150,10 @@ describe("describeBashPathGate", () => {
   });
 
   it("deny wins in multi-token: cp .env README.md", async () => {
-    const resolver = makeResolver();
-    resolver.resolve.mockImplementation((_surface, input) => {
-      const record = input as Record<string, unknown>;
-      if (record.path === ".env") {
-        return makeCheckResult({ state: "deny", matchedPattern: "*.env" });
-      }
-      return makeCheckResult({ state: "allow" });
-    });
+    const resolver = makePathDispatchResolver(
+      { ".env": makeCheckResult({ state: "deny", matchedPattern: "*.env" }) },
+      makeCheckResult({ state: "allow" }),
+    );
     const result = await describeGate(
       makeTcc({ input: { command: "cp .env README.md" } }),
       resolver,
@@ -173,14 +166,10 @@ describe("describeBashPathGate", () => {
   });
 
   it("extracts redirect target: echo test > .env triggers deny", async () => {
-    const resolver = makeResolver();
-    resolver.resolve.mockImplementation((_surface, input) => {
-      const record = input as Record<string, unknown>;
-      if (record.path === ".env") {
-        return makeCheckResult({ state: "deny", matchedPattern: "*.env" });
-      }
-      return makeCheckResult({ state: "allow" });
-    });
+    const resolver = makePathDispatchResolver(
+      { ".env": makeCheckResult({ state: "deny", matchedPattern: "*.env" }) },
+      makeCheckResult({ state: "allow" }),
+    );
     const result = await describeGate(
       makeTcc({ input: { command: "echo test > .env" } }),
       resolver,
@@ -192,7 +181,7 @@ describe("describeBashPathGate", () => {
 
   it("returns null when all tokens match only the universal default", async () => {
     const result = await describeGate(
-      makeTcc({ input: { command: "cat .env" } }),
+      makeTcc(),
       makeResolver(
         makeCheckResult({
           state: "ask",
@@ -206,23 +195,16 @@ describe("describeBashPathGate", () => {
   });
 
   it("ignores tokens matching universal default but fires for explicit rule matches", async () => {
-    const resolver = makeResolver();
-    resolver.resolve.mockImplementation((_surface, input) => {
-      const record = input as Record<string, unknown>;
-      if (record.path === ".env") {
-        return makeCheckResult({
-          state: "deny",
-          matchedPattern: "*.env",
-        });
-      }
-      // Other tokens match only the universal default
-      return makeCheckResult({
+    const resolver = makePathDispatchResolver(
+      { ".env": makeCheckResult({ state: "deny", matchedPattern: "*.env" }) },
+      // Other tokens match only the universal default (no matchedPattern)
+      makeCheckResult({
         state: "ask",
         matchedPattern: undefined,
         source: "special",
         origin: "builtin",
-      });
-    });
+      }),
+    );
     const result = await describeGate(
       makeTcc({ input: { command: "cat src/foo.ts .env" } }),
       resolver,

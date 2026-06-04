@@ -191,6 +191,31 @@ export function makeTcc(
 }
 
 /**
+ * Resolver whose `resolve` dispatches on `input.path`, falling back to a
+ * default result for any path not in the map.
+ *
+ * Use when a test needs different results for different path tokens without
+ * writing a full `mockImplementation` block.
+ *
+ * Return type is intentionally unannotated so callers retain full `vi.fn()`
+ * mock access (`mock.calls`, `toHaveBeenCalledWith`, etc.).
+ */
+export function makePathDispatchResolver(
+  byPath: Record<string, PermissionCheckResult>,
+  defaultResult: PermissionCheckResult,
+) {
+  const resolve = vi.fn<PermissionResolver["resolve"]>();
+  resolve.mockImplementation((_surface, input) => {
+    const path = (input as Record<string, unknown>).path;
+    if (typeof path === "string" && path in byPath) {
+      return byPath[path];
+    }
+    return defaultResult;
+  });
+  return { resolve };
+}
+
+/**
  * Path-surface check result factory.
  *
  * Shared between bash-path.test.ts and path.test.ts; both use
