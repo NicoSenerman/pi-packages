@@ -50,6 +50,8 @@ Note:
 - Complexity hotspots
 - Churn hotspots
 
+Determine the next phase number N (last completed phase + 1), then immediately call `set_session_name` with `$1 — Phase N Planning` so the session is labelled for the rest of the work.
+
 ### Step 3: Trace from entry point outward
 
 Read `packages/$1/src/index.ts` and trace its dependency graph:
@@ -111,4 +113,4 @@ After the plan is committed, ask whether to file the issues now; if confirmed:
 3. Link the doc back: append `([#N])` to each step heading, add `(#N)` to each Mermaid node, and add reference-link definitions at the end of the file.
 4. Commit with `docs($1): link Phase N roadmap steps to issues #A-#B` and push.
 
-Then call `set_session_name` with `$1 — Phase N Planning` and stop.
+Then stop.
