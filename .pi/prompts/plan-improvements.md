@@ -58,13 +58,20 @@ Read `packages/$1/src/index.ts` and trace its dependency graph:
 - Note size, exports, fan-out, code smells
 - Pay special attention to: `as any` casts, adapter closure density, forward references, wide parameter lists, mixed responsibilities, anemic domain objects (data classes that a manager reaches into instead of telling)
 
-### Step 4: Apply the smell taxonomy
+### Step 4: Read the tests as evidence of constructibility
+
+`fallow`'s metrics miss god objects, closure density, and DIP violations.
+Read the largest test files and `test/helpers/`: module-level `vi.mock`, wide `as unknown as` casts, and multi-field fixtures (a `makeX` stubbing 10+ methods, or one mock passed to a constructor several times) mean the production object is hard to construct — a production smell, not a test-tree problem.
+Do not accept the architecture doc's self-justification for a smell at face value; verify the claim against the code and tests.
+When the analysis touches handler wiring or shared interfaces, load the `design-review` skill before writing the plan.
+
+### Step 5: Apply the smell taxonomy
 
 For each finding, classify it using the taxonomy from the `improvement-discovery` skill (Category A–E).
 Score each on Impact (1–5) and Risk (1–5).
 Compute Priority = Impact × (6 − Risk).
 
-### Step 5: Propose the phase plan
+### Step 6: Propose the phase plan
 
 Group findings into issue-sized steps (max 9 per phase).
 Identify dependency ordering and parallel tracks.
