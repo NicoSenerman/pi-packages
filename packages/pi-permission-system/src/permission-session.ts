@@ -11,11 +11,10 @@ import type { ForwardingController } from "./forwarding-manager";
 import type { GateHandlerSession } from "./gate-handler-session";
 import type { GatePrompter } from "./gate-prompter";
 import type { PermissionPromptDecision } from "./permission-dialog";
-import type { PermissionManager } from "./permission-manager";
+import type { ScopedPermissionManager } from "./permission-manager";
 import type { PromptPermissionDetails } from "./permission-prompter";
 import type { PermissionResolver } from "./permission-resolver";
 import type { Rule } from "./rule";
-import { createPermissionManagerForCwd } from "./runtime";
 import type { SessionApproval } from "./session-approval";
 import type { SessionApprovalRecorder } from "./session-approval-recorder";
 import type { SessionLifecycleSession } from "./session-lifecycle-session";
@@ -74,7 +73,6 @@ export class PermissionSession
     SessionLifecycleSession
 {
   private context: ExtensionContext | null = null;
-  private permissionManager: PermissionManager;
   private readonly sessionRules = new SessionRules();
   private skillEntries: SkillPromptEntry[] = [];
   private knownAgentName: string | null = null;
@@ -85,13 +83,9 @@ export class PermissionSession
     private readonly paths: ExtensionPaths,
     readonly logger: SessionLogger,
     private readonly forwarding: ForwardingController,
+    private readonly permissionManager: ScopedPermissionManager,
     private readonly runtimeDeps: PermissionSessionRuntimeDeps,
-  ) {
-    this.permissionManager = createPermissionManagerForCwd(
-      paths.agentDir,
-      undefined,
-    );
-  }
+  ) {}
 
   // ── Context lifecycle ──────────────────────────────────────────────────
 
@@ -173,14 +167,11 @@ export class PermissionSession
   /**
    * Reset all mutable state for a new session.
    *
-   * Creates a fresh PermissionManager scoped to `ctx.cwd`, clears caches,
+   * Configures the injected PermissionManager for `ctx.cwd`, clears caches,
    * skill entries, and activates the new context.
    */
   resetForNewSession(ctx: ExtensionContext): void {
-    this.permissionManager = createPermissionManagerForCwd(
-      this.paths.agentDir,
-      ctx.cwd,
-    );
+    this.permissionManager.configureForCwd(ctx.cwd);
     this.skillEntries = [];
     this.toolsCacheKey = null;
     this.promptCacheKey = null;
@@ -204,10 +195,7 @@ export class PermissionSession
    * Used on config reload (e.g. `resources_discover` with reason "reload").
    */
   reload(): void {
-    this.permissionManager = createPermissionManagerForCwd(
-      this.paths.agentDir,
-      this.context?.cwd,
-    );
+    this.permissionManager.configureForCwd(this.context?.cwd);
     this.skillEntries = [];
     this.toolsCacheKey = null;
     this.promptCacheKey = null;

@@ -3,42 +3,32 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // ── Module mocks (hoisted) ─────────────────────────────────────────────────
 
-const {
-  mockGetActiveAgentName,
-  mockGetActiveAgentNameFromSystemPrompt,
-  mockCreatePermissionManagerForCwd,
-} = vi.hoisted(() => ({
-  mockGetActiveAgentName: vi.fn<(ctx: ExtensionContext) => string | null>(),
-  mockGetActiveAgentNameFromSystemPrompt:
-    vi.fn<(systemPrompt?: string) => string | null>(),
-  mockCreatePermissionManagerForCwd: vi.fn(),
-}));
+const { mockGetActiveAgentName, mockGetActiveAgentNameFromSystemPrompt } =
+  vi.hoisted(() => ({
+    mockGetActiveAgentName: vi.fn<(ctx: ExtensionContext) => string | null>(),
+    mockGetActiveAgentNameFromSystemPrompt:
+      vi.fn<(systemPrompt?: string) => string | null>(),
+  }));
 
 vi.mock("../src/active-agent", () => ({
   getActiveAgentName: mockGetActiveAgentName,
   getActiveAgentNameFromSystemPrompt: mockGetActiveAgentNameFromSystemPrompt,
 }));
 
-vi.mock("../src/runtime", async (importOriginal) => {
-  const original = await importOriginal<typeof import("../src/runtime")>();
-  return {
-    ...original,
-    createPermissionManagerForCwd: mockCreatePermissionManagerForCwd,
-  };
-});
-
 // ── Test helpers ───────────────────────────────────────────────────────────
 
 import type { ExtensionPaths } from "#src/extension-paths";
 import type { ForwardingController } from "#src/forwarding-manager";
-import type { PermissionManager } from "#src/permission-manager";
+import type { ScopedPermissionManager } from "#src/permission-manager";
 import {
   PermissionSession,
   type PermissionSessionRuntimeDeps,
 } from "#src/permission-session";
+import type { Ruleset } from "#src/rule";
 import { SessionApproval } from "#src/session-approval";
 import type { SessionLogger } from "#src/session-logger";
 import type { SkillPromptEntry } from "#src/skill-prompt-sanitizer";
+import type { PermissionCheckResult, PermissionState } from "#src/types";
 import { makeCtx } from "#test/helpers/handler-fixtures";
 
 function makeSkillEntry(
@@ -95,29 +85,37 @@ function makeForwarding(): ForwardingController {
   };
 }
 
-function makePermissionManager(
-  overrides: Partial<PermissionManager> = {},
-): PermissionManager {
+function makePermissionManager() {
   return {
-    checkPermission: vi.fn().mockReturnValue({
-      state: "allow",
-      toolName: "read",
-      source: "tool",
-      origin: "builtin",
-    }),
-    getToolPermission: vi.fn().mockReturnValue("allow"),
-    getConfigIssues: vi.fn().mockReturnValue([]),
-    getPolicyCacheStamp: vi.fn().mockReturnValue("stamp-1"),
-    getComposedConfigRules: vi.fn().mockReturnValue([]),
-    getResolvedPolicyPaths: vi.fn().mockReturnValue({}),
-    ...overrides,
-  } as unknown as PermissionManager;
+    configureForCwd: vi.fn<(cwd: string | undefined | null) => void>(),
+    checkPermission: vi
+      .fn<
+        (
+          toolName: string,
+          input: unknown,
+          agentName?: string,
+          sessionRules?: Ruleset,
+        ) => PermissionCheckResult
+      >()
+      .mockReturnValue({
+        state: "allow",
+        toolName: "read",
+        source: "tool",
+        origin: "builtin",
+      }),
+    getToolPermission: vi
+      .fn<(toolName: string, agentName?: string) => PermissionState>()
+      .mockReturnValue("allow"),
+    getConfigIssues: vi.fn((): string[] => []),
+    getPolicyCacheStamp: vi.fn((): string => "stamp-1"),
+  };
 }
 
 function createSession(overrides?: {
   paths?: Partial<ExtensionPaths>;
   logger?: SessionLogger;
   forwarding?: ForwardingController;
+  permissionManager?: ScopedPermissionManager;
   runtimeDeps?: PermissionSessionRuntimeDeps;
 }): {
   session: PermissionSession;
@@ -129,8 +127,16 @@ function createSession(overrides?: {
   const paths = makePaths(overrides?.paths);
   const logger = overrides?.logger ?? makeLogger();
   const forwarding = overrides?.forwarding ?? makeForwarding();
+  const permissionManager =
+    overrides?.permissionManager ?? makePermissionManager();
   const runtimeDeps = overrides?.runtimeDeps ?? makeRuntimeDeps();
-  const session = new PermissionSession(paths, logger, forwarding, runtimeDeps);
+  const session = new PermissionSession(
+    paths,
+    logger,
+    forwarding,
+    permissionManager,
+    runtimeDeps,
+  );
   return { session, paths, logger, forwarding, runtimeDeps };
 }
 
@@ -139,10 +145,6 @@ function createSession(overrides?: {
 beforeEach(() => {
   mockGetActiveAgentName.mockReset();
   mockGetActiveAgentNameFromSystemPrompt.mockReset();
-  mockCreatePermissionManagerForCwd.mockReset();
-
-  // Default: createPermissionManagerForCwd returns a fresh mock PM
-  mockCreatePermissionManagerForCwd.mockReturnValue(makePermissionManager());
   mockGetActiveAgentName.mockReturnValue(null);
   mockGetActiveAgentNameFromSystemPrompt.mockReturnValue(null);
 });
@@ -151,8 +153,7 @@ describe("PermissionSession", () => {
   describe("constructor and delegation", () => {
     it("delegates checkPermission to internal PermissionManager", () => {
       const pm = makePermissionManager();
-      mockCreatePermissionManagerForCwd.mockReturnValue(pm);
-      const { session } = createSession();
+      const { session } = createSession({ permissionManager: pm });
 
       const result = session.checkPermission("bash", { command: "ls" });
 
@@ -167,8 +168,7 @@ describe("PermissionSession", () => {
 
     it("delegates getToolPermission to internal PermissionManager", () => {
       const pm = makePermissionManager();
-      mockCreatePermissionManagerForCwd.mockReturnValue(pm);
-      const { session } = createSession();
+      const { session } = createSession({ permissionManager: pm });
 
       const result = session.getToolPermission("read");
 
@@ -177,11 +177,9 @@ describe("PermissionSession", () => {
     });
 
     it("delegates getConfigIssues to internal PermissionManager", () => {
-      const pm = makePermissionManager({
-        getConfigIssues: vi.fn().mockReturnValue(["issue1"]),
-      });
-      mockCreatePermissionManagerForCwd.mockReturnValue(pm);
-      const { session } = createSession();
+      const pm = makePermissionManager();
+      vi.mocked(pm.getConfigIssues).mockReturnValue(["issue1"]);
+      const { session } = createSession({ permissionManager: pm });
 
       expect(session.getConfigIssues("agent1")).toEqual(["issue1"]);
       expect(pm.getConfigIssues).toHaveBeenCalledWith("agent1");
@@ -189,8 +187,7 @@ describe("PermissionSession", () => {
 
     it("delegates getPolicyCacheStamp to internal PermissionManager", () => {
       const pm = makePermissionManager();
-      mockCreatePermissionManagerForCwd.mockReturnValue(pm);
-      const { session } = createSession();
+      const { session } = createSession({ permissionManager: pm });
 
       expect(session.getPolicyCacheStamp("agent1")).toBe("stamp-1");
       expect(pm.getPolicyCacheStamp).toHaveBeenCalledWith("agent1");
@@ -220,8 +217,7 @@ describe("PermissionSession", () => {
   describe("resolve", () => {
     it("forwards surface, input, and agentName, applying the empty session ruleset", () => {
       const pm = makePermissionManager();
-      mockCreatePermissionManagerForCwd.mockReturnValue(pm);
-      const { session } = createSession();
+      const { session } = createSession({ permissionManager: pm });
 
       session.resolve("bash", { command: "ls" }, "agent-x");
 
@@ -235,8 +231,7 @@ describe("PermissionSession", () => {
 
     it("defaults agentName to undefined when omitted", () => {
       const pm = makePermissionManager();
-      mockCreatePermissionManagerForCwd.mockReturnValue(pm);
-      const { session } = createSession();
+      const { session } = createSession({ permissionManager: pm });
 
       session.resolve("read", { path: ".env" });
 
@@ -250,8 +245,7 @@ describe("PermissionSession", () => {
 
     it("applies a recorded session approval on the next resolve", () => {
       const pm = makePermissionManager();
-      mockCreatePermissionManagerForCwd.mockReturnValue(pm);
-      const { session } = createSession();
+      const { session } = createSession({ permissionManager: pm });
 
       session.recordSessionApproval(SessionApproval.single("bash", "git *"));
       session.resolve("bash", { command: "git status" });
@@ -266,17 +260,15 @@ describe("PermissionSession", () => {
     });
 
     it("returns the PermissionManager's check result", () => {
-      const pm = makePermissionManager({
-        checkPermission: vi.fn().mockReturnValue({
-          state: "deny",
-          toolName: "bash",
-          source: "bash",
-          origin: "global",
-          matchedPattern: "rm *",
-        }),
+      const pm = makePermissionManager();
+      vi.mocked(pm.checkPermission).mockReturnValue({
+        state: "deny",
+        toolName: "bash",
+        source: "bash",
+        origin: "global",
+        matchedPattern: "rm *",
       });
-      mockCreatePermissionManagerForCwd.mockReturnValue(pm);
-      const { session } = createSession();
+      const { session } = createSession({ permissionManager: pm });
 
       const result = session.resolve("bash", { command: "rm -rf /" });
 
@@ -310,28 +302,14 @@ describe("PermissionSession", () => {
   });
 
   describe("resetForNewSession", () => {
-    it("creates a new PermissionManager for the context cwd", () => {
-      const pm2 = makePermissionManager({
-        checkPermission: vi.fn().mockReturnValue({
-          state: "deny",
-          toolName: "bash",
-          source: "bash",
-          origin: "global",
-        }),
-      });
-      mockCreatePermissionManagerForCwd.mockReturnValue(pm2);
-      const { session } = createSession();
+    it("configures the injected PermissionManager for the context cwd", () => {
+      const pm = makePermissionManager();
+      const { session } = createSession({ permissionManager: pm });
       const ctx = makeCtx({ cwd: "/new/project" });
 
       session.resetForNewSession(ctx);
 
-      expect(mockCreatePermissionManagerForCwd).toHaveBeenCalledWith(
-        "/test/agent",
-        "/new/project",
-      );
-      // Verify the new PM is used for subsequent calls
-      const result = session.checkPermission("bash", { command: "rm" });
-      expect(result.state).toBe("deny");
+      expect(pm.configureForCwd).toHaveBeenCalledWith("/new/project");
     });
 
     it("clears cache keys", () => {
@@ -573,20 +551,15 @@ describe("PermissionSession", () => {
   });
 
   describe("reload", () => {
-    it("recreates PermissionManager for current context cwd", () => {
-      const { session } = createSession();
+    it("configures PermissionManager for current context cwd", () => {
+      const pm = makePermissionManager();
+      const { session } = createSession({ permissionManager: pm });
       const ctx = makeCtx({ cwd: "/project" });
       session.activate(ctx);
 
-      const pm2 = makePermissionManager();
-      mockCreatePermissionManagerForCwd.mockReturnValue(pm2);
-
       session.reload();
 
-      expect(mockCreatePermissionManagerForCwd).toHaveBeenCalledWith(
-        "/test/agent",
-        "/project",
-      );
+      expect(pm.configureForCwd).toHaveBeenCalledWith("/project");
     });
 
     it("clears caches and skill entries", () => {
