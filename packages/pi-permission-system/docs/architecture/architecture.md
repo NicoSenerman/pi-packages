@@ -533,7 +533,8 @@ src/
 ├── permission-events.ts      Event channel constants, payload types, emit helpers
 ├── permission-event-rpc.ts   permissions:rpc:check (deprecated) and permissions:rpc:prompt handlers
 ├── permission-ui-prompt.ts   Centralized construction for `permissions:ui_prompt` event payloads - single source for the emitted contract shape
-├── runtime.ts                ExtensionRuntime context object, config refresh/save
+├── runtime.ts                `ExtensionRuntime` interface + `createExtensionRuntime()` factory; delegates config to `ConfigStore` (#335)
+├── config-store.ts           `ConfigStore` class — owns `config` + `lastConfigWarning`; `ConfigReader`, `SessionConfigStore`, `CommandConfigStore` narrow interfaces; `RuntimeContextRef` context seam (#335)
 ├── config-loader.ts          File I/O, format detection
 ├── config-paths.ts           Path derivation
 ├── extension-paths.ts        `ExtensionPaths` value object - immutable path constants derived from `agentDir` at startup (`computeExtensionPaths`)
