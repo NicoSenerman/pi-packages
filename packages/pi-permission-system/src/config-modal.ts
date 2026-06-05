@@ -5,6 +5,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { type SettingItem, SettingsList } from "@earendil-works/pi-tui";
 
+import type { CommandConfigStore } from "./config-store";
 import {
   DEFAULT_EXTENSION_CONFIG,
   type PermissionSystemExtensionConfig,
@@ -12,11 +13,7 @@ import {
 import type { Ruleset } from "./rule";
 
 interface PermissionSystemConfigController {
-  getConfig(): PermissionSystemExtensionConfig;
-  setConfig(
-    next: PermissionSystemExtensionConfig,
-    ctx: ExtensionCommandContext,
-  ): void;
+  config: CommandConfigStore;
   getConfigPath(): string;
   /** Optional: returns the composed config-layer ruleset for origin display. */
   getComposedRules?(): Ruleset;
@@ -175,15 +172,15 @@ async function openSettingsModal(
   // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- ctx.ui.custom<void> is valid; rule does not allow void in generic fn call type args
   await ctx.ui.custom<void>(
     (_tui, _theme, _keybindings, done) => {
-      let current = controller.getConfig();
+      let current = controller.config.current();
       const settingsList = new SettingsList(
         buildSettingItems(current),
         10,
         getSettingsListTheme(),
         (id, newValue) => {
           current = applySetting(current, id, newValue);
-          controller.setConfig(current, ctx);
-          current = controller.getConfig();
+          controller.config.save(current, ctx);
+          current = controller.config.current();
           syncSettingValues(settingsList, current);
         },
         () => done(),
@@ -208,7 +205,7 @@ function handleArgs(
   if (normalized === "show") {
     const rules = controller.getComposedRules?.();
     ctx.ui.notify(
-      `permission-system: ${summarizeConfig(controller.getConfig(), rules)}`,
+      `permission-system: ${summarizeConfig(controller.config.current(), rules)}`,
       "info",
     );
     return true;
@@ -223,7 +220,7 @@ function handleArgs(
   }
 
   if (normalized === "reset") {
-    controller.setConfig(cloneDefaultConfig(), ctx);
+    controller.config.save(cloneDefaultConfig(), ctx);
     ctx.ui.notify("Permission system settings reset to defaults.", "info");
     return true;
   }

@@ -22,11 +22,7 @@ import { PermissionManager } from "./permission-manager";
 import { PermissionPrompter } from "./permission-prompter";
 import { PermissionSession } from "./permission-session";
 import { LocalPermissionsService } from "./permissions-service";
-import {
-  createExtensionRuntime,
-  refreshExtensionConfig,
-  saveExtensionConfig,
-} from "./runtime";
+import { createExtensionRuntime, refreshExtensionConfig } from "./runtime";
 import { PermissionServiceLifecycle } from "./service-lifecycle";
 import { createSessionLogger } from "./session-logger";
 import { isSubagentExecutionContext } from "./subagent-context";
@@ -97,8 +93,7 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
   );
 
   registerPermissionSystemCommand(pi, {
-    getConfig: () => runtime.config,
-    setConfig: (next, ctx) => saveExtensionConfig(runtime, next, ctx),
+    config: runtime.configStore,
     getConfigPath: () => getGlobalConfigPath(runtime.agentDir),
     getComposedRules: () =>
       runtime.permissionManager.getComposedConfigRules(

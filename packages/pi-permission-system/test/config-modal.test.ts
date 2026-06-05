@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test, vi } from "vitest";
 import { registerPermissionSystemCommand } from "#src/config-modal";
+import type { CommandConfigStore } from "#src/config-store";
 import {
   DEFAULT_EXTENSION_CONFIG,
   normalizePermissionSystemConfig,
@@ -79,11 +80,14 @@ test("permission-system command completions expose top-level config actions", ()
   let config: PermissionSystemExtensionConfig = { ...DEFAULT_EXTENSION_CONFIG };
 
   try {
-    const controller = {
-      getConfig: () => config,
-      setConfig: (next: PermissionSystemExtensionConfig) => {
+    const configStore: CommandConfigStore = {
+      current: () => config,
+      save: (next) => {
         config = next;
       },
+    };
+    const controller = {
+      config: configStore,
       getConfigPath: () => configPath,
     };
 
@@ -136,9 +140,9 @@ test("permission-system command handlers manage config summary, persistence, and
       "utf-8",
     );
 
-    const controller = {
-      getConfig: () => config,
-      setConfig: (next: PermissionSystemExtensionConfig) => {
+    const configStore: CommandConfigStore = {
+      current: () => config,
+      save: (next) => {
         const currentConfig = normalizePermissionSystemConfig(
           JSON.parse(readFileSync(configPath, "utf-8")) as unknown,
         );
@@ -153,6 +157,9 @@ test("permission-system command handlers manage config summary, persistence, and
         );
         expect(config).not.toEqual(currentConfig);
       },
+    };
+    const controller = {
+      config: configStore,
       getConfigPath: () => configPath,
     };
 
@@ -249,8 +256,7 @@ test("show output includes rule origins when getComposedRules is provided", asyn
   ];
 
   const controller = {
-    getConfig: () => config,
-    setConfig: () => {},
+    config: { current: () => config, save: () => {} } as CommandConfigStore,
     getConfigPath: () => "/fake/config.json",
     getComposedRules: () => composedRules,
   };
@@ -282,8 +288,7 @@ test("show output omits rule summary when getComposedRules is not provided", asy
   const config = { ...DEFAULT_EXTENSION_CONFIG, yoloMode: true };
 
   const controller = {
-    getConfig: () => config,
-    setConfig: () => {},
+    config: { current: () => config, save: () => {} } as CommandConfigStore,
     getConfigPath: () => "/fake/config.json",
     // no getComposedRules
   };
