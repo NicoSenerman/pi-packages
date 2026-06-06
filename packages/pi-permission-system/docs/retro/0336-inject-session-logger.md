@@ -27,3 +27,25 @@ The plan is a two-step lift-and-shift (Step 1 adds `runtime.logger` while keepin
 
 [#337]: https://github.com/gotgenes/pi-packages/issues/337
 [#338]: https://github.com/gotgenes/pi-packages/issues/338
+
+## Stage: Implementation — TDD (2026-06-06T22:00:00Z)
+
+### Session summary
+
+Completed two TDD cycles (Step 1: inject `SessionLoggerDeps` + expose `runtime.logger`; Step 2: remove `writeDebugLog`/`writeReviewLog` from the interface and replace `.bind(runtime)` adapters).
+Test count moved from 1840 → 1837 (−3 net: 4 delegation tests removed, 11 new `session-logger.test.ts` tests added, some overlap with rewritten tests).
+Architecture doc updated with Step 3 `✓ complete` mark and revised `session-logger.ts` description.
+
+### Observations
+
+- Two ESLint issues in Step 1: `prefer-const` on `let configStore` (fixed by initializing to `null as unknown as ConfigStore`) and `unbound-method` on bare `logger.debug`/`logger.review` references in the `ConfigStoreLogger` (fixed with arrow wrappers).
+- Step 2 had the same `unbound-method` issue on the five `index.ts` adapter sites; same arrow-wrapper fix applied.
+  The type-level fix (`this: void` on `SessionLogger` interface) was blocked by `@typescript-eslint/no-invalid-void-type` which does not allow `allowAsThisParameterType` in this project's config.
+  Five unnecessary wrapper closures remain as an ESLint-compatibility workaround.
+- Pre-completion reviewer: WARN (two observations, neither blocking).
+
+### Reviewer warnings
+
+- **WARN** — `src/index.ts` lines 49–52, 61, 109: five `(event, details) => runtime.logger.review(event, details)` closures are unnecessary (bare references type-check under contravariance), but `@typescript-eslint/unbound-method` blocks bare references without a project-wide ESLint config change.
+  Deferred to [#338] which already owns the consumer deps bag cleanup.
+- **WARN** — `src/runtime.ts` notify sink (`runtimeContext?.ui.notify`) is a transitional LoD seam; acknowledged in the plan, deferred to [#337].
