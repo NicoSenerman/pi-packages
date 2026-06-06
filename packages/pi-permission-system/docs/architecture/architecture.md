@@ -653,7 +653,7 @@ Each step is a behavior-preserving refactor that leaves the suite green; the suc
    - Smell category: C (Law-of-Demeter reach-through — addresses Finding 3, part 2).
    - Outcome: no module takes the whole `ExtensionRuntime` for logging; the duplicated `.bind(runtime)` logging adapters disappear.
 
-4. **Dissolve `ExtensionRuntime`; one source of truth for session state** ([#337])
+4. **Dissolve `ExtensionRuntime`; one source of truth for session state** ([#337]) ✓ complete
    - Target: `runtime.ts`, `index.ts`, `permission-event-rpc.ts`, `config-modal.ts`.
    - Remove the god runtime object; point the config-modal and RPC handlers at the *same* `PermissionManager` / `SessionRules` the gate handlers use (fixing the stale-manager / empty-session-rules split-brain), backed by the `ConfigStore` + `ExtensionPaths` + `PermissionSession`.
    - Smell category: C (split-brain state — addresses Finding 3, part 3).
