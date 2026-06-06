@@ -18,7 +18,6 @@ import { SkillInputGatePipeline } from "./handlers/gates/skill-input-gate-pipeli
 import { ToolCallGatePipeline } from "./handlers/gates/tool-call-gate-pipeline";
 import { requestPermissionDecisionFromUi } from "./permission-dialog";
 import { registerPermissionRpcHandlers } from "./permission-event-rpc";
-import { PermissionManager } from "./permission-manager";
 import { PermissionPrompter } from "./permission-prompter";
 import { PermissionSession } from "./permission-session";
 import { LocalPermissionsService } from "./permissions-service";
@@ -65,8 +64,6 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
 
   runtime.configStore.refresh();
 
-  const sessionManager = new PermissionManager({ agentDir: runtime.agentDir });
-
   const session = new PermissionSession(
     runtime,
     runtime.logger,
@@ -75,7 +72,8 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
       forwarder,
       subagentRegistry,
     ),
-    sessionManager,
+    runtime.permissionManager,
+    runtime.sessionRules,
     runtime.configStore,
     {
       canRequestPermissionConfirmation: (ctx) =>

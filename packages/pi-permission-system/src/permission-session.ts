@@ -20,7 +20,7 @@ import type { SessionApproval } from "./session-approval";
 import type { SessionApprovalRecorder } from "./session-approval-recorder";
 import type { SessionLifecycleSession } from "./session-lifecycle-session";
 import type { SessionLogger } from "./session-logger";
-import { SessionRules } from "./session-rules";
+import type { SessionRules } from "./session-rules";
 import type { SkillPromptEntry } from "./skill-prompt-sanitizer";
 import {
   resolveToolPreviewLimits,
@@ -69,7 +69,6 @@ export class PermissionSession
     SessionLifecycleSession
 {
   private context: ExtensionContext | null = null;
-  private readonly sessionRules = new SessionRules();
   private skillEntries: SkillPromptEntry[] = [];
   private knownAgentName: string | null = null;
   private toolsCacheKey: string | null = null;
@@ -80,6 +79,7 @@ export class PermissionSession
     readonly logger: SessionLogger,
     private readonly forwarding: ForwardingController,
     private readonly permissionManager: ScopedPermissionManager,
+    private readonly sessionRules: SessionRules,
     private readonly configStore: SessionConfigStore,
     private readonly runtimeDeps: PermissionSessionRuntimeDeps,
   ) {}

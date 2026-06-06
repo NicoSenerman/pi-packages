@@ -31,7 +31,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getGlobalConfigPath } from "#src/config-paths";
 import { DEFAULT_EXTENSION_CONFIG } from "#src/extension-config";
 import piPermissionSystemExtension from "#src/index";
-import { PERMISSIONS_READY_CHANNEL } from "#src/permission-events";
+import {
+  PERMISSIONS_READY_CHANNEL,
+  PERMISSIONS_RPC_CHECK_CHANNEL,
+} from "#src/permission-events";
 import {
   createPermissionForwardingLocation,
   type ForwardedPermissionRequest,
@@ -354,6 +357,87 @@ describe("ready emitted after service publication", () => {
     await fireSessionStart(pi, makeChildCtx(cwd, "top-session"));
 
     expect(seen).toEqual(["present"]);
+
+    rmSync(cwd, { recursive: true, force: true });
+  });
+});
+
+describe("single source of truth for session state", () => {
+  // Regression guard for the split-brain bug: before the fix, the gate path
+  // recorded session approvals into a private SessionRules instance that the
+  // RPC check and the service never saw. After the fix, both readers use the
+  // same SessionRules the gate writes into.
+  it("gate session-approval is visible to the RPC check and the service", async () => {
+    writeGlobalConfig({
+      permission: { "*": "allow", demo: "ask" },
+    });
+
+    const cwd = mkdtempSync(join(tmpdir(), "pi-perm-sot-cwd-"));
+    const pi = makeFakePi({ toolNames: ["demo"] });
+    piPermissionSystemExtension(pi as unknown as ExtensionAPI);
+
+    // UI ctx that approves the gate prompt for this session (options[1]).
+    const ctx = {
+      cwd,
+      hasUI: true,
+      sessionManager: {
+        getEntries: (): unknown[] => [],
+        getSessionId: (): string => "sot-session",
+        getSessionDir: (): string => cwd,
+      },
+      ui: {
+        notify: (): void => {},
+        setStatus: (): void => {},
+        // Return the second option label-agnostically — always the
+        // "for this session" choice regardless of the exact label text.
+        select: async (
+          _title: string,
+          options: string[],
+        ): Promise<string | undefined> => options[1],
+        input: async (): Promise<string | undefined> => undefined,
+      },
+    };
+
+    await fireSessionStart(pi, ctx);
+
+    // Drive a tool_call on "demo"; the gate prompts and the mock selects
+    // options[1], recording a session-scoped approval.
+    await pi.fire(
+      "tool_call",
+      {
+        toolName: "demo",
+        toolCallId: "demo-for-session",
+        input: { foo: "bar" },
+      },
+      ctx,
+    );
+
+    // RPC check — the deprecated channel must now reflect the session approval.
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentionally testing the deprecated RPC channel's session-rules visibility
+    const rpcCheckChannel: string = PERMISSIONS_RPC_CHECK_CHANNEL;
+    const requestId = "sot-rpc-1";
+    const replyPromise = new Promise<unknown>((resolve) => {
+      const unsub = pi.events.on(
+        `${rpcCheckChannel}:reply:${requestId}`,
+        (data) => {
+          unsub();
+          resolve(data);
+        },
+      );
+    });
+    pi.events.emit(rpcCheckChannel, { requestId, surface: "demo" });
+    const reply = (await replyPromise) as {
+      success: boolean;
+      data?: { result: string };
+    };
+
+    expect(reply.success).toBe(true);
+    // Before the fix this was "ask" — the RPC channel read an empty SessionRules.
+    expect(reply.data?.result).toBe("allow");
+
+    // Service accessor must also see the session approval.
+    const serviceResult = getPermissionsService()!.checkPermission("demo");
+    expect(serviceResult.state).toBe("allow");
 
     rmSync(cwd, { recursive: true, force: true });
   });

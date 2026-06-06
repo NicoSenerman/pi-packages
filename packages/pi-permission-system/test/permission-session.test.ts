@@ -29,6 +29,7 @@ import {
 import type { Ruleset } from "#src/rule";
 import { SessionApproval } from "#src/session-approval";
 import type { SessionLogger } from "#src/session-logger";
+import { SessionRules } from "#src/session-rules";
 import type { SkillPromptEntry } from "#src/skill-prompt-sanitizer";
 import type { PermissionCheckResult, PermissionState } from "#src/types";
 import { makeCtx } from "#test/helpers/handler-fixtures";
@@ -129,6 +130,7 @@ function createSession(overrides?: {
   logger?: SessionLogger;
   forwarding?: ForwardingController;
   permissionManager?: ScopedPermissionManager;
+  sessionRules?: SessionRules;
   configStore?: SessionConfigStore;
   runtimeDeps?: PermissionSessionRuntimeDeps;
 }): {
@@ -136,6 +138,7 @@ function createSession(overrides?: {
   paths: ExtensionPaths;
   logger: SessionLogger;
   forwarding: ForwardingController;
+  sessionRules: SessionRules;
   configStore: SessionConfigStore;
   runtimeDeps: PermissionSessionRuntimeDeps;
 } {
@@ -144,6 +147,7 @@ function createSession(overrides?: {
   const forwarding = overrides?.forwarding ?? makeForwarding();
   const permissionManager =
     overrides?.permissionManager ?? makePermissionManager();
+  const sessionRules = overrides?.sessionRules ?? new SessionRules();
   const configStore = overrides?.configStore ?? makeConfigStore();
   const runtimeDeps = overrides?.runtimeDeps ?? makeRuntimeDeps();
   const session = new PermissionSession(
@@ -151,10 +155,19 @@ function createSession(overrides?: {
     logger,
     forwarding,
     permissionManager,
+    sessionRules,
     configStore,
     runtimeDeps,
   );
-  return { session, paths, logger, forwarding, configStore, runtimeDeps };
+  return {
+    session,
+    paths,
+    logger,
+    forwarding,
+    sessionRules,
+    configStore,
+    runtimeDeps,
+  };
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
