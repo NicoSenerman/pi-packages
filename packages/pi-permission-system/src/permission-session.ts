@@ -11,7 +11,6 @@ import type { ExtensionPaths } from "./extension-paths";
 import type { ForwardingController } from "./forwarding-manager";
 import type { GateHandlerSession } from "./gate-handler-session";
 import type { ScopedPermissionManager } from "./permission-manager";
-import type { ScopedPermissionResolver } from "./permission-resolver";
 import type { PromptingGatewayLifecycle } from "./prompting-gateway";
 import type { Rule } from "./rule";
 import type { SessionApproval } from "./session-approval";
@@ -43,7 +42,6 @@ import type { PermissionCheckResult, PermissionState } from "./types";
  */
 export class PermissionSession
   implements
-    ScopedPermissionResolver,
     SessionApprovalRecorder,
     GateHandlerSession,
     AgentPrepSession,
@@ -99,24 +97,6 @@ export class PermissionSession
       input,
       agentName,
       sessionRules,
-    );
-  }
-
-  /**
-   * Resolve the effective permission for a surface/input, applying the current
-   * session rules. Composes `checkPermission` with `getSessionRuleset` so
-   * callers never thread the ruleset by hand.
-   */
-  resolve(
-    surface: string,
-    input: unknown,
-    agentName?: string,
-  ): PermissionCheckResult {
-    return this.checkPermission(
-      surface,
-      input,
-      agentName,
-      this.getSessionRuleset(),
     );
   }
 
