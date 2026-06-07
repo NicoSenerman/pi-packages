@@ -48,7 +48,7 @@ export function canResolveAskPermissionRequest(
 
 // ── Toggle helper (used by /mode command and shortcut) ─────────────────
 
-export type Mode = "yolo" | "plan";
+export type Mode = "yolo" | "gated";
 
 let currentMode: Mode = "yolo";
 

@@ -20,9 +20,9 @@ export function getPermissionSystemStatus(
 ): string | undefined {
   const mode = getCurrentMode();
   if (mode === "yolo" || isYoloModeEnabled(config)) {
-    return "🚀 yolo";
+    return "YOLO";
   }
-  return "⏸ plan";
+  return "GATED";
 }
 
 export function syncPermissionSystemStatus(
