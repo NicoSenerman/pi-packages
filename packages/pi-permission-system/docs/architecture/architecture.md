@@ -669,7 +669,7 @@ Each step is a behavior-preserving refactor that leaves the suite green; the suc
      Permanent floor: 6 `pi.on` handlers + 2 `toolRegistry` adapters + 2 logger forward-reference cycle closures (`getConfig`/`notify`; idiomatic; see pi-subagents pattern).
      Transitional: 1 `canRequestPermissionConfirmation` closure removed by Step 6.
 
-6. **Extract a context-owning `PromptingGateway`; collapse the prompt twins** ([#339])
+6. **Extract a context-owning `PromptingGateway`; collapse the prompt twins** ([#339]) ✓ complete
    - Target: new `src/prompting-gateway.ts`; `permission-session.ts`; `handlers/gates/runner.ts`; `index.ts`.
    - Move the stored context + `canConfirm()` / `prompt(details)` into one collaborator; `GateRunner` receives the gateway for the prompting role.
      The `canPrompt(ctx)`/`canConfirm()` and `prompt(ctx, details)`/`promptPermission(details)` twins collapse to a single context-bound pair.
