@@ -17,10 +17,15 @@ type PermissionStatusContext =
 
 export function getPermissionSystemStatus(
   config: PermissionSystemExtensionConfig,
+  ctx?: PermissionStatusContext,
 ): string | undefined {
   const mode = getCurrentMode();
   if (mode === "yolo" || isYoloModeEnabled(config)) {
     return "YOLO";
+  }
+  // Use theme accent color for GATED when UI context is available
+  if (ctx?.ui?.theme) {
+    return ctx.ui.theme.fg("accent", "GATED");
   }
   return "GATED";
 }
@@ -31,6 +36,6 @@ export function syncPermissionSystemStatus(
 ): void {
   ctx.ui.setStatus(
     PERMISSION_SYSTEM_STATUS_KEY,
-    getPermissionSystemStatus(config),
+    getPermissionSystemStatus(config, ctx),
   );
 }
