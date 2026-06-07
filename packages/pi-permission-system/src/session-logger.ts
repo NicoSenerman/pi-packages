@@ -7,15 +7,29 @@ import {
 import { createPermissionSystemLogger } from "./logging";
 
 /**
+ * Narrowest logging seam — consumers that only write review-log entries.
+ * Injected into `PermissionPrompter` and the RPC handlers.
+ */
+export interface ReviewLogger {
+  review(event: string, details?: Record<string, unknown>): void;
+}
+
+/**
+ * Logging seam for consumers that write both debug and review entries.
+ * Injected into `ConfigStore` and `PermissionForwarder`.
+ */
+export interface DebugReviewLogger extends ReviewLogger {
+  debug(event: string, details?: Record<string, unknown>): void;
+}
+
+/**
  * Unified logging + notification surface for handler deps.
  *
  * Replaces three separate logging fields (`writeDebugLog`,
  * `writeReviewLog`, `notifyWarning`) with a single typed collaborator.
  * This is an intermediate abstraction on the path to PermissionSession (#129).
  */
-export interface SessionLogger {
-  debug(event: string, details?: Record<string, unknown>): void;
-  review(event: string, details?: Record<string, unknown>): void;
+export interface SessionLogger extends DebugReviewLogger {
   warn(message: string): void;
 }
 

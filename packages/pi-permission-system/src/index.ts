@@ -67,10 +67,7 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
   configStore = new ConfigStore({
     agentDir,
     policyPaths: permissionManager,
-    logger: {
-      writeDebugLog: (e, d) => logger.debug(e, d),
-      writeReviewLog: (e, d) => logger.review(e, d),
-    },
+    logger,
   });
 
   const forwardingDeps: PermissionForwarderDeps = {

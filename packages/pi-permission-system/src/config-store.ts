@@ -26,6 +26,7 @@ import {
   type PermissionSystemExtensionConfig,
 } from "./extension-config";
 import type { ResolvedPolicyPaths } from "./policy-loader";
+import type { DebugReviewLogger } from "./session-logger";
 import { syncPermissionSystemStatus } from "./status";
 
 /** Read-only view of the current config — for consumers that only read. */
@@ -57,12 +58,6 @@ export interface CommandConfigStore extends ConfigReader {
   ): void;
 }
 
-/** Narrow logging sink — replaced by an injected logger in Step 3 (#336). */
-export interface ConfigStoreLogger {
-  writeDebugLog(event: string, details?: Record<string, unknown>): void;
-  writeReviewLog(event: string, details?: Record<string, unknown>): void;
-}
-
 /** Narrow view of the manager's resolved policy paths (for `logResolvedPaths`). */
 export interface ResolvedPolicyPathProvider {
   getResolvedPolicyPaths(): ResolvedPolicyPaths;
@@ -71,7 +66,7 @@ export interface ResolvedPolicyPathProvider {
 export interface ConfigStoreDeps {
   agentDir: string;
   policyPaths: ResolvedPolicyPathProvider;
-  logger: ConfigStoreLogger;
+  logger: DebugReviewLogger;
 }
 
 /**
@@ -127,7 +122,7 @@ export class ConfigStore implements SessionConfigStore, CommandConfigStore {
       this.lastConfigWarning = null;
     }
 
-    this.deps.logger.writeDebugLog("config.loaded", {
+    this.deps.logger.debug("config.loaded", {
       warning: warning ?? null,
       debugLog: runtimeConfig.debugLog,
       permissionReviewLog: runtimeConfig.permissionReviewLog,
@@ -183,7 +178,7 @@ export class ConfigStore implements SessionConfigStore, CommandConfigStore {
     syncPermissionSystemStatus(ctx, normalized);
     this.lastConfigWarning = null;
 
-    this.deps.logger.writeDebugLog("config.saved", {
+    this.deps.logger.debug("config.saved", {
       debugLog: normalized.debugLog,
       permissionReviewLog: normalized.permissionReviewLog,
       yoloMode: normalized.yoloMode,
@@ -215,11 +210,11 @@ export class ConfigStore implements SessionConfigStore, CommandConfigStore {
       legacyProjectPolicyDetected,
       legacyExtensionConfigDetected,
     });
-    this.deps.logger.writeReviewLog(
+    this.deps.logger.review(
       "config.resolved",
       entry as unknown as Record<string, unknown>,
     );
-    this.deps.logger.writeDebugLog(
+    this.deps.logger.debug(
       "config.resolved",
       entry as unknown as Record<string, unknown>,
     );

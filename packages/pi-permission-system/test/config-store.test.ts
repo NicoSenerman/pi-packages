@@ -90,10 +90,8 @@ function makePolicyPathProvider(
 
 function makeLogger() {
   return {
-    writeDebugLog:
-      vi.fn<(event: string, details?: Record<string, unknown>) => void>(),
-    writeReviewLog:
-      vi.fn<(event: string, details?: Record<string, unknown>) => void>(),
+    debug: vi.fn<(event: string, details?: Record<string, unknown>) => void>(),
+    review: vi.fn<(event: string, details?: Record<string, unknown>) => void>(),
   };
 }
 
@@ -197,7 +195,7 @@ describe("ConfigStore", () => {
     it("writes config.loaded debug log", () => {
       const { store, logger } = makeStore();
       store.refresh();
-      expect(logger.writeDebugLog).toHaveBeenCalledWith(
+      expect(logger.debug).toHaveBeenCalledWith(
         "config.loaded",
         expect.objectContaining({ debugLog: false }),
       );
@@ -336,7 +334,7 @@ describe("ConfigStore", () => {
     it("writes config.saved debug log after a successful save", () => {
       const { store, logger } = makeStore();
       store.save({ ...DEFAULT_EXTENSION_CONFIG }, makeCommandCtx());
-      expect(logger.writeDebugLog).toHaveBeenCalledWith(
+      expect(logger.debug).toHaveBeenCalledWith(
         "config.saved",
         expect.objectContaining({ debugLog: false }),
       );
@@ -357,7 +355,7 @@ describe("ConfigStore", () => {
       // current() is not updated on failure
       expect(store.current()).toEqual(DEFAULT_EXTENSION_CONFIG);
       // no debug log on failure
-      expect(logger.writeDebugLog).not.toHaveBeenCalledWith(
+      expect(logger.debug).not.toHaveBeenCalledWith(
         "config.saved",
         expect.anything(),
       );
@@ -381,11 +379,11 @@ describe("ConfigStore", () => {
     it("writes config.resolved to both review and debug logs", () => {
       const { store, logger } = makeStore();
       store.logResolvedPaths();
-      expect(logger.writeReviewLog).toHaveBeenCalledWith(
+      expect(logger.review).toHaveBeenCalledWith(
         "config.resolved",
         expect.any(Object),
       );
-      expect(logger.writeDebugLog).toHaveBeenCalledWith(
+      expect(logger.debug).toHaveBeenCalledWith(
         "config.resolved",
         expect.any(Object),
       );
