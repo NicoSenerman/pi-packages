@@ -22,10 +22,8 @@ import { DEFAULT_EXTENSION_CONFIG } from "#src/extension-config";
 import type { ExtensionPaths } from "#src/extension-paths";
 import type { ForwardingController } from "#src/forwarding-manager";
 import type { ScopedPermissionManager } from "#src/permission-manager";
-import {
-  PermissionSession,
-  type PermissionSessionRuntimeDeps,
-} from "#src/permission-session";
+import { PermissionSession } from "#src/permission-session";
+import type { PromptingGatewayLifecycle } from "#src/prompting-gateway";
 import type { Ruleset } from "#src/rule";
 import { SessionApproval } from "#src/session-approval";
 import type { SessionLogger } from "#src/session-logger";
@@ -83,12 +81,10 @@ function makeConfigStore(
   };
 }
 
-function makeRuntimeDeps(): PermissionSessionRuntimeDeps {
+function makeGateway(): PromptingGatewayLifecycle {
   return {
-    canRequestPermissionConfirmation: vi.fn().mockReturnValue(true),
-    prompter: {
-      prompt: vi.fn().mockResolvedValue({ approved: true, state: "approved" }),
-    },
+    activate: vi.fn<PromptingGatewayLifecycle["activate"]>(),
+    deactivate: vi.fn<PromptingGatewayLifecycle["deactivate"]>(),
   };
 }
 
@@ -132,7 +128,7 @@ function createSession(overrides?: {
   permissionManager?: ScopedPermissionManager;
   sessionRules?: SessionRules;
   configStore?: SessionConfigStore;
-  runtimeDeps?: PermissionSessionRuntimeDeps;
+  gateway?: PromptingGatewayLifecycle;
 }): {
   session: PermissionSession;
   paths: ExtensionPaths;
@@ -140,7 +136,7 @@ function createSession(overrides?: {
   forwarding: ForwardingController;
   sessionRules: SessionRules;
   configStore: SessionConfigStore;
-  runtimeDeps: PermissionSessionRuntimeDeps;
+  gateway: PromptingGatewayLifecycle;
 } {
   const paths = makePaths(overrides?.paths);
   const logger = overrides?.logger ?? makeLogger();
@@ -149,7 +145,7 @@ function createSession(overrides?: {
     overrides?.permissionManager ?? makePermissionManager();
   const sessionRules = overrides?.sessionRules ?? new SessionRules();
   const configStore = overrides?.configStore ?? makeConfigStore();
-  const runtimeDeps = overrides?.runtimeDeps ?? makeRuntimeDeps();
+  const gateway = overrides?.gateway ?? makeGateway();
   const session = new PermissionSession(
     paths,
     logger,
@@ -157,7 +153,7 @@ function createSession(overrides?: {
     permissionManager,
     sessionRules,
     configStore,
-    runtimeDeps,
+    gateway,
   );
   return {
     session,
@@ -166,7 +162,7 @@ function createSession(overrides?: {
     forwarding,
     sessionRules,
     configStore,
-    runtimeDeps,
+    gateway,
   };
 }
 
@@ -328,6 +324,23 @@ describe("PermissionSession", () => {
       session.deactivate();
 
       expect(forwarding.stop).toHaveBeenCalled();
+    });
+
+    it("forwards activate to the gateway", () => {
+      const { session, gateway } = createSession();
+      const ctx = makeCtx();
+
+      session.activate(ctx);
+
+      expect(gateway.activate).toHaveBeenCalledWith(ctx);
+    });
+
+    it("forwards deactivate to the gateway", () => {
+      const { session, gateway } = createSession();
+      session.activate(makeCtx());
+      session.deactivate();
+
+      expect(gateway.deactivate).toHaveBeenCalled();
     });
   });
 
@@ -625,104 +638,6 @@ describe("PermissionSession", () => {
       session.activate(makeCtx());
       session.deactivate();
       expect(session.getRuntimeContext()).toBeNull();
-    });
-  });
-
-  describe("canConfirm", () => {
-    it("returns true when context is active and canPrompt returns true", () => {
-      const { session } = createSession();
-      session.activate(makeCtx());
-      expect(session.canConfirm()).toBe(true);
-    });
-
-    it("returns false when no context is active", () => {
-      const { session } = createSession();
-      expect(session.canConfirm()).toBe(false);
-    });
-
-    it("returns false when canPrompt returns false", () => {
-      const runtimeDeps = makeRuntimeDeps();
-      (
-        runtimeDeps.canRequestPermissionConfirmation as ReturnType<typeof vi.fn>
-      ).mockReturnValue(false);
-      const { session } = createSession({ runtimeDeps });
-      session.activate(makeCtx());
-      expect(session.canConfirm()).toBe(false);
-    });
-  });
-
-  describe("promptPermission", () => {
-    it("delegates to prompt with stored context", async () => {
-      const { session, runtimeDeps } = createSession();
-      const ctx = makeCtx();
-      session.activate(ctx);
-      const details = {
-        requestId: "req-1",
-        source: "tool_call" as const,
-        agentName: null,
-        message: "Allow?",
-      };
-
-      const result = await session.promptPermission(details);
-
-      expect(runtimeDeps.prompter.prompt).toHaveBeenCalledWith(ctx, details);
-      expect(result).toEqual({ approved: true, state: "approved" });
-    });
-
-    it("throws when no context is active", async () => {
-      const { session } = createSession();
-      const details = {
-        requestId: "req-1",
-        source: "tool_call" as const,
-        agentName: null,
-        message: "Allow?",
-      };
-
-      await expect(session.promptPermission(details)).rejects.toThrow(
-        "promptPermission called before the session was activated",
-      );
-    });
-  });
-
-  describe("canPrompt", () => {
-    it("delegates to runtimeDeps.canRequestPermissionConfirmation", () => {
-      const { session, runtimeDeps } = createSession();
-      const ctx = makeCtx();
-
-      const result = session.canPrompt(ctx);
-
-      expect(runtimeDeps.canRequestPermissionConfirmation).toHaveBeenCalledWith(
-        ctx,
-      );
-      expect(result).toBe(true);
-    });
-
-    it("returns false when runtimeDeps says no", () => {
-      const runtimeDeps = makeRuntimeDeps();
-      (
-        runtimeDeps.canRequestPermissionConfirmation as ReturnType<typeof vi.fn>
-      ).mockReturnValue(false);
-      const { session } = createSession({ runtimeDeps });
-
-      expect(session.canPrompt(makeCtx())).toBe(false);
-    });
-  });
-
-  describe("prompt", () => {
-    it("delegates to runtimeDeps.prompter.prompt", async () => {
-      const { session, runtimeDeps } = createSession();
-      const ctx = makeCtx();
-      const details = {
-        requestId: "req-1",
-        source: "tool_call" as const,
-        agentName: null,
-        message: "Allow?",
-      };
-
-      const result = await session.prompt(ctx, details);
-
-      expect(runtimeDeps.prompter.prompt).toHaveBeenCalledWith(ctx, details);
-      expect(result).toEqual({ approved: true, state: "approved" });
     });
   });
 });

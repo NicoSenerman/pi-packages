@@ -14,6 +14,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { GateDecisionReporter } from "#src/decision-reporter";
 import { DEFAULT_EXTENSION_CONFIG } from "#src/extension-config";
+import type { GatePrompter } from "#src/gate-prompter";
 import { GateRunner } from "#src/handlers/gates/runner";
 import { SkillInputGatePipeline } from "#src/handlers/gates/skill-input-gate-pipeline";
 import { ToolCallGatePipeline } from "#src/handlers/gates/tool-call-gate-pipeline";
@@ -193,7 +194,12 @@ function makeHandlerForSession(
 ): PermissionGateHandler {
   const events = makeEvents();
   const reporter = new GateDecisionReporter(session.logger, events);
-  const runner = new GateRunner(session, session, session, reporter);
+  // Bridge: delegates to session's transitional prompting extras (#339).
+  const prompter: GatePrompter = {
+    canConfirm: () => session.canConfirm(),
+    promptPermission: (details) => session.promptPermission(details),
+  };
+  const runner = new GateRunner(session, session, prompter, reporter);
   return new PermissionGateHandler(
     session,
     makeToolRegistry(),

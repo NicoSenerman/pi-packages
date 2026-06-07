@@ -25,14 +25,13 @@ import { PermissionManager } from "./permission-manager";
 import { PermissionPrompter } from "./permission-prompter";
 import { PermissionSession } from "./permission-session";
 import { LocalPermissionsService } from "./permissions-service";
+import { PromptingGateway } from "./prompting-gateway";
 import { PermissionServiceLifecycle } from "./service-lifecycle";
 import { createSessionLogger } from "./session-logger";
 import { SessionRules } from "./session-rules";
-import { isSubagentExecutionContext } from "./subagent-context";
 import { subscribeSubagentLifecycle } from "./subagent-lifecycle-events";
 import { getSubagentSessionRegistry } from "./subagent-registry";
 import { ToolInputFormatterRegistry } from "./tool-input-formatter-registry";
-import { canResolveAskPermissionRequest } from "./yolo-mode";
 
 export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
   const agentDir = getAgentDir();
@@ -87,6 +86,13 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
 
   configStore.refresh();
 
+  const gateway = new PromptingGateway({
+    config: configStore,
+    subagentSessionsDir: paths.subagentSessionsDir,
+    registry: subagentRegistry,
+    prompter,
+  });
+
   const session = new PermissionSession(
     paths,
     logger,
@@ -98,19 +104,7 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
     permissionManager,
     sessionRules,
     configStore,
-    {
-      canRequestPermissionConfirmation: (ctx) =>
-        canResolveAskPermissionRequest({
-          config: configStore.current(),
-          hasUI: ctx.hasUI,
-          isSubagent: isSubagentExecutionContext(
-            ctx,
-            paths.subagentSessionsDir,
-            subagentRegistry,
-          ),
-        }),
-      prompter,
-    },
+    gateway,
   );
 
   // Connect the notify sink now that session is available.
@@ -165,7 +159,7 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
   const lifecycle = new SessionLifecycleHandler(session, serviceLifecycle);
   const agentPrep = new AgentPrepHandler(session, toolRegistry);
   const reporter = new GateDecisionReporter(session.logger, pi.events);
-  const gateRunner = new GateRunner(session, session, session, reporter);
+  const gateRunner = new GateRunner(session, session, gateway, reporter);
   const toolCallGatePipeline = new ToolCallGatePipeline(
     session,
     formatterRegistry,

@@ -24,7 +24,10 @@ import { PermissionGateHandler } from "#src/handlers/permission-gate-handler";
 import type { PermissionPromptDecision } from "#src/permission-dialog";
 import type { PermissionDecisionEvent } from "#src/permission-events";
 import { PERMISSIONS_DECISION_CHANNEL } from "#src/permission-events";
-import type { PromptPermissionDetails } from "#src/permission-prompter";
+import type {
+  PromptPermissionDetails as _PromptPermissionDetails,
+  PromptPermissionDetails,
+} from "#src/permission-prompter";
 import type { Rule } from "#src/rule";
 import type { SessionApprovalRecorder } from "#src/session-approval-recorder";
 import type { SessionLogger } from "#src/session-logger";
@@ -35,10 +38,10 @@ import type { PermissionCheckResult, PermissionState } from "#src/types";
 /**
  * Precise mock boundary for PermissionGateHandler integration tests.
  *
- * Intersection of every role the handler and its collaborators require,
- * plus the context-bound prompting helpers that GatePrompter delegates to.
- * Without a cast, TypeScript enforces this at the call sites where the
- * mock is passed to GateRunner / ToolCallGatePipeline / PermissionGateHandler.
+ * Intersection of every role the handler and its collaborators require.
+ * No longer includes GatePrompter — prompting moved to PromptingGateway (#339).
+ * The canPrompt/prompt/canConfirm/promptPermission extras remain as transitional
+ * steering inputs for the bridge in makeHandler; removed in cleanup cycle 9.
  *
  * The 4-arg `checkPermission` overrides the 3-arg version from
  * GateHandlerSession so the `resolve` delegation can forward session rules.
@@ -46,7 +49,6 @@ import type { PermissionCheckResult, PermissionState } from "#src/types";
 export type MockGateHandlerSession = ToolCallGateInputs &
   SkillInputGateInputs &
   SessionApprovalRecorder &
-  GatePrompter &
   GateHandlerSession & {
     /** Logger source for the reporter the fixture builds. */
     logger: SessionLogger;
@@ -59,11 +61,19 @@ export type MockGateHandlerSession = ToolCallGateInputs &
       agentName?: string,
       rules?: Rule[],
     ): PermissionCheckResult;
-    /** Context-bound canPrompt — overriding this steers canConfirm. */
+    // Transitional bridge steering fields — kept until cycle-9 cleanup.
+    // Override canPrompt/prompt to steer canConfirm/promptPermission on the bridge prompter.
+    /** Steers canConfirm on the makeHandler bridge prompter. */
     canPrompt(ctx: ExtensionContext): boolean;
-    /** Context-bound prompt — overriding this steers promptPermission. */
+    /** Steers promptPermission on the makeHandler bridge prompter. */
     prompt(
       ctx: ExtensionContext,
+      details: PromptPermissionDetails,
+    ): Promise<PermissionPromptDecision>;
+    /** Bridge-derived canConfirm — delegated from makeHandler prompter.canConfirm. */
+    canConfirm(): boolean;
+    /** Bridge-derived promptPermission — delegated from makeHandler prompter.promptPermission. */
+    promptPermission(
       details: PromptPermissionDetails,
     ): Promise<PermissionPromptDecision>;
   };
@@ -296,10 +306,16 @@ export function makeBashCommandCheck(opts: {
  * Constructs a PermissionGateHandler with mocked collaborators.
  *
  * Returns all collaborators so each test file can destructure only what
- * it needs — handler, events, session, and toolRegistry are all available.
+ * it needs — handler, events, session, toolRegistry, and prompter are all available.
+ *
+ * The default prompter bridges to session.canConfirm/promptPermission so
+ * existing handler tests continue to steer prompting via session overrides.
+ * Pass `prompter` explicitly to bypass the bridge (used by migrated tests).
  */
 export function makeHandler(overrides?: {
   session?: Partial<MockGateHandlerSession>;
+  /** Override the GatePrompter passed to GateRunner. Defaults to a bridge that delegates to session. */
+  prompter?: GatePrompter;
   toolRegistry?: Partial<ToolRegistry>;
   /** Sugar: builds the `getAll` mock from a list of tool names. */
   tools?: string[];
@@ -317,7 +333,14 @@ export function makeHandler(overrides?: {
   const pipeline = new ToolCallGatePipeline(session);
   const skillInputPipeline = new SkillInputGatePipeline(session);
   const reporter = new GateDecisionReporter(session.logger, events);
-  const runner = new GateRunner(session, session, session, reporter);
+  // Bridge: delegates to session's transitional prompting extras so existing
+  // handler-test overrides (session.canPrompt / session.prompt) stay green
+  // until tests migrate to use the prompter directly (cycle 9 cleanup).
+  const prompter: GatePrompter = overrides?.prompter ?? {
+    canConfirm: () => session.canConfirm(),
+    promptPermission: (details) => session.promptPermission(details),
+  };
+  const runner = new GateRunner(session, session, prompter, reporter);
   const handler = new PermissionGateHandler(
     session,
     toolRegistry,
@@ -325,7 +348,7 @@ export function makeHandler(overrides?: {
     skillInputPipeline,
     runner,
   );
-  return { handler, events, session, toolRegistry };
+  return { handler, events, session, toolRegistry, prompter };
 }
 
 /** Extract all permissions:decision payloads from the events.emit mock. */
