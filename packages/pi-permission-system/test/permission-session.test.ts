@@ -99,26 +99,6 @@ describe("PermissionSession", () => {
       expect(session.getPolicyCacheStamp("agent1")).toBe("stamp-1");
       expect(pm.getPolicyCacheStamp).toHaveBeenCalledWith("agent1");
     });
-
-    it("delegates getSessionRuleset to internal SessionRules", () => {
-      const { session } = createSession();
-      const rules = session.getSessionRuleset();
-      expect(rules).toEqual([]);
-    });
-
-    it("delegates recordSessionApproval to internal SessionRules", () => {
-      const { session } = createSession();
-      session.recordSessionApproval(
-        SessionApproval.single("bash", "/usr/bin/*"),
-      );
-      const rules = session.getSessionRuleset();
-      expect(rules).toHaveLength(1);
-      expect(rules[0]).toMatchObject({
-        surface: "bash",
-        pattern: "/usr/bin/*",
-        action: "allow",
-      });
-    });
   });
 
   describe("activate and deactivate", () => {
@@ -216,13 +196,13 @@ describe("PermissionSession", () => {
 
   describe("shutdown", () => {
     it("clears session rules", () => {
-      const { session } = createSession();
-      session.recordSessionApproval(SessionApproval.single("bash", "*"));
-      expect(session.getSessionRuleset()).toHaveLength(1);
+      const { session, sessionRules } = createSession();
+      sessionRules.recordSessionApproval(SessionApproval.single("bash", "*"));
+      expect(sessionRules.getRuleset()).toHaveLength(1);
 
       session.shutdown();
 
-      expect(session.getSessionRuleset()).toEqual([]);
+      expect(sessionRules.getRuleset()).toEqual([]);
     });
 
     it("clears cache keys", () => {

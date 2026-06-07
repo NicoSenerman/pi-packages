@@ -13,8 +13,6 @@ import type { GateHandlerSession } from "./gate-handler-session";
 import type { ScopedPermissionManager } from "./permission-manager";
 import type { PromptingGatewayLifecycle } from "./prompting-gateway";
 import type { Rule } from "./rule";
-import type { SessionApproval } from "./session-approval";
-import type { SessionApprovalRecorder } from "./session-approval-recorder";
 import type { SessionLifecycleSession } from "./session-lifecycle-session";
 import type { SessionLogger } from "./session-logger";
 import type { SessionRules } from "./session-rules";
@@ -41,11 +39,7 @@ import type { PermissionCheckResult, PermissionState } from "./types";
  * - `PromptingGatewayLifecycle` — prompting lifecycle forwarded via activate/deactivate
  */
 export class PermissionSession
-  implements
-    SessionApprovalRecorder,
-    GateHandlerSession,
-    AgentPrepSession,
-    SessionLifecycleSession
+  implements GateHandlerSession, AgentPrepSession, SessionLifecycleSession
 {
   private context: ExtensionContext | null = null;
   private skillEntries: SkillPromptEntry[] = [];
@@ -110,16 +104,6 @@ export class PermissionSession
 
   getPolicyCacheStamp(agentName?: string): string {
     return this.permissionManager.getPolicyCacheStamp(agentName);
-  }
-
-  // ── Session rules (delegates to SessionRules) ──────────────────────────
-
-  getSessionRuleset(): Rule[] {
-    return this.sessionRules.getRuleset();
-  }
-
-  recordSessionApproval(approval: SessionApproval): void {
-    this.sessionRules.record(approval);
   }
 
   // ── Session lifecycle ────────────────────────────────────────────────────

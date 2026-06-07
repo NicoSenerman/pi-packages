@@ -18,8 +18,7 @@ import { GateRunner } from "#src/handlers/gates/runner";
 import { SkillInputGatePipeline } from "#src/handlers/gates/skill-input-gate-pipeline";
 import { ToolCallGatePipeline } from "#src/handlers/gates/tool-call-gate-pipeline";
 import { PermissionGateHandler } from "#src/handlers/permission-gate-handler";
-import type { Rule } from "#src/rule";
-import type { SessionApproval } from "#src/session-approval";
+import { SessionRules } from "#src/session-rules";
 import { resolveToolPreviewLimits } from "#src/tool-preview-formatter";
 import type { ToolRegistry } from "#src/tool-registry";
 import type { PermissionCheckResult } from "#src/types";
@@ -43,34 +42,31 @@ vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
 /**
  * Build a PermissionSession mock with stateful session-rule tracking.
  *
+ * Returns `{ session, sessionRules }` — pass the same `sessionRules` to
+ * `makeHandlerForSession` so the runner records approvals into the store
+ * that `checkPermission` reads from.
+ *
  * `checkPermission` returns "ask" for `external_directory` unless a
- * matching session rule exists (via `recordSessionApproval`), in which case
- * it returns "allow" with `source: "session"`. All other surfaces return
- * "allow" by default.
+ * matching rule exists in `sessionRules`, in which case it returns "allow"
+ * with `source: "session"`. All other surfaces return "allow" by default.
  */
-function makeStatefulSession(
-  overrides: Partial<MockGateHandlerSession> = {},
-): MockGateHandlerSession {
-  const sessionRules: Rule[] = [];
+function makeStatefulSession(overrides: Partial<MockGateHandlerSession> = {}): {
+  session: MockGateHandlerSession;
+  sessionRules: SessionRules;
+} {
+  const sessionRules = new SessionRules();
 
   const checkPermission = vi
     .fn<MockGateHandlerSession["checkPermission"]>()
     .mockImplementation(
-      (
-        surface: string,
-        input: unknown,
-        _agentName?: string,
-        rules?: Rule[],
-      ): PermissionCheckResult => {
-        // Merge stored session rules with any passed-in rules
-        const allRules = [...sessionRules, ...(rules ?? [])];
-
+      (surface: string, input: unknown): PermissionCheckResult => {
         if (surface === "external_directory") {
           const record = (input ?? {}) as Record<string, unknown>;
           const pathValue =
             typeof record.path === "string" ? record.path : null;
 
-          if (pathValue && allRules.length > 0) {
+          if (pathValue) {
+            const allRules = sessionRules.getRuleset();
             const match = allRules.findLast(
               (r) =>
                 r.surface === "external_directory" &&
@@ -106,24 +102,6 @@ function makeStatefulSession(
       },
     );
 
-  const recordSessionApproval = vi
-    .fn<MockGateHandlerSession["recordSessionApproval"]>()
-    .mockImplementation((approval: SessionApproval) => {
-      for (const pattern of approval.patterns) {
-        sessionRules.push({
-          surface: approval.surface,
-          pattern,
-          action: "allow",
-          layer: "session",
-          origin: "session",
-        });
-      }
-    });
-
-  const getSessionRuleset = vi
-    .fn<MockGateHandlerSession["getSessionRuleset"]>()
-    .mockImplementation(() => [...sessionRules]);
-
   const session: MockGateHandlerSession = {
     logger: overrides.logger ?? {
       debug: vi.fn(),
@@ -135,9 +113,6 @@ function makeStatefulSession(
       overrides.resolveAgentName ??
       vi.fn<MockGateHandlerSession["resolveAgentName"]>().mockReturnValue(null),
     checkPermission: overrides.checkPermission ?? checkPermission,
-    getSessionRuleset: overrides.getSessionRuleset ?? getSessionRuleset,
-    recordSessionApproval:
-      overrides.recordSessionApproval ?? recordSessionApproval,
     getActiveSkillEntries:
       overrides.getActiveSkillEntries ??
       vi
@@ -154,11 +129,12 @@ function makeStatefulSession(
         .fn<MockGateHandlerSession["getToolPreviewLimits"]>()
         .mockReturnValue(resolveToolPreviewLimits(DEFAULT_EXTENSION_CONFIG)),
   };
-  return session;
+  return { session, sessionRules };
 }
 
 function makeHandlerForSession(
   session: MockGateHandlerSession,
+  sessionRules: SessionRules,
   prompter?: GatePrompter,
 ): { handler: PermissionGateHandler; prompter: GatePrompter } {
   const events = makeEvents();
@@ -169,18 +145,19 @@ function makeHandlerForSession(
       .fn<GatePrompter["prompt"]>()
       .mockResolvedValue({ approved: true, state: "approved_for_session" }),
   };
-  // Resolver delegates to session's checkPermission + getSessionRuleset so
-  // stateful approval tracking steers resolve automatically.
+  // Resolver delegates to session's checkPermission; the shared sessionRules
+  // is the recorder so GateRunner writes approvals into the same store that
+  // checkPermission reads from.
   const resolver = {
     resolve: (surface: string, input: unknown, agentName?: string) =>
-      session.checkPermission(
-        surface,
-        input,
-        agentName,
-        session.getSessionRuleset(),
-      ),
+      session.checkPermission(surface, input, agentName),
   };
-  const runner = new GateRunner(resolver, session, resolvedPrompter, reporter);
+  const runner = new GateRunner(
+    resolver,
+    sessionRules,
+    resolvedPrompter,
+    reporter,
+  );
   const handler = new PermissionGateHandler(
     session,
     makeToolRegistry(),
@@ -210,8 +187,11 @@ function makeToolRegistry(): ToolRegistry {
 describe("external-directory session dedup", () => {
   describe("path-bearing tools (read, write, edit)", () => {
     it("does not re-prompt for the same external path after session approval", async () => {
-      const session = makeStatefulSession();
-      const { handler, prompter } = makeHandlerForSession(session);
+      const { session, sessionRules } = makeStatefulSession();
+      const { handler, prompter } = makeHandlerForSession(
+        session,
+        sessionRules,
+      );
       const ctx = makeCtx();
       const externalPath = "/outside/project/data.txt";
 
@@ -239,8 +219,11 @@ describe("external-directory session dedup", () => {
     });
 
     it("does not re-prompt for a different file in the same external directory", async () => {
-      const session = makeStatefulSession();
-      const { handler, prompter } = makeHandlerForSession(session);
+      const { session, sessionRules } = makeStatefulSession();
+      const { handler, prompter } = makeHandlerForSession(
+        session,
+        sessionRules,
+      );
       const ctx = makeCtx();
 
       // First call — prompt for /outside/project/a.txt
@@ -265,8 +248,11 @@ describe("external-directory session dedup", () => {
     });
 
     it("does prompt for a file in a different external directory", async () => {
-      const session = makeStatefulSession();
-      const { handler, prompter } = makeHandlerForSession(session);
+      const { session, sessionRules } = makeStatefulSession();
+      const { handler, prompter } = makeHandlerForSession(
+        session,
+        sessionRules,
+      );
       const ctx = makeCtx();
 
       // First call — /outside/alpha/file.txt
@@ -291,14 +277,18 @@ describe("external-directory session dedup", () => {
     });
 
     it("re-prompts when user approved once (not for session)", async () => {
-      const session = makeStatefulSession();
+      const { session, sessionRules } = makeStatefulSession();
       const approveOnce: GatePrompter = {
         canConfirm: vi.fn().mockReturnValue(true),
         prompt: vi
           .fn<GatePrompter["prompt"]>()
           .mockResolvedValue({ approved: true, state: "approved" }),
       };
-      const { handler, prompter } = makeHandlerForSession(session, approveOnce);
+      const { handler, prompter } = makeHandlerForSession(
+        session,
+        sessionRules,
+        approveOnce,
+      );
       const ctx = makeCtx();
       const externalPath = "/outside/project/data.txt";
 
@@ -326,8 +316,11 @@ describe("external-directory session dedup", () => {
 
   describe("bash commands with external paths", () => {
     it("does not re-prompt for a bash command referencing the same external path after session approval", async () => {
-      const session = makeStatefulSession();
-      const { handler, prompter } = makeHandlerForSession(session);
+      const { session, sessionRules } = makeStatefulSession();
+      const { handler, prompter } = makeHandlerForSession(
+        session,
+        sessionRules,
+      );
       const ctx = makeCtx();
 
       // First call — bash referencing /tmp/out.txt
@@ -354,8 +347,11 @@ describe("external-directory session dedup", () => {
     });
 
     it("does not re-prompt for read after bash already approved the same directory", async () => {
-      const session = makeStatefulSession();
-      const { handler, prompter } = makeHandlerForSession(session);
+      const { session, sessionRules } = makeStatefulSession();
+      const { handler, prompter } = makeHandlerForSession(
+        session,
+        sessionRules,
+      );
       const ctx = makeCtx();
 
       // First call — bash writes to /tmp/out.txt

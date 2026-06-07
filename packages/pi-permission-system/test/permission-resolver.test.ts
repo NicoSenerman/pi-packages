@@ -82,7 +82,9 @@ describe("PermissionResolver", () => {
       const { resolver } = makeResolver(pm, sessionRules);
 
       // Record an approval directly into the shared SessionRules instance.
-      sessionRules.record(SessionApproval.single("bash", "git *"));
+      sessionRules.recordSessionApproval(
+        SessionApproval.single("bash", "git *"),
+      );
       resolver.resolve("bash", { command: "git status" });
 
       const passedRules = vi.mocked(pm.checkPermission).mock.calls[0][3];

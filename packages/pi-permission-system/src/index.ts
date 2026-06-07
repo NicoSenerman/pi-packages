@@ -162,7 +162,7 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
   const resolver = new PermissionResolver(permissionManager, sessionRules);
 
   const reporter = new GateDecisionReporter(session.logger, pi.events);
-  const gateRunner = new GateRunner(resolver, session, gateway, reporter);
+  const gateRunner = new GateRunner(resolver, sessionRules, gateway, reporter);
   const toolCallGatePipeline = new ToolCallGatePipeline(
     resolver,
     session,

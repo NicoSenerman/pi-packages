@@ -24,8 +24,8 @@ import { PermissionGateHandler } from "#src/handlers/permission-gate-handler";
 import type { PermissionDecisionEvent } from "#src/permission-events";
 import { PERMISSIONS_DECISION_CHANNEL } from "#src/permission-events";
 import type { Rule } from "#src/rule";
-import type { SessionApprovalRecorder } from "#src/session-approval-recorder";
 import type { SessionLogger } from "#src/session-logger";
+import { SessionRules } from "#src/session-rules";
 import { resolveToolPreviewLimits } from "#src/tool-preview-formatter";
 import type { ToolRegistry } from "#src/tool-registry";
 import type { PermissionCheckResult, PermissionState } from "#src/types";
@@ -38,18 +38,16 @@ import type { PermissionCheckResult, PermissionState } from "#src/types";
  * Pass a `prompter` override to `makeHandler` to steer GateRunner's prompting
  * role; `makeHandler` creates a clean default prompter when none is supplied.
  *
- * The 4-arg `checkPermission` overrides the 3-arg version from
- * GateHandlerSession so the `resolve` delegation can forward session rules.
+ * The 4-arg `checkPermission` keeps the `rules?` param for backward compat
+ * with call sites that supply rules — the resolver no longer forwards ruleset
+ * via the session, but the mock signature is a superset of SkillInputGateInputs.
  */
 export type MockGateHandlerSession = ToolCallGateInputs &
   SkillInputGateInputs &
-  SessionApprovalRecorder &
   GateHandlerSession & {
     /** Logger source for the reporter the fixture builds. */
     logger: SessionLogger;
-    /** Session-rule accessor — used by the resolve delegation. */
-    getSessionRuleset(): Rule[];
-    /** 4-arg form so the resolve delegation can pass rules. */
+    /** 4-arg form kept for backward compat with existing test overrides. */
     checkPermission(
       surface: string,
       input: unknown,
@@ -144,12 +142,6 @@ export function makeSession(
       vi
         .fn<MockGateHandlerSession["checkPermission"]>()
         .mockReturnValue(makeCheckResult()),
-    getSessionRuleset:
-      overrides.getSessionRuleset ??
-      vi.fn<MockGateHandlerSession["getSessionRuleset"]>().mockReturnValue([]),
-    recordSessionApproval:
-      overrides.recordSessionApproval ??
-      vi.fn<MockGateHandlerSession["recordSessionApproval"]>(),
     getActiveSkillEntries:
       overrides.getActiveSkillEntries ??
       vi
@@ -278,16 +270,14 @@ export function makeHandler(overrides?: {
             .mockReturnValue(overrides.tools.map((name) => ({ name }))),
         })
       : makeToolRegistry(overrides?.toolRegistry);
-  // Resolver delegates to session's checkPermission + getSessionRuleset —
+  // Resolver delegates to session's checkPermission —
   // overriding session.checkPermission steers resolve automatically.
+  // The recorder is a shared SessionRules so the runner records approvals
+  // independently of the session mock.
+  const recorder = new SessionRules();
   const resolver = {
     resolve: (surface: string, input: unknown, agentName?: string) =>
-      session.checkPermission(
-        surface,
-        input,
-        agentName,
-        session.getSessionRuleset(),
-      ),
+      session.checkPermission(surface, input, agentName),
   };
   const pipeline = new ToolCallGatePipeline(resolver, session);
   const skillInputPipeline = new SkillInputGatePipeline(session);
@@ -298,7 +288,7 @@ export function makeHandler(overrides?: {
       .fn<GatePrompter["prompt"]>()
       .mockResolvedValue({ approved: true, state: "approved" }),
   };
-  const runner = new GateRunner(resolver, session, prompter, reporter);
+  const runner = new GateRunner(resolver, recorder, prompter, reporter);
   const handler = new PermissionGateHandler(
     session,
     toolRegistry,
@@ -306,7 +296,7 @@ export function makeHandler(overrides?: {
     skillInputPipeline,
     runner,
   );
-  return { handler, events, session, toolRegistry, prompter };
+  return { handler, events, session, toolRegistry, prompter, recorder };
 }
 
 /** Extract all permissions:decision payloads from the events.emit mock. */
