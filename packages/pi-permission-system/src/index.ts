@@ -32,10 +32,66 @@ import { isSubagentExecutionContext } from "./subagent-context";
 import { subscribeSubagentLifecycle } from "./subagent-lifecycle-events";
 import { getSubagentSessionRegistry } from "./subagent-registry";
 import { ToolInputFormatterRegistry } from "./tool-input-formatter-registry";
+import { Key } from "@earendil-works/pi-tui";
 import {
   canResolveAskPermissionRequest,
+  getCurrentMode,
+  setCurrentMode,
   shouldAutoApprovePermissionState,
 } from "./yolo-mode";
+
+function registerModeCommand(
+  pi: ExtensionAPI,
+  configStore: ConfigStore,
+): void {
+  pi.registerCommand("mode", {
+    description: "Toggle between yolo (full access) and plan (permission gates) mode",
+    getArgumentCompletions: (prefix: string) => {
+      const normalized = prefix.trim().toLowerCase();
+      const options = ["yolo", "plan"];
+      const filtered = options.filter((o) => o.startsWith(normalized));
+      return filtered.length > 0
+        ? filtered.map((o) => ({ value: o, label: o, description: o === "yolo" ? "Full access, no permission gates" : "Permission gates active, read-only + ask" }))
+        : null;
+    },
+    handler: async (args, ctx) => {
+      const current = getCurrentMode();
+      const arg = args.trim().toLowerCase();
+
+      let next: "yolo" | "plan";
+      if (arg === "yolo" || arg === "plan") {
+        next = arg;
+      } else {
+        next = current === "yolo" ? "plan" : "yolo";
+      }
+
+      if (next === current && !arg) {
+        next = current === "yolo" ? "plan" : "yolo";
+      }
+
+      setCurrentMode(next, ctx, configStore.current());
+
+      const label = next === "yolo" ? "🚀 YOLO" : "⏸ Plan";
+      const description =
+        next === "yolo"
+          ? "Full access — all permissions auto-approved"
+          : "Permission gates active — asks before dangerous operations";
+      ctx.ui.notify(`${label} mode: ${description}`, "info");
+    },
+  });
+
+  pi.registerShortcut(Key.ctrlAlt("m"), {
+    description: "Toggle yolo/plan mode",
+    handler: async (ctx) => {
+      const current = getCurrentMode();
+      const next = current === "yolo" ? "plan" : "yolo";
+      setCurrentMode(next, ctx, configStore.current());
+
+      const label = next === "yolo" ? "🚀 YOLO" : "⏸ Plan";
+      ctx.ui.notify(`${label} mode`, "info");
+    },
+  });
+}
 
 export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
   const agentDir = getAgentDir();
@@ -135,6 +191,8 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
         session.lastKnownActiveAgentName ?? undefined,
       ),
   });
+
+  registerModeCommand(pi, configStore);
 
   const rpcHandles = registerPermissionRpcHandlers(pi.events, {
     getPermissionManager: () => permissionManager,

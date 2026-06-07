@@ -7,10 +7,9 @@ import {
   EXTENSION_ID,
   type PermissionSystemExtensionConfig,
 } from "./extension-config";
-import { isYoloModeEnabled } from "./yolo-mode";
+import { getCurrentMode, isYoloModeEnabled } from "./yolo-mode";
 
 export const PERMISSION_SYSTEM_STATUS_KEY = EXTENSION_ID;
-export const PERMISSION_SYSTEM_YOLO_STATUS_VALUE = "yolo";
 
 type PermissionStatusContext =
   | Pick<ExtensionContext, "hasUI" | "ui">
@@ -19,9 +18,11 @@ type PermissionStatusContext =
 export function getPermissionSystemStatus(
   config: PermissionSystemExtensionConfig,
 ): string | undefined {
-  return isYoloModeEnabled(config)
-    ? PERMISSION_SYSTEM_YOLO_STATUS_VALUE
-    : undefined;
+  const mode = getCurrentMode();
+  if (mode === "yolo" || isYoloModeEnabled(config)) {
+    return "🚀 yolo";
+  }
+  return "⏸ plan";
 }
 
 export function syncPermissionSystemStatus(
