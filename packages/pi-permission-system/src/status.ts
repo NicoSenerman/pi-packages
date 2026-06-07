@@ -21,11 +21,13 @@ export function getPermissionSystemStatus(
 ): string | undefined {
   const mode = getCurrentMode();
   if (mode === "yolo" || isYoloModeEnabled(config)) {
+    if (ctx?.ui?.theme) {
+      return ctx.ui.theme.fg("success", "YOLO");
+    }
     return "YOLO";
   }
-  // Use theme accent color for GATED when UI context is available
   if (ctx?.ui?.theme) {
-    return ctx.ui.theme.fg("accent", "GATED");
+    return ctx.ui.theme.fg("mdCode", "GATED");
   }
   return "GATED";
 }
