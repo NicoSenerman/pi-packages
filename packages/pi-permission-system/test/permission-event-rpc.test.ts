@@ -36,13 +36,13 @@ function makeDeps(
   overrides: Partial<PermissionRpcDeps> = {},
 ): PermissionRpcDeps {
   return {
-    getPermissionManager: vi.fn().mockReturnValue({
+    permissionManager: {
       checkPermission: vi.fn().mockReturnValue(makeCheckResult("allow")),
-    }),
-    getSessionRules: vi.fn().mockReturnValue([]),
-    getRuntimeContext: vi.fn().mockReturnValue(null),
+    },
+    sessionRules: { getRuleset: vi.fn().mockReturnValue([]) },
+    session: { getRuntimeContext: vi.fn().mockReturnValue(null) },
     requestPermissionDecisionFromUi: vi.fn(),
-    writeReviewLog: vi.fn(),
+    logger: { review: vi.fn() },
     ...overrides,
   };
 }
@@ -73,9 +73,9 @@ describe("registerPermissionRpcHandlers — permissions:rpc:check", () => {
   it("replies allow for an allowed surface/value", async () => {
     const bus = createEventBus();
     const deps = makeDeps({
-      getPermissionManager: vi.fn().mockReturnValue({
+      permissionManager: {
         checkPermission: vi.fn().mockReturnValue(makeCheckResult("allow")),
-      }),
+      },
     });
     registerPermissionRpcHandlers(bus, deps);
 
@@ -100,14 +100,14 @@ describe("registerPermissionRpcHandlers — permissions:rpc:check", () => {
   it("replies deny for a denied surface/value", async () => {
     const bus = createEventBus();
     const deps = makeDeps({
-      getPermissionManager: vi.fn().mockReturnValue({
+      permissionManager: {
         checkPermission: vi.fn().mockReturnValue(
           makeCheckResult("deny", {
             origin: "project",
             matchedPattern: "rm *",
           }),
         ),
-      }),
+      },
     });
     registerPermissionRpcHandlers(bus, deps);
 
@@ -131,13 +131,13 @@ describe("registerPermissionRpcHandlers — permissions:rpc:check", () => {
   it("replies ask for an ask surface/value", async () => {
     const bus = createEventBus();
     const deps = makeDeps({
-      getPermissionManager: vi.fn().mockReturnValue({
+      permissionManager: {
         checkPermission: vi
           .fn()
           .mockReturnValue(
             makeCheckResult("ask", { matchedPattern: undefined }),
           ),
-      }),
+      },
     });
     registerPermissionRpcHandlers(bus, deps);
 
@@ -161,7 +161,7 @@ describe("registerPermissionRpcHandlers — permissions:rpc:check", () => {
     const checkPermission = vi.fn().mockReturnValue(makeCheckResult("allow"));
     const bus = createEventBus();
     const deps = makeDeps({
-      getPermissionManager: vi.fn().mockReturnValue({ checkPermission }),
+      permissionManager: { checkPermission },
     });
     registerPermissionRpcHandlers(bus, deps);
 
@@ -197,8 +197,8 @@ describe("registerPermissionRpcHandlers — permissions:rpc:check", () => {
     const checkPermission = vi.fn().mockReturnValue(makeCheckResult("allow"));
     const bus = createEventBus();
     const deps = makeDeps({
-      getPermissionManager: vi.fn().mockReturnValue({ checkPermission }),
-      getSessionRules: vi.fn().mockReturnValue(sessionRules),
+      permissionManager: { checkPermission },
+      sessionRules: { getRuleset: vi.fn().mockReturnValue(sessionRules) },
     });
     registerPermissionRpcHandlers(bus, deps);
 
@@ -246,7 +246,7 @@ describe("registerPermissionRpcHandlers — permissions:rpc:check", () => {
     const checkPermission = vi.fn().mockReturnValue(makeCheckResult("allow"));
     const bus = createEventBus();
     const deps = makeDeps({
-      getPermissionManager: vi.fn().mockReturnValue({ checkPermission }),
+      permissionManager: { checkPermission },
     });
     const handles = registerPermissionRpcHandlers(bus, deps);
     handles.unsubCheck();
@@ -290,7 +290,7 @@ describe("registerPermissionRpcHandlers — permissions:rpc:prompt", () => {
     const ctx = makeCtxWithUi();
     const approvedDecision = { approved: true, state: "approved" as const };
     const deps = makeDeps({
-      getRuntimeContext: vi.fn().mockReturnValue(ctx),
+      session: { getRuntimeContext: vi.fn().mockReturnValue(ctx) },
       requestPermissionDecisionFromUi: vi
         .fn()
         .mockResolvedValue(approvedDecision),
@@ -325,7 +325,7 @@ describe("registerPermissionRpcHandlers — permissions:rpc:prompt", () => {
       .fn()
       .mockResolvedValue({ approved: true, state: "approved" as const });
     const deps = makeDeps({
-      getRuntimeContext: vi.fn().mockReturnValue(ctx),
+      session: { getRuntimeContext: vi.fn().mockReturnValue(ctx) },
       requestPermissionDecisionFromUi: requestUi,
     });
     registerPermissionRpcHandlers(bus, deps);
@@ -363,7 +363,7 @@ describe("registerPermissionRpcHandlers — permissions:rpc:prompt", () => {
       .fn()
       .mockResolvedValue({ approved: true, state: "approved" as const });
     const deps = makeDeps({
-      getRuntimeContext: vi.fn().mockReturnValue(ctx),
+      session: { getRuntimeContext: vi.fn().mockReturnValue(ctx) },
       requestPermissionDecisionFromUi: requestUi,
     });
     registerPermissionRpcHandlers(bus, deps);
@@ -399,7 +399,7 @@ describe("registerPermissionRpcHandlers — permissions:rpc:prompt", () => {
       denialReason: "Too risky",
     };
     const deps = makeDeps({
-      getRuntimeContext: vi.fn().mockReturnValue(ctx),
+      session: { getRuntimeContext: vi.fn().mockReturnValue(ctx) },
       requestPermissionDecisionFromUi: vi
         .fn()
         .mockResolvedValue(deniedDecision),
@@ -430,7 +430,7 @@ describe("registerPermissionRpcHandlers — permissions:rpc:prompt", () => {
   it("replies with no_ui error when context has no UI", async () => {
     const bus = createEventBus();
     const deps = makeDeps({
-      getRuntimeContext: vi.fn().mockReturnValue(null),
+      session: { getRuntimeContext: vi.fn().mockReturnValue(null) },
     });
     registerPermissionRpcHandlers(bus, deps);
 
@@ -453,9 +453,11 @@ describe("registerPermissionRpcHandlers — permissions:rpc:prompt", () => {
   it("replies with no_ui error when context hasUI is false", async () => {
     const bus = createEventBus();
     const deps = makeDeps({
-      getRuntimeContext: vi
-        .fn()
-        .mockReturnValue({ hasUI: false, ui: makeUi() }),
+      session: {
+        getRuntimeContext: vi
+          .fn()
+          .mockReturnValue({ hasUI: false, ui: makeUi() }),
+      },
     });
     registerPermissionRpcHandlers(bus, deps);
 
@@ -478,13 +480,13 @@ describe("registerPermissionRpcHandlers — permissions:rpc:prompt", () => {
   it("writes to the review log after a prompt decision", async () => {
     const bus = createEventBus();
     const ctx = makeCtxWithUi();
-    const writeReviewLog = vi.fn();
+    const logger = { review: vi.fn() };
     const deps = makeDeps({
-      getRuntimeContext: vi.fn().mockReturnValue(ctx),
+      session: { getRuntimeContext: vi.fn().mockReturnValue(ctx) },
       requestPermissionDecisionFromUi: vi
         .fn()
         .mockResolvedValue({ approved: true, state: "approved" as const }),
-      writeReviewLog,
+      logger,
     });
     registerPermissionRpcHandlers(bus, deps);
 
@@ -501,7 +503,7 @@ describe("registerPermissionRpcHandlers — permissions:rpc:prompt", () => {
     });
     await replyPromise;
 
-    expect(writeReviewLog).toHaveBeenCalledWith(
+    expect(logger.review).toHaveBeenCalledWith(
       "permission_request.rpc_prompt",
       expect.objectContaining({
         requestId: "req-log",
@@ -520,7 +522,7 @@ describe("registerPermissionRpcHandlers — permissions:rpc:prompt", () => {
     const bus = createEventBus();
     const ctx = makeCtxWithUi();
     const deps = makeDeps({
-      getRuntimeContext: vi.fn().mockReturnValue(ctx),
+      session: { getRuntimeContext: vi.fn().mockReturnValue(ctx) },
       requestPermissionDecisionFromUi: requestUi,
     });
     const handles = registerPermissionRpcHandlers(bus, deps);

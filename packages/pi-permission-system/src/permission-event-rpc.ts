@@ -29,18 +29,20 @@ import {
 import type { PermissionManager } from "./permission-manager";
 import { buildRpcUiPrompt } from "./permission-ui-prompt";
 import type { Rule } from "./rule";
+import type { ReviewLogger } from "./session-logger";
+import type { SessionRules } from "./session-rules";
 
 /** Dependencies injected into the RPC handler registry. */
 export interface PermissionRpcDeps {
-  /** Returns the current PermissionManager (refreshed on session start). */
-  getPermissionManager(): Pick<PermissionManager, "checkPermission">;
-  /** Returns the current session rules (highest-priority approvals). */
-  getSessionRules(): Rule[];
+  /** The shared PermissionManager instance. */
+  permissionManager: Pick<PermissionManager, "checkPermission">;
+  /** The shared SessionRules instance. */
+  sessionRules: Pick<SessionRules, "getRuleset">;
   /**
-   * Returns the current ExtensionContext, or null if no session is active.
+   * Narrow session view: provides runtime context.
    * Used by the prompt handler to check hasUI and access the UI dialog.
    */
-  getRuntimeContext(): ExtensionContext | null;
+  session: { getRuntimeContext(): ExtensionContext | null };
   /** Show the interactive permission dialog in the parent session UI. */
   requestPermissionDecisionFromUi(
     ui: ExtensionContext["ui"],
@@ -48,8 +50,8 @@ export interface PermissionRpcDeps {
     message: string,
     options?: RequestPermissionOptions,
   ): Promise<PermissionPromptDecision>;
-  /** Write structured entries to the permission review log. */
-  writeReviewLog(event: string, details: Record<string, unknown>): void;
+  /** Write review-log entries for prompted decisions. */
+  logger: ReviewLogger;
 }
 
 /** Unsubscribe handles returned from registerPermissionRpcHandlers. */
@@ -107,10 +109,13 @@ function handleCheckRpc(
     }
 
     const input = buildInputForSurface(surface, value);
-    const sessionRules = deps.getSessionRules();
-    const result = deps
-      .getPermissionManager()
-      .checkPermission(surface, input, agentName ?? undefined, sessionRules);
+    const sessionRules = deps.sessionRules.getRuleset();
+    const result = deps.permissionManager.checkPermission(
+      surface,
+      input,
+      agentName ?? undefined,
+      sessionRules,
+    );
 
     const data: PermissionsCheckReplyData = {
       result: result.state,
@@ -141,7 +146,7 @@ async function handlePromptRpc(
 
   const replyChannel = `${PERMISSIONS_RPC_PROMPT_CHANNEL}:reply:${requestId}`;
 
-  const ctx = deps.getRuntimeContext();
+  const ctx = deps.session.getRuntimeContext();
   if (!ctx?.hasUI) {
     events.emit(replyChannel, errorReply("no_ui"));
     return;
@@ -169,7 +174,7 @@ async function handlePromptRpc(
       sessionLabel ? { sessionLabel } : undefined,
     );
 
-    deps.writeReviewLog("permission_request.rpc_prompt", {
+    deps.logger.review("permission_request.rpc_prompt", {
       requestId,
       surface: surface ?? null,
       value: value ?? null,

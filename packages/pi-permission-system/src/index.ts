@@ -134,11 +134,11 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
   });
 
   const rpcHandles = registerPermissionRpcHandlers(pi.events, {
-    getPermissionManager: () => permissionManager,
-    getSessionRules: () => sessionRules.getRuleset(),
-    getRuntimeContext: () => session.getRuntimeContext(),
+    permissionManager,
+    sessionRules,
+    session,
     requestPermissionDecisionFromUi,
-    writeReviewLog: (event, details) => logger.review(event, details),
+    logger,
   });
 
   const permissionsService = new LocalPermissionsService(
