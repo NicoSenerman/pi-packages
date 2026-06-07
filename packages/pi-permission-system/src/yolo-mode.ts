@@ -14,7 +14,7 @@ export interface AskPermissionResolutionOptions {
 // Runtime yolo is an in-memory flag that is per-session, allowing each Pi
 // window to independently toggle yolo mode without affecting others.
 
-let runtimeYoloMode = false;
+let runtimeYoloMode = true;
 
 export function setRuntimeYoloMode(value: boolean): void {
   runtimeYoloMode = value;
