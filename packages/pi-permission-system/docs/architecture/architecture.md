@@ -600,7 +600,7 @@ Phase 4 splits the object so each role maps to a distinct collaborator, then ret
 | Maintainability                                              | 91.2 (good)                                                                            |
 | Complexity refactoring targets                               | 0                                                                                      |
 | Production duplication                                       | 0% (no `src/` clone groups)                                                            |
-| `index.ts` closures + `.bind` adapters                       | 20                                                                                     |
+| `index.ts` closures + `.bind` adapters                       | 11 (was 20; see Step 5 budget table in plan [#338])                                    |
 | `runtime`-as-first-arg free functions                        | 0 (all eliminated by #335–#337)                                                        |
 | `PermissionSession` role interfaces implemented by one class | 6                                                                                      |
 | Test files using module-level `vi.mock`                      | 23                                                                                     |
@@ -664,7 +664,9 @@ Each step is a behavior-preserving refactor that leaves the suite green; the suc
    - Target: `index.ts`; the deps interfaces on `PermissionPrompter`, `PermissionSession`, the command, and the RPC handlers.
    - With Steps 2-4 done, replace the remaining `() =>`/`.bind` adapters with direct collaborator references and shrink the deps bags; verify via `test/composition-root.test.ts`.
    - Smell category: C/E (adapter closure density — addresses Finding 4).
-   - Outcome: `index.ts` closures + binds 20 → target ≤ 8 (the `pi.on` handlers and the `toolRegistry` adapter remain legitimately).
+   - Outcome: `index.ts` closures 20 → 11.
+     Permanent floor: 6 `pi.on` handlers + 2 `toolRegistry` adapters + 2 logger forward-reference cycle closures (`getConfig`/`notify`; idiomatic; see pi-subagents pattern).
+     Transitional: 1 `canRequestPermissionConfirmation` closure removed by Step 6.
 
 6. **Extract a context-owning `PromptingGateway`; collapse the prompt twins** ([#339])
    - Target: new `src/prompting-gateway.ts`; `permission-session.ts`; `handlers/gates/runner.ts`; `index.ts`.
@@ -691,7 +693,7 @@ Each step is a behavior-preserving refactor that leaves the suite green; the suc
    - Smell category: D/E (test organization — the part of Finding 5 the production refactor does not auto-resolve).
    - Outcome: the 2,785-line monolith and its 12 clone groups are gone; the suite is fully co-located.
 
-Expected phase outcome: the constructibility table moves toward zero — `index.ts` closures 20 → ≤ 8, `runtime`-arg free functions 5 → 0, `PermissionSession` interfaces 6 → 1-2 on distinct objects, the `../src/runtime` / `../src/permission-manager` module mocks removed, the `PermissionManager` / `ExtensionRuntime` / `SessionRules` casts → 0; `permission-system.test.ts` deleted; test duplication falls as a consequence; health score 76 → target ≥ 80.
+Expected phase outcome: the constructibility table moves toward zero — `index.ts` closures 20 → 11 (Steps 1-5) → 10 (Step 6), `runtime`-arg free functions 5 → 0, `PermissionSession` interfaces 6 → 1-2 on distinct objects, the `../src/runtime` / `../src/permission-manager` module mocks removed, the `PermissionManager` / `ExtensionRuntime` / `SessionRules` casts → 0; `permission-system.test.ts` deleted; test duplication falls as a consequence; health score 76 → target ≥ 80.
 
 Deferred to Phase 5 (the "Full" scope exceeds 9 steps): further `PermissionSession` decomposition (an `ActiveAgentTracker` for agent-name state, a cache-key owner, an infra-path/preview-limits helper), and the remaining test-tree cleanup from the first draft that the production refactor does not dissolve — de-duplicating the residual clone families (`external-directory-integration`, `permission-forwarder`, the gate families) onto shared fixtures and splitting the oversized `describe` arrows (`bash-external-directory.test.ts` 880-line, `permission-session.test.ts` 575-line).
 These are intentionally last: they are cheaper after Steps 1-8 shrink the fixtures they would otherwise migrate.
