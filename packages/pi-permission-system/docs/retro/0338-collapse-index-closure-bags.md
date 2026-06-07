@@ -29,3 +29,24 @@ Seven commit cycles (six `refactor:` consumer migrations + one `docs:` metric up
 
 [#316]: https://github.com/gotgenes/pi-packages/issues/316
 [#339]: https://github.com/gotgenes/pi-packages/issues/339
+
+## Stage: Implementation — TDD (2026-06-06T21:54:00Z)
+
+### Session summary
+
+Executed all seven TDD cycles: six `refactor:` consumer migrations (cycles 1–6) plus one `docs:` metric update (cycle 7).
+The suite remained at 86 test files / 1815 tests throughout (0 delta); all 1815 pass green.
+All planned interface changes landed — `ConfigStoreLogger` and `ForwardedPermissionLogger` deleted; `ReviewLogger` / `DebugReviewLogger` introduced; `index.ts` closure count confirmed at 11.
+
+### Observations
+
+- Cycle 1 (`ConfigStore`): the batch edit for `config-store.ts` failed on the first attempt because the batch validator matched `oldText` against the original file (before any in-batch edits applied) but one `oldText` contained a context line that had already been mutated by an earlier entry in the same batch.
+  Re-read the exact line text via `Read` at offset, then split the batch to avoid the overlapping-context issue.
+- Cycle 4 (`PermissionForwarder` + io logger): `io.ts` had 8 `ForwardedPermissionLogger` occurrences spread across function parameter signatures after the first Edit batch ran.
+  Used `sed -i ''` for the bulk rename rather than 8 individual `Edit` entries — faster and less error-prone for a mechanical global replace with no ambiguity.
+- Cycle 5 (`config-modal`): `Ruleset` was used in test controller objects but not yet imported.
+  Added the import alongside the other changes in the same commit — caught by `pnpm run check` before commit.
+- `test/composition-root.test.ts` listed in the plan but not modified: the existing "gate session-approval visible to RPC check" test already covers the injected-object behavior through the real factory; no new assertion was needed.
+  Noted as a minor deviation.
+- One stray unused import (`Rule` in `permission-event-rpc.ts`) surfaced at lint time after cycle 3; fixed as a `style:` commit since it was separated from the originating commit by later commits.
+- Pre-completion reviewer: **PASS** — all deterministic checks green, no structural concerns, architecture.md Mermaid diagrams valid.
