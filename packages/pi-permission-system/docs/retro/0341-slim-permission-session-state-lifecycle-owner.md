@@ -52,3 +52,58 @@ Pre-completion reviewer: PASS.
 - Reviewer's one WARN is informational: `PermissionResolver.checkPermission` is intentionally dual-role (ruleset-injecting `resolve` vs. raw `SkillPermissionChecker` pre-filter) — deliberate design carried over from `#340`, no change needed.
 - `Edit`-tool friction: the Unicode box-drawing comment banners in `permission-session.ts` and the architecture doc twice defeated `oldText` matching (compounded by `pi-autoformat` reflow); fell back to a Python slice for the two block removals.
   Re-reading after autoformat resolved the rest.
+
+## Stage: Final Retrospective (2026-06-07T20:47:46Z)
+
+### Session summary
+
+Shipped `#341` across Planning (`claude-opus-4-8`), TDD (`claude-sonnet-4-6`, with an opus escalation for one design question), and Ship (`deepseek-v4-flash`): `PermissionSession` became a state/lifecycle owner, the recorder role moved to `SessionRules`, the two non-gate handlers were rewired to a concrete `PermissionResolver`, and the three fig-leaf handler interfaces were deleted.
+Released as `pi-permission-system-v10.5.1`; behavior-preserving; net test delta −5; pre-completion reviewer returned PASS.
+The defining moment was a user "step back" question that converted a `fallow`-suppression band-aid into the truthful `implements ToolCallGateInputs` contract declaration.
+
+### Observations
+
+#### What went well
+
+- The lift-and-shift TDD order held the suite green at every commit, and the planning prediction "the 104 `makeHandler` call sites stay put" was correct — only three handler-test assertions needed edits because `makeHandler` preserved its override-bag surface.
+- The model ladder matched task weight at every stage; notably the `sonnet` → `opus` switch coincided with the user's design question and gave the structural reasoning (`implements` vs. suppress) the right model.
+- Incremental verification was disciplined: `pnpm run check` plus a targeted `vitest run` after each step, the full suite before each commit, and `fallow` at the end-of-TDD gate.
+- The user's "step back" redirect — a question, not a correction — is the standout: it reframed a band-aid into a truthful design fix (`implements ToolCallGateInputs`) and surfaced a generalizable `fallow` insight worth promoting.
+
+#### What caused friction (agent side)
+
+- `premature-convergence` / `wrong-abstraction` — when `fallow` flagged four `PermissionSession` members after Step 5 removed the last `implements`, the agent (on `sonnet`) reached for four `fallow-ignore` suppressions without first asking "why is `fallow` flagging these?".
+  The user caught it ("Take a step back.
+  Why are we having to tell fallow these methods are used?").
+  Impact: ~4 tool calls of suppression work reverted; the root-cause investigation it triggered would have been needed regardless, so net rework was small but the design-quality delta was large (truthful contract vs. four band-aids).
+  User-caught.
+- `missing-context` — the `fallow` skill was not loaded during TDD (the same gap the `#340` retro noted); loading it is the natural first move when `fallow` flags findings, and its absence reinforced the suppress-first reflex.
+  The skill did not yet document the `implements`-liveness behavior anyway — hence the proposal below.
+  Impact: contributed to the premature-suppression reflex; recurring across `#340` and `#341`.
+- Edit-tool friction (recurring, ~6 occurrences) — Unicode box-drawing banner comments (`// ── … ──`) in `permission-session.ts`, `handler-fixtures.ts`, and `architecture.md` defeated `oldText` matching (variable-length dash runs compounded by `pi-autoformat` reflow); the reliable workaround was a Python `.find()` slice on a short substring.
+  Impact: added friction, no rework — each recovered within 1–2 calls.
+
+#### What caused friction (user side)
+
+- Several `Continue.` nudges during multi-file TDD steps where the agent paused after a tool batch.
+  Mechanical oversight rather than strategic input; the agent was making steady progress.
+  Opportunity: batch the remaining edits of a single step more aggressively so a multi-file step does not stall waiting for a nudge (same observation as the `#340` retro — recurring).
+- The `#338` `✓ complete` gap: the user had to point out that a prior CLOSED roadmap step was never marked complete in `architecture.md`.
+  Opportunity: the doc-update step could prompt re-checking sibling roadmap steps' completion marks, not just the current issue's.
+
+### Diagnostic details
+
+- **Model-performance correlation** — clean, no mismatches.
+  Planning ran on `claude-opus-4-8` (design ambiguity + `ask_user` gate), TDD on `claude-sonnet-4-6` (implementation), the fallow design question escalated `sonnet` → `opus` (correct — structural-design judgment), Ship on `deepseek-v4-flash` (mechanical git/CI/release), and the `pre-completion-reviewer` subagent returned a thorough PASS.
+  The escalation landing exactly at the judgment-heavy question is the model ladder working as intended.
+- **Escalation-delay tracking** — no long rabbit-hole.
+  The suppression episode was ~4 tool calls before the user redirected; the post-redirect investigation (root cause → `implements` fix → named-interface attempt → revert → one justified suppression) made steady forward progress rather than repeating a failing approach.
+- **Unused-tool detection** — the `fallow` skill was available but not loaded during TDD; this is the second consecutive issue (`#340`, `#341`) where it would have been the right first reach when dead-code findings appeared.
+- **Feedback-loop gap analysis** — verification was incremental and effective; `fallow` correctly ran at the end-of-TDD gate per `/tdd-plan`.
+  The gap was design-foresight (not anticipating that removing the last `implements` would blind `fallow` to structurally-consumed members), not a missing verification run.
+
+### Changes made
+
+1. `.pi/skills/fallow/SKILL.md` — added "Key gotchas" item 6: `fallow` keys class-member liveness off `implements` clauses, so a structurally-consumed member reads as dead once the last `implements` is removed; prefer re-declaring the contract over suppressing.
+2. `.pi/prompts/tdd-plan.md` — reframed the end-of-TDD `fallow` step to load the `fallow` skill and prefer declaring a real contract / removing dead exports over suppressing (suppress only verified false positives), replacing the prior "add suppressions for false positives" wording that nudged toward the suppress-first reflex.
+3. Recorded (no rule change): the Edit-tool `// ── … ──` banner-matching friction (covered by existing minimal-`oldText` guidance), the `#338` `✓ complete` gap (single-occurrence historical hygiene), and the recurring `Continue.`-nudge batching observation (judged too marginal for a crisp rule in the `#340` retro).

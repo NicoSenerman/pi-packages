@@ -101,7 +101,7 @@ If the deviation is large, stop and ask.
    The fixup must NOT land in a `docs:` commit.
 4. Run the fallow dead-code gate **from the repo root**: `pnpm fallow dead-code`.
    Running from a package subdirectory detects fewer entry points than CI, producing false positives that become stale suppressions in CI.
-   If it exits non-zero, fix the findings (remove dead exports, add suppressions for false positives).
+   If it exits non-zero, load the `fallow` skill and fix the findings — prefer declaring a real contract (`implements`) or removing dead exports over suppressing; suppress only verified false positives.
    Commit fixes as part of the most recent feat commit (amend) if not yet pushed; otherwise as a `fix:` commit.
 5. Check for unstaged lockfile changes: `git diff --name-only pnpm-lock.yaml`.
    If modified, stage and commit it as part of the most recent feat commit (amend if not yet pushed) or as a separate `fix:` commit.

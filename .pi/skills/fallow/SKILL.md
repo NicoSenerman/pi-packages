@@ -86,3 +86,5 @@ pnpm fallow dead-code        # verify
 3. `--changed-since` is additive — only new issues in changed files.
 4. Never run `fallow watch` — it is interactive and never exits.
 5. The human-readable `health --targets` output omits the "Refactoring targets" section entirely when there are zero targets — to confirm a file dropped off the list, use `--format json` and check the `targets` array is empty rather than grepping the text output.
+6. Class-member liveness is keyed off `implements` clauses: a member reached only through a structural type the class does not explicitly `implements` reads as dead once the last `implements` is removed.
+   Prefer re-declaring the genuine contract (`implements ThatInterface`) over a suppression; suppress only when the consumer is wired via an object-literal property, which fallow cannot trace.
