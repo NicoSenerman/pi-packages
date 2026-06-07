@@ -256,7 +256,20 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
     lifecycle.handleResourcesDiscover(event),
   );
   pi.on("session_shutdown", () => lifecycle.handleSessionShutdown());
-  pi.on("before_agent_start", (event, ctx) => agentPrep.handle(event, ctx));
+  pi.on("before_agent_start", (event, ctx) => {
+    agentPrep.handle(event, ctx);
+
+    if (getCurrentMode() === "gated") {
+      return {
+        message: {
+          customType: "gated-mode-context",
+          content: `You are in GATED mode — the user is actively participating in this session. Every file mutation and destructive command requires their approval. Share your reasoning before acting: explain what you find, propose next steps, and wait for direction. This may be an investigation session with no changes needed — follow the user's lead. Ask questions, surface findings, and treat each permission prompt as a checkpoint to confirm you're on the right track.`,
+          display: false,
+        },
+      };
+    }
+    return undefined;
+  });
   pi.on("input", (event, ctx) => gates.handleInput(event, ctx));
   pi.on("tool_call", (event, ctx) => gates.handleToolCall(event, ctx));
 }
