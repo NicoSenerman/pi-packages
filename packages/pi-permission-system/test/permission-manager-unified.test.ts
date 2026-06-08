@@ -676,7 +676,7 @@ describe("checkPermission — rule origin provenance", () => {
 
 import type { PolicyLoader } from "#src/permission-manager";
 import type { ResolvedPolicyPaths } from "#src/policy-loader";
-import type { ScopeConfig } from "#src/types";
+import type { PermissionCheckResult, ScopeConfig } from "#src/types";
 
 /**
  * Minimal in-memory PolicyLoader for testing merge + evaluation logic
@@ -2575,6 +2575,348 @@ test("PermissionManager.getConfigIssues returns empty array for empty config", (
   try {
     const issues = manager.getConfigIssues();
     expect(issues.length).toBe(0);
+  } finally {
+    cleanup();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Session-aware checkPermission() — moved from catch-all (#342)
+// ---------------------------------------------------------------------------
+
+test("checkPermission returns source 'session' when session rules cover the external_directory path", () => {
+  const { manager, cleanup } = createManager({
+    permission: { "*": "allow" },
+  });
+
+  try {
+    const sessionRules = [
+      {
+        surface: "external_directory",
+        pattern: "/other/project/*",
+        action: "allow" as const,
+        layer: "session" as const,
+        origin: "session" as const,
+      },
+    ];
+
+    const result = manager.checkPermission(
+      "external_directory",
+      { path: "/other/project/src/foo.ts" },
+      undefined,
+      sessionRules,
+    );
+    expect(result.state).toBe("allow");
+    expect(result.source).toBe("session");
+    expect(result.matchedPattern).toBe("/other/project/*");
+  } finally {
+    cleanup();
+  }
+});
+
+test("checkPermission falls back to config policy when session rules do not cover the path", () => {
+  const { manager, cleanup } = createManager({
+    permission: { "*": "allow", external_directory: "deny" },
+  });
+
+  try {
+    const sessionRules = [
+      {
+        surface: "external_directory",
+        pattern: "/other/project/*",
+        action: "allow" as const,
+        layer: "session" as const,
+        origin: "session" as const,
+      },
+    ];
+
+    const result = manager.checkPermission(
+      "external_directory",
+      { path: "/completely/different/path.ts" },
+      undefined,
+      sessionRules,
+    );
+    expect(result.state).toBe("deny");
+    expect(result.source).toBe("special");
+  } finally {
+    cleanup();
+  }
+});
+
+test("checkPermission with empty session rules is identical to call without sessionRules arg", () => {
+  const { manager, cleanup } = createManager({
+    permission: { "*": "allow", external_directory: "deny" },
+  });
+
+  try {
+    const withEmpty = manager.checkPermission(
+      "external_directory",
+      { path: "/other/project/foo.ts" },
+      undefined,
+      [],
+    );
+    const withoutArg = manager.checkPermission("external_directory", {
+      path: "/other/project/foo.ts",
+    });
+    const expected: PermissionCheckResult = {
+      toolName: "external_directory",
+      state: "deny",
+      matchedPattern: "*",
+      source: "special",
+      origin: "global",
+    };
+    expect(withEmpty).toEqual(expected);
+    expect(withoutArg).toEqual(expected);
+  } finally {
+    cleanup();
+  }
+});
+
+test("session rules for one surface do not affect checks on other surfaces", () => {
+  const { manager, cleanup } = createManager({ permission: {} });
+
+  try {
+    const sessionRules = [
+      {
+        surface: "external_directory",
+        pattern: "/other/project/*",
+        action: "allow" as const,
+        layer: "session" as const,
+        origin: "session" as const,
+      },
+    ];
+
+    const bashResult = manager.checkPermission(
+      "bash",
+      { command: "git status" },
+      undefined,
+      sessionRules,
+    );
+    expect(bashResult.state).toBe("ask");
+    expect(bashResult.source).toBe("bash");
+
+    const mcpResult = manager.checkPermission(
+      "mcp",
+      { tool: "exa:search" },
+      undefined,
+      sessionRules,
+    );
+    expect(mcpResult.state).toBe("ask");
+    expect(mcpResult.source).toBe("default");
+  } finally {
+    cleanup();
+  }
+});
+
+test("session rules override config deny for external_directory", () => {
+  const { manager, cleanup } = createManager({
+    permission: { "*": "allow", external_directory: "deny" },
+  });
+
+  try {
+    const sessionRules = [
+      {
+        surface: "external_directory",
+        pattern: "/other/project/*",
+        action: "allow" as const,
+        layer: "session" as const,
+        origin: "session" as const,
+      },
+    ];
+
+    const result = manager.checkPermission(
+      "external_directory",
+      { path: "/other/project/src/foo.ts" },
+      undefined,
+      sessionRules,
+    );
+    expect(result.state).toBe("allow");
+    expect(result.source).toBe("session");
+  } finally {
+    cleanup();
+  }
+});
+
+test("checkPermission returns source 'session' for bash when session rules match", () => {
+  const { manager, cleanup } = createManager({ permission: {} });
+
+  try {
+    const sessionRules = [
+      {
+        surface: "bash",
+        pattern: "git *",
+        action: "allow" as const,
+        layer: "session" as const,
+        origin: "session" as const,
+      },
+    ];
+
+    const result = manager.checkPermission(
+      "bash",
+      { command: "git status --short" },
+      undefined,
+      sessionRules,
+    );
+    expect(result.state).toBe("allow");
+    expect(result.source).toBe("session");
+    expect(result.matchedPattern).toBe("git *");
+  } finally {
+    cleanup();
+  }
+});
+
+test("checkPermission returns source 'session' for bash when session rule is exact match", () => {
+  const { manager, cleanup } = createManager({ permission: {} });
+
+  try {
+    const sessionRules = [
+      {
+        surface: "bash",
+        pattern: "ls",
+        action: "allow" as const,
+        layer: "session" as const,
+        origin: "session" as const,
+      },
+    ];
+
+    const result = manager.checkPermission(
+      "bash",
+      { command: "ls" },
+      undefined,
+      sessionRules,
+    );
+    expect(result.state).toBe("allow");
+    expect(result.source).toBe("session");
+  } finally {
+    cleanup();
+  }
+});
+
+test("checkPermission falls back to config for bash when session rules do not match the command", () => {
+  const { manager, cleanup } = createManager({ permission: { bash: "deny" } });
+
+  try {
+    const sessionRules = [
+      {
+        surface: "bash",
+        pattern: "git *",
+        action: "allow" as const,
+        layer: "session" as const,
+        origin: "session" as const,
+      },
+    ];
+
+    const result = manager.checkPermission(
+      "bash",
+      { command: "npm run build" },
+      undefined,
+      sessionRules,
+    );
+    expect(result.state).toBe("deny");
+    expect(result.source).toBe("bash");
+  } finally {
+    cleanup();
+  }
+});
+
+test("checkPermission returns source 'session' for mcp when session rules match the target", () => {
+  const { manager, cleanup } = createManager({ permission: {} });
+
+  try {
+    const sessionRules = [
+      {
+        surface: "mcp",
+        pattern: "exa:*",
+        action: "allow" as const,
+        layer: "session" as const,
+        origin: "session" as const,
+      },
+    ];
+
+    const result = manager.checkPermission(
+      "mcp",
+      { tool: "exa:search" },
+      undefined,
+      sessionRules,
+    );
+    expect(result.state).toBe("allow");
+    expect(result.source).toBe("session");
+  } finally {
+    cleanup();
+  }
+});
+
+test("checkPermission returns source 'session' for skill when session rules match", () => {
+  const { manager, cleanup } = createManager({ permission: {} });
+
+  try {
+    const sessionRules = [
+      {
+        surface: "skill",
+        pattern: "librarian",
+        action: "allow" as const,
+        layer: "session" as const,
+        origin: "session" as const,
+      },
+    ];
+
+    const result = manager.checkPermission(
+      "skill",
+      { name: "librarian" },
+      undefined,
+      sessionRules,
+    );
+    expect(result.state).toBe("allow");
+    expect(result.source).toBe("session");
+    expect(result.matchedPattern).toBe("librarian");
+  } finally {
+    cleanup();
+  }
+});
+
+test("checkPermission returns source 'session' for tool surface when session rules match", () => {
+  const { manager, cleanup } = createManager({ permission: {} });
+
+  try {
+    const sessionRules = [
+      {
+        surface: "read",
+        pattern: "*",
+        action: "allow" as const,
+        layer: "session" as const,
+        origin: "session" as const,
+      },
+    ];
+
+    const result = manager.checkPermission("read", {}, undefined, sessionRules);
+    expect(result.state).toBe("allow");
+    expect(result.source).toBe("session");
+  } finally {
+    cleanup();
+  }
+});
+
+test("bash session rules do not bleed into mcp checks", () => {
+  const { manager, cleanup } = createManager({ permission: {} });
+
+  try {
+    const sessionRules = [
+      {
+        surface: "bash",
+        pattern: "git *",
+        action: "allow" as const,
+        layer: "session" as const,
+        origin: "session" as const,
+      },
+    ];
+
+    const result = manager.checkPermission(
+      "mcp",
+      { tool: "exa:search" },
+      undefined,
+      sessionRules,
+    );
+    expect(result.source).not.toBe("session");
   } finally {
     cleanup();
   }
