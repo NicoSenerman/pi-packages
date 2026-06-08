@@ -225,3 +225,71 @@ describe("sanitizeAvailableToolsSection — findSection boundary edge cases", ()
     expect(result.prompt).not.toContain("Available tools:");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Moved from permission-system.test.ts catch-all (#342)
+// ---------------------------------------------------------------------------
+
+test("System prompt sanitizer removes the Available tools section and surrounding boilerplate", () => {
+  const prompt = [
+    "Available tools:",
+    "- read: Read file contents",
+    "- mcp: Discover, inspect, and call MCP tools across configured servers",
+    "",
+    "In addition to the tools above, you may have access to other custom tools depending on the project.",
+    "",
+    "Guidelines:",
+    "- Use mcp for MCP discovery first: search by capability, describe one exact tool name, then call it.",
+    "- Be concise in your responses",
+  ].join("\n");
+
+  const result = sanitizeAvailableToolsSection(prompt, ["read", "mcp"]);
+
+  expect(result.removed).toBe(true);
+  expect(result.prompt).not.toContain("Available tools:");
+  expect(result.prompt).not.toContain("In addition to the tools above");
+  expect(result.prompt).toMatch(/Guidelines:/);
+  expect(result.prompt).toMatch(/Use mcp for MCP discovery first/i);
+});
+
+test("System prompt sanitizer removes denied tool guidelines while keeping global guidance", () => {
+  const prompt = [
+    "Guidelines:",
+    "- Use task when work SHOULD be delegated to one or more specialized agents instead of handled entirely in the current session.",
+    "- Use mcp for MCP discovery first: search by capability, describe one exact tool name, then call it.",
+    "- Prefer grep/find/ls tools over bash for file exploration (faster, respects .gitignore)",
+    "- Be concise in your responses",
+    "- Show file paths clearly when working with files",
+  ].join("\n");
+
+  const result = sanitizeAvailableToolsSection(prompt, ["bash", "grep", "mcp"]);
+
+  expect(result.removed).toBe(true);
+  expect(result.prompt).not.toContain("Use task when work SHOULD");
+  expect(result.prompt).toMatch(/Use mcp for MCP discovery first/i);
+  expect(result.prompt).toMatch(/Prefer grep\/find\/ls tools over bash/i);
+  expect(result.prompt).toMatch(/Be concise in your responses/);
+  expect(result.prompt).toMatch(
+    /Show file paths clearly when working with files/,
+  );
+});
+
+test("System prompt sanitizer removes inactive built-in write guidance", () => {
+  const prompt = [
+    "Guidelines:",
+    "- Use write only for new files or complete rewrites",
+    "- When summarizing your actions, output plain text directly - do NOT use cat or bash to display what you did",
+    "- Be concise in your responses",
+  ].join("\n");
+
+  const result = sanitizeAvailableToolsSection(prompt, ["read"]);
+
+  expect(result.removed).toBe(true);
+  expect(result.prompt).not.toContain(
+    "Use write only for new files or complete rewrites",
+  );
+  expect(result.prompt).not.toContain(
+    "do NOT use cat or bash to display what you did",
+  );
+  expect(result.prompt).toMatch(/Be concise in your responses/);
+});
