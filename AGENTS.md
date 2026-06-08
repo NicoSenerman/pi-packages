@@ -201,3 +201,5 @@ Use Conventional Commits.
 Commit at meaningful checkpoints without waiting for an explicit reminder.
 Prefer small, reviewable commits that leave the repository in a valid state.
 Do not edit `CHANGELOG.md` — release-please owns it.
+Avoid `git rebase -i` in this environment — `$EDITOR` opens an interactive editor that aborts non-interactively.
+Reorder or fix unpushed commits with `git reset` + re-commit, or set `GIT_SEQUENCE_EDITOR`/`EDITOR=true`.

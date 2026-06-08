@@ -72,6 +72,7 @@ For **each** step in the plan's "TDD Order", in order:
 2. **Green.**
    Implement the minimum code to make those tests pass.
    Re-run the same file and confirm green.
+   When the step adds or changes a shared type/interface (or a loop/consumer over one), run `pnpm run check` before committing — Vitest does not typecheck, and a type error caught only at end-of-cycle forces a commit reorder.
 3. **Commit.**
    Use the commit message the plan suggests, or a Conventional Commits message that matches:
    - `test:` for test-only commits (rare; usually folded into the feat).
