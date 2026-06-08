@@ -25,3 +25,21 @@ Plan committed at `docs/plans/0332-preview-length-config-loader-gap.md`.
 - `normalizeOptionalPositiveInt` has only two references: `extension-config.ts` (use) and `test/extension-config.test.ts` (direct tests).
   The package skill does not reference it.
   Relocation is low-risk.
+
+## Stage: Implementation — TDD (2026-06-08T20:37:00Z)
+
+### Session summary
+
+All four TDD steps completed in a single session.
+Four commits landed: relocation of `normalizeOptionalPositiveInt` to `common`, parse fix in `normalizeUnifiedConfig`, merge fix in `mergeUnifiedConfigs`, and a save-preservation regression guard in `config-store.test.ts`.
+Test count went from 1837 to 1858 (+21 tests across `common.test.ts`, `config-loader.test.ts`, and `config-store.test.ts`).
+
+### Observations
+
+- The plan's single combined scalar loop in `mergeUnifiedConfigs` required splitting into two type-separated loops (boolean scalars, number scalars) because TypeScript rejected assigning `boolean | number` to the narrowed per-property type.
+  The type fix was applied during the post-step cleanup and committed as part of the step-3 commit.
+- Step 4 (save-preservation test) passed immediately on the first run — confirming the spread approach does the right thing once the loader is fixed.
+  No production code change was needed for `config-store.ts`.
+- A mid-step rebase (mixed reset + re-commit) was required to correct a commit where the type-safety fix accidentally landed in the step-4 test commit rather than the step-3 production commit.
+  Resolved before push with `git reset HEAD~2` and clean re-commits.
+- Pre-completion reviewer verdict: **WARN** — the only finding was the missing implementation stage note in this retro file (now addressed).
