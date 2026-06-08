@@ -4,6 +4,7 @@ import { normalize } from "node:path";
 import {
   isPermissionState,
   normalizeOptionalPositiveInt,
+  normalizeOptionalStringArray,
   toRecord,
 } from "./common";
 import {
@@ -27,6 +28,7 @@ export interface UnifiedPermissionConfig {
   yoloMode?: boolean;
   toolInputPreviewMaxLength?: number;
   toolTextSummaryMaxLength?: number;
+  piInfrastructureReadPaths?: string[];
 
   // Flat permission policy
   permission?: FlatPermissionConfig;
@@ -201,6 +203,12 @@ export function normalizeUnifiedConfig(raw: unknown): {
   if (toolTextSummaryMaxLength !== undefined)
     config.toolTextSummaryMaxLength = toolTextSummaryMaxLength;
 
+  const piInfrastructureReadPaths = normalizeOptionalStringArray(
+    record.piInfrastructureReadPaths,
+  );
+  if (piInfrastructureReadPaths !== undefined)
+    config.piInfrastructureReadPaths = piInfrastructureReadPaths;
+
   // Flat permission policy
   const permission = normalizeFlatPermissionValue(record.permission);
   if (permission !== undefined) config.permission = permission;
@@ -213,6 +221,8 @@ export function normalizeUnifiedConfig(raw: unknown): {
  * - `permission` is deep-shallow merged (surface-level object maps are shallow-merged).
  * - Scalar fields (debugLog, permissionReviewLog, yoloMode) are replaced when
  *   present in the override.
+ * - Array fields (piInfrastructureReadPaths) replace the base when present in
+ *   the override (override-wins, same as scalars).
  */
 export function mergeUnifiedConfigs(
   base: UnifiedPermissionConfig,
@@ -237,6 +247,13 @@ export function mergeUnifiedConfigs(
     if (value !== undefined) {
       merged[key] = value;
     }
+  }
+
+  // Array fields: override replaces base when defined
+  const piInfrastructureReadPaths =
+    override.piInfrastructureReadPaths ?? base.piInfrastructureReadPaths;
+  if (piInfrastructureReadPaths !== undefined) {
+    merged.piInfrastructureReadPaths = piInfrastructureReadPaths;
   }
 
   // Permission: deep-shallow merge

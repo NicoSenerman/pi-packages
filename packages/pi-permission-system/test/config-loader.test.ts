@@ -324,6 +324,48 @@ describe("loadUnifiedConfig", () => {
     const result = loadUnifiedConfig(configPath);
     expect(result.config).not.toHaveProperty("toolTextSummaryMaxLength");
   });
+
+  it("parses piInfrastructureReadPaths when a valid string array is present", () => {
+    const configPath = join(tempDir, "config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({ piInfrastructureReadPaths: ["/extra/path"] }),
+    );
+    const result = loadUnifiedConfig(configPath);
+    expect(result.config.piInfrastructureReadPaths).toEqual(["/extra/path"]);
+  });
+
+  it("parses piInfrastructureReadPaths as empty array when set to []", () => {
+    const configPath = join(tempDir, "config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({ piInfrastructureReadPaths: [] }),
+    );
+    const result = loadUnifiedConfig(configPath);
+    expect(result.config.piInfrastructureReadPaths).toEqual([]);
+  });
+
+  it("omits piInfrastructureReadPaths when absent", () => {
+    const configPath = join(tempDir, "config.json");
+    writeFileSync(configPath, JSON.stringify({ debugLog: false }));
+    const result = loadUnifiedConfig(configPath);
+    expect(result.config).not.toHaveProperty("piInfrastructureReadPaths");
+  });
+
+  it.each([
+    ["string", "not-an-array"],
+    ["number", 42],
+    ["mixed-type array", ["a", 1]],
+    ["object", { a: "b" }],
+  ] as const)("omits piInfrastructureReadPaths for invalid value: %s", (_label, value) => {
+    const configPath = join(tempDir, "config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({ piInfrastructureReadPaths: value }),
+    );
+    const result = loadUnifiedConfig(configPath);
+    expect(result.config).not.toHaveProperty("piInfrastructureReadPaths");
+  });
 });
 
 describe("mergeUnifiedConfigs", () => {
@@ -459,6 +501,35 @@ describe("mergeUnifiedConfigs", () => {
   it("toolTextSummaryMaxLength is absent when both base and override omit it", () => {
     const merged = mergeUnifiedConfigs({}, { permissionReviewLog: true });
     expect(merged).not.toHaveProperty("toolTextSummaryMaxLength");
+  });
+
+  it("override piInfrastructureReadPaths replaces base array", () => {
+    const merged = mergeUnifiedConfigs(
+      { piInfrastructureReadPaths: ["/base/path"] },
+      { piInfrastructureReadPaths: ["/override/path"] },
+    );
+    expect(merged.piInfrastructureReadPaths).toEqual(["/override/path"]);
+  });
+
+  it("base piInfrastructureReadPaths survives when override omits it", () => {
+    const merged = mergeUnifiedConfigs(
+      { piInfrastructureReadPaths: ["/kept/path"] },
+      { debugLog: true },
+    );
+    expect(merged.piInfrastructureReadPaths).toEqual(["/kept/path"]);
+  });
+
+  it("piInfrastructureReadPaths is absent when both base and override omit it", () => {
+    const merged = mergeUnifiedConfigs({ debugLog: true }, { yoloMode: false });
+    expect(merged).not.toHaveProperty("piInfrastructureReadPaths");
+  });
+
+  it("override piInfrastructureReadPaths as empty array replaces non-empty base", () => {
+    const merged = mergeUnifiedConfigs(
+      { piInfrastructureReadPaths: ["/base/path"] },
+      { piInfrastructureReadPaths: [] },
+    );
+    expect(merged.piInfrastructureReadPaths).toEqual([]);
   });
 });
 
