@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { PermissionSystemExtensionConfig } from "#src/extension-config";
+import { DEFAULT_EXTENSION_CONFIG } from "#src/extension-config";
+import { resolvePermissionForwardingTargetSessionId } from "#src/permission-forwarding";
 import {
   canResolveAskPermissionRequest,
   shouldAutoApprovePermissionState,
@@ -107,4 +109,80 @@ describe("canResolveAskPermissionRequest", () => {
       }),
     ).toBe(true);
   });
+});
+
+// ---------------------------------------------------------------------------
+// Moved from permission-system.test.ts catch-all (#342)
+// ---------------------------------------------------------------------------
+
+test("Yolo mode only auto-approves ask-state permissions", () => {
+  expect(
+    shouldAutoApprovePermissionState("ask", DEFAULT_EXTENSION_CONFIG),
+  ).toBe(false);
+  expect(
+    shouldAutoApprovePermissionState("ask", {
+      ...DEFAULT_EXTENSION_CONFIG,
+      yoloMode: true,
+    }),
+  ).toBe(true);
+  expect(
+    shouldAutoApprovePermissionState("deny", {
+      ...DEFAULT_EXTENSION_CONFIG,
+      yoloMode: true,
+    }),
+  ).toBe(false);
+  expect(
+    shouldAutoApprovePermissionState("allow", {
+      ...DEFAULT_EXTENSION_CONFIG,
+      yoloMode: true,
+    }),
+  ).toBe(false);
+});
+
+test("Yolo mode resolves ask permissions without UI or delegation forwarding", () => {
+  expect(
+    canResolveAskPermissionRequest({
+      config: DEFAULT_EXTENSION_CONFIG,
+      hasUI: false,
+      isSubagent: false,
+    }),
+  ).toBe(false);
+  expect(
+    canResolveAskPermissionRequest({
+      config: { ...DEFAULT_EXTENSION_CONFIG, yoloMode: true },
+      hasUI: false,
+      isSubagent: false,
+    }),
+  ).toBe(true);
+  expect(
+    canResolveAskPermissionRequest({
+      config: DEFAULT_EXTENSION_CONFIG,
+      hasUI: false,
+      isSubagent: true,
+    }),
+  ).toBe(true);
+});
+
+test("Yolo mode bypasses delegated ask routing when no parent forwarding target is available", () => {
+  const targetSessionId = resolvePermissionForwardingTargetSessionId({
+    hasUI: false,
+    isSubagent: true,
+    currentSessionId: "child-session",
+    env: {},
+  });
+
+  expect(targetSessionId).toBe(null);
+  expect(
+    canResolveAskPermissionRequest({
+      config: { ...DEFAULT_EXTENSION_CONFIG, yoloMode: true },
+      hasUI: false,
+      isSubagent: true,
+    }),
+  ).toBe(true);
+  expect(
+    shouldAutoApprovePermissionState("ask", {
+      ...DEFAULT_EXTENSION_CONFIG,
+      yoloMode: true,
+    }),
+  ).toBe(true);
 });
