@@ -7,7 +7,7 @@ import {
   EXTENSION_ID,
   type PermissionSystemExtensionConfig,
 } from "./extension-config";
-import { getCurrentMode, isYoloModeEnabled } from "./yolo-mode";
+import { getCurrentMode } from "./yolo-mode";
 
 export const PERMISSION_SYSTEM_STATUS_KEY = EXTENSION_ID;
 
@@ -20,12 +20,19 @@ export function getPermissionSystemStatus(
   ctx?: PermissionStatusContext,
 ): string | undefined {
   const mode = getCurrentMode();
-  if (mode === "yolo" || isYoloModeEnabled(config)) {
+  if (mode === "bach") {
+    if (ctx?.ui?.theme) {
+      return ctx.ui.theme.fg("syntaxType", "BACH");
+    }
+    return "BACH";
+  }
+  if (mode === "yolo") {
     if (ctx?.ui?.theme) {
       return ctx.ui.theme.fg("success", "YOLO");
     }
     return "YOLO";
   }
+  // GATED
   if (ctx?.ui?.theme) {
     return ctx.ui.theme.fg("mdCode", "GATED");
   }

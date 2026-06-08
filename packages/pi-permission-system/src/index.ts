@@ -36,58 +36,82 @@ import { Key } from "@earendil-works/pi-tui";
 import {
   canResolveAskPermissionRequest,
   getCurrentMode,
+  isAutoApproveMode,
+  isBachMode,
   setCurrentMode,
-  shouldAutoApprovePermissionState,
+  MODE_CYCLE,
+  type Mode,
 } from "./yolo-mode";
+
+const MODE_DESCRIPTIONS: Record<Mode, string> = {
+  yolo: "Full access — all permissions auto-approved",
+  bach: "Orchestrator — auto-approve, delegate to subagents",
+  gated: "Gated — asks before dangerous operations",
+};
 
 function registerModeCommand(
   pi: ExtensionAPI,
   configStore: ConfigStore,
 ): void {
   pi.registerCommand("mode", {
-    description: "Toggle between yolo (full access) and gated (permission gates) mode",
+    description: "Cycle between yolo, bach (orchestrator), and gated mode",
     getArgumentCompletions: (prefix: string) => {
       const normalized = prefix.trim().toLowerCase();
-      const options = ["yolo", "gated"];
-      const filtered = options.filter((o) => o.startsWith(normalized));
-      return filtered.length > 0
-        ? filtered.map((o) => ({ value: o, label: o, description: o === "yolo" ? "Full access, no permission gates" : "Permission gates active, ask before dangerous operations" }))
-        : null;
+      const options: Array<{ value: Mode; label: string; description: string }> = [
+        { value: "yolo", label: "yolo", description: "Full access, no permission gates" },
+        { value: "bach", label: "bach", description: "Orchestrator mode, delegate to subagents" },
+        { value: "gated", label: "gated", description: "Permission gates active, ask before dangerous operations" },
+      ];
+      const filtered = options.filter((o) => o.value.startsWith(normalized));
+      return filtered.length > 0 ? filtered : null;
     },
     handler: async (args, ctx) => {
       const current = getCurrentMode();
-      const arg = args.trim().toLowerCase();
+      const arg = args.trim().toLowerCase() as Mode;
 
-      let next: "yolo" | "gated";
-      if (arg === "yolo" || arg === "gated") {
+      let next: Mode;
+      if (arg === "yolo" || arg === "bach" || arg === "gated") {
         next = arg;
       } else {
-        next = current === "yolo" ? "gated" : "yolo";
+        // Cycle: yolo → bach → gated → yolo
+        const idx = MODE_CYCLE.indexOf(current);
+        next = MODE_CYCLE[(idx + 1) % MODE_CYCLE.length];
       }
 
       if (next === current && !arg) {
-        next = current === "yolo" ? "gated" : "yolo";
+        const idx = MODE_CYCLE.indexOf(current);
+        next = MODE_CYCLE[(idx + 1) % MODE_CYCLE.length];
       }
 
       setCurrentMode(next, ctx, configStore.current());
 
-      const label = next === "yolo" ? "YOLO" : "GATED";
-      const description =
-        next === "yolo"
-          ? "Full access — all permissions auto-approved"
-          : "Gated — asks before dangerous operations";
-      ctx.ui.notify(`${label} mode: ${description}`, "info");
+      const label = next.toUpperCase();
+      ctx.ui.notify(`${label} mode: ${MODE_DESCRIPTIONS[next]}`, "info");
     },
   });
 
   pi.registerShortcut(Key.ctrlAlt("m"), {
-    description: "Toggle yolo/plan mode",
+    description: "Cycle yolo/bach/gated mode forward",
     handler: async (ctx) => {
       const current = getCurrentMode();
-      const next = current === "yolo" ? "gated" : "yolo";
+      const idx = MODE_CYCLE.indexOf(current);
+      const next = MODE_CYCLE[(idx + 1) % MODE_CYCLE.length];
       setCurrentMode(next, ctx, configStore.current());
 
-      const label = next === "yolo" ? "YOLO" : "GATED";
+      const label = next.toUpperCase();
+      ctx.ui.notify(`${label} mode`, "info");
+    },
+  });
+
+  pi.registerShortcut(Key.ctrlAlt("n"), {
+    description: "Cycle yolo/bach/gated mode backward",
+    handler: async (ctx) => {
+      const current = getCurrentMode();
+      const idx = MODE_CYCLE.indexOf(current);
+      const next = MODE_CYCLE[(idx - 1 + MODE_CYCLE.length) % MODE_CYCLE.length];
+      setCurrentMode(next, ctx, configStore.current());
+
+      const label = next.toUpperCase();
       ctx.ui.notify(`${label} mode`, "info");
     },
   });
@@ -141,7 +165,7 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
     writeReviewLog: (event, details) => logger.review(event, details),
     requestPermissionDecisionFromUi,
     shouldAutoApprove: () =>
-      shouldAutoApprovePermissionState("ask", configStore.current()),
+      isAutoApproveMode(),
   };
   const forwarder = new PermissionForwarder(forwardingDeps);
 
@@ -258,6 +282,69 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
   pi.on("session_shutdown", () => lifecycle.handleSessionShutdown());
   pi.on("before_agent_start", (event, ctx) => {
     agentPrep.handle(event, ctx);
+
+    if (isBachMode()) {
+      return {
+        message: {
+          customType: "bach-mode-context",
+          content: `BACH MODE RULE #1: DO IT YOURSELF. Subagents are the exception, not the default.
+
+BACH MODE RULE #2: IF THE USER TELLS YOU TO DELEGATE, DO IT. No ask_user_question, no hesitation. The user's instruction always overrides the default.
+
+You are in BACH mode. Your default action is to implement directly. You only delegate to subagents when there is genuine parallelism or when delegating frees you to do other work.
+
+BEFORE calling the subagent tool, ask yourself: "Are there 2+ independent tasks that can run in parallel? OR is this a self-contained research/investigation task?" If the answer is NO to both, do not call subagent. Just do the work.
+
+BEFORE delegating ANY work to a subagent (except when the user told you to, see Rule #2), use the ask_user_question tool to present your delegation strategy and let the user decide. Tailor the options to the actual task breakdown:
+- "Parallel: Task A → worker, Task B → worker" — fan out independent tasks to separate subagents concurrently
+- "All to one subagent" — single worker handles everything sequentially
+- "Do it directly (no subagents)" — the main agent implements everything itself, no delegation
+- "Mix: main agent does X, delegate Y" — main agent handles the part needing conversation context, worker handles the rest
+Pick the option labels and descriptions that match the situation — these are examples, not a fixed template. The user should see the actual task assignments in each option, not generic labels.
+ask_user_question is ONLY for delegation decisions. Do not use it for task scoping, approach selection, or bikeshedding — make the decision yourself.
+ask_user_question constraints: 1 question per call, 2-4 options per question, labels max 60 chars.
+Reviewers are exempt from this confirmation — launching subagent({ agent: "reviewer" }) never needs ask_user_question.
+
+Common anti-pattern — DO NOT do this unless the user explicitly asks:
+  User reports a bug → you understand the fix → you delegate to a worker
+  This is wasteful. You have the context, you understand the fix, just fix it.
+  Delegating a single task when you already have context is always slower.
+
+When subagents ARE appropriate:
+- 2+ genuinely independent tasks (fix auth.ts AND fix api.ts simultaneously) — parallel fan-out
+- Self-contained research or investigation (delegate to researcher or scout) — frees you to do other work while the subagent investigates
+- Fresh-context code review of non-trivial changes (subagent({ agent: "reviewer", context: "fresh" })) — no ask_user_question needed for reviewers
+- Long-running tasks where the main agent can continue other work asynchronously (async: true)
+
+When subagents are NOT appropriate:
+- One task (a bug fix, a feature, a refactor) — just do it
+- Sequential work where later steps depend on earlier outputs
+- You already have full conversation context — forking is overhead
+- A single coherent change across related files
+
+Critical prohibitions (BACH auto-approves tool calls, so these bear repeating):
+- NEVER deploy (wrangler deploy, git push to prod, etc.)
+- NEVER use sudo
+- NEVER start dev servers (npm run dev, vite, etc.)
+- NEVER search from ~/ or ~ (use specific project paths only)
+- NEVER run database clients locally
+
+Workflow:
+1. Analyze — identify whether tasks are parallelizable or sequential
+2. Do sequential work yourself — you already have the context
+3. If 2+ independent tasks exist, ask_user_question first, then fan out concurrently (async: true)
+4. Review — for non-trivial subagent work, launch a fresh-context reviewer (no confirmation needed for reviewers)
+5. Synthesize — combine outputs, apply small fixes directly
+
+Write self-contained tasks. The subagent starts blank — include file paths, line numbers, function names, design decisions, and acceptance criteria. Never assume the worker "already knows" from your conversation.
+
+For orchestration patterns (feature flow, acceptance contracts, review loops), see the Subagents section of AGENTS.md. Key agent names: worker, reviewer, scout, researcher, planner, oracle. Full list: run subagent({ action: "list" }).
+
+Subagents use the global default model from ~/.pi/settings.json, NOT your current session model. If that differs, pass model: explicitly. To find available models, read ~/.pi/agent/models.json (keys are provider names, each has a models array with id fields). Do NOT pass thinking: or reasoning parameters — use the model's default behavior.`,
+          display: false,
+        },
+      };
+    }
 
     if (getCurrentMode() === "gated") {
       return {

@@ -9,51 +9,28 @@ export interface AskPermissionResolutionOptions {
   isSubagent: boolean;
 }
 
-// ── Session-scoped runtime yolo state ──────────────────────────────────
-// Config-file yoloMode is shared across all Pi sessions (same config.json).
-// Runtime yolo is an in-memory flag that is per-session, allowing each Pi
-// window to independently toggle yolo mode without affecting others.
-
-let runtimeYoloMode = true;
-
-export function setRuntimeYoloMode(value: boolean): void {
-  runtimeYoloMode = value;
-}
-
-export function getRuntimeYoloMode(): boolean {
-  return runtimeYoloMode;
-}
-
-export function isYoloModeEnabled(
-  config: PermissionSystemExtensionConfig,
-): boolean {
-  // Runtime flag takes precedence; falls back to config-file setting.
-  return runtimeYoloMode || Boolean(config.yoloMode);
-}
-
-export function shouldAutoApprovePermissionState(
-  state: PermissionState,
-  config: PermissionSystemExtensionConfig,
-): boolean {
-  return state === "ask" && isYoloModeEnabled(config);
-}
-
-export function canResolveAskPermissionRequest(
-  options: AskPermissionResolutionOptions,
-): boolean {
-  return (
-    options.hasUI || options.isSubagent || isYoloModeEnabled(options.config)
-  );
-}
-
 // ── Toggle helper (used by /mode command and shortcut) ─────────────────
 
-export type Mode = "yolo" | "gated";
+export type Mode = "yolo" | "bach" | "gated";
 
-let currentMode: Mode = "yolo";
+export const MODE_CYCLE: Mode[] = ["yolo", "bach", "gated"];
+
+let currentMode: Mode = "bach";
 
 export function getCurrentMode(): Mode {
   return currentMode;
+}
+
+export function isBachMode(): boolean {
+  return currentMode === "bach";
+}
+
+/** Whether the current mode auto-approves permission requests. */
+export function isAutoApproveMode(): boolean {
+  // YOLO and BACH auto-approve; GATED does not.
+  // currentMode is the single source of truth — config.yoloMode is ignored
+  // when the user has explicitly chosen a mode via /mode or the shortcut.
+  return currentMode !== "gated";
 }
 
 export function setCurrentMode(
@@ -62,6 +39,22 @@ export function setCurrentMode(
   config: PermissionSystemExtensionConfig,
 ): void {
   currentMode = mode;
-  runtimeYoloMode = mode === "yolo";
-  syncPermissionSystemStatus(ctx, { ...config, yoloMode: runtimeYoloMode });
+  syncPermissionSystemStatus(ctx, { ...config, yoloMode: mode !== "gated" });
+}
+
+// ── Permission decision helpers ──────────────────────────────────────────
+// These derive from currentMode (single source of truth), not from a
+// separate runtimeYoloMode boolean or config.yoloMode flag.
+
+export function shouldAutoApprovePermissionState(
+  state: PermissionState,
+  _config: PermissionSystemExtensionConfig,
+): boolean {
+  return state === "ask" && isAutoApproveMode();
+}
+
+export function canResolveAskPermissionRequest(
+  options: AskPermissionResolutionOptions,
+): boolean {
+  return options.hasUI || options.isSubagent || isAutoApproveMode();
 }
