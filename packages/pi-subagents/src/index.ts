@@ -226,4 +226,14 @@ export default function (pi: ExtensionAPI) {
       });
     },
   });
+
+  // ---- ctrl+alt+a agent monitor ----
+
+  pi.registerShortcut("ctrl+alt+a", {
+    description: "Open agent monitor",
+    handler: async (ctx) => {
+      const { openAgentMonitor } = await import("./ui/agent-monitor");
+      await openAgentMonitor(ctx, manager, registry, runtime.agentActivity, settings, new FsAgentFileOps(), join(getAgentDir(), "agents"), join(process.cwd(), ".pi", "agents"));
+    },
+  });
 }
