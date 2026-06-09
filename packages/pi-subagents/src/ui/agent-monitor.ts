@@ -95,6 +95,7 @@ class AgentMonitor implements Component {
   // Navigation state: list view vs embedded conversation view
   private view: "list" | "conversation" = "list";
   private selectionChanged = true; // auto-scroll only when user navigates
+  private autoScroll = true; // for conversation view: auto-scroll to bottom on new content
   private selectedAgentForViewer: Subagent | undefined;
 
   // ConversationViewer instance for embedded view
@@ -164,26 +165,32 @@ class AgentMonitor implements Component {
 
         if (matchesKey(data, "up") || matchesKey(data, "k")) {
           this.scrollOffset = Math.max(0, this.scrollOffset - 1);
+          this.autoScroll = this.scrollOffset >= maxScroll;
           this.tui.requestRender();
           return;
         } else if (matchesKey(data, "down") || matchesKey(data, "j")) {
           this.scrollOffset = Math.min(maxScroll, this.scrollOffset + 1);
+          this.autoScroll = this.scrollOffset >= maxScroll;
           this.tui.requestRender();
           return;
         } else if (matchesKey(data, "pageUp") || matchesKey(data, "shift+up")) {
           this.scrollOffset = Math.max(0, this.scrollOffset - viewportH);
+          this.autoScroll = false;
           this.tui.requestRender();
           return;
         } else if (matchesKey(data, "pageDown") || matchesKey(data, "shift+down")) {
           this.scrollOffset = Math.min(maxScroll, this.scrollOffset + viewportH);
+          this.autoScroll = this.scrollOffset >= maxScroll;
           this.tui.requestRender();
           return;
         } else if (matchesKey(data, "home")) {
           this.scrollOffset = 0;
+          this.autoScroll = false;
           this.tui.requestRender();
           return;
         } else if (matchesKey(data, "end")) {
           this.scrollOffset = maxScroll;
+          this.autoScroll = true;
           this.tui.requestRender();
           return;
         }
@@ -485,6 +492,10 @@ class AgentMonitor implements Component {
     const contentLines = this.buildConversationContent(innerW, agent);
     const viewportH = this.viewportHeight();
     const maxScroll = Math.max(0, contentLines.length - viewportH);
+    // Auto-scroll: if enabled, snap to bottom on new content
+    if (this.autoScroll) {
+      this.scrollOffset = maxScroll;
+    }
     this.scrollOffset = Math.min(this.scrollOffset, maxScroll);
 
     const visible = contentLines.slice(this.scrollOffset, this.scrollOffset + viewportH);
@@ -726,6 +737,7 @@ class AgentMonitor implements Component {
     this.selectedAgentForViewer = agent;
     this.view = "conversation";
     this.scrollOffset = 0;
+    this.autoScroll = true; // start at bottom, follow new content
 
     // Subscribe to the selected agent's updates for live streaming
     this.subscribeToAgent(agent);
