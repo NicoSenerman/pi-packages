@@ -24,6 +24,10 @@ Any value other than the literal `"append"` — including `undefined` (key omitt
 - Only `prompt_mode: replace` (explicit opt-in) selects replace mode.
 - Update tests and user-facing documentation to reflect the new default.
 
+This is a **breaking change**: any existing `.pi/agents/*.md` that omits `prompt_mode` flips from `replace` to `append` on upgrade, so those agents begin inheriting the parent system prompt (AGENTS.md / CLAUDE.md / skills) where they previously did not.
+The behavior change is triggered purely by upgrading, with no config edit — it warrants a `fix!:` commit and a `BREAKING CHANGE:` footer so release-please cuts a major version.
+Users who relied on the old implicit-`replace` behavior must add `prompt_mode: replace` explicitly to restore it.
+
 ## Non-Goals
 
 - No change to built-in agents (`default-agents.ts`): `Explore` and `Plan` keep their explicit `promptMode: "replace"`, `general-purpose` keeps `append`.
@@ -93,14 +97,25 @@ Existing tests in `test/config/custom-agents.test.ts` directly exercise the chan
    - Add a `promptMode` assertion (`"append"`) to the no-frontmatter (`bare`) test.
    - These fail against the current line 65, then pass after the source fix.
    - Apply the one-line fix in `src/config/custom-agents.ts` in the same cycle (the test file and source are coupled — the type checker and assertions move together).
-   - Commit: `fix(pi-subagents): default custom agents to append prompt mode (#360)`.
+   - Commit (breaking — include the footer):
+
+     ```text
+     fix(pi-subagents)!: default custom agents to append prompt mode (#360)
+
+     BREAKING CHANGE: Custom agents in .pi/agents/*.md that omit the
+     prompt_mode frontmatter key now default to append instead of replace,
+     so they inherit the parent system prompt (AGENTS.md / CLAUDE.md /
+     skills). Add `prompt_mode: replace` explicitly to restore the previous
+     standalone-prompt behavior.
+     ```
 
 2. Docs: update user-facing default documentation.
    - `src/ui/agent-creation-wizard.ts` — `prompt_mode` `Default: replace` → `Default: append`.
    - `README.md` — `prompt_mode` default cell → `` `append` ``.
    - Commit: `docs(pi-subagents): note custom agents default to append prompt mode (#360)`.
 
-(Optional: steps 1 and 2 may be combined into a single `fix:` commit since the doc updates are part of the same behavioral correction; keeping them split keeps the source/test change isolated from prose.)
+(Optional: steps 1 and 2 may be combined into a single `fix!:` commit since the doc updates are part of the same behavioral correction; keeping them split keeps the source/test change isolated from prose.
+If combined, the `BREAKING CHANGE:` footer lives on the single commit.)
 
 ## Risks and Mitigations
 
