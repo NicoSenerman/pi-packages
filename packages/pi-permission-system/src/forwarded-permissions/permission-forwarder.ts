@@ -67,7 +67,7 @@ export interface PermissionForwarderDeps {
     message: string,
     options?: RequestPermissionOptions,
   ) => Promise<PermissionPromptDecision>;
-  shouldAutoApprove: () => boolean;
+  shouldAutoApprove: (request?: { surface?: string; value?: string }) => boolean;
 }
 
 // ── Module-private helpers ────────────────────────────────────────────────
@@ -176,7 +176,7 @@ export class PermissionForwarder implements ApprovalRequester, InboxProcessor {
     message: string,
     options?: RequestPermissionOptions,
   ) => Promise<PermissionPromptDecision>;
-  private readonly shouldAutoApprove: () => boolean;
+  private readonly shouldAutoApprove: (request?: { surface?: string; value?: string }) => boolean;
 
   constructor(deps: PermissionForwarderDeps) {
     this.forwardingDir = deps.forwardingDir;
@@ -465,7 +465,7 @@ export class PermissionForwarder implements ApprovalRequester, InboxProcessor {
       approved: false,
       state: "denied",
     };
-    if (this.shouldAutoApprove()) {
+    if (this.shouldAutoApprove({ surface: request.surface ?? undefined, value: request.value ?? undefined })) {
       this.writeReviewLog(
         "forwarded_permission.auto_approved",
         forwardedPermissionLogDetails,

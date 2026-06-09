@@ -7,7 +7,11 @@ import {
   type PermissionEventBus,
 } from "./permission-events";
 import { buildDirectUiPrompt } from "./permission-ui-prompt";
-import { shouldAutoApprovePermissionState } from "./yolo-mode";
+import { requiresBachPrompt } from "./bach-gate";
+import {
+  isBachMode,
+  shouldAutoApprovePermissionState,
+} from "./yolo-mode";
 
 export type PermissionReviewSource = "tool_call" | "skill_input" | "skill_read";
 
@@ -72,7 +76,15 @@ export class PermissionPrompter implements PermissionPrompterApi {
     ctx: ExtensionContext,
     details: PromptPermissionDetails,
   ): Promise<PermissionPromptDecision> {
-    if (shouldAutoApprovePermissionState("ask", this.deps.config.current())) {
+    // BACH gate: auto-approve most operations, but force-prompt for
+    // destructive commands and external network access.
+    if (
+      shouldAutoApprovePermissionState("ask", this.deps.config.current()) &&
+      !(
+        isBachMode() &&
+        requiresBachPrompt(details.toolName ?? "", details.command)
+      )
+    ) {
       this.writeReviewEntry("permission_request.auto_approved", details);
       return { approved: true, state: "approved", autoApproved: true };
     }

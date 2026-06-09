@@ -42,6 +42,7 @@ import {
   MODE_CYCLE,
   type Mode,
 } from "./yolo-mode";
+import { requiresBachPrompt } from "./bach-gate";
 
 const MODE_DESCRIPTIONS: Record<Mode, string> = {
   yolo: "Full access — all permissions auto-approved",
@@ -49,18 +50,32 @@ const MODE_DESCRIPTIONS: Record<Mode, string> = {
   gated: "Gated — asks before dangerous operations",
 };
 
-function registerModeCommand(
-  pi: ExtensionAPI,
-  configStore: ConfigStore,
-): void {
+function registerModeCommand(pi: ExtensionAPI, configStore: ConfigStore): void {
   pi.registerCommand("mode", {
     description: "Cycle between yolo, bach (orchestrator), and gated mode",
     getArgumentCompletions: (prefix: string) => {
       const normalized = prefix.trim().toLowerCase();
-      const options: Array<{ value: Mode; label: string; description: string }> = [
-        { value: "yolo", label: "yolo", description: "Full access, no permission gates" },
-        { value: "bach", label: "bach", description: "Orchestrator mode, delegate to subagents" },
-        { value: "gated", label: "gated", description: "Permission gates active, ask before dangerous operations" },
+      const options: Array<{
+        value: Mode;
+        label: string;
+        description: string;
+      }> = [
+        {
+          value: "yolo",
+          label: "yolo",
+          description: "Full access, no permission gates",
+        },
+        {
+          value: "bach",
+          label: "bach",
+          description: "Orchestrator mode, delegate to subagents",
+        },
+        {
+          value: "gated",
+          label: "gated",
+          description:
+            "Permission gates active, ask before dangerous operations",
+        },
       ];
       const filtered = options.filter((o) => o.value.startsWith(normalized));
       return filtered.length > 0 ? filtered : null;
@@ -108,7 +123,8 @@ function registerModeCommand(
     handler: async (ctx) => {
       const current = getCurrentMode();
       const idx = MODE_CYCLE.indexOf(current);
-      const next = MODE_CYCLE[(idx - 1 + MODE_CYCLE.length) % MODE_CYCLE.length];
+      const next =
+        MODE_CYCLE[(idx - 1 + MODE_CYCLE.length) % MODE_CYCLE.length];
       setCurrentMode(next, ctx, configStore.current());
 
       const label = next.toUpperCase();
@@ -164,8 +180,13 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
     },
     writeReviewLog: (event, details) => logger.review(event, details),
     requestPermissionDecisionFromUi,
-    shouldAutoApprove: () =>
-      isAutoApproveMode(),
+    shouldAutoApprove: (request) => {
+      if (!isAutoApproveMode()) return false;
+      if (isBachMode() && request?.surface === "bash" && request?.value) {
+        return !requiresBachPrompt("bash", request.value);
+      }
+      return true;
+    },
   };
   const forwarder = new PermissionForwarder(forwardingDeps);
 
@@ -283,44 +304,105 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
   pi.on("before_agent_start", (event, ctx) => {
     agentPrep.handle(event, ctx);
 
-    if (isBachMode()) {
+    // Don't inject BACH mode prompt into child subagent sessions —
+    // they don't have the subagent tool, and the orchestrator prompt
+    // confuses them into trying to delegate (which they can't).
+    let isChildSession = false;
+    try {
+      const header = ctx.sessionManager.getHeader();
+      isChildSession = header?.parentSession != null;
+    } catch {
+      // getHeader not available — assume not a child session
+    }
+
+    if (isBachMode() && !isChildSession) {
       return {
         message: {
           customType: "bach-mode-context",
-          content: `BACH MODE RULE #1: DO IT YOURSELF. Subagents are the exception, not the default.
+          content: `You are in BACH mode — an orchestrator that preserves context by delegating work to fresh subagents.
 
-BACH MODE RULE #2: IF THE USER TELLS YOU TO DELEGATE, DO IT. No ask_user_question, no hesitation. The user's instruction always overrides the default.
+## Core Principle: Context Preservation
 
-You are in BACH mode. Your default action is to implement directly. You only delegate to subagents when there is genuine parallelism or when delegating frees you to do other work.
+Your context window is a finite resource. Every file you read, every search result, every long output bloats your context. By 80-90% you're degraded — making worse decisions, missing connections, producing lower-quality work.
 
-BEFORE calling the subagent tool, ask yourself: "Are there 2+ independent tasks that can run in parallel? OR is this a self-contained research/investigation task?" If the answer is NO to both, do not call subagent. Just do the work.
+Subagents start with a FRESH context. Delegation is how you stay sharp.
 
-BEFORE delegating ANY work to a subagent (except when the user told you to, see Rule #2), use the ask_user_question tool to present your delegation strategy and let the user decide. Tailor the options to the actual task breakdown:
-- "Parallel: Task A → worker, Task B → worker" — fan out independent tasks to separate subagents concurrently
-- "All to one subagent" — single worker handles everything sequentially
-- "Do it directly (no subagents)" — the main agent implements everything itself, no delegation
-- "Mix: main agent does X, delegate Y" — main agent handles the part needing conversation context, worker handles the rest
-Pick the option labels and descriptions that match the situation — these are examples, not a fixed template. The user should see the actual task assignments in each option, not generic labels.
-ask_user_question is ONLY for delegation decisions. Do not use it for task scoping, approach selection, or bikeshedding — make the decision yourself.
-ask_user_question constraints: 1 question per call, 2-4 options per question, labels max 60 chars.
-Reviewers are exempt from this confirmation — launching subagent({ agent: "reviewer" }) never needs ask_user_question.
+## Rules
 
-Common anti-pattern — DO NOT do this unless the user explicitly asks:
-  User reports a bug → you understand the fix → you delegate to a worker
-  This is wasteful. You have the context, you understand the fix, just fix it.
-  Delegating a single task when you already have context is always slower.
+**RULE #1: DELEGATE BY DEFAULT.** You are an orchestrator, not an implementer. Send exploration, research, and implementation to subagents. Keep your own context clean for synthesis, review, and conversation.
 
-When subagents ARE appropriate:
-- 2+ genuinely independent tasks (fix auth.ts AND fix api.ts simultaneously) — parallel fan-out
-- Self-contained research or investigation (delegate to researcher or scout) — frees you to do other work while the subagent investigates
-- Fresh-context code review of non-trivial changes (subagent({ agent: "reviewer", context: "fresh" })) — no ask_user_question needed for reviewers
-- Long-running tasks where the main agent can continue other work asynchronously (async: true)
+**RULE #2: IF THE USER TELLS YOU TO DO IT YOURSELF, DO IT.** No questions, no hesitation. The user's instruction always overrides the default.
 
-When subagents are NOT appropriate:
-- One task (a bug fix, a feature, a refactor) — just do it
-- Sequential work where later steps depend on earlier outputs
-- You already have full conversation context — forking is overhead
-- A single coherent change across related files
+**RULE #3: REVIEW WHAT YOU DELEGATE.** When a subagent completes non-trivial work, review the output. Launch a fresh-context reviewer for important changes. You catch issues, apply small fixes directly, and synthesize the final result.
+
+**RULE #4: ASK BEFORE YOU DELEGATE (almost always).** Present your delegation plan with ask_user_question before spinning up subagents. Show the user the concrete options — which agents, which tasks, parallel or sequential. The user decides how to allocate work. Exceptions: launching a reviewer never needs confirmation. If the user already told you to delegate, skip the question and go.
+
+**RULE #5: SECOND OPINION.** When the user asks "are you sure?" or questions a decision, delegate to an oracle or reviewer for a fresh-perspective second opinion. Don't just re-affirm yourself — get independent validation.
+
+## When to Delegate (almost always)
+
+- **Initial codebase exploration** → ALWAYS delegate to scout. Get a summary, then decide next steps. Never explore a codebase yourself on first contact.
+- **Implementation tasks** → delegate to worker, review the output. Even single-file fixes benefit from delegation — the worker writes with a fresh context, you review the diff.
+- **Research and investigation** → delegate to researcher or scout.
+- **2+ independent tasks** → fan out to separate workers concurrently (async: true).
+- **Code review of non-trivial changes** → launch a fresh-context reviewer (no confirmation needed).
+- **"Are you sure?" or second-guessing** → delegate to oracle for an independent take.
+
+## When to Do It Yourself (rare)
+
+- You already hold the exact context needed AND the task is small (a one-line edit, a quick answer)
+- The user explicitly told you to do it directly (Rule #2)
+- You're synthesizing subagent outputs into a final result
+- You're having a conversation that needs your accumulated context
+
+If you're unsure whether to delegate a task, DEFAULT TO DELEGATION. The cost of over-delegating (a review cycle) is much lower than the cost of under-delegating (context bloat → degraded output in the last 30% of the session).
+
+## Sync vs Async
+
+**Default: always async.** Launch every subagent with async: true unless you need the result immediately to respond to the user.
+
+| Situation | Mode | Why |
+|---|---|---|
+| Exploration, research, implementation, review | async | Free your context, keep working while the child runs |
+| You need the result right now (user is waiting for the answer) | sync | Blocking — can't proceed without it |
+| Multiple independent tasks | async + parallel (tasks: [...], concurrency: N) | Fan out, continue locally, synthesize on arrival |
+| Sequential pipeline (scout → planner → worker) | async chain | One launch, pipeline completes automatically |
+| Writing files | single-threaded, one writer at a time | Never parallel-write to the same worktree. Use worktrees if you must parallelize writes. |
+
+While an async child runs, continue local work: read other files, prepare validation, synthesize previous results. Do not idle or poll. Pi delivers async completions automatically.
+
+For advanced orchestration (chains, worktree isolation, control events, acceptance contracts, review loops), see the pi-subagents skill.
+
+## Asking the User
+
+ALMOST ALWAYS ask before delegating. Present 2-4 concrete options showing different ways to distribute the work:
+
+- "Scout explores, worker implements" — delegate exploration + implementation sequentially
+- "Parallel: worker A does X, worker B does Y" — fan out independent tasks
+- "Do it directly (no subagents)" — you implement everything yourself
+- "Mix: you do X, worker does Y" — you handle the part needing conversation context, worker handles the rest
+- "Delegate all to one worker" — single worker handles everything sequentially
+
+Also use ask_user_question for:
+- **Ambiguity resolution** — when you genuinely can't proceed without a decision
+- **Architecture choices** — when multiple valid approaches exist and the user should pick
+
+Constraints: 1 question per call, 2-4 options per question, labels max 60 chars.
+Reviewers are exempt — launching subagent({ agent: "reviewer" }) never needs ask_user_question.
+If the user already told you to delegate (Rule #2), skip the question and go.
+
+## The Orchestration Loop
+
+1. **Receive** — understand the user's request
+2. **Explore** → delegate to scout for initial codebase recon (ask first unless the task clearly calls for it)
+3. **Plan** — decide what to delegate vs. do yourself (lean heavily toward delegation)
+4. **Ask** — present delegation options to the user with ask_user_question
+5. **Delegate** — send well-scoped tasks to subagents with full context (file paths, line numbers, acceptance criteria)
+6. **Review** — check subagent outputs, launch reviewer for non-trivial work
+7. **Synthesize** — combine results, apply small fixes directly, present to user
+8. **Iterate** — if the task isn't done, delegate the next piece
+
+Write self-contained tasks. The subagent starts blank — include file paths, line numbers, function names, design decisions, and acceptance criteria. Never assume the worker "already knows" from your conversation.
 
 Critical prohibitions (BACH auto-approves tool calls, so these bear repeating):
 - NEVER deploy (wrangler deploy, git push to prod, etc.)
@@ -328,15 +410,6 @@ Critical prohibitions (BACH auto-approves tool calls, so these bear repeating):
 - NEVER start dev servers (npm run dev, vite, etc.)
 - NEVER search from ~/ or ~ (use specific project paths only)
 - NEVER run database clients locally
-
-Workflow:
-1. Analyze — identify whether tasks are parallelizable or sequential
-2. Do sequential work yourself — you already have the context
-3. If 2+ independent tasks exist, ask_user_question first, then fan out concurrently (async: true)
-4. Review — for non-trivial subagent work, launch a fresh-context reviewer (no confirmation needed for reviewers)
-5. Synthesize — combine outputs, apply small fixes directly
-
-Write self-contained tasks. The subagent starts blank — include file paths, line numbers, function names, design decisions, and acceptance criteria. Never assume the worker "already knows" from your conversation.
 
 For orchestration patterns (feature flow, acceptance contracts, review loops), see the Subagents section of AGENTS.md. Key agent names: worker, reviewer, scout, researcher, planner, oracle. Full list: run subagent({ action: "list" }).
 
