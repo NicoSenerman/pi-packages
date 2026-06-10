@@ -817,14 +817,14 @@ Priority = Impact × (6 − Risk).
 | 8    | Consolidate UI and tools test fixtures                                               | D        | 2      | 1    | 10       |
 | 9    | Resolve the cross-package settings-loader duplication                                | A        | 2      | 2    | 8        |
 
-#### Step 1 — Move ConcurrencyQueue ownership into SubagentManager
+#### Step 1 — Move ConcurrencyQueue ownership into SubagentManager ([#381])
 
 - Targets: `src/index.ts`, `src/lifecycle/subagent-manager.ts`, `src/lifecycle/concurrency-queue.ts`, `test/lifecycle/subagent-manager.test.ts`.
 - Smell: Category C — forward references / temporal coupling; the queue→manager start callback is duplicated between `index.ts` and the test helper, each with its own safety comment.
 - Change: `SubagentManager` constructs the queue itself (options gain `getMaxConcurrent`, lose `queue`) and owns the start-queued callback; expose `drainQueue()` for the settings `onMaxConcurrentChanged` hook.
 - Outcome: no forward-referenced bindings in `index.ts` or test setup; the `prefer-const` eslint-disable in the test helper is deleted; the start-queued logic exists in exactly one place.
 
-#### Step 2 — Decompose `SubagentInit` into `SubagentOptions` (identity, run spec, execution deps)
+#### Step 2 — Decompose `SubagentInit` into `SubagentOptions` (identity, run spec, execution deps) ([#373])
 
 - Targets: `src/lifecycle/subagent.ts` (`SubagentInit`, constructor, `run()` guards), `src/lifecycle/subagent-manager.ts` (`spawn`), `test/helpers/make-subagent.ts`.
 - Smell: Category B (god interface — ~20 fields) and Category D (constructibility: "optional for tests" fields with compensating runtime throws).
@@ -832,49 +832,49 @@ Priority = Impact × (6 − Risk).
   Rename the decomposed bag `SubagentInit` → `SubagentOptions`: it is the codebase's only DOM-style `*Init` name, while sibling constructor bags use `Options` (`SubagentManagerOptions`, `TurnLoopOptions`).
 - Outcome: `SubagentOptions` (née `SubagentInit`) top-level fields ~20 → ≤ 9; a passive test record is constructible without any execution fields; the record-vs-executor duality is explicit in the types.
 
-#### Step 3 — Encapsulate run start and notification attachment on Subagent
+#### Step 3 — Encapsulate run start and notification attachment on Subagent ([#374])
 
 - Targets: `src/lifecycle/subagent.ts`, `src/lifecycle/subagent-manager.ts`, `test/tools/get-result-tool.test.ts`, `test/lifecycle/subagent-manager.test.ts`, `test/service/service-adapter.test.ts`, `test/observation/notification.test.ts`, `test/helpers/make-subagent.ts`.
 - Smell: Category C — output arguments: external writes to `record.promise` (3 production/test sites) and `record.notification` (7 test sites).
 - Change: add `Subagent.start()` that runs and stores its own promise (plus an awaitable accessor for `spawnAndWait`/`waitForAll`); make `promise` and `notification` externally read-only; tests attach notification state through `SubagentOptions.parentSession.toolCallId` or a dedicated options field.
 - Outcome: zero external writes to `Subagent` fields outside its own methods (grep-verifiable: `\.promise =` and `\.notification =` appear only inside `subagent.ts`).
 
-#### Step 4 — Extract run-listener and workspace-bracket collaborators from Subagent
+#### Step 4 — Extract run-listener and workspace-bracket collaborators from Subagent ([#375])
 
 - Targets: `src/lifecycle/subagent.ts` (533 LOC — largest source file, accelerating churn).
 - Smell: Category B (oversized class; per-run listener fields declared mid-class) and Category C (state owns its mutations: workspace dispose logic appears in `run()`'s catch, `completeRun`, and `failRun`).
 - Change: extract a `RunListeners` object owning the observer-unsubscribe and signal-detach handles (`attach`/`release`), and a workspace-bracket collaborator owning prepare/dispose-with-addendum, so the three dispose paths collapse into one.
 - Outcome: `subagent.ts` ≤ 450 LOC; workspace disposal logic in exactly one place; listener handles no longer raw nullable fields.
 
-#### Step 5 — Extract the manager observer from index.ts into a class
+#### Step 5 — Extract the manager observer from index.ts into a class ([#376])
 
 - Targets: `src/index.ts` (inline `SubagentManagerObserver` literal, ~70 lines), new module under `src/observation/`.
 - Smell: Category B/E — `index.ts` is the dominant churn hotspot (31.3, 91 commits); the literal mixes event emission, record persistence (`appendEntry`), and notification dispatch; principle 9 (state and behavior belong in classes, not closure-captured literals).
 - Change: extract a class (e.g. `SubagentEventsObserver`) constructed with narrow deps (`emit`, `appendEntry`, the `NotificationSystem`).
 - Outcome: `index.ts` < 170 lines; the observer's three concerns unit-tested directly without booting the extension.
 
-#### Step 6 — Split widget delegation out of SubagentRuntime
+#### Step 6 — Split widget delegation out of SubagentRuntime ([#377])
 
 - Targets: `src/runtime.ts`, `src/tools/agent-tool.ts` (`AgentToolRuntime`), `src/tools/foreground-runner.ts`, `src/tools/background-spawner.ts`, `src/observation/notification.ts` (`NotificationManager` constructor), `src/index.ts`.
 - Smell: Category C — relay-only dependency (five delegation methods that only forward to `widget`) and a post-construction `runtime.widget =` write violating principle 8.
 - Change: pass the existing `WidgetLike` handle directly to the consumers that need it (tool deps, `NotificationManager`) and construct the widget before them; remove the `widget` field and the five relay methods from `SubagentRuntime`.
 - Outcome: `SubagentRuntime` has zero widget knowledge; no post-construction field writes in `index.ts`; tool fixtures stub a 5-method `WidgetLike` instead of widget methods on the runtime mock.
 
-#### Step 7 — Consolidate lifecycle test fixtures
+#### Step 7 — Consolidate lifecycle test fixtures ([#378])
 
 - Targets: `test/lifecycle/subagent-manager.test.ts` (766 LOC), `test/lifecycle/subagent.test.ts`, `test/lifecycle/subagent-session.test.ts`, `test/lifecycle/create-subagent-session.test.ts`, `test/lifecycle/create-subagent-session-extension-tools.test.ts`, `test/lifecycle/concurrency-queue.test.ts`, `test/helpers/`.
 - Smell: Category D — fallow reports five clone families across the lifecycle tests.
 - Change: extract the repeated spawn/run/factory arrangements into shared helpers, migrating incrementally (lift-and-shift, never a single-step rewrite of a large test file).
 - Outcome: lifecycle clone families 5 → ≤ 1; package test duplication below 600 lines.
 
-#### Step 8 — Consolidate UI and tools test fixtures
+#### Step 8 — Consolidate UI and tools test fixtures ([#379])
 
 - Targets: `test/ui/agent-creation-wizard.test.ts`, `test/ui/agent-config-editor.test.ts`, `test/ui/ui-observer.test.ts`, `test/tools/foreground-runner.test.ts`, `test/tools/background-spawner.test.ts`, `test/session/session-config.test.ts`.
 - Smell: Category D — remaining clone families outside the lifecycle tree.
 - Change: extract per-file repeated arrangements into local helpers or `test/helpers/` where shared across files.
 - Outcome: package clone groups 44 → ≤ 25; overall duplication ≤ 0.6%.
 
-#### Step 9 — Resolve the cross-package settings-loader duplication
+#### Step 9 — Resolve the cross-package settings-loader duplication ([#380])
 
 - Targets: `src/settings.ts:198-211`, `packages/pi-subagents-worktrees/src/config.ts:51-73`.
 - Smell: Category A — 23-line production clone: the layered global/project JSON read-sanitize-warn-merge loader.
@@ -886,15 +886,15 @@ Priority = Impact × (6 − Risk).
 
 ```mermaid
 flowchart TB
-    S1["Step 1<br/>Queue into manager"]
-    S2["Step 2<br/>SubagentOptions decomposition"]
-    S3["Step 3<br/>Encapsulate start + notification"]
-    S4["Step 4<br/>Run collaborators extraction"]
-    S5["Step 5<br/>Observer class from index.ts"]
-    S6["Step 6<br/>Widget handle out of runtime"]
-    S7["Step 7<br/>Lifecycle test fixtures"]
-    S8["Step 8<br/>UI/tools test fixtures"]
-    S9["Step 9<br/>Settings-loader duplication"]
+    S1["Step 1 (#381)<br/>Queue into manager"]
+    S2["Step 2 (#373)<br/>SubagentOptions decomposition"]
+    S3["Step 3 (#374)<br/>Encapsulate start + notification"]
+    S4["Step 4 (#375)<br/>Run collaborators extraction"]
+    S5["Step 5 (#376)<br/>Observer class from index.ts"]
+    S6["Step 6 (#377)<br/>Widget handle out of runtime"]
+    S7["Step 7 (#378)<br/>Lifecycle test fixtures"]
+    S8["Step 8 (#379)<br/>UI/tools test fixtures"]
+    S9["Step 9 (#380)<br/>Settings-loader duplication"]
 
     S1 --> S3
     S2 --> S3
@@ -1008,4 +1008,13 @@ The upstream test suite is run periodically as a regression canary for the sessi
 [#264]: https://github.com/gotgenes/pi-packages/issues/264
 [#265]: https://github.com/gotgenes/pi-packages/issues/265
 [#277]: https://github.com/gotgenes/pi-packages/issues/277
+[#373]: https://github.com/gotgenes/pi-packages/issues/373
+[#374]: https://github.com/gotgenes/pi-packages/issues/374
+[#375]: https://github.com/gotgenes/pi-packages/issues/375
+[#376]: https://github.com/gotgenes/pi-packages/issues/376
+[#377]: https://github.com/gotgenes/pi-packages/issues/377
+[#378]: https://github.com/gotgenes/pi-packages/issues/378
+[#379]: https://github.com/gotgenes/pi-packages/issues/379
+[#380]: https://github.com/gotgenes/pi-packages/issues/380
+[#381]: https://github.com/gotgenes/pi-packages/issues/381
 [ADR-0002]: ../decisions/0002-extensions-on-a-minimal-core.md
