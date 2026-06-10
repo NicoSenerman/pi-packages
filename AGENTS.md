@@ -210,3 +210,4 @@ Do not put `Closes #N` / `Fixes #N` / `Resolves #N` in commit messages.
 Reference issues as `(#N)` in the subject or `Refs #N` in the body instead.
 Avoid `git rebase -i` in this environment — `$EDITOR` opens an interactive editor that aborts non-interactively.
 Reorder or fix unpushed commits with `git reset` + re-commit, or set `GIT_SEQUENCE_EDITOR`/`EDITOR=true`.
+Before `git commit --amend`, confirm HEAD is your own commit (`git log -1`) — a concurrent session may have committed since yours, and amend rewrites whatever HEAD points at.
