@@ -296,6 +296,7 @@ export function makeHandler(overrides?: {
     handler,
     events,
     session,
+    logger,
     toolRegistry,
     prompter,
     recorder,

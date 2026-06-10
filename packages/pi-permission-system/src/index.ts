@@ -91,7 +91,6 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
 
   session = new PermissionSession(
     paths,
-    logger,
     new ForwardingManager(
       paths.subagentSessionsDir,
       forwarder,
@@ -164,7 +163,7 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
   );
   const agentPrep = new AgentPrepHandler(session, resolver, toolRegistry);
 
-  const reporter = new GateDecisionReporter(session.logger, pi.events);
+  const reporter = new GateDecisionReporter(logger, pi.events);
   const gateRunner = new GateRunner(resolver, sessionRules, gateway, reporter);
   const toolCallGatePipeline = new ToolCallGatePipeline(
     resolver,

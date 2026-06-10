@@ -191,14 +191,13 @@ describe("external_directory policy state — allow", () => {
   });
 
   it("does not write a block review-log entry when external_directory is allow", async () => {
-    const { handler, session } = makeHandler({
+    const { handler, logger } = makeHandler({
       session: { checkPermission: makeExtDirCheck("allow") },
       tools: ALL_TOOLS,
     });
     const event = makeToolCallEvent("read", { input: { path: EXTERNAL_PATH } });
     await handler.handleToolCall(event, makeCtx());
-    const reviewCalls = (session.logger.review as ReturnType<typeof vi.fn>).mock
-      .calls;
+    const reviewCalls = (logger.review as ReturnType<typeof vi.fn>).mock.calls;
     const blockEntries = reviewCalls.filter(
       ([eventName]: string[]) => eventName === "permission_request.blocked",
     );
@@ -301,14 +300,13 @@ describe("external_directory policy state — deny", () => {
   });
 
   it("writes review-log entry with resolution policy_denied", async () => {
-    const { handler, session } = makeHandler({
+    const { handler, logger } = makeHandler({
       session: { checkPermission: makeExtDirCheck("deny") },
       tools: ALL_TOOLS,
     });
     const event = makeToolCallEvent("read", { input: { path: EXTERNAL_PATH } });
     await handler.handleToolCall(event, makeCtx());
-    const reviewCalls = (session.logger.review as ReturnType<typeof vi.fn>).mock
-      .calls;
+    const reviewCalls = (logger.review as ReturnType<typeof vi.fn>).mock.calls;
     const blockEntries = reviewCalls.filter(
       ([eventName]: string[]) => eventName === "permission_request.blocked",
     );
@@ -458,7 +456,7 @@ describe("external_directory policy state — ask", () => {
   });
 
   it("writes review-log entry with confirmation_unavailable when no UI", async () => {
-    const { handler, session } = makeHandler({
+    const { handler, logger } = makeHandler({
       session: { checkPermission: makeExtDirCheck("ask") },
       prompter: {
         canConfirm: vi.fn().mockReturnValue(false),
@@ -468,8 +466,7 @@ describe("external_directory policy state — ask", () => {
     });
     const event = makeToolCallEvent("read", { input: { path: EXTERNAL_PATH } });
     await handler.handleToolCall(event, makeCtx({ hasUI: false }));
-    const reviewCalls = (session.logger.review as ReturnType<typeof vi.fn>).mock
-      .calls;
+    const reviewCalls = (logger.review as ReturnType<typeof vi.fn>).mock.calls;
     const blockEntries = reviewCalls.filter(
       ([eventName]: string[]) => eventName === "permission_request.blocked",
     );

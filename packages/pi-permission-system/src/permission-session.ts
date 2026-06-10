@@ -13,7 +13,6 @@ import type { ToolCallGateInputs } from "./handlers/gates/tool-call-gate-pipelin
 import type { ScopedPermissionManager } from "./permission-manager";
 import type { PromptingGatewayLifecycle } from "./prompting-gateway";
 
-import type { SessionLogger } from "./session-logger";
 import type { SessionRules } from "./session-rules";
 import type { SkillPromptEntry } from "./skill-prompt-sanitizer";
 import {
@@ -31,7 +30,6 @@ import {
  *
  * Constructor deps:
  * - `ExtensionPaths` — immutable path constants
- * - `SessionLogger` — debug + review + warn
  * - `ForwardingController` — polling lifecycle
  * - `SessionConfigStore` — owns extension config; provides refresh, log, read
  * - `PromptingGatewayLifecycle` — prompting lifecycle forwarded via activate/deactivate
@@ -45,7 +43,6 @@ export class PermissionSession implements ToolCallGateInputs {
 
   constructor(
     private readonly paths: ExtensionPaths,
-    readonly logger: SessionLogger,
     private readonly forwarding: ForwardingController,
     private readonly permissionManager: ScopedPermissionManager,
     private readonly sessionRules: SessionRules,

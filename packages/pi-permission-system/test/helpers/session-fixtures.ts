@@ -150,7 +150,6 @@ export function makeRealSession(overrides?: {
   const gateway = overrides?.gateway ?? makeGateway();
   const session = new PermissionSession(
     paths,
-    logger,
     forwarding,
     permissionManager,
     sessionRules,
