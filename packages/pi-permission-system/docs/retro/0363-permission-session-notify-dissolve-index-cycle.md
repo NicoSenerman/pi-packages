@@ -26,3 +26,21 @@ The plan is a single behavior-preserving TDD cycle committed as `0363-permission
   Only the `permission-session.ts` layout line gets a small `notify` mention.
 - Non-breaking: notify behavior (warning when UI active, no-op otherwise) is identical; no public API / config / default / output-shape change.
 - Decided commit type `refactor:` (behavior-preserving) over `feat:`, matching [#362]'s precedent for this Track-A series.
+
+## Stage: Implementation — TDD (2026-06-10T00:33:17Z)
+
+### Session summary
+
+Executed the single TDD cycle: added `notify(message: string): void` to `PermissionSession` (3 red tests → green), then rewired `src/index.ts` to remove the `null as unknown as ConfigStore` cast and the `sessionNotify` holder, wired the logger's notify sink as `(m) => session.notify(m)`, and moved `configStore.refresh()` after the `session` assignment.
+All checks passed (1903 tests, `pnpm run check`, `pnpm run lint`, `pnpm fallow dead-code`).
+Pre-completion reviewer returned PASS.
+
+### Observations
+
+- The plan's risk analysis was wrong about `prefer-const`: ESLint fires on single-assignment forward-declared `let` (each variable is assigned exactly once, so the rule fires even though `const` without an initializer is a JS syntax error).
+  Biome's `useConst` correctly skips these, but ESLint does not.
+  Fixed with `eslint-disable-next-line prefer-const` comments on each `let` line, explaining the impossibility of `const` here.
+  Future plans involving forward-declared `let` in `src/` files should list this as a known lint friction point.
+- The `configStore.refresh()` reorder (to after `session` assignment) was the key safety insight from planning and was implemented exactly as designed — the inline comment in `index.ts` explains the `session`-must-be-bound invariant.
+- `as unknown as` cast count in `src/` confirmed at 2 after the change (both in `config-store.ts`), matching the 3→2 goal from the Phase 5 metrics table.
+- Pre-completion reviewer: PASS — all deterministic checks green, architecture doc updated, `notify` method well-formed, 3 new tests covering activate/pre-activate/post-deactivate cases.
