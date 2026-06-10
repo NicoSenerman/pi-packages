@@ -10,8 +10,9 @@ This document describes the architecture of the pi-subagents fork: a focused, co
 3. **Typed API boundary** — this package exports a `SubagentsService` interface and `Symbol.for()` accessors (`publishSubagentsService` / `getSubagentsService`).
    Consumers declare this package as an optional peer dependency and use dynamic import for compile-time types.
    The runtime bridge is `Symbol.for("@gotgenes/pi-subagents:service")` on `globalThis` — no separate API package.
-4. **No scheduling** — in-process scheduling is removed from the core.
-   Scheduling is a separate concern that any extension can implement by calling `spawn()` on the published API.
+4. **No time-based scheduling** — cron-style timed dispatch (upstream's `schedule.ts` subsystem) is removed from the core (#52).
+   Timed dispatch is a separate concern that any extension can implement by calling `spawn()` on the published API.
+   The max-concurrent admission gate is not scheduling in this sense — concurrency management stays in core.
 5. **UI extraction is deferred** — the widget, conversation viewer, and `/agents` command menu stay in the core for now.
    They are the first candidate for extraction once the API boundary is proven stable.
 6. **Snapshot, don't capture** — mutable parent state (ctx, session, model) is read once at spawn time and frozen into a `ParentSnapshot` data object.
@@ -807,7 +808,7 @@ Priority = Impact × (6 − Risk).
 
 | Step | Title                                                                                | Category | Impact | Risk | Priority |
 | ---- | ------------------------------------------------------------------------------------ | -------- | ------ | ---- | -------- |
-| 1    | Move ConcurrencyQueue ownership into SubagentManager                                 | C        | 4      | 2    | 16       |
+| 1    | Replace ConcurrencyQueue with a thunk-based ConcurrencyLimiter                       | A/C      | 4      | 2    | 16       |
 | 2    | Decompose `SubagentInit` into `SubagentOptions` (identity, run spec, execution deps) | B/D      | 4      | 3    | 12       |
 | 3    | Encapsulate run start and notification attachment on Subagent                        | C        | 3      | 2    | 12       |
 | 4    | Extract run-listener and workspace-bracket collaborators from Subagent               | B/C      | 3      | 2    | 12       |
@@ -817,12 +818,14 @@ Priority = Impact × (6 − Risk).
 | 8    | Consolidate UI and tools test fixtures                                               | D        | 2      | 1    | 10       |
 | 9    | Resolve the cross-package settings-loader duplication                                | A        | 2      | 2    | 8        |
 
-#### Step 1 — Move ConcurrencyQueue ownership into SubagentManager ([#381])
+#### Step 1 — Replace ConcurrencyQueue with a thunk-based ConcurrencyLimiter ([#381])
 
-- Targets: `src/index.ts`, `src/lifecycle/subagent-manager.ts`, `src/lifecycle/concurrency-queue.ts`, `test/lifecycle/subagent-manager.test.ts`.
-- Smell: Category C — forward references / temporal coupling; the queue→manager start callback is duplicated between `index.ts` and the test helper, each with its own safety comment.
-- Change: `SubagentManager` constructs the queue itself (options gain `getMaxConcurrent`, lose `queue`) and owns the start-queued callback; expose `drainQueue()` for the settings `onMaxConcurrentChanged` hook.
-- Outcome: no forward-referenced bindings in `index.ts` or test setup; the `prefer-const` eslint-disable in the test helper is deleted; the start-queued logic exists in exactly one place.
+- Targets: `src/lifecycle/concurrency-queue.ts` (→ `concurrency-limiter.ts`), `src/lifecycle/subagent-manager.ts`, `src/index.ts`, `test/lifecycle/concurrency-queue.test.ts`, `test/lifecycle/subagent-manager.test.ts`.
+- Smell: Category C (forward references: the queue's ID-registry design forces a start callback that reaches back into the manager, duplicated between `index.ts` and the test helper) and Category A (dual counting: the queue's `running` counter is fed by `markStarted`/`markFinished` relays in the manager's observer, mirroring state the agents already carry).
+- Change: replace the ID-registry queue with a `ConcurrencyLimiter` that schedules thunks FIFO against a dynamic `getLimit()` — the injected limiter knows nothing about agents, IDs, or the manager.
+  Spawn gates background runs with `limiter.schedule(() => record.run())` (the thunk guards on `queued` status, covering abort-while-queued; Step 3 later folds the guard into `Subagent.start()`); foreground and `bypassQueue` runs invoke directly.
+  The settings `onMaxConcurrentChanged` hook wires to `limiter.recheck()` in `index.ts`; `dispose()` calls `limiter.clear()` to drop pending thunks.
+- Outcome: dependency direction is strictly manager → limiter (no callback back-edge; the `prefer-const` eslint-disable in the test helper is deleted); the observer's two queue relays are gone; every spawned agent has a `promise` at spawn, collapsing `waitForAll`'s `while (true)` drain loop and its eslint-disable.
 
 #### Step 2 — Decompose `SubagentInit` into `SubagentOptions` (identity, run spec, execution deps) ([#373])
 
@@ -886,7 +889,7 @@ Priority = Impact × (6 − Risk).
 
 ```mermaid
 flowchart TB
-    S1["Step 1 (#381)<br/>Queue into manager"]
+    S1["Step 1 (#381)<br/>ConcurrencyLimiter replacement"]
     S2["Step 2 (#373)<br/>SubagentOptions decomposition"]
     S3["Step 3 (#374)<br/>Encapsulate start + notification"]
     S4["Step 4 (#375)<br/>Run collaborators extraction"]
