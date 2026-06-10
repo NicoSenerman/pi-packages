@@ -26,3 +26,25 @@ Produced `docs/plans/0382-windows-external-directory-case-insensitive.md` with a
 - `evaluate` in `rule.ts` is the single surface-aware matching site; folding is scoped to a new exported `PATH_SURFACES` set (`PATH_BEARING_TOOLS` ∪ `{ external_directory, path }`) so `bash`/`skill`/`mcp` stay case-sensitive.
 - Classified as a non-breaking `fix:` — POSIX behavior is unchanged and the peer bump does not alter runtime behavior/config on upgrade.
 - Deferred (non-goals): removing the now-redundant `win32` lowercasing in `normalizePathForComparison`, and dissolving `subagent-context.ts`'s duplicate containment helper.
+
+## Stage: Implementation — TDD (2026-06-10T19:17:00Z)
+
+### Session summary
+
+Implemented the Windows case-insensitive path-matching fix across 7 commits (6 TDD cycles + 1 docs): `path.relative`-based containment in `isPathWithinDirectory`, `WildcardMatchOptions` (case-insensitive + Windows-separator folding) on the matcher, case-insensitive infra-read auto-allow, path-surface case folding in `evaluate` via a new `PATH_SURFACES` set, an optional `piPackageDir` on `computeExtensionPaths`, and `getPackageDir()` wiring at the composition root (with the `@earendil-works/pi-coding-agent` / `pi-tui` floor bump `>=0.75.0` → `>=0.79.0`, devDeps `0.79.1`).
+Test count went from 1902 to 1921 (+19); full suite, `check`, `lint`, and `fallow dead-code` all green.
+
+### Observations
+
+- Pre-completion reviewer: PASS.
+- Reviewer warnings: one non-blocking WARN — `evaluateFirst` / `evaluateMostRestrictive` delegate to `evaluate` without exposing `platform`, so they are not unit-testable for Windows case-folding on a POSIX CI (runtime behavior is correct because `process.platform` is `win32` in production; the Windows path is covered compositionally by the `evaluate`-level tests).
+  Left as-is; a future change could thread `platform` through them if dedicated Windows coverage is wanted.
+- Deviation 1: did **not** thread `platform` into `isPathOutsideWorkingDirectory` (the plan suggested it).
+  Its internal `isPathWithinDirectory` call already captures the runtime platform via the default param, and the `win32` path there is not unit-testable on a POSIX CI because `canonicalizePath` splits on `/`.
+  Avoided an untested parameter.
+- Deviation 2: reordered the plan's steps — the `wildcard-matcher` options had to land **before** `isPiInfrastructureRead` consumed them (the plan listed infra-read first and the matcher options later).
+  A real dependency-ordering correction.
+- Deviation 3: skipped the plan's brittle end-to-end external-directory gate integration test (Red C).
+  Flipping `process.platform` does not switch Node's `path.win32` dispatch on a POSIX runner, and the gate's `canonicalNormalizePathForComparison` only lowercases on real `win32`, so a darwin-runner integration test would be unreliable.
+  Coverage is provided by the composed unit tests at the `evaluate` / wildcard / `path-utils` levels.
+- The `pnpm install` after the dep bump printed "Already up to date" but did update `pnpm-lock.yaml` (+205 lines adding `0.79.1`); verified the installed `index.d.ts` re-exports `getPackageDir` before wiring `index.ts`.
