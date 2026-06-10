@@ -1,17 +1,20 @@
 /**
  * conversation-viewer.ts — Live conversation overlay for viewing agent sessions.
  *
- * Displays a scrollable, live-updating view of an agent's conversation.
- * Subscribes to session events for real-time streaming updates.
+ * Displays a scrollable, live-updating view of an agent's conversation using
+ * Pi's TUI component library for rich rendering (markdown, diff coloring,
+ * themed backgrounds, expand/collapse).
  */
 
+import { Theme } from "@earendil-works/pi-coding-agent";
 import { type Component, matchesKey, type TUI, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { AgentConfigLookup } from "#src/config/agent-types";
 import { getLifetimeTotal } from "#src/lifecycle/usage";
 import type { Subagent } from "#src/types";
 import type { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
-import { buildInvocationTags, formatDuration, formatSessionTokens, getDisplayName, getPromptModeLabel, type Theme } from "#src/ui/display";
-import { formatMessage, formatStreamingIndicator } from "#src/ui/message-formatters";
+import { ConversationContainer } from "#src/ui/conversation-container";
+import { type MapperDeps } from "#src/ui/message-mapper";
+import { buildInvocationTags, describeActivity, formatDuration, formatSessionTokens, getDisplayName, getPromptModeLabel } from "#src/ui/display";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -19,7 +22,7 @@ import { formatMessage, formatStreamingIndicator } from "#src/ui/message-formatt
 const CHROME_LINES_BASE = 6;
 const MIN_VIEWPORT = 3;
 /** Height ceiling shared by the overlay's `maxHeight` and the viewer's internal viewport cap. */
-export const VIEWPORT_HEIGHT_PCT = 70;
+export const VIEWPORT_HEIGHT_PCT = 95;
 
 export interface ConversationViewerOptions {
   tui: TUI;
@@ -28,7 +31,6 @@ export interface ConversationViewerOptions {
   theme: Theme;
   done: (result: undefined) => void;
   registry: AgentConfigLookup;
-  wrapText: (text: string, width: number) => string[];
 }
 
 export class ConversationViewer implements Component {
@@ -44,7 +46,8 @@ export class ConversationViewer implements Component {
   private theme: Theme;
   private done: (result: undefined) => void;
   private registry: AgentConfigLookup;
-  private wrapText: (text: string, width: number) => string[];
+
+  private conversationContainer: ConversationContainer;
 
   constructor({
     tui,
@@ -53,7 +56,6 @@ export class ConversationViewer implements Component {
     theme,
     done,
     registry,
-    wrapText,
   }: ConversationViewerOptions) {
     this.tui = tui;
     this.record = record;
@@ -61,9 +63,20 @@ export class ConversationViewer implements Component {
     this.theme = theme;
     this.done = done;
     this.registry = registry;
-    this.wrapText = wrapText;
+
+    const deps: MapperDeps = {
+      theme,
+      ui: tui,
+      cwd: process.cwd(),
+      toolOutputExpanded: false,
+      hideThinkingBlock: false,
+    };
+    this.conversationContainer = new ConversationContainer(deps);
+    this.conversationContainer.rebuildFromSnapshot(record.messages);
+
     this.unsubscribe = record.subscribeToUpdates(() => {
       if (this.closed) return;
+      this.conversationContainer.rebuildFromSnapshot(this.record.messages);
       this.tui.requestRender();
     });
   }
@@ -76,9 +89,19 @@ export class ConversationViewer implements Component {
       return;
     }
 
-    const totalLines = this.buildContentLines(this.lastInnerW).length;
+    // E to expand/collapse focused component
+    if (matchesKey(data, "e")) {
+      const focusedChildIdx = this.conversationContainer.getFocusedChildIndex(this.scrollOffset, this.lastInnerW);
+      if (focusedChildIdx >= 0) {
+        this.conversationContainer.toggleExpanded(focusedChildIdx);
+        this.tui.requestRender();
+        return;
+      }
+    }
+
+    const contentLines = this.conversationContainer.render(this.lastInnerW);
     const viewportHeight = this.viewportHeight();
-    const maxScroll = Math.max(0, totalLines - viewportHeight);
+    const maxScroll = Math.max(0, contentLines.length - viewportHeight);
 
     if (matchesKey(data, "up") || matchesKey(data, "k")) {
       this.scrollOffset = Math.max(0, this.scrollOffset - 1);
@@ -102,9 +125,9 @@ export class ConversationViewer implements Component {
   }
 
   render(width: number): string[] {
-    if (width < 6) return []; // too narrow for any meaningful rendering
+    if (width < 6) return [];
     const th = this.theme;
-    const innerW = width - 4; // border + padding
+    const innerW = width - 4;
     this.lastInnerW = innerW;
     const lines: string[] = [];
 
@@ -148,8 +171,20 @@ export class ConversationViewer implements Component {
     if (invocationLine) lines.push(row(invocationLine));
     lines.push(hrMid);
 
-    // Content area — rebuild every render (live data, no cache needed)
-    const contentLines = this.buildContentLines(innerW);
+    // Content area — render from component tree
+    let contentLines = this.conversationContainer.render(innerW);
+
+    if (contentLines.length === 0) {
+      contentLines = [th.fg("dim", "(waiting for first message...)")];
+    }
+
+    // Streaming indicator for running agents
+    if (this.record.status === "running" && this.activity) {
+      const act = describeActivity(this.activity.activeTools, this.activity.responseText);
+      contentLines.push("");
+      contentLines.push(truncateToWidth(th.fg("accent", "● ") + th.fg("dim", act), innerW));
+    }
+
     const viewportHeight = this.viewportHeight();
     const maxScroll = Math.max(0, contentLines.length - viewportHeight);
 
@@ -166,13 +201,15 @@ export class ConversationViewer implements Component {
 
     // Footer
     lines.push(hrMid);
+    const focusedChildIdx = this.conversationContainer.getFocusedChildIndex(this.scrollOffset, innerW);
     const scrollPct = contentLines.length <= viewportHeight
       ? "100%"
       : `${Math.round(((visibleStart + viewportHeight) / contentLines.length) * 100)}%`;
     const footerLeft = th.fg("dim", `${contentLines.length} lines · ${scrollPct}`);
+    const expandHint = focusedChildIdx >= 0 ? th.fg("accent", "E expand") + th.fg("dim", " · ") : "";
     const footerRight = th.fg("dim", "↑↓ scroll · PgUp/PgDn or Shift+↑↓ · Esc close");
-    const footerGap = Math.max(1, innerW - visibleWidth(footerLeft) - visibleWidth(footerRight));
-    lines.push(row(footerLeft + " ".repeat(footerGap) + footerRight));
+    const footerGap = Math.max(1, innerW - visibleWidth(footerLeft) - visibleWidth(expandHint) - visibleWidth(footerRight));
+    lines.push(row(footerLeft + " ".repeat(footerGap) + expandHint + footerRight));
     lines.push(hrBot);
 
     return lines;
@@ -193,8 +230,6 @@ export class ConversationViewer implements Component {
   // ---- Private ----
 
   private viewportHeight(): number {
-    // Cap mirrors the overlay's maxHeight — otherwise the viewer would render
-    // more lines than the overlay shows and clip the footer.
     const maxRows = Math.floor((this.tui.terminal.rows * VIEWPORT_HEIGHT_PCT) / 100);
     return Math.max(MIN_VIEWPORT, maxRows - this.chromeLines());
   }
@@ -208,39 +243,5 @@ export class ConversationViewer implements Component {
     const parts = modelName ? [modelName, ...tags] : tags;
     if (parts.length === 0) return undefined;
     return this.theme.fg("dim", `  ↳ ${parts.join(" · ")}`);
-  }
-
-  private buildContentLines(width: number): string[] {
-    if (width <= 0) return [];
-
-    const th = this.theme;
-    const ctx = { theme: th, wrapText: this.wrapText };
-    const messages = this.record.messages;
-
-    if (messages.length === 0) {
-      return [th.fg("dim", "(waiting for first message...)")];
-    }
-
-    const lines: string[] = [];
-    let needsSeparator = false;
-    for (const msg of messages) {
-      const formatted = formatMessage(msg as { role: string; [key: string]: unknown }, width, ctx);
-      if (!formatted) continue;
-      if (needsSeparator) lines.push(th.fg("dim", "───"));
-      lines.push(...formatted);
-      needsSeparator = true;
-    }
-
-    // Streaming indicator for running agents
-    if (this.record.status === "running" && this.activity) {
-      lines.push(...formatStreamingIndicator(
-        this.activity.activeTools,
-        this.activity.responseText,
-        width,
-        th,
-      ));
-    }
-
-    return lines.map(l => truncateToWidth(l, width));
   }
 }

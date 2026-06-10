@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment -- Pi SDK types are not fully exported; see upstream Pi SDK for type improvements */
-import { wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { type ModelRegistry, resolveModel } from "#src/session/model-resolver";
@@ -274,14 +273,13 @@ export class AgentsMenuHandler {
           theme,
           done,
           registry: this.registry,
-          wrapText: wrapTextWithAnsi,
         });
       },
       {
         overlay: true,
         overlayOptions: {
           anchor: "center",
-          width: "90%",
+          width: "95%",
           maxHeight: `${VIEWPORT_HEIGHT_PCT}%`,
         },
       },

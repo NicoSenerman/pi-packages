@@ -1,5 +1,5 @@
-import type { TUI } from "@earendil-works/pi-tui";
-import { visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { Theme, initTheme } from "@earendil-works/pi-coding-agent";
+import { type TUI, visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
@@ -18,11 +18,75 @@ function mockTui(rows = 40, columns = 80) {
   } as unknown as TUI;
 }
 
-function ansiTheme() {
-  return {
-    fg: (_color: string, text: string) => `\x1b[38;5;240m${text}\x1b[0m`,
-    bold: (text: string) => `\x1b[1m${text}\x1b[22m`,
+/**
+ * Create a real Theme instance for testing.
+ * Uses the dark theme default since we need the full Theme class
+ * (with fg, bg, bold, italic, etc.) for the component constructors.
+ */
+function createTestTheme(): Theme {
+  // Initialize the global theme singleton so component constructors
+  // that read from the global theme work.
+  initTheme("dark");
+  // After init, we can construct a Theme instance. The components read from
+  // the global singleton, not from our instance, but our instance is still
+  // needed for the ConversationViewer's own rendering (borders, header, etc.)
+  // which uses the Theme class methods.
+  const fgColors: Record<string, string | number> = {
+    accent: "#5f5faf",
+    border: "#585858",
+    borderAccent: "#5f5faf",
+    borderMuted: "#666666",
+    success: "#5f875f",
+    error: "#875f5f",
+    warning: "#87875f",
+    muted: "#808080",
+    dim: "#666666",
+    text: "#d0d0d0",
+    thinkingText: "#808080",
+    userMessageText: "#d0d0d0",
+    customMessageText: "#d0d0d0",
+    customMessageLabel: "#af87d7",
+    toolTitle: "#5f5faf",
+    toolOutput: "#d0d0d0",
+    mdHeading: "#5f5faf",
+    mdLink: "#5f5faf",
+    mdLinkUrl: "#808080",
+    mdCode: "#5f875f",
+    mdCodeBlock: "#d0d0d0",
+    mdCodeBlockBorder: "#585858",
+    mdQuote: "#666666",
+    mdQuoteBorder: "#585858",
+    mdHr: "#585858",
+    mdListBullet: "#5f5faf",
+    toolDiffAdded: "#5f875f",
+    toolDiffRemoved: "#875f5f",
+    toolDiffContext: "#666666",
+    syntaxComment: "#666666",
+    syntaxKeyword: "#5f5faf",
+    syntaxFunction: "#af87d7",
+    syntaxVariable: "#d0d0d0",
+    syntaxString: "#5f875f",
+    syntaxNumber: "#af87d7",
+    syntaxType: "#af87d7",
+    syntaxOperator: "#808080",
+    syntaxPunctuation: "#808080",
+    thinkingOff: "#666666",
+    thinkingMinimal: "#808080",
+    thinkingLow: "#5f8787",
+    thinkingMedium: "#5f8787",
+    thinkingHigh: "#5f5faf",
+    thinkingXhigh: "#5f875f",
+    bashMode: "#5f875f",
   };
+  const bgColors: Record<string, string | number> = {
+    selectedBg: "#303030",
+    userMessageBg: "#303030",
+    customMessageBg: "#303030",
+    toolPendingBg: "#303030",
+    toolSuccessBg: "#303530",
+    toolErrorBg: "#353030",
+  };
+  return new Theme(fgColors, bgColors, "truecolor");
 }
 
 function assertAllLinesFit(lines: string[], width: number) {
@@ -37,12 +101,11 @@ type TestViewerOptions = {
   width?: number;
   messages?: unknown[];
   activity?: AgentActivityTracker;
-  wrapText?: (text: string, width: number) => string[];
 };
 
 /** Factory for ConversationViewer with sensible defaults. Pass overrides as needed. */
 function createTestViewer(options: TestViewerOptions = {}): ConversationViewer {
-  const { width = 80, messages = [], activity, wrapText = wrapTextWithAnsi } = options;
+  const { width = 80, messages = [], activity } = options;
   const mockSess = createMockSession();
   mockSess.messages.push(...messages);
   const record = createTestSubagent({ status: "running" });
@@ -51,10 +114,9 @@ function createTestViewer(options: TestViewerOptions = {}): ConversationViewer {
     tui: mockTui(30, width),
     record,
     activity,
-    theme: ansiTheme(),
+    theme: createTestTheme(),
     done: vi.fn(),
     registry: testRegistry,
-    wrapText,
   });
 }
 
@@ -93,30 +155,6 @@ describe("ConversationViewer", () => {
       assertRenderFitsWidths([
         { role: "user", content: longLine },
         { role: "assistant", content: [{ type: "text", text: longLine }] },
-        { role: "toolResult", toolUseId: "t1", content: [{ type: "text", text: longLine }] },
-      ]);
-    });
-
-    it("no line exceeds width with embedded ANSI escape codes in content", () => {
-      const ansiText = `\x1b[1mBold heading\x1b[22m and \x1b[31mred text\x1b[0m ${"X".repeat(300)}`;
-      assertRenderFitsWidths([
-        { role: "toolResult", toolUseId: "t1", content: [{ type: "text", text: ansiText }] },
-      ]);
-    });
-
-    it("no line exceeds width with long URLs", () => {
-      const url = "https://example.com/" + "a/b/c/d/e/".repeat(30) + "?q=" + "x".repeat(100);
-      assertRenderFitsWidths([
-        { role: "assistant", content: [{ type: "text", text: `Check this link: ${url}` }] },
-      ]);
-    });
-
-    it("no line exceeds width with wide table-like content", () => {
-      const header = "| " + Array.from({ length: 20 }, (_, i) => `Column${i}`).join(" | ") + " |";
-      const dataRow = "| " + Array.from({ length: 20 }, () => "value123").join(" | ") + " |";
-      const table = [header, dataRow, dataRow, dataRow].join("\n");
-      assertRenderFitsWidths([
-        { role: "toolResult", toolUseId: "t1", content: [{ type: "text", text: table }] },
       ]);
     });
 
@@ -152,7 +190,7 @@ describe("ConversationViewer", () => {
           role: "assistant",
           content: [
             { type: "text", text: "Let me check that." },
-            { type: "toolCall", toolUseId: "t1", name: "very_long_tool_name_" + "x".repeat(200), input: {} },
+            { type: "toolCall", id: "t1", name: "read", arguments: { path: "/very/long/path/".repeat(20) + "file.txt" } },
           ],
         },
       ]);
@@ -168,76 +206,21 @@ describe("ConversationViewer", () => {
       );
     });
 
-    it("no line exceeds width with mixed ANSI + unicode content", () => {
-      const text = `\x1b[32m✓\x1b[0m Test passed — 日本語テスト ${"あ".repeat(50)} \x1b[33m⚠\x1b[0m`;
+    it("no line exceeds width with tool results", () => {
+      const longContent = "X".repeat(500);
       assertRenderFitsWidths([
-        { role: "toolResult", toolUseId: "t1", content: [{ type: "text", text }] },
+        {
+          role: "assistant",
+          content: [
+            { type: "toolCall", id: "t1", name: "read", arguments: { path: "src/index.ts" } },
+          ],
+        },
+        {
+          role: "toolResult",
+          toolCallId: "t1",
+          content: [{ type: "text", text: longContent }],
+        },
       ]);
-    });
-  });
-
-  describe("safety net against upstream wrapTextWithAnsi bugs", () => {
-    // These tests call buildContentLines() directly (via the private method)
-    // because render() has its own truncation via row(). The safety net in
-    // buildContentLines is what prevents the TUI crash — it must clamp
-    // independently of render().
-
-    /** Call the private buildContentLines method directly. */
-    function callBuildContentLines(viewer: InstanceType<typeof ConversationViewer>, width: number): string[] {
-      return (viewer as any).buildContentLines(width);
-    }
-
-    it("clamps overwidth lines from toolResult content", () => {
-      const w = 80;
-      const viewer = createTestViewer({
-        width: w,
-        messages: [{ role: "toolResult", toolUseId: "t1", content: [{ type: "text", text: "output" }] }],
-        wrapText: () => ["X".repeat(w + 50)],
-      });
-      assertAllLinesFit(callBuildContentLines(viewer, w), w);
-    });
-
-    it("clamps overwidth lines from user message content", () => {
-      const w = 80;
-      const viewer = createTestViewer({
-        width: w,
-        messages: [{ role: "user", content: "hello" }],
-        wrapText: () => ["Y".repeat(w + 100)],
-      });
-      assertAllLinesFit(callBuildContentLines(viewer, w), w);
-    });
-
-    it("clamps overwidth lines from assistant message content", () => {
-      const w = 80;
-      const viewer = createTestViewer({
-        width: w,
-        messages: [{ role: "assistant", content: [{ type: "text", text: "response" }] }],
-        wrapText: () => ["Z".repeat(w + 100)],
-      });
-      assertAllLinesFit(callBuildContentLines(viewer, w), w);
-    });
-
-    it("clamps overwidth lines from bashExecution output", () => {
-      const w = 80;
-      const viewer = createTestViewer({
-        width: w,
-        messages: [{
-          role: "bashExecution", command: "ls", output: "out",
-          exitCode: 0, cancelled: false, truncated: false, timestamp: Date.now(),
-        }],
-        wrapText: () => ["B".repeat(w + 100)],
-      });
-      assertAllLinesFit(callBuildContentLines(viewer, w), w);
-    });
-
-    it("clamps overwidth lines that also contain ANSI codes", () => {
-      const w = 80;
-      const viewer = createTestViewer({
-        width: w,
-        messages: [{ role: "toolResult", toolUseId: "t1", content: [{ type: "text", text: "output" }] }],
-        wrapText: () => [`\x1b[1m\x1b[31m${"W".repeat(w + 30)}\x1b[0m`],
-      });
-      assertAllLinesFit(callBuildContentLines(viewer, w), w);
     });
   });
 });

@@ -24,12 +24,18 @@ export function getAgentConversation(session: AgentSession): string {
           : extractText(msg.content);
       if (text.trim()) parts.push(`[User]: ${text.trim()}`);
     } else if (msg.role === "assistant") {
-      const { textParts, toolNames } = extractAssistantContent(msg.content);
+      const { textParts, toolCalls, thinkingTexts } = extractAssistantContent(msg.content);
       const attribution = formatAttribution(msg);
       if (textParts.length > 0)
         parts.push(`[Assistant${attribution}]: ${textParts.join("\n")}`);
-      if (toolNames.length > 0)
-        parts.push(`[Tool Calls]:\n${toolNames.map((n) => `  Tool: ${n}`).join("\n")}`);
+      if (thinkingTexts.length > 0) {
+        for (const t of thinkingTexts) {
+          const chars = t.length >= 1000 ? `${(t.length / 1000).toFixed(1)}k` : String(t.length);
+          parts.push(`[thinking: ${chars} chars]`);
+        }
+      }
+      if (toolCalls.length > 0)
+        parts.push(`[Tool Calls]:\n${toolCalls.map((tc) => `  Tool: ${tc.name}`).join("\n")}`);
     } else if (msg.role === "toolResult") {
       const text = extractText(msg.content);
       const truncated = text.length > 200 ? text.slice(0, 200) + "..." : text;

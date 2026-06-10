@@ -16,11 +16,13 @@ import {
   visibleWidth,
   wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
+import { Theme as PiTheme } from "@earendil-works/pi-coding-agent";
 import type { AgentTypeRegistry } from "#src/config/agent-types";
 import { getLifetimeTotal } from "#src/lifecycle/usage";
 import type { SubagentManager } from "#src/lifecycle/subagent-manager";
 import type { Subagent } from "#src/lifecycle/subagent";
 import type { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
+import { ConversationContainer, type MapperDeps } from "#src/ui/conversation-container";
 import {
   SPINNER,
   type Theme,
@@ -33,8 +35,6 @@ import {
   getDisplayName,
   getPromptModeLabel,
 } from "#src/ui/display";
-import { formatMessage, formatStreamingIndicator } from "#src/ui/message-formatters";
-import { ConversationViewer } from "./conversation-viewer";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -53,7 +53,7 @@ interface AgentActivityMap {
 const SPINNER_INTERVAL_MS = 80;
 
 /** Overlay height as % of terminal rows. */
-const MONITOR_HEIGHT_PCT = 70;
+const MONITOR_HEIGHT_PCT = 95;
 
 /** Maximum task description lines before truncating. */
 const MAX_TASK_LINES = 2;
@@ -96,11 +96,11 @@ class AgentMonitor implements Component {
   private view: "list" | "conversation" = "list";
   private selectionChanged = true; // auto-scroll only when user navigates
   private autoScroll = true; // for conversation view: auto-scroll to bottom on new content
+  private lastInnerW = 0; // cached overlay inner width (set during render)
   private selectedAgentForViewer: Subagent | undefined;
 
-  // ConversationViewer instance for embedded view
-  private conversationViewer: ConversationViewer | undefined;
-  private conversationViewerUnsub: (() => void) | undefined;
+  // Component-based conversation container
+  private conversationContainer: ConversationContainer | undefined;
 
   // Live update subscriptions
   private unsubscribes: (() => void)[] = [];
@@ -111,14 +111,14 @@ class AgentMonitor implements Component {
   private manager: SubagentManager;
   private activityMap: AgentActivityMap;
   private registry: AgentTypeRegistry;
-  private theme: Theme;
+  private theme: PiTheme;
   private done: (result: undefined) => void;
   constructor(deps: {
     tui: TUI;
     manager: SubagentManager;
     activityMap: AgentActivityMap;
     registry: AgentTypeRegistry;
-    theme: Theme;
+    theme: PiTheme;
     done: (result: undefined) => void;
   }) {
     this.tui = deps.tui;
@@ -151,15 +151,38 @@ class AgentMonitor implements Component {
         this.view = "list";
         this.scrollOffset = 0;
         this.selectionChanged = true;
-        this.disposeConversationViewer();
+        this.disposeConversationView();
         this.tui.requestRender();
         return;
       }
+
+      // E to expand/collapse focused component
+      if (matchesKey(data, "e")) {
+        if (this.conversationContainer && this.lastInnerW > 0) {
+          const focusedChildIdx = this.conversationContainer.getFocusedChildIndex(this.scrollOffset, this.lastInnerW);
+          if (focusedChildIdx >= 0) {
+            this.conversationContainer.toggleExpanded(focusedChildIdx);
+            this.tui.requestRender();
+            return;
+          }
+        }
+      }
+
       // Handle scroll keys directly for conversation view
       const agent = this.selectedAgentForViewer;
-      if (agent) {
-        const innerW = (this.tui.terminal.columns ?? 80) - 4;
-        const contentLines = this.buildConversationContent(innerW, agent);
+      if (agent && this.conversationContainer && this.lastInnerW > 0) {
+        const innerW = this.lastInnerW;
+        let contentLines = this.conversationContainer.render(innerW);
+
+        // Add streaming indicator
+        if (agent.status === "running") {
+          const activity = this.getActivity(agent);
+          if (activity) {
+            const act = describeActivity(activity.activeTools, activity.responseText);
+            contentLines = [...contentLines, "", truncateToWidth(this.theme.fg("accent", "● ") + this.theme.fg("dim", act), innerW)];
+          }
+        }
+
         const viewportH = this.viewportHeight();
         const maxScroll = Math.max(0, contentLines.length - viewportH);
 
@@ -246,7 +269,7 @@ class AgentMonitor implements Component {
       this.clampScroll();
       this.tui.requestRender();
     } else if (matchesKey(data, "enter") || matchesKey(data, "l")) {
-      this.openConversationViewer();
+      this.openConversationView();
     } else if (matchesKey(data, "i")) {
       // Interrupt selected agent
       const agents = this.getAgents();
@@ -293,8 +316,8 @@ class AgentMonitor implements Component {
       this.spinnerTimer = undefined;
     }
 
-    // Dispose embedded conversation viewer if active
-    this.disposeConversationViewer();
+    // Dispose conversation container if active
+    this.disposeConversationView();
 
     // Unsubscribe from all agent updates
     for (const unsub of this.unsubscribes) {
@@ -342,6 +365,10 @@ class AgentMonitor implements Component {
   private subscribeToAgent(agent: Subagent): void {
     const unsub = agent.subscribeToUpdates(() => {
       if (this.closed) return;
+      // Rebuild conversation container if this agent is the one being viewed
+      if (this.view === "conversation" && this.selectedAgentForViewer?.id === agent.id && this.conversationContainer) {
+        this.conversationContainer.rebuildFromSnapshot(agent.messages);
+      }
       this.tui.requestRender();
     });
     if (unsub) {
@@ -441,6 +468,7 @@ class AgentMonitor implements Component {
   private renderConversationView(width: number): string[] {
     const th = this.theme;
     const innerW = width - 4; // │ + space + content + space + │
+    this.lastInnerW = innerW; // cache for handleInput scroll calculations
     const lines: string[] = [];
 
     const pad = (s: string, len: number) => {
@@ -478,6 +506,7 @@ class AgentMonitor implements Component {
       const percent = agent.getContextPercent();
       headerParts.push(formatSessionTokens(tokens, percent, th, agent.compactionCount));
     }
+
     lines.push(row(
       `${icon} ${th.bold(name)}${modeTag}  ${th.fg("muted", agent.description)} ${th.fg("dim", "·")} ${th.fg("dim", headerParts.join(" · "))}`,
     ));
@@ -488,8 +517,26 @@ class AgentMonitor implements Component {
     }
     lines.push(hrMid);
 
-    // Content — build conversation lines from the agent's messages
-    const contentLines = this.buildConversationContent(innerW, agent);
+    // Content — render from component tree
+    let contentLines: string[] = [];
+    if (this.conversationContainer) {
+      contentLines = this.conversationContainer.render(innerW);
+    }
+
+    if (contentLines.length === 0) {
+      contentLines = [th.fg("dim", "(waiting for first message...)")];
+    }
+
+    // Streaming indicator for running agents
+    if (agent.status === "running") {
+      const activity = this.getActivity(agent);
+      if (activity) {
+        const act = describeActivity(activity.activeTools, activity.responseText);
+        contentLines.push("");
+        contentLines.push(truncateToWidth(th.fg("accent", "● ") + th.fg("dim", act), innerW));
+      }
+    }
+
     const viewportH = this.viewportHeight();
     const maxScroll = Math.max(0, contentLines.length - viewportH);
     // Auto-scroll: if enabled, snap to bottom on new content
@@ -510,56 +557,21 @@ class AgentMonitor implements Component {
 
     // Footer with keybinding bar and scroll position
     lines.push(hrMid);
+    const focusedChildIdx = this.conversationContainer?.getFocusedChildIndex(this.scrollOffset, innerW) ?? -1;
     const scrollPct = contentLines.length <= viewportH
       ? "100%"
       : `${Math.round(((this.scrollOffset + viewportH) / contentLines.length) * 100)}%`;
     const footerLeft = th.fg("dim", `${contentLines.length} lines · ${scrollPct}`);
-    const footerRight = th.fg("dim", "Esc/Backspace back  ↑↓ scroll  PgUp/PgDn page  Home/End jump");
-    const footerGap = Math.max(1, innerW - visibleWidth(footerLeft) - visibleWidth(footerRight));
-    lines.push(row(footerLeft + " ".repeat(footerGap) + footerRight));
+    const expandHint = focusedChildIdx >= 0 ? th.fg("accent", "E expand") + th.fg("dim", " · ") : "";
+    const footerRight = th.fg("dim", "Esc/Backspace back  PgUp/PgDn page  Home/End jump");
+    const footerGap = Math.max(1, innerW - visibleWidth(footerLeft) - visibleWidth(expandHint) - visibleWidth(footerRight));
+    lines.push(row(footerLeft + " ".repeat(footerGap) + expandHint + footerRight));
     lines.push(hrBot);
 
     return lines;
   }
 
-  // ── Private: conversation content ──────────────────────────────────────
-
-  private buildConversationContent(width: number, agent: Subagent): string[] {
-    if (width <= 0) return [];
-
-    const th = this.theme;
-    const ctx = { theme: th, wrapText: wrapTextWithAnsi };
-    const messages = agent.messages;
-
-    if (messages.length === 0) {
-      return [th.fg("dim", "(waiting for first message...)")];
-    }
-
-    const lines: string[] = [];
-    let needsSeparator = false;
-    for (const msg of messages) {
-      const formatted = formatMessage(msg as { role: string; [key: string]: unknown }, width, ctx);
-      if (!formatted) continue;
-      if (needsSeparator) lines.push(th.fg("dim", "───"));
-      lines.push(...formatted);
-      needsSeparator = true;
-    }
-
-    // Streaming indicator for running agents
-    const activity = this.getActivity(agent);
-    if (agent.status === "running" && activity) {
-      lines.push(...formatStreamingIndicator(
-        activity.activeTools,
-        activity.responseText,
-        width,
-        th,
-      ));
-    }
-
-    return lines.map(l => truncateToWidth(l, width));
-  }
-
-  // ── Private: agent rendering ────────────────────────────────────────────
+  // ── Private: agent rendering (list view only) ─────────────────────────────
 
   private renderAgent(agent: Subagent, width: number, isSelected: boolean): string[] {
     const th = this.theme;
@@ -693,9 +705,6 @@ class AgentMonitor implements Component {
     this.selectedIndex = Math.max(0, this.selectedIndex);
 
     // Clamp scrollOffset so the selected agent is visible.
-    // Estimate content line positions to adjust scrollOffset before render.
-    // Each agent renders as: 1 (name) + 1-2 (task) + 0-1 (activity) = ~3-4 lines,
-    // plus descriptions can wrap, so we use a generous estimate per agent.
     const viewportH = this.viewportHeight();
     const width = this.tui.terminal.columns;
     const innerW = Math.max(10, width - 4);
@@ -721,9 +730,9 @@ class AgentMonitor implements Component {
     this.scrollOffset = Math.min(this.scrollOffset, maxScroll);
   }
 
-  // ── Private: conversation viewer ───────────────────────────────────────
+  // ── Private: conversation view management ───────────────────────────────
 
-  private openConversationViewer(): void {
+  private openConversationView(): void {
     const agents = this.getAgents();
     if (this.selectedIndex >= agents.length) return;
     const agent = agents[this.selectedIndex];
@@ -733,7 +742,7 @@ class AgentMonitor implements Component {
       return;
     }
 
-    // Switch to embedded conversation view instead of opening a new overlay
+    // Switch to embedded conversation view
     this.selectedAgentForViewer = agent;
     this.view = "conversation";
     this.scrollOffset = 0;
@@ -742,36 +751,23 @@ class AgentMonitor implements Component {
     // Subscribe to the selected agent's updates for live streaming
     this.subscribeToAgent(agent);
 
-    // Create a ConversationViewer for delegated input handling
-    const activity = this.getActivity(agent);
-    this.conversationViewer = new ConversationViewer({
-      tui: this.tui,
-      record: agent,
-      activity,
+    // Create a ConversationContainer for the selected agent
+    const deps: MapperDeps = {
       theme: this.theme,
-      done: () => {
-        // When ConversationViewer calls done (e.g. on its own Escape), go back to list
-        this.view = "list";
-        this.disposeConversationViewer();
-        this.tui.requestRender();
-      },
-      registry: this.registry,
-      wrapText: wrapTextWithAnsi,
-    });
+      ui: this.tui,
+      cwd: process.cwd(),
+      toolOutputExpanded: false,
+      hideThinkingBlock: false,
+    };
+    this.conversationContainer = new ConversationContainer(deps);
+    this.conversationContainer.rebuildFromSnapshot(agent.messages);
 
     this.tui.requestRender();
   }
 
-  /** Dispose the embedded ConversationViewer and its subscription. */
-  private disposeConversationViewer(): void {
-    if (this.conversationViewer) {
-      this.conversationViewer.dispose();
-      this.conversationViewer = undefined;
-    }
-    if (this.conversationViewerUnsub) {
-      this.conversationViewerUnsub();
-      this.conversationViewerUnsub = undefined;
-    }
+  /** Dispose the conversation container and its subscription. */
+  private disposeConversationView(): void {
+    this.conversationContainer = undefined;
     this.selectedAgentForViewer = undefined;
   }
 }
@@ -803,7 +799,7 @@ export async function openAgentMonitor(
 ): Promise<void> {
 
   await ctx.ui.custom<undefined>(
-    (tui: TUI, theme: Theme, _keybindings: unknown, done: (result: undefined) => void) => {
+    (tui: TUI, theme: PiTheme, _keybindings: unknown, done: (result: undefined) => void) => {
       const monitor = new AgentMonitor({
         tui,
         manager,
@@ -818,7 +814,7 @@ export async function openAgentMonitor(
       overlay: true,
       overlayOptions: {
         anchor: "center",
-        width: "90%",
+        width: "95%",
         maxHeight: `${MONITOR_HEIGHT_PCT}%`,
       },
     },

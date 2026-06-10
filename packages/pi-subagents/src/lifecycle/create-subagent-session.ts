@@ -174,18 +174,18 @@ export async function createSubagentSession(
 
   const agentDir = deps.io.getAgentDir();
 
-  // Children always load the parent's extensions and skills.
-  // Suppress AGENTS.md/CLAUDE.md and APPEND_SYSTEM.md - upstream's
-  // buildSystemPrompt() re-appends both AFTER systemPromptOverride, which
-  // would defeat prompt_mode: replace. Parent context, if wanted, reaches the
-  // subagent via prompt_mode: append (parentSystemPrompt is embedded in
-  // systemPromptOverride) or inherit_context (conversation).
+  // Children always load the parent's extensions, skills, and context files.
+  // AGENTS.md/CLAUDE.md are loaded so subagents inherit the user's operational
+  // rules (e.g. never use sudo, infrastructure changes stay with the main agent).
+  // Upstream's buildSystemPrompt() appends context files AFTER systemPromptOverride,
+  // which adds some redundancy for append-mode agents — but the safety rules are
+  // worth the few extra tokens.
   const loader = deps.io.createResourceLoader({
     cwd: cfg.effectiveCwd,
     agentDir,
     noPromptTemplates: true,
     noThemes: true,
-    noContextFiles: true,
+    noContextFiles: false,
     systemPromptOverride: () => cfg.systemPrompt,
     appendSystemPromptOverride: () => [],
   });

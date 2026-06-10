@@ -1,4 +1,4 @@
-import type { TextContent, ToolCall } from "@earendil-works/pi-ai";
+import type { TextContent, ThinkingContent, ToolCall } from "@earendil-works/pi-ai";
 import { describe, expect, it } from "vitest";
 import { extractAssistantContent, getToolCallName } from "#src/session/content-items";
 
@@ -8,12 +8,15 @@ import { extractAssistantContent, getToolCallName } from "#src/session/content-i
 const text = (t: string): TextContent => ({ type: "text", text: t });
 
 /** Minimal valid ToolCall fixture. */
-const toolCall = (name: string): ToolCall => ({
+const toolCall = (name: string, args: Record<string, unknown> = {}): ToolCall => ({
   type: "toolCall",
   id: "call_1",
   name,
-  arguments: {},
+  arguments: args,
 });
+
+/** Minimal valid ThinkingContent fixture. */
+const thinking = (text: string): ThinkingContent => ({ type: "thinking", thinking: text });
 
 // ── getToolCallName ───────────────────────────────────────────────────────────
 
@@ -31,43 +34,70 @@ describe("getToolCallName", () => {
 
 describe("extractAssistantContent", () => {
   it("returns empty arrays for empty content", () => {
-    expect(extractAssistantContent([])).toEqual({ textParts: [], toolNames: [] });
+    expect(extractAssistantContent([])).toEqual({ textParts: [], toolCalls: [], thinkingTexts: [] });
   });
 
   it("collects text items", () => {
     expect(extractAssistantContent([text("Hello"), text("World")])).toEqual({
       textParts: ["Hello", "World"],
-      toolNames: [],
+      toolCalls: [],
+      thinkingTexts: [],
     });
   });
 
-  it("collects toolCall items", () => {
-    expect(extractAssistantContent([toolCall("Bash"), toolCall("Read")])).toEqual({
+  it("collects toolCall items as full ToolCall objects", () => {
+    const tc1 = toolCall("Bash");
+    const tc2 = toolCall("Read");
+    expect(extractAssistantContent([tc1, tc2])).toEqual({
       textParts: [],
-      toolNames: ["Bash", "Read"],
+      toolCalls: [tc1, tc2],
+      thinkingTexts: [],
     });
   });
 
-  it("collects mixed text and toolCall items", () => {
-    const content = [text("Some analysis"), toolCall("Bash"), text("More text"), toolCall("Write")];
+  it("collects mixed text, thinking, and toolCall items", () => {
+    const tc1 = toolCall("Bash");
+    const tc2 = toolCall("Write");
+    const content = [text("Some analysis"), tc1, text("More text"), tc2];
     expect(extractAssistantContent(content)).toEqual({
       textParts: ["Some analysis", "More text"],
-      toolNames: ["Bash", "Write"],
+      toolCalls: [tc1, tc2],
+      thinkingTexts: [],
     });
   });
 
-  it("skips items with other types (e.g. thinking blocks)", () => {
-    const thinking = { type: "thinking" };
-    expect(extractAssistantContent([text("Before"), thinking, toolCall("Read")])).toEqual({
+  it("collects thinking content", () => {
+    const think = thinking("Let me reason about this...");
+    const tc = toolCall("Read");
+    expect(extractAssistantContent([text("Before"), think, tc])).toEqual({
       textParts: ["Before"],
-      toolNames: ["Read"],
+      toolCalls: [tc],
+      thinkingTexts: ["Let me reason about this..."],
     });
   });
 
   it("skips text items with empty text", () => {
     expect(extractAssistantContent([text(""), text("Real content")])).toEqual({
       textParts: ["Real content"],
-      toolNames: [],
+      toolCalls: [],
+      thinkingTexts: [],
+    });
+  });
+
+  it("skips thinking with empty text", () => {
+    expect(extractAssistantContent([thinking("")])).toEqual({
+      textParts: [],
+      toolCalls: [],
+      thinkingTexts: [],
+    });
+  });
+
+  it("preserves tool call arguments", () => {
+    const tc = toolCall("read", { path: "src/index.ts", offset: 10, limit: 20 });
+    expect(extractAssistantContent([tc])).toEqual({
+      textParts: [],
+      toolCalls: [tc],
+      thinkingTexts: [],
     });
   });
 });
