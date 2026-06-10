@@ -1,4 +1,10 @@
-import { join, normalize, resolve, sep } from "node:path";
+import {
+  join,
+  normalize,
+  posix as posixPath,
+  resolve,
+  win32 as winPath,
+} from "node:path";
 
 import { canonicalizePath } from "./canonicalize-path";
 import { getNonEmptyString, toRecord } from "./common";
@@ -24,9 +30,19 @@ export function normalizePathForComparison(
     : normalizedAbsolutePath;
 }
 
+/**
+ * Returns true when `pathValue` is `directory` itself or nested inside it.
+ *
+ * Containment is decided with Node's platform-native `path.relative` rather
+ * than a hand-rolled prefix check: on `win32` the comparison folds case (and
+ * tolerates either separator), matching the case-insensitive filesystem.
+ * `platform` defaults to `process.platform` and is injectable so Windows
+ * behavior is testable on a POSIX CI.
+ */
 export function isPathWithinDirectory(
   pathValue: string,
   directory: string,
+  platform: NodeJS.Platform = process.platform,
 ): boolean {
   if (!pathValue || !directory) {
     return false;
@@ -36,8 +52,14 @@ export function isPathWithinDirectory(
     return true;
   }
 
-  const prefix = directory.endsWith(sep) ? directory : `${directory}${sep}`;
-  return pathValue.startsWith(prefix);
+  const impl = platform === "win32" ? winPath : posixPath;
+  const rel = impl.relative(directory, pathValue);
+  return (
+    rel !== "" &&
+    rel !== ".." &&
+    !rel.startsWith(`..${impl.sep}`) &&
+    !impl.isAbsolute(rel)
+  );
 }
 
 /**

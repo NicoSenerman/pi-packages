@@ -117,6 +117,42 @@ describe("isPathWithinDirectory", () => {
   test("returns false for empty directory", () => {
     expect(isPathWithinDirectory("/a/b", "")).toBe(false);
   });
+
+  // ── platform-aware containment (Windows is case-insensitive) ────────────
+
+  test("win32: folds case for a case-different descendant", () => {
+    expect(
+      isPathWithinDirectory(
+        "c:\\users\\foo\\dir\\sub\\x.md",
+        "C:\\Users\\Foo\\dir",
+        "win32",
+      ),
+    ).toBe(true);
+  });
+
+  test("win32: folds case when path equals directory in different case", () => {
+    expect(
+      isPathWithinDirectory(
+        "c:\\users\\foo\\dir\\sub",
+        "C:\\USERS\\foo\\DIR",
+        "win32",
+      ),
+    ).toBe(true);
+  });
+
+  test("win32: rejects a sibling directory", () => {
+    expect(
+      isPathWithinDirectory(
+        "C:\\Users\\Foo\\other",
+        "C:\\Users\\Foo\\dir",
+        "win32",
+      ),
+    ).toBe(false);
+  });
+
+  test("posix platform stays case-sensitive", () => {
+    expect(isPathWithinDirectory("/a/B/c", "/a/b", "linux")).toBe(false);
+  });
 });
 
 describe("PATH_BEARING_TOOLS", () => {
