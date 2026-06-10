@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { PermissionManager } from "#src/permission-manager";
+import type { ScopedPermissionManager } from "#src/permission-manager";
 import { LocalPermissionsService } from "#src/permissions-service";
 import type { Ruleset } from "#src/rule";
 import type { SessionRules } from "#src/session-rules";
 import type {
   ToolInputFormatter,
-  ToolInputFormatterRegistry,
+  ToolInputFormatterRegistrar,
 } from "#src/tool-input-formatter-registry";
 
 import { makeCheckResult } from "#test/helpers/handler-fixtures";
@@ -23,28 +23,29 @@ vi.mock("#src/input-normalizer", () => ({
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
-function makeSessionRules(rules: Ruleset = []): SessionRules {
+function makeSessionRules(
+  rules: Ruleset = [],
+): Pick<SessionRules, "getRuleset"> {
   return {
     getRuleset: vi.fn<SessionRules["getRuleset"]>().mockReturnValue(rules),
-  } as unknown as SessionRules;
+  };
 }
 
-function makeFormatterRegistry(): ToolInputFormatterRegistry {
+function makeFormatterRegistry(): ToolInputFormatterRegistrar {
   return {
     register: vi
-      .fn<ToolInputFormatterRegistry["register"]>()
+      .fn<ToolInputFormatterRegistrar["register"]>()
       .mockReturnValue(vi.fn()),
-  } as unknown as ToolInputFormatterRegistry;
+  };
 }
 
 function makeService(overrides?: {
-  permissionManager?: PermissionManager;
-  sessionRules?: SessionRules;
-  formatterRegistry?: ToolInputFormatterRegistry;
+  permissionManager?: ScopedPermissionManager;
+  sessionRules?: Pick<SessionRules, "getRuleset">;
+  formatterRegistry?: ToolInputFormatterRegistrar;
 }) {
   const permissionManager =
-    overrides?.permissionManager ??
-    (makeFakePermissionManager() as unknown as PermissionManager);
+    overrides?.permissionManager ?? makeFakePermissionManager();
   const sessionRules = overrides?.sessionRules ?? makeSessionRules();
   const formatterRegistry =
     overrides?.formatterRegistry ?? makeFormatterRegistry();

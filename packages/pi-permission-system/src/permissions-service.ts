@@ -1,10 +1,10 @@
 import { buildInputForSurface } from "./input-normalizer";
-import type { PermissionManager } from "./permission-manager";
+import type { ScopedPermissionManager } from "./permission-manager";
 import type { PermissionsService } from "./service";
 import type { SessionRules } from "./session-rules";
 import type {
   ToolInputFormatter,
-  ToolInputFormatterRegistry,
+  ToolInputFormatterRegistrar,
 } from "./tool-input-formatter-registry";
 
 /**
@@ -16,9 +16,9 @@ import type {
  */
 export class LocalPermissionsService implements PermissionsService {
   constructor(
-    private readonly permissionManager: PermissionManager,
-    private readonly sessionRules: SessionRules,
-    private readonly formatterRegistry: ToolInputFormatterRegistry,
+    private readonly permissionManager: ScopedPermissionManager,
+    private readonly sessionRules: Pick<SessionRules, "getRuleset">,
+    private readonly formatterRegistry: ToolInputFormatterRegistrar,
   ) {}
 
   checkPermission(
