@@ -96,5 +96,6 @@ The dominant lesson is a `missing-context` failure — I asserted a non-existent
 2. `AGENTS.md` (git guidance) — appended a one-line note that `git reset --soft HEAD~N` stages all N commits together, so re-splitting needs a mixed `git reset` first.
 3. GitHub issue #385 close comment — corrected the `activeTools` config reference to the `--tools` / `-t` CLI flag (and `createAgentSession({ tools })`), with an inline correction note.
 4. Known erratum (not fixed): the v11.0.0 `CHANGELOG.md` `BREAKING CHANGE` entry still says "activeTools configuration" — it is generated from the `fix!:` commit footer and owned by release-please, so it was left as-is rather than hand-edited.
+5. Closed reference PR [#386] (superseded by the shipped commits) with a comment crediting @0xbentang and noting the two improvements folded in; the `Co-authored-by:` trailers preserve the credit in history.
 
 [#386]: https://github.com/gotgenes/pi-packages/pull/386
