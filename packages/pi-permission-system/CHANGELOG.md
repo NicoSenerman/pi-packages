@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [11.0.0](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v10.10.1...pi-permission-system-v11.0.0) (2026-06-11)
+
+
+### ⚠ BREAKING CHANGES
+
+* The permission system no longer auto-activates pi's off-by-default tools (`find`, `grep`, `ls`) in the main session. Users who want them active should enable them via pi's own `activeTools` configuration rather than relying on the permission system to expose every non-denied tool.
+
+### Features
+
+* add getActive to ToolRegistry wired to pi.getActiveTools ([#385](https://github.com/gotgenes/pi-packages/issues/385)) ([79c4594](https://github.com/gotgenes/pi-packages/commit/79c459443294c1b58643b746e3511fc17c9f8961))
+
+
+### Bug Fixes
+
+* respect pi's default active tool set in before_agent_start ([#385](https://github.com/gotgenes/pi-packages/issues/385)) ([bf5be48](https://github.com/gotgenes/pi-packages/commit/bf5be48ca8b06e8cb08f66d08eccb85af0673987))
+
+
+### Documentation
+
+* clarify before_agent_start filters pi's active tool set ([#385](https://github.com/gotgenes/pi-packages/issues/385)) ([bdb5a6a](https://github.com/gotgenes/pi-packages/commit/bdb5a6a08e3c1bb611c8b1795c4d46856104b3b0))
+
 ## [10.10.1](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v10.10.0...pi-permission-system-v10.10.1) (2026-06-11)
 
 
