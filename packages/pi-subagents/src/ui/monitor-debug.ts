@@ -11,7 +11,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 
-const DEBUG = true; // TODO: set back to `process.env.PI_SUBAGENTS_DEBUG === "1"` after debugging
+const DEBUG = process.env.PI_SUBAGENTS_DEBUG === "1";
 const LOG_DIR = path.join(os.homedir(), ".pi", "agent", "logs");
 const LOG_PATH = path.join(LOG_DIR, "monitor-debug.log");
 

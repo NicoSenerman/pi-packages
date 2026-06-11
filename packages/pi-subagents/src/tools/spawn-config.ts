@@ -102,13 +102,11 @@ export function resolveSpawnConfig(
   const inheritContext = resolvedConfig.inheritContext;
   const runInBackground = resolvedConfig.runInBackground;
 
-  // Compute display model name (only shown when different from parent)
-  const parentModelId = modelInfo.parentModel?.id;
+  // Compute display model name — always show it (even when same as parent)
   const effectiveModelId = model?.id;
-  const modelName =
-    effectiveModelId && effectiveModelId !== parentModelId
-      ? (model?.name ?? effectiveModelId).replace(/^Claude\s+/i, "").toLowerCase()
-      : undefined;
+  const modelName = effectiveModelId
+    ? (model?.name ?? effectiveModelId).replace(/^Claude\s+/i, "").toLowerCase()
+    : undefined;
 
   const effectiveMaxTurns = normalizeMaxTurns(
     resolvedConfig.maxTurns ?? settings.defaultMaxTurns,
