@@ -33,8 +33,12 @@ Before investigating the plan, load skills relevant to the change:
 
 ## Gather context
 
-1. Run `gh issue view $1` to read the issue body and labels.
+1. Run `gh issue view $1 --json number,title,author,body,labels` to read the issue body, labels, and author.
    After fetching the issue, call `set_session_name` with name `#N Planning — <issue title>` to identify this session in the session selector.
+   Then check the issue author against the gh CLI user: run `gh api user --jq .login` to get the authenticated user's login and compare it to the issue's `author.login`.
+   If they match, the issue reflects the operator's own intent — treat the "Proposed change" as the working hypothesis (subject to the `Decide` gate below) and proceed normally.
+   If they differ, the issue was filed by a third party (e.g., #389 was filed by `graelo`, an external contributor), so do not assume the proposed change is the direction the operator wants to take.
+   A third-party issue is a request to evaluate, not a spec to implement — note this and surface the direction itself for the operator's confirmation in the `Decide` step before committing to a plan.
 2. **Determine the target package(s).**
    Extract the `pkg:*` label(s) from the issue (e.g., `pkg:pi-permission-system` → package is `pi-permission-system`).
    If no `pkg:*` label exists or it seems incongruent with the issue content, ask the user which package this issue belongs to.
@@ -75,6 +79,12 @@ If breaking, state it in Goals and use `feat!:`/`fix!:` with a `BREAKING CHANGE:
 Before writing the plan, identify any genuinely ambiguous design choices.
 If there are 1–2 such choices (breaking-vs-non-breaking, result-shape change, fallback semantics, etc.), use the `ask-user` skill once to surface them with a short context summary and concrete options.
 Skip this step if the issue's "Proposed change" section is unambiguous.
+
+If the issue is third-party (its author is not the gh CLI user, as determined in Gather context), do **not** skip the `ask-user` gate even when the proposed change is unambiguous.
+The ambiguity for a third-party issue is not *how* to build it but *whether* the operator wants it built, and in what form.
+Use `ask-user` to confirm the direction before planning: at minimum ask whether to (a) implement the proposal as described, (b) implement a different approach to the same underlying problem, or (c) decline/defer.
+When the proposal also has design ambiguities, fold those into the same `ask-user` call.
+Let the operator's answers — not the issue body — drive the plan's Goals and Design Overview.
 
 ## Write the plan
 
