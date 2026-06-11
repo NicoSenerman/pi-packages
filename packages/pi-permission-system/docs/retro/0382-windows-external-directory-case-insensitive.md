@@ -48,3 +48,51 @@ Test count went from 1902 to 1921 (+19); full suite, `check`, `lint`, and `fallo
   Flipping `process.platform` does not switch Node's `path.win32` dispatch on a POSIX runner, and the gate's `canonicalNormalizePathForComparison` only lowercases on real `win32`, so a darwin-runner integration test would be unreliable.
   Coverage is provided by the composed unit tests at the `evaluate` / wildcard / `path-utils` levels.
 - The `pnpm install` after the dep bump printed "Already up to date" but did update `pnpm-lock.yaml` (+205 lines adding `0.79.1`); verified the installed `index.d.ts` re-exports `getPackageDir` before wiring `index.ts`.
+
+## Stage: Final Retrospective (2026-06-10T20:30:00Z)
+
+### Session summary
+
+Shipped the Windows case-insensitive `external_directory` fix end-to-end across planning, TDD, and release: 7 implementation commits, `+19` tests, `pi-permission-system` `v10.10.0` released and issue #382 closed.
+The session was clean throughout — no rabbit-holes, no instruction violations, all gates green on the first push, and a PASS pre-completion review.
+The one dominant friction was a planning-stage `missing-context` gap that the user redirected with two well-aimed questions.
+
+### Observations
+
+#### What went well
+
+- The injected-`platform`-parameter testability pattern (select `path.win32`/`path.posix` from a defaulted `platform` arg, pass `"win32"` + `C:\…` in tests) cleanly solved the "can't stub `process.platform` to switch Node's `path` dispatch" problem.
+  Reusable for any cross-platform path logic.
+- Empirical verification before designing: a throwaway `node -e` script confirmed `path.win32.relative` folds case, and reading the local pi checkout (`~/development/pi/pi`) surfaced `getCwdRelativePath` / `getPiDocsClassification` / `getPackageDir` before committing to an approach.
+- Tight feedback loop: `vitest run <file>` after every Red and Green, `pnpm run check` after each type-affecting step, full suite before commits touching shared helpers (`isPathWithinDirectory`, `evaluate`).
+  No end-of-session verification surprises.
+- Execution-time adaptation: caught a plan dependency-ordering inversion (the `wildcard-matcher` options had to land before `isPiInfrastructureRead` consumed them) and reordered without rework.
+
+#### What caused friction (agent side)
+
+- `missing-context` — during planning I converged on a hand-rolled case-folding fix (lowercase both sides / case-insensitive regex) without first checking whether Node's `path` module had a containment primitive or how the upstream host `@earendil-works/pi-coding-agent` solves the same problem.
+  The user's two questions ("is there a builtin node path library?"
+  / "how does pi handle this itself?") supplied exactly the missing checks, which redirected the design to `path.win32.relative` (native case-folding) and `getPackageDir()` (robust auto-detect).
+  Self-identified: no (user-caught, via redirecting questions).
+  Impact: no rework — caught in planning before the plan was written — but without the redirect the plan would have shipped more complex hand-rolled containment instead of the cleaner builtin-based design.
+- `other` (plan dependency-ordering miss) — the plan listed the infra-read folding step before the `wildcard-matcher` options step it depended on.
+  Self-identified at execution; reordered with no rework.
+
+#### What caused friction (user side)
+
+- The high-leverage context (prefer Node builtins; check how pi-coding-agent itself solves filesystem/platform problems) arrived as a mid-planning redirect rather than being available up front.
+  Framed as opportunity: encoding "check pi-coding-agent's implementation first for path/platform bugs" in the package skill lets the agent do this proactively without the redirect.
+  The intervention style — two redirecting questions instead of a correction — was ideal and worth preserving.
+
+### Diagnostic details
+
+- **Model-performance correlation** — one subagent dispatched (`pre-completion-reviewer`, judgment-heavy review).
+  It returned a structured PASS with a genuine non-blocking WARN (the `evaluateFirst`/`evaluateMostRestrictive` testability gap) — appropriate quality for the task; no model/task mismatch.
+- **Escalation-delay tracking** — no `rabbit-hole` friction points; longest run on a single error was the expected Red→Green cycle (1–2 tool calls).
+- **Unused-tool detection** — the `missing-context` gap was not a tool-usage failure: once pointed at `~/development/pi/pi`, exploration via `grep`/`Bash`/`node -e` was efficient.
+  The gap was "did not think to check the upstream host implementation," not "checked it inefficiently."
+- **Feedback-loop gap analysis** — no gap; verification ran incrementally after each change, not deferred to the end.
+
+### Changes made
+
+1. `.pi/skills/package-pi-permission-system/SKILL.md` — added a 4th item to the Debugging section: for path/filesystem/platform bugs, check how `@earendil-works/pi-coding-agent` solves it first and prefer Node `path` builtins over hand-rolled comparison.

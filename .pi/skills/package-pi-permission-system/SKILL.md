@@ -134,6 +134,8 @@ When investigating a reported bug:
 1. Check the runtime environment: which extensions are loaded, from which paths, and whether any are loaded more than once.
 2. Check `.pi/settings.json` and `~/.pi/agent/settings.json` for overlapping package entries.
 3. Instrument only after confirming the bug reproduces in isolation.
+4. When the bug involves path, filesystem, or platform semantics, check how `@earendil-works/pi-coding-agent` solves it first (local checkout or published source).
+   Prefer Node `path` builtins (`path.relative`, `path.win32`/`path.posix`) over hand-rolled comparison; pi's containment idiom is `relative()` + a `..`/absolute-prefix check (case-insensitive on Windows).
 
 ## Notes for Agents
 
