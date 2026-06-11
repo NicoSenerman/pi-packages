@@ -79,6 +79,9 @@ Close each with its own short summary — release-please omits `refactor:` commi
    - Note: release-please PRs typically have **no CI runs** because PRs created by the default `GITHUB_TOKEN` do not trigger workflows.
      This is expected; do not block on it.
    - If `release_pr_merge` returns an error (not mergeable), stop and report — let the user decide.
+   - Exception: if it fails with `merge_state: UNSTABLE`, check `gh pr view <N> --json statusCheckRollup`.
+     An empty rollup means no checks ran — the `GITHUB_TOKEN` case above; merge with `gh pr merge <N> --merge`, then `git pull --ff-only`.
+     Stop and report only when the PR is genuinely blocked (`CONFLICTING`/`DIRTY`/`BEHIND` or a failing check).
 5. Use `release_watch` to wait for the release tag to land on HEAD.
 
 ## 7. Final report
@@ -93,6 +96,6 @@ Print:
 ## Constraints
 
 - Never force-push.
-- Never merge a release-please PR that is not `MERGEABLE`/`CLEAN`.
+- Never merge a release-please PR that is genuinely blocked (`CONFLICTING`/`DIRTY`/`BEHIND` or a failing check); `UNSTABLE` from no checks running is the expected `GITHUB_TOKEN` case (step 6.4).
 - If CI fails, the issue stays open.
 - If multiple release-please PRs exist for the same component, stop and ask — that's a configuration issue, not a normal merge.
