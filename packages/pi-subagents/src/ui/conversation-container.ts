@@ -24,6 +24,41 @@ interface Expandable {
 	setExpanded(expanded: boolean): void;
 }
 
+// ── Component tree disposal ──────────────────────────────────────────────────
+
+/**
+ * Recursively dispose a component tree — stops Loaders, clears intervals,
+ * and prevents orphaned timers from firing requestRender().
+ *
+ * Walks children, contentContainers, and named loader properties.
+ * All cleanup is best-effort — errors are swallowed so a failed stop()
+ * on one component doesn't prevent cleanup of siblings.
+ */
+export function disposeComponentTree(component: unknown): void {
+	if (!component || typeof component !== "object") return;
+
+	const c = component as Record<string, unknown>;
+
+	// Stop Loader timers (the primary source of orphaned intervals).
+	// Do NOT call dispose() on arbitrary components — that can trigger
+	// side effects in extensions or other subsystems.
+	if (c.loader && typeof c.loader === "object" && typeof (c.loader as any).stop === "function") {
+		try { (c.loader as any).stop(); } catch { /* best effort */ }
+	}
+
+	// Recurse into Container children
+	if (Array.isArray(c.children)) {
+		for (const child of c.children) {
+			disposeComponentTree(child);
+		}
+	}
+
+	// Some components nest content inside a contentContainer
+	if (c.contentContainer) {
+		disposeComponentTree(c.contentContainer);
+	}
+}
+
 // ── ConversationContainer ────────────────────────────────────────────────────
 
 export class ConversationContainer {
@@ -41,6 +76,10 @@ export class ConversationContainer {
 
 	/** Fully rebuild the component tree from a snapshot of messages. */
 	rebuildFromSnapshot(messages: readonly unknown[]): void {
+		// Dispose existing component tree to stop orphaned Loader timers
+		for (const child of this.container.children) {
+			disposeComponentTree(child);
+		}
 		this.container.clear();
 		this.pendingTools.clear();
 
@@ -107,6 +146,15 @@ export class ConversationContainer {
 	/** Invalidate the container (force re-render on next render call). */
 	invalidate(): void {
 		this.container.invalidate();
+	}
+
+	/** Dispose all child components, stopping Loaders and clearing intervals. */
+	dispose(): void {
+		for (const child of this.container.children) {
+			disposeComponentTree(child);
+		}
+		this.container.clear();
+		this.pendingTools.clear();
 	}
 
 	// ── Private ────────────────────────────────────────────────────────────

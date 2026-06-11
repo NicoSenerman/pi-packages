@@ -39,6 +39,8 @@ export class ConversationViewer implements Component {
   private unsubscribe: (() => void) | undefined;
   private lastInnerW = 0;
   private closed = false;
+  /** True when agent sent updates; cleared in render() after rebuild. */
+  private conversationDirty = false;
 
   private tui: TUI;
   private record: Subagent;
@@ -76,7 +78,9 @@ export class ConversationViewer implements Component {
 
     this.unsubscribe = record.subscribeToUpdates(() => {
       if (this.closed) return;
-      this.conversationContainer.rebuildFromSnapshot(this.record.messages);
+      // Mark dirty instead of immediately rebuilding — the next render() call
+      // will pick it up, avoiding rebuild storms during streaming.
+      this.conversationDirty = true;
       this.tui.requestRender();
     });
   }
@@ -171,7 +175,11 @@ export class ConversationViewer implements Component {
     if (invocationLine) lines.push(row(invocationLine));
     lines.push(hrMid);
 
-    // Content area — render from component tree
+    // Content area — rebuild if dirty, then render from component tree
+    if (this.conversationDirty) {
+      this.conversationContainer.rebuildFromSnapshot(this.record.messages);
+      this.conversationDirty = false;
+    }
     let contentLines = this.conversationContainer.render(innerW);
 
     if (contentLines.length === 0) {
@@ -225,6 +233,7 @@ export class ConversationViewer implements Component {
       this.unsubscribe();
       this.unsubscribe = undefined;
     }
+    this.conversationContainer.dispose();
   }
 
   // ---- Private ----

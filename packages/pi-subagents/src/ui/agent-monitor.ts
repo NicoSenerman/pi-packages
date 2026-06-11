@@ -23,6 +23,7 @@ import type { SubagentManager } from "#src/lifecycle/subagent-manager";
 import type { Subagent } from "#src/lifecycle/subagent";
 import type { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
 import { ConversationContainer, type MapperDeps } from "#src/ui/conversation-container";
+import { mlog, mlogClose } from "#src/ui/monitor-debug";
 import {
   SPINNER,
   type Theme,
@@ -131,9 +132,23 @@ class AgentMonitor implements Component {
     // Subscribe to live updates from all agents
     this.subscribeToAgents();
 
-    // Spinner animation timer
+    // Spinner animation timer — only animates the list view.
+    // When in conversation view the timer is paused; updates are driven
+    // by the subscribe-callback instead of polling.
     this.spinnerTimer = setInterval(() => {
       if (this.closed) return;
+
+      // In conversation view, pause spinner and let event-driven updates handle rendering
+      if (this.view === "conversation") {
+        if (this.conversationDirty && this.selectedAgentForViewer && this.conversationContainer) {
+          mlog("spinner", "rebuilding dirty conversation");
+          this.conversationContainer.rebuildFromSnapshot(this.selectedAgentForViewer.messages);
+          this.conversationDirty = false;
+          this.tui.requestRender();
+        }
+        return; // Don't animate spinner or poll subscriptions while in conversation
+      }
+
       this.spinnerFrame++;
       this.subscribeToAgents(); // pick up newly spawned agents
       this.tui.requestRender();
@@ -148,6 +163,7 @@ class AgentMonitor implements Component {
 
     if (this.view === "conversation") {
       if (matchesKey(data, "escape") || matchesKey(data, "backspace") || matchesKey(data, "q")) {
+        mlog("handleInput", "conversation → list (Esc/Backspace/Q)");
         this.view = "list";
         this.scrollOffset = 0;
         this.selectionChanged = true;
@@ -297,7 +313,16 @@ class AgentMonitor implements Component {
     if (width < 6) return [];
 
     if (this.view === "conversation") {
-      return this.renderConversationView(width);
+      // Skip re-render if nothing changed — the AgentWidget's requestRender()
+      // fires every 80ms but there's no point re-rendering identical content.
+      // We also need to re-render when scrollOffset or content changes.
+      if (!this.needsRender && this.lastConversationLines.length > 0 && this._lastScrollOffset === this.scrollOffset) {
+        return this.lastConversationLines;
+      }
+      this.needsRender = false;
+      this._lastScrollOffset = this.scrollOffset;
+      this.lastConversationLines = this.renderConversationView(width);
+      return this.lastConversationLines;
     }
     return this.renderListView(width);
   }
@@ -309,6 +334,7 @@ class AgentMonitor implements Component {
   dispose(): void {
     if (this.closed) return;
     this.closed = true;
+    mlog("dispose", "AgentMonitor dispose called");
 
     // Clear spinner timer
     if (this.spinnerTimer) {
@@ -324,9 +350,11 @@ class AgentMonitor implements Component {
       try { unsub(); } catch { /* best effort */ }
     }
     this.unsubscribes = [];
+    mlog("dispose", "spinner cleared, closing log");
+    mlogClose();
   }
 
-  // ── Private: data access ────────────────────────────────────────────────
+  // ── Private: data access
 
   private getAgents(): Subagent[] {
     const agents = this.manager.listAgents();
@@ -362,18 +390,36 @@ class AgentMonitor implements Component {
     }
   }
 
+  /** Set to true when a subscribed agent sends an update; cleared after render. */
+  private conversationDirty = false;
+  /** Cached output from last conversation render — returned verbatim when nothing changed. */
+  private lastConversationLines: string[] = [];
+  /** True when a re-render is actually needed (dirty data or first render). */
+  private needsRender = true;
+  /** One-shot flag for content dump debugging. */
+  private _dumpedContent = false;
+  /** Last scroll offset when conversation was cached — used to detect scroll changes. */
+  private _lastScrollOffset = -1;
+
   private subscribeToAgent(agent: Subagent): void {
+    // Always mark as subscribed to prevent retrying on agents without sessions yet.
+    // If subscribeToUpdates returns undefined (no session yet), we'll miss early
+    // events but won't accumulate duplicate subscriptions from spinner retries.
+    this.subscribedIds.add(agent.id);
+    mlog("subscribe", "subscribing to agent", { id: agent.id, type: agent.type });
     const unsub = agent.subscribeToUpdates(() => {
       if (this.closed) return;
-      // Rebuild conversation container if this agent is the one being viewed
-      if (this.view === "conversation" && this.selectedAgentForViewer?.id === agent.id && this.conversationContainer) {
-        this.conversationContainer.rebuildFromSnapshot(agent.messages);
+      mlog("subscribe-cb", "agent update", { id: agent.id, view: this.view });
+      if (this.view === "conversation" && this.selectedAgentForViewer?.id === agent.id) {
+        this.conversationDirty = true;
+        this.needsRender = true;
       }
-      this.tui.requestRender();
     });
     if (unsub) {
       this.unsubscribes.push(unsub);
-      this.subscribedIds.add(agent.id);
+    } else {
+      // No session yet — remove from subscribedIds so we retry on the next spinner tick
+      this.subscribedIds.delete(agent.id);
     }
   }
 
@@ -486,7 +532,7 @@ class AgentMonitor implements Component {
       return this.renderListView(width);
     }
 
-    // Header — agent info (our own rendering)
+    // Header — agent info with animated spinner
     lines.push(hrTop);
     const name = getDisplayName(agent.type, this.registry);
     const modeLabel = getPromptModeLabel(agent.type, this.registry);
@@ -511,7 +557,7 @@ class AgentMonitor implements Component {
       `${icon} ${th.bold(name)}${modeTag}  ${th.fg("muted", agent.description)} ${th.fg("dim", "·")} ${th.fg("dim", headerParts.join(" · "))}`,
     ));
     const { modelName, tags } = buildInvocationTags(agent.invocation);
-    const invParts = modelName ? [modelName, ...tags] : tags;
+    const invParts = modelName ? [th.fg("accent", modelName), ...tags] : tags;
     if (invParts.length > 0) {
       lines.push(row(th.fg("dim", `  ↳ ${invParts.join(" · ")}`)));
     }
@@ -521,6 +567,40 @@ class AgentMonitor implements Component {
     let contentLines: string[] = [];
     if (this.conversationContainer) {
       contentLines = this.conversationContainer.render(innerW);
+      // Strip OSC sequences (e.g. \x1b]133;A\x07 shell integration markers)
+      // that break the overlay layout. These are fine in Pi's main chat but
+      // corrupt terminal state inside our custom overlay.
+      const oscRe = /\x1b\][^\x07\x1b]*[\x07\x1b]/g;
+      contentLines = contentLines.map(l => l.replace(oscRe, ""));
+    }
+
+    // One-shot comprehensive dump for debugging UI breakage
+    if (!this._dumpedContent && contentLines.length > 0) {
+      this._dumpedContent = true;
+      for (let i = 0; i < contentLines.length; i++) {
+        const c = contentLines[i];
+        const vw = visibleWidth(c);
+        const hasNL = c.includes("\n") || c.includes("\r");
+        // Strip ANSI for preview
+        const stripped = c.replace(/\x1b\[[0-9;]*m/g, "");
+        mlog("content-dump", `line ${i}/${contentLines.length}`, {
+          vw, rawLen: c.length, hasNewline: hasNL,
+          stripped: stripped.slice(0, 80),
+          // Check if after row() wrapping the line would be too wide
+          rowVW: visibleWidth(row(c)),
+          width,
+        });
+        // Flag lines with embedded newlines (they split the row)
+        if (hasNL) {
+          mlog("BUG-EMBEDDED-NEWLINE", `line ${i}`, { raw: c.length, sample: JSON.stringify(c.slice(0, 100)) });
+        }
+      }
+      // Also dump a few row-wrapped lines to check final width
+      for (let i = 0; i < Math.min(5, contentLines.length); i++) {
+        const rowLine = row(contentLines[i]);
+        const rvw = visibleWidth(rowLine);
+        mlog("row-dump", `line ${i}`, { rowVW: rvw, expectedWidth: width, overflow: rvw > width });
+      }
     }
 
     if (contentLines.length === 0) {
@@ -546,8 +626,15 @@ class AgentMonitor implements Component {
     this.scrollOffset = Math.min(this.scrollOffset, maxScroll);
 
     const visible = contentLines.slice(this.scrollOffset, this.scrollOffset + viewportH);
-    for (const line of visible) {
-      lines.push(row(line));
+    for (let i = 0; i < visible.length; i++) {
+      const raw = visible[i];
+      const vw = visibleWidth(raw);
+      const rl = raw.length;
+      // Log any line where visible width is way off from expected innerW
+      if (vw > innerW + 5 || (vw < innerW - 5 && rl > 20)) {
+        mlog("width-mismatch", `line ${i}`, { vis: vw, raw: rl, innerW, sample: raw.slice(0, 80) });
+      }
+      lines.push(row(raw));
     }
     // Pad remaining viewport lines
     const remaining = viewportH - visible.length;
@@ -568,6 +655,19 @@ class AgentMonitor implements Component {
     lines.push(row(footerLeft + " ".repeat(footerGap) + expandHint + footerRight));
     lines.push(hrBot);
 
+    mlog("render", "conversation view", { totalLines: lines.length, scrollOffset: this.scrollOffset, contentLines: contentLines.length, viewportH, closed: this.closed });
+
+    // Final sanity: check every output line for embedded newlines or width overflow
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].includes("\n") || lines[i].includes("\r")) {
+        mlog("BUG-OUTPUT-NEWLINE", `output line ${i}`, { sample: JSON.stringify(lines[i].slice(0, 120)) });
+      }
+      const lvw = visibleWidth(lines[i]);
+      if (lvw > width) {
+        mlog("BUG-OUTPUT-OVERFLOW", `output line ${i}`, { vw: lvw, maxWidth: width, sample: lines[i].replace(/\x1b\[[0-9;]*m/g, "").slice(0, 80) });
+      }
+    }
+
     return lines;
   }
 
@@ -577,11 +677,13 @@ class AgentMonitor implements Component {
     const th = this.theme;
     const lines: string[] = [];
 
-    // Line 1: status icon + agent name
+    // Line 1: status icon + agent name + model
     const icon = statusIcon(agent.status, this.spinnerFrame, th);
     const name = getDisplayName(agent.type, this.registry);
     const selector = isSelected ? th.fg("accent", "▸ ") : "   ";
-    lines.push(`${selector}${icon} ${th.bold(name)}`);
+    const { modelName: model } = buildInvocationTags(agent.invocation);
+    const modelTag = model ? th.fg("dim", ` (${model})`) : "";
+    lines.push(`${selector}${icon} ${th.bold(name)}${modelTag}`);
 
     // Line 2: task/prompt description (word-wrapped, max 2 lines, dimmed)
     const indent = "    "; // 4 spaces indent
@@ -738,18 +840,24 @@ class AgentMonitor implements Component {
     const agent = agents[this.selectedIndex];
 
     if (!agent.isSessionReady()) {
-      // Can't open viewer for agents without sessions
+      mlog("open-view", "skipped — session not ready", { id: agent.id });
       return;
     }
+
+    mlog("open-view", "opening conversation view", { id: agent.id, type: agent.type });
 
     // Switch to embedded conversation view
     this.selectedAgentForViewer = agent;
     this.view = "conversation";
     this.scrollOffset = 0;
+    this._lastScrollOffset = -1; // force re-render on first frame
     this.autoScroll = true; // start at bottom, follow new content
 
     // Subscribe to the selected agent's updates for live streaming
-    this.subscribeToAgent(agent);
+    // (only if not already subscribed — subscribeToAgents may have done it)
+    if (!this.subscribedIds.has(agent.id)) {
+      this.subscribeToAgent(agent);
+    }
 
     // Create a ConversationContainer for the selected agent
     const deps: MapperDeps = {
@@ -761,12 +869,17 @@ class AgentMonitor implements Component {
     };
     this.conversationContainer = new ConversationContainer(deps);
     this.conversationContainer.rebuildFromSnapshot(agent.messages);
+    this.needsRender = true;
 
     this.tui.requestRender();
   }
 
   /** Dispose the conversation container and its subscription. */
   private disposeConversationView(): void {
+    mlog("dispose-view", "disposing conversation view", { hadContainer: !!this.conversationContainer });
+    if (this.conversationContainer) {
+      this.conversationContainer.dispose();
+    }
     this.conversationContainer = undefined;
     this.selectedAgentForViewer = undefined;
   }
@@ -798,6 +911,7 @@ export async function openAgentMonitor(
   _projectAgentsDir: string,
 ): Promise<void> {
 
+  mlog("open", "openAgentMonitor called — creating overlay");
   await ctx.ui.custom<undefined>(
     (tui: TUI, theme: PiTheme, _keybindings: unknown, done: (result: undefined) => void) => {
       const monitor = new AgentMonitor({
