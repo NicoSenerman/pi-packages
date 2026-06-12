@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test, vi } from "vitest";
+import { loadUnifiedConfig } from "#src/config-loader";
 import { registerPermissionSystemCommand } from "#src/config-modal";
 import type { CommandConfigStore } from "#src/config-store";
 import {
@@ -145,7 +146,7 @@ test("permission-system command handlers manage config summary, persistence, and
       current: () => config,
       save: (next) => {
         const currentConfig = normalizePermissionSystemConfig(
-          JSON.parse(readFileSync(configPath, "utf-8")) as unknown,
+          loadUnifiedConfig(configPath).config,
         );
         const normalized = normalizePermissionSystemConfig(next);
         writeFileSync(
@@ -154,7 +155,7 @@ test("permission-system command handlers manage config summary, persistence, and
           "utf-8",
         );
         config = normalizePermissionSystemConfig(
-          JSON.parse(readFileSync(configPath, "utf-8")) as unknown,
+          loadUnifiedConfig(configPath).config,
         );
         expect(config).not.toEqual(currentConfig);
       },

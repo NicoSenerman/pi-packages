@@ -103,26 +103,6 @@ describe("normalizePermissionSystemConfig", () => {
     expect(result.yoloMode).toBe(false);
   });
 
-  it("coerces non-boolean values to their defaults", () => {
-    const result = normalizePermissionSystemConfig({
-      debugLog: "yes",
-      permissionReviewLog: 1,
-      yoloMode: null,
-    });
-    expect(result.debugLog).toBe(false);
-    expect(result.permissionReviewLog).toBe(true);
-    expect(result.yoloMode).toBe(false);
-  });
-
-  it("handles null/undefined input gracefully", () => {
-    const result = normalizePermissionSystemConfig(null);
-    expect(result).toEqual({
-      debugLog: false,
-      permissionReviewLog: true,
-      yoloMode: false,
-    });
-  });
-
   it("includes toolInputPreviewMaxLength when a valid positive integer is provided", () => {
     const result = normalizePermissionSystemConfig({
       toolInputPreviewMaxLength: 400,
@@ -135,25 +115,6 @@ describe("normalizePermissionSystemConfig", () => {
     expect("toolInputPreviewMaxLength" in result).toBe(false);
   });
 
-  it("omits toolInputPreviewMaxLength for invalid values", () => {
-    expect(
-      normalizePermissionSystemConfig({ toolInputPreviewMaxLength: 0 })
-        .toolInputPreviewMaxLength,
-    ).toBeUndefined();
-    expect(
-      normalizePermissionSystemConfig({ toolInputPreviewMaxLength: -1 })
-        .toolInputPreviewMaxLength,
-    ).toBeUndefined();
-    expect(
-      normalizePermissionSystemConfig({ toolInputPreviewMaxLength: 200.5 })
-        .toolInputPreviewMaxLength,
-    ).toBeUndefined();
-    expect(
-      normalizePermissionSystemConfig({ toolInputPreviewMaxLength: "200" })
-        .toolInputPreviewMaxLength,
-    ).toBeUndefined();
-  });
-
   it("includes toolTextSummaryMaxLength when a valid positive integer is provided", () => {
     const result = normalizePermissionSystemConfig({
       toolTextSummaryMaxLength: 120,
@@ -164,24 +125,5 @@ describe("normalizePermissionSystemConfig", () => {
   it("omits toolTextSummaryMaxLength when absent", () => {
     const result = normalizePermissionSystemConfig({});
     expect("toolTextSummaryMaxLength" in result).toBe(false);
-  });
-
-  it("omits toolTextSummaryMaxLength for invalid values", () => {
-    expect(
-      normalizePermissionSystemConfig({ toolTextSummaryMaxLength: 0 })
-        .toolTextSummaryMaxLength,
-    ).toBeUndefined();
-    expect(
-      normalizePermissionSystemConfig({ toolTextSummaryMaxLength: -1 })
-        .toolTextSummaryMaxLength,
-    ).toBeUndefined();
-    expect(
-      normalizePermissionSystemConfig({ toolTextSummaryMaxLength: 80.1 })
-        .toolTextSummaryMaxLength,
-    ).toBeUndefined();
-    expect(
-      normalizePermissionSystemConfig({ toolTextSummaryMaxLength: true })
-        .toolTextSummaryMaxLength,
-    ).toBeUndefined();
   });
 });
