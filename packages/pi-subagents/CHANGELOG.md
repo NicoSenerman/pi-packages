@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.0.2](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v15.0.1...pi-subagents-v15.0.2) (2026-06-12)
+
+
+### Miscellaneous Chores
+
+* **deps:** bump Pi SDK to 0.79.1 ([#370](https://github.com/gotgenes/pi-packages/issues/370)) ([704f3b3](https://github.com/gotgenes/pi-packages/commit/704f3b3457ceb12b9df9efffe7a56812a5667d5d))
+* **deps:** bump rollup to 4.61.1 ([#370](https://github.com/gotgenes/pi-packages/issues/370)) ([250b729](https://github.com/gotgenes/pi-packages/commit/250b7296093b091297c57463693eaa2db59d5fe3))
+
 ## [15.0.1](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v15.0.0...pi-subagents-v15.0.1) (2026-06-10)
 
 
