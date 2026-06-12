@@ -35,6 +35,7 @@
     "packages/pi-github-tools/docs/plans",
     "packages/pi-permission-system/docs/architecture",
     "packages/pi-permission-system/docs/assets",
+    "packages/pi-permission-system/docs/decisions",
     "packages/pi-permission-system/docs/plans",
     "packages/pi-permission-system/docs/retro",
     "packages/pi-session-tools/docs/plans",
