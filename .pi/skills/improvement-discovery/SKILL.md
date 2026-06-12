@@ -161,20 +161,25 @@ The plan should produce:
 
 ## Lessons from prior phases
 
-These are failure modes and corrections discovered empirically:
+These are failure modes and corrections discovered empirically.
+
+### Planning and analysis
 
 - **Don't plan a single step that rewrites an entire large test file** — use lift-and-shift (introduce new alongside old, migrate incrementally, remove old last).
+- **Start from index.ts outward** — the composition root reveals wiring overhead, coupling, and initialization hazards that file-by-file analysis misses.
+- **Test setup is a production-design signal** — `fallow`'s syntactic metrics miss god objects, closure density, and DIP violations.
+  When a unit needs module-level `vi.mock`, wide `as unknown as` casts, or a multi-field fixture, the production object is hard to construct — fix the object, not the test.
+  The test is the symptom; the production object is the disease.
+- **Audit the architecture doc against the code** — a doc's own rationalization of a smell ("kept inline per the anti-procedure-splitting rule") is a claim to verify, not a fact to repeat.
+
+### Structural preferences
+
 - **Dissolve bags ≤ 4 fields into plain parameters** — the interface adds ceremony without clarity at that size.
 - **Keep bags ≥ 5 fields but destructure in the signature** — eliminates `deps.` noise while keeping the grouped contract.
 - **Push platform types (ExtensionContext, SDK types) to boundaries** — domain code should depend on domain interfaces, not SDK imports.
 - **Observer > callback threading** — when 3+ layers pass callbacks, replace with subscribe-at-the-boundary.
 - **Snapshot > live reference** — when mutable parent state is read at spawn time and never updated, freeze it into a data object.
 - **Pure function > method on wide class** — if the logic doesn't need instance state, extract it.
-- **Start from index.ts outward** — the composition root reveals wiring overhead, coupling, and initialization hazards that file-by-file analysis misses.
-- **Test setup is a production-design signal** — `fallow`'s syntactic metrics miss god objects, closure density, and DIP violations.
-  When a unit needs module-level `vi.mock`, wide `as unknown as` casts, or a multi-field fixture, the production object is hard to construct — fix the object, not the test.
-  The test is the symptom; the production object is the disease.
-- **Audit the architecture doc against the code** — a doc's own rationalization of a smell ("kept inline per the anti-procedure-splitting rule") is a claim to verify, not a fact to repeat.
 - **Lifecycle object > method extraction** — when mutable `let` variables are shared across closures, the fix is an object that owns that state, not extracting methods that still close over the variables.
 - **Behavior on domain object > orchestration in manager** — when a manager reaches into a data object 10+× to check status and perform transitions, the object is anemic; move the behavior to the object itself.
 - **Events > outbound bridges** — when package A needs to notify package B, prefer emitting events that B listens for over A calling B directly via a bridge module.

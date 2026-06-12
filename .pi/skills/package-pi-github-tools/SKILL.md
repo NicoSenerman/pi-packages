@@ -19,6 +19,7 @@ Thin Pi wrappers in `src/tools/` register each tool and map `onProgress` to Pi's
 ```text
 src/
 ├── extension.ts          # default export: registers all tools
+├── tool-result.ts        # AgentToolResult builders
 ├── tools/                # Pi tool wrappers (one per tool)
 ├── lib/                  # portable business logic
 │   ├── ci.ts             # findRun, watchRun, listRuns
@@ -35,6 +36,16 @@ src/
 
 - `src/lib/` must not import from `@earendil-works/pi-coding-agent` — only `src/tools/` and `src/progress.ts` touch Pi types.
 - The `gh` CLI is the sole external binary dependency.
+
+## Configuration
+
+Extension-owned JSON config, project overriding global (same pattern as `pi-colgrep`):
+
+- Global: `<agentDir>/extensions/pi-github-tools/config.json`
+- Project: `<cwd>/.pi/extensions/pi-github-tools/config.json`
+
+`defaultMergeMethod` (`"rebase" | "squash" | "merge"`): fallback merge method for `release_pr_merge` when the tool call omits `method`.
+Missing or malformed config files are tolerated silently; invalid values are dropped by `normalizeConfig`.
 
 ## Testing
 

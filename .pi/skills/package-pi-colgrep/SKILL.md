@@ -47,7 +47,7 @@ src/
   Do not proactively index a directory the operator never searches.
 - The reindexer serializes all builds: one `colgrep init` at a time. `runNow()` coalesces concurrent calls onto the in-flight promise; `shutdown()` awaits it.
 
-## colgrep CLI facts
+## colgrep CLI Facts
 
 These bit us once — encode them, don't rediscover them:
 

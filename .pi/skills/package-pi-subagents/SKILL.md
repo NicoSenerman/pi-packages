@@ -24,6 +24,39 @@ A single post-bind call applies the `EXCLUDED_TOOL_NAMES` recursion guard after 
 
 Upstream PRs for these patches ([#71](https://github.com/tintinweb/pi-subagents/pull/71), [#72](https://github.com/tintinweb/pi-subagents/pull/72), [#73](https://github.com/tintinweb/pi-subagents/pull/73)) are open but the fork continues independently regardless.
 
+## Architecture
+
+See `docs/architecture/architecture.md` for the full architecture document with Mermaid diagrams, domain model, structural analysis, and improvement roadmap.
+Refactoring history is preserved in `docs/architecture/history/` (one file per completed phase).
+
+### Domain organization
+
+The extension is organized into seven domains (56 files):
+
+| Domain      | Directory                                                                                                                                                                                                   | Modules | Responsibility                                                                                                                                                                    |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Config      | `agent-types.ts`, `default-agents.ts`, `custom-agents.ts`, `invocation-config.ts`                                                                                                                           | 4       | Agent type registry, built-in/custom configs, per-call merge                                                                                                                      |
+| Session     | `session-config.ts`, `prompts.ts`, `context.ts`, `conversation.ts`, `content-items.ts`, `env.ts`, `model-resolver.ts`, `session-dir.ts`                                                                     | 8       | Pure session assembly: prompts, context, conversation rendering, environment, model resolution                                                                                    |
+| Lifecycle   | `subagent-manager.ts`, `create-subagent-session.ts`, `subagent-session.ts`, `turn-limits.ts`, `subagent.ts`, `concurrency-queue.ts`, `parent-snapshot.ts`, `child-lifecycle.ts`, `workspace.ts`, `usage.ts` | 10      | Spawn, abort, resume, scheduling, session assembly factory, born-complete turn loop, status state machine, per-subagent behavior, child-lifecycle events, workspace provider seam |
+| Observation | `record-observer.ts`, `notification.ts`, `notification-state.ts`, `renderer.ts`                                                                                                                             | 4       | Session-event stats, completion nudges, notification rendering                                                                                                                    |
+| Tools       | `tools/`                                                                                                                                                                                                    | 8       | LLM-facing tools: Agent, get_subagent_result, steer_subagent, spawn-config, result-renderer, helpers                                                                              |
+| UI          | `ui/`                                                                                                                                                                                                       | 12      | Widget, conversation viewer, /agents menu, creation wizard, config editor, display helpers                                                                                        |
+| Service     | `service.ts`, `service-adapter.ts`                                                                                                                                                                          | 2       | Cross-extension API boundary via Symbol.for()                                                                                                                                     |
+
+Entry point (`index.ts`), runtime (`runtime.ts`), shared types (`types.ts`), settings (`settings.ts`), debug (`debug.ts`), and event handlers (`handlers/`) sit at the root.
+
+### Module dependency flow
+
+```text
+tools/ → SubagentManager → Subagent → createSubagentSession → session-config → [prompts, memory, skills, env]
+                                           ↓                                    ↑
+                                     SubagentSession            AgentTypeRegistry → [default-agents, custom-agents]
+
+record-observer ─subscribes─→ AgentSession ←─subscribes─ ui-observer
+widget ─polls─→ AgentActivityTracker map
+service-adapter ─wraps─→ SubagentManager
+```
+
 ## Implementation Priorities
 
 - Follow the phased plan in `docs/architecture/architecture.md`.
@@ -66,7 +99,7 @@ See `@gotgenes/pi-subagents-worktrees` for the pattern.
 
 ## Testing
 
-The fork preserves upstream's full `vitest` suite (362 tests) plus tests added for Patch 3.
+The fork preserves and substantially extends upstream's `vitest` suite (973 tests across 59 files as of Phase 16).
 All tests must pass before publishing.
 Use `vi.hoisted(...)` for module-level mocks, matching the existing patterns in `test/lifecycle/subagent-session.test.ts`.
 
@@ -78,39 +111,6 @@ When working in this package:
    Document architectural decisions in `docs/decisions/`.
 2. The upstream test suite is run periodically as a regression canary for the session assembly core.
 3. Modules marked `← removing` or `← replacing` in the architecture doc's current-state listing are slated for deletion — do not add features to them.
-
-## Architecture
-
-See `docs/architecture/architecture.md` for the full architecture document with Mermaid diagrams, domain model, structural analysis, and improvement roadmap.
-Refactoring history is preserved in `docs/architecture/history/` (one file per completed phase).
-
-### Domain organization
-
-The extension is organized into six domains (56 files):
-
-| Domain      | Directory                                                                                                                                                                                                   | Modules | Responsibility                                                                                                                                                                    |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Config      | `agent-types.ts`, `default-agents.ts`, `custom-agents.ts`, `invocation-config.ts`                                                                                                                           | 4       | Agent type registry, built-in/custom configs, per-call merge                                                                                                                      |
-| Session     | `session-config.ts`, `prompts.ts`, `context.ts`, `conversation.ts`, `env.ts`, `model-resolver.ts`, `session-dir.ts`                                                                                         | 7       | Pure session assembly: prompts, context, conversation rendering, environment, model resolution                                                                                    |
-| Lifecycle   | `subagent-manager.ts`, `create-subagent-session.ts`, `subagent-session.ts`, `turn-limits.ts`, `subagent.ts`, `concurrency-queue.ts`, `parent-snapshot.ts`, `child-lifecycle.ts`, `workspace.ts`, `usage.ts` | 10      | Spawn, abort, resume, scheduling, session assembly factory, born-complete turn loop, status state machine, per-subagent behavior, child-lifecycle events, workspace provider seam |
-| Observation | `record-observer.ts`, `notification.ts`, `notification-state.ts`, `renderer.ts`                                                                                                                             | 4       | Session-event stats, completion nudges, notification rendering                                                                                                                    |
-| Tools       | `tools/`                                                                                                                                                                                                    | 8       | LLM-facing tools: Agent, get_subagent_result, steer_subagent, spawn-config, result-renderer, helpers                                                                              |
-| UI          | `ui/`                                                                                                                                                                                                       | 10      | Widget, conversation viewer, /agents menu, creation wizard, config editor, display helpers                                                                                        |
-| Service     | `service.ts`, `service-adapter.ts`                                                                                                                                                                          | 2       | Cross-extension API boundary via Symbol.for()                                                                                                                                     |
-
-Entry point (`index.ts`), runtime (`runtime.ts`), shared types (`types.ts`), settings (`settings.ts`), debug (`debug.ts`), and event handlers (`handlers/`) sit at the root.
-
-### Module dependency flow
-
-```text
-tools/ → SubagentManager → Subagent → createSubagentSession → session-config → [prompts, memory, skills, env]
-                                           ↓                                    ↑
-                                     SubagentSession            AgentTypeRegistry → [default-agents, custom-agents]
-
-record-observer ─subscribes─→ AgentSession ←─subscribes─ ui-observer
-widget ─polls─→ AgentActivityTracker map
-service-adapter ─wraps─→ SubagentManager
-```
 
 [ADR-0002]: https://github.com/gotgenes/pi-packages/blob/main/packages/pi-subagents/docs/decisions/0002-extensions-on-a-minimal-core.md
 [ADR-0003]: https://github.com/gotgenes/pi-packages/blob/main/packages/pi-subagents/docs/decisions/0003-publish-bundled-type-declarations.md

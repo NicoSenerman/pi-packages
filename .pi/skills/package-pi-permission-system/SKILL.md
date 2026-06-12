@@ -34,14 +34,14 @@ When a roadmap step ships, mark it complete in `docs/architecture/architecture.m
   Mechanism is forever; docs are reversible.
 - Treat any declared config field not read at runtime as a maintenance trap.
 
-### Upcoming: single source of truth for tool policy
+### Single source of truth for tool policy
 
-Pi-subagents is removing its `disallowed_tools` frontmatter field and `extensions: string[]` allowlist (pi-subagents Phase 14, #237, #238, #239).
-This package becomes the **sole authority** for tool access control.
+Pi-subagents removed its `disallowed_tools` frontmatter field and `extensions: string[]` allowlist (pi-subagents Phase 14, #237, #238, #239 — shipped).
+This package is the **sole authority** for tool access control.
 Users migrating from `disallowed_tools` should use `permission:` frontmatter in agent definitions:
 
 ```yaml
-# Before (pi-subagents, being removed)
+# Before (pi-subagents, removed in Phase 14)
 disallowed_tools: bash
 
 # After (pi-permission-system)
@@ -166,4 +166,6 @@ The bash `external_directory` gate only sees tokens that `classifyTokenAsPathCan
 A plain `./relative` token (e.g. `cat ./link/hosts`) is dropped before that gate and is instead gated by the broader `path` surface (`classifyTokenAsRuleCandidate`).
 When a plan or test asserts a specific bash repro string, trace the token through the classifier first — an issue's headline repro can describe a symptom whose literal input never reaches the gate being changed.
 
+[#261]: https://github.com/gotgenes/pi-packages/issues/261
+[#296]: https://github.com/gotgenes/pi-packages/issues/296
 [ADR-0002]: https://github.com/gotgenes/pi-packages/blob/main/packages/pi-subagents/docs/decisions/0002-extensions-on-a-minimal-core.md
