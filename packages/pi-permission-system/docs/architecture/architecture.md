@@ -578,133 +578,9 @@ src/
 └── before-agent-start-cache.ts Memoization for prompt sanitization
 ```
 
-## Improvement roadmap — Phase 5 (proposed)
-
-Phase 4 converted essentially every mutable-state-and-closures bag into a state-owning class, so Phase 5 is deliberately narrow.
-A targeted sweep for Tell-Don't-Ask violations — factory closures over mutable state, forward-reference cycles, anemic getter/setter pairs a handler orchestrates by hand, Law-of-Demeter reach-throughs, and concrete-class dependencies that force test casts — turned up seven, and they are the only genuine state-encapsulation and decoupling work left.
-The phase does not touch `bash-program.ts` (pure AST parsing — splitting it produces free-function modules, not state-owning behavior) or reframe `Ruleset` (that would be a value object, and it would fight the intentional pure-evaluation design principle).
-
-### Findings summary
-
-`fallow` reports a clean syntactic surface (health 76, 0% dead files, 0% reported dead exports, avg cyclomatic 1.4, no refactoring targets), which is exactly why these findings matter: they are structural smells `fallow` cannot see — a mutable Set hidden in a closure, a `null`-init cast papering over a construction cycle, an anemic accessor quartet a handler drives via ask-then-tell, a relay-only field reached through, and concrete-class constructor types that force `as unknown as` casts in tests.
-
-| Metric                                                              | Phase 5 baseline                                             | Phase 5 target                                                                                    |
-| ------------------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| Health score                                                        | 76 (B)                                                       | ≥ 76 (structural, not score-driven)                                                               |
-| Production `as unknown as` casts                                    | 3 (`index.ts` ×1, `config-store.ts` ×2 serialization)        | 2 (serialization only)                                                                            |
-| Factory closures over mutable state                                 | 1 (`createSessionLogger`)                                    | 0                                                                                                 |
-| Forward-reference `null`-init holders in `index.ts`                 | 2 (`configStore`, `sessionNotify`)                           | 0                                                                                                 |
-| Anemic cache accessors on `PermissionSession`                       | 4 methods over 2 fields                                      | 0 (2 owned `CacheKeyGate` sub-objects)                                                            |
-| Ask-then-tell pairs in `AgentPrepHandler`                           | 2                                                            | 0                                                                                                 |
-| Test-only-alive exports                                             | 1 (`shouldApplyCachedAgentStartState`)                       | 0                                                                                                 |
-| `PermissionSession` constructor arity                               | 7 positional args                                            | 6 (relay-only `logger` dropped)                                                                   |
-| `session.logger` / `session.getRuntimeContext()?.ui` reach-throughs | 5 (1 notify sink, 3 lifecycle logger, 1 reporter wiring)     | 0                                                                                                 |
-| `config-modal` controller reach-throughs                            | 1 (`permissionManager` + `session.lastKnownActiveAgentName`) | 0                                                                                                 |
-| `LocalPermissionsService` concrete-class deps                       | 3                                                            | 0 (narrow interfaces)                                                                             |
-| Test `as unknown as` casts removed                                  | —                                                            | −8 (3 service + 5 forwarder ctx) → −8 more (8 `ExtensionContext` ctx; #367) = −16 total; 4 remain |
-
-Unchanged guardrails: 0% dead code, avg cyclomatic 1.4, maintainability 91.1, no new public surface.
-
-### Steps
-
-#### Track A — logger state + PermissionSession/composition-root coupling (serial)
-
-The composition-root forward-reference cycle exists *because* the logger needs late-bound config-reading and UI-notify capability, and the `logger` field on `PermissionSession` is relayed straight back out — so these three land in order: make the logger a state-owning class, dissolve the cycle, then drop the relay-only field.
-
-1. Convert `createSessionLogger` into a `SessionLogger` class ([#362])
-   - Target: `src/session-logger.ts` — the `createSessionLogger` factory that returns an object literal closing over a mutable `reported: Set<string>` (IO-failure-warning dedup) and the writer.
-   - Smell: Category C (mutable closure state) — a bag of state + closures masquerading as a factory.
-   - Outcome: a `SessionLogger` class that privately owns `reported` and the writer and exposes `debug` / `review` / `warn`; constructed as `new SessionLogger(deps)`; no factory-closure mutable state remains.
-
-2. Add `PermissionSession.notify()` and dissolve the `index.ts` forward-reference cycle ([#363])
-   - Target: `src/permission-session.ts` (new `notify(message)` Tell-Don't-Ask method over the owned context); `src/index.ts` (remove `let configStore = null as unknown as ConfigStore` and the `let sessionNotify` holder, wiring the logger's notify sink as `(m) => session.notify(m)`).
-   - Smell: Category C (forward references + the only production `as unknown as` cast + the `getRuntimeContext()?.ui.notify` Law-of-Demeter reach-through).
-   - Outcome: production `as unknown as` casts 3 → 2; `index.ts` has no `null`-init holders; the UI-notify reach-through becomes a single tell to the context-owning session.
-   - Depends on Step 1 (the logger reshape that lets construction order resolve without the cast).
-
-3. Inject `logger` directly into the lifecycle handler and reporter; drop the relay-only field from `PermissionSession` ([#364])
-   - Target: `src/permission-session.ts` (remove the `readonly logger` constructor parameter — never read internally, only relayed — taking the constructor from 7 args to 6); `src/handlers/lifecycle.ts` (accept a `SessionLogger` and call `this.logger.warn/debug` instead of `this.session.logger`); `src/index.ts` (pass the composition-root `logger` to `new GateDecisionReporter(logger, …)` and `new SessionLifecycleHandler(session, resolver, serviceLifecycle, logger)`).
-   - Smell: Category C (relay-only dependency / Law-of-Demeter reach-through — the handler talks to `session.logger`, a stranger reached through the session).
-   - Outcome: `PermissionSession` no longer exposes `logger`; the three lifecycle reach-throughs and the one reporter-wiring reach-through are gone; the constructor narrows to 6 args.
-   - Depends on Step 2 (shares edits to `permission-session.ts` and `index.ts`; serialize to avoid conflicts).
-
-#### Track B — anemic cache-key state (independent)
-
-4. Encapsulate agent-start cache keys in a `CacheKeyGate` class ([#365]) ✓ complete
-   - Target: `src/permission-session.ts` (replace the four anemic methods — `shouldUpdateActiveTools` / `commitActiveToolsCacheKey` / `shouldUpdatePromptState` / `commitPromptStateCacheKey` — and their two `string | null` fields with two `CacheKeyGate` instances); `src/handlers/before-agent-start.ts` (collapse the two ask-then-tell pairs into `gate.runIfChanged(key, effect)`); `src/before-agent-start-cache.ts` (remove the dead-in-production `shouldApplyCachedAgentStartState` and fold its comparison into `CacheKeyGate`).
-   - Smell: Category C (anemic domain / ask-then-tell — the handler asks "should I update?"
-     then tells "commit") plus Category A (a redundant export kept alive only by its own test, which is why `fallow`'s 0%-dead-exports misses it).
-   - Outcome: a `CacheKeyGate` class owning a previous key and exposing `runIfChanged(nextKey, effect)`; `PermissionSession`'s four cache methods become two owned sub-objects; the handler's ask-then-tell pairs become single tells; one source of truth for the key comparison; the test-only-alive free function is gone.
-   - Touches `permission-session.ts` (different members than Track A) — coordinate the merge if it lands concurrently with Track A.
-
-#### Track C — narrow-interface decoupling for testability (independent)
-
-5. Narrow `LocalPermissionsService` collaborators to interfaces ([#366])
-   - Target: `src/permissions-service.ts` — the constructor types the concrete `PermissionManager`, `SessionRules`, and `ToolInputFormatterRegistry` but only calls `checkPermission` / `getToolPermission`, `getRuleset`, and `register`.
-   - Smell: Category C (DIP — depending on concrete classes) / Category D (testability — concrete-class types expose private members, so `permissions-service.test.ts` is forced into `as unknown as` casts).
-   - Outcome: depends on the existing `ScopedPermissionManager`, `Pick<SessionRules, "getRuleset">`, and a `{ register }` formatter interface; the three `as unknown as` casts in `permissions-service.test.ts` disappear and mocks become plain objects.
-
-6. Narrow `PermissionForwarder`'s context dependency to a local interface ([#367]) ✓ complete
-   - Target: `src/forwarded-permissions/permission-forwarder.ts` — methods take the full SDK `ExtensionContext` rather than a narrow local interface of the fields actually read.
-   - Smell: Category C (platform-type threading) / Category D (testability).
-   - Outcome: the five `as unknown as ExtensionContext` casts in `permission-forwarder.test.ts` (the single biggest cluster of the 12 such casts across 7 test files) disappear; a bounded down-payment on the systemic ctx-threading pattern.
-
-#### Track D — slash-command reach-through (independent)
-
-7. Remove the `config-modal` controller reach-through ([#368]) ✓ complete
-   - Target: `src/config-modal.ts` — the `show` handler chains `controller.permissionManager.getComposedConfigRules(controller.session.lastKnownActiveAgentName ?? undefined)`, reaching through the controller bag to two strangers.
-   - Smell: Category C (Law-of-Demeter reach-through).
-   - Outcome: collapse the controller's `permissionManager` + `session` fields into a single `getActiveAgentConfigRules()` accessor wired in the composition root, so the command tells one collaborator; the `PermissionSession.lastKnownActiveAgentName` getter is no longer consumed via object-literal wiring (retiring the `fallow` false-positive suppression).
-
-### Step dependency diagram
-
-```mermaid
-flowchart TD
-    S1["Step 1: SessionLogger class (#362)"]
-    S2["Step 2: PermissionSession.notify + dissolve index.ts cycle (#363)"]
-    S3["Step 3: inject logger; drop relay-only field (#364)"]
-    S4["Step 4: CacheKeyGate for agent-start cache keys (#365)"]
-    S5["Step 5: narrow LocalPermissionsService collaborators (#366)"]
-    S6["Step 6: narrow PermissionForwarder context (#367)"]
-    S7["Step 7: remove config-modal reach-through (#368)"]
-
-    S1 --> S2 --> S3
-
-    subgraph TrackA["Track A — logger state + composition-root coupling (serial)"]
-        S1
-        S2
-        S3
-    end
-
-    subgraph TrackB["Track B — anemic cache-key state"]
-        S4
-    end
-
-    subgraph TrackC["Track C — narrow-interface decoupling"]
-        S5
-        S6
-    end
-
-    subgraph TrackD["Track D — slash-command reach-through"]
-        S7
-    end
-```
-
-### Parallel tracks
-
-- Track A (Steps 1–3) — logger state-ownership and the `PermissionSession`/composition-root coupling.
-  Serial: Step 1 makes the logger a class; Step 2 dissolves the forward-reference cast the old factory forced; Step 3 drops the relay-only `logger` field.
-  Steps 2 and 3 share edits to `permission-session.ts` and `index.ts`, so they land in order.
-- Track B (Step 4) — the `CacheKeyGate` encapsulation.
-  Independent of Track A in logic; it touches different `PermissionSession` members plus `AgentPrepHandler` and `before-agent-start-cache.ts`, so it can proceed in parallel (coordinate the `permission-session.ts` merge).
-- Track C (Steps 5–6) — narrow-interface decoupling that removes forced test casts.
-  Independent of Tracks A, B, and D; Steps 5 and 6 touch different files and are independent of each other.
-- Track D (Step 7) — the `config-modal` reach-through.
-  Independent of all other tracks; touches only `config-modal.ts` and its composition-root wiring.
-
 ## Refactoring history
 
-The architecture above is the product of four completed improvement phases.
+The architecture above is the product of five completed improvement phases.
 Each phase's findings, numbered plan, dependency graph, and health metrics are preserved in a per-phase history file under [`history/`](history/).
 
 | Phase | Theme                                         | History                                                                                |
@@ -713,6 +589,7 @@ Each phase's findings, numbered plan, dependency graph, and health metrics are p
 | 2     | Complexity and duplication paydown            | [phase-2-complexity-duplication.md](history/phase-2-complexity-duplication.md)         |
 | 3     | State-owning collaborators                    | [phase-3-collaborator-encapsulation.md](history/phase-3-collaborator-encapsulation.md) |
 | 4     | Constructibility and god-object decomposition | [phase-4-constructibility.md](history/phase-4-constructibility.md)                     |
+| 5     | Tell-Don't-Ask and decoupling sweep           | [phase-5-tell-dont-ask-sweep.md](history/phase-5-tell-dont-ask-sweep.md)               |
 
 ### Phase 1 — Preview formatter extension seam (complete)
 
@@ -734,6 +611,11 @@ Sixteen steps ([#314]–[#331]), all closed.
 Made the core collaborators independently constructable, then split the two god objects they hid behind: injected a single `PermissionManager` into `PermissionSession` (configured once at `session_start`), extracted a `ConfigStore` and an injectable `SessionLogger`, dissolved the `ExtensionRuntime` god object, collapsed the `index.ts` closure bags, and split `PermissionSession`'s fig-leaf role interfaces into distinct collaborators (`PromptingGateway`, `PermissionResolver`) before slimming it to a state/lifecycle owner; the tail retired the 2,785-line `permission-system.test.ts` catch-all into co-located files.
 Nine steps ([#334]–[#342]), all closed.
 
+### Phase 5 — Tell-Don't-Ask and decoupling sweep (complete)
+
+Cleared the residual state-encapsulation and decoupling smells Phase 4 left behind — `fallow`-invisible structural debt: made the session logger a state-owning `SessionLogger` class, added `PermissionSession.notify()` to dissolve the `index.ts` forward-reference cycle (and its sole production `as unknown as` cast), dropped the relay-only `logger` field, encapsulated the agent-start cache keys in a `CacheKeyGate` (collapsing the handler's ask-then-tell pairs), narrowed `LocalPermissionsService` and `PermissionForwarder` to local interfaces to drop forced test casts, and removed the `config-modal` controller reach-through.
+Seven steps ([#362]–[#368]), all closed.
+
 [#266]: https://github.com/gotgenes/pi-packages/issues/266
 [#282]: https://github.com/gotgenes/pi-packages/issues/282
 [#285]: https://github.com/gotgenes/pi-packages/issues/285
@@ -743,9 +625,4 @@ Nine steps ([#334]–[#342]), all closed.
 [#334]: https://github.com/gotgenes/pi-packages/issues/334
 [#342]: https://github.com/gotgenes/pi-packages/issues/342
 [#362]: https://github.com/gotgenes/pi-packages/issues/362
-[#363]: https://github.com/gotgenes/pi-packages/issues/363
-[#364]: https://github.com/gotgenes/pi-packages/issues/364
-[#365]: https://github.com/gotgenes/pi-packages/issues/365
-[#366]: https://github.com/gotgenes/pi-packages/issues/366
-[#367]: https://github.com/gotgenes/pi-packages/issues/367
 [#368]: https://github.com/gotgenes/pi-packages/issues/368
