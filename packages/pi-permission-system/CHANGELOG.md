@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [13.0.0](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v12.0.0...pi-permission-system-v13.0.0) (2026-06-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* A relative bash path token now also matches absolute allowlist rules naming the same file, resolved against the effective directory after literal cd commands. A token under a config like `path: { "*": "ask", "/workspace/project/*": "allow" }` moves from `ask` to `allow`. Tokens after a non-literal cd (e.g. cd "$DIR") stay conservative and match only their literal form.
+* When Pi's working directory is known, a relative path input now also matches absolute allowlist rules naming the same file. A config like `path: { "*": "ask", "/workspace/project/*": "allow" }` moves a relative `src/App.jsx` from `ask` to `allow`. To keep tighter control, narrow the allowlist patterns or add an explicit `path` deny for the sensitive paths.
+
+### Features
+
+* add alias-aware evaluateAnyValue ([#393](https://github.com/gotgenes/pi-packages/issues/393)) ([2b7d240](https://github.com/gotgenes/pi-packages/commit/2b7d24091fbeb078bcfbc363bc0062199ee1de24))
+* add cd-aware pathRuleCandidates to BashProgram ([#393](https://github.com/gotgenes/pi-packages/issues/393)) ([102a491](https://github.com/gotgenes/pi-packages/commit/102a491ef73e225a6a93008195ff958e4c5bd315))
+* add path-policy value derivation ([#393](https://github.com/gotgenes/pi-packages/issues/393)) ([d34e57f](https://github.com/gotgenes/pi-packages/commit/d34e57fe96c74b2ba87e9d0ebe9be5055db0855f))
+* add resolvePathPolicy resolver method ([#393](https://github.com/gotgenes/pi-packages/issues/393)) ([8ec81da](https://github.com/gotgenes/pi-packages/commit/8ec81da65e7f994beb5f65bead8b11174277fa53))
+* match relative path inputs against absolute allowlists ([#393](https://github.com/gotgenes/pi-packages/issues/393)) ([6d0c564](https://github.com/gotgenes/pi-packages/commit/6d0c564d1d7b48227898d0be5fbbf5c91cc7ca89))
+* normalize path inputs to cwd-aware policy values ([#393](https://github.com/gotgenes/pi-packages/issues/393)) ([3c2784f](https://github.com/gotgenes/pi-packages/commit/3c2784fc2199b4903a0aaa8a22a971c1bfb4969d))
+* resolve bash path tokens with cd-aware policy values ([#393](https://github.com/gotgenes/pi-packages/issues/393)) ([7bcdbe7](https://github.com/gotgenes/pi-packages/commit/7bcdbe708a29448cbfda4a76b7e8917795fbb741))
+
+
+### Documentation
+
+* document cwd-aware path policy matching ([#393](https://github.com/gotgenes/pi-packages/issues/393)) ([8ab53a2](https://github.com/gotgenes/pi-packages/commit/8ab53a2de6c4deea5bbcd9c72a36ec0943e1a69a))
+* **pi-permission-system:** update Development section to current scripts and tooling ([ebda301](https://github.com/gotgenes/pi-packages/commit/ebda301798290f528f930917b6792a5c21379a5d))
+
 ## [12.0.0](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v11.0.0...pi-permission-system-v12.0.0) (2026-06-12)
 
 
