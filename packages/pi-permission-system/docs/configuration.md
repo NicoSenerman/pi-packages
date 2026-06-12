@@ -148,6 +148,7 @@ If a tool is not registered at runtime, this extension blocks it before permissi
 
 For path-bearing tools (`read`, `write`, `edit`, `find`, `grep`, `ls`), an object value maps file-path patterns to actions.
 Patterns are matched against `input.path` using the same last-match-wins wildcard semantics as bash command patterns.
+When Pi's current working directory is known, a relative path input is matched with both its original relative form and its cwd-normalized absolute form, so an absolute allowlist rule and a legacy relative rule can both apply to the same file.
 `*` matches zero or more of any character **including** path separators — `src/*` matches both `src/foo.ts` and `src/deep/nested/foo.ts`.
 There is no single-segment vs. multi-segment distinction; `**` is not a supported token and behaves identically to `*`.
 
@@ -306,6 +307,7 @@ If it denies, the command is blocked without reaching subsequent gates — no wa
 
 For bash commands, the extension extracts path-candidate tokens from the command (dot-files like `.env`, relative paths like `src/foo.ts`, and absolute paths) and evaluates each against the path rules.
 The most restrictive result across all tokens determines the outcome.
+When the current working directory is known, relative bash tokens are matched with cwd-normalized policy values, resolved against the effective directory after literal `cd` commands; a token after a non-literal `cd` (e.g. `cd "$DIR"`) stays conservative and matches only its literal form.
 
 Four orthogonal layers compose with most-restrictive-wins:
 
