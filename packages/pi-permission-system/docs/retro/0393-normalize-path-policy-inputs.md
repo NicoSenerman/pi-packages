@@ -100,3 +100,59 @@ Full suite green at 1972 tests (net change from a 1951 baseline: added ~40 new c
 - Pre-completion reviewer: WARN (no FAILs).
   Sole finding — stale fixture descriptions in `package-pi-permission-system/SKILL.md` (`makeResolver`, `makePathDispatchResolver`, `makeFakePermissionManager` omitted the new stubs).
   Fixed in the final `docs:` commit before shipping, so the WARN is resolved.
+
+## Stage: Final Retrospective (2026-06-12T21:04:22Z)
+
+### Session summary
+
+Shipped `@gotgenes/pi-permission-system` v13.0.0 — cwd-aware path-policy matching for tool inputs and bash tokens — across a single end-to-end session covering PR-review triage, planning, 9 TDD cycles, and shipping (CI green, issue closed, release-please PR #394 merged).
+The third-party PR #393 (`@moekyo`) was adopted as reference with a simplified design (explicit `checkPathPolicy`/`resolvePathPolicy` pair replacing the PR's `INTERNAL_PATH_POLICY_VALUES` symbol side-channel; orphaned `pathTokens`/`extractTokensForPathRules` chain removed).
+Two `feat!:` commits carried `BREAKING CHANGE:` footers; every implementation/docs commit credited `Co-authored-by: moekyo`.
+
+### Observations
+
+#### What went well
+
+- **Retro-as-bridge worked end-to-end.**
+  The PR-review stage recorded a precise Decide-gate decision (adopt + simplify, drop the symbol, remove the orphan chain, classify breaking).
+  Planning read it, explicitly skipped re-running the third-party `ask_user` direction gate, and executed against it; TDD never re-litigated the direction.
+  This is the multi-session lifecycle's context-bridge mechanism working as designed, collapsed into one session.
+- **Pre-implementation code reading prevented carrying over dead mechanism.**
+  Reading `runDescriptor` (`runner.ts`) during planning revealed the PR's symbol stamp on `descriptor.input` was vestigial (the bash path gate always sets `preCheck`, so `descriptor.input` is never re-resolved).
+  This directly shaped the simpler design — no rework, the insight was confirmed again during TDD.
+- **Incremental verification caught breakage at the seam, not at the end.** `pnpm run check` run immediately after each interface-break step (manager `checkPathPolicy`, resolver `resolvePathPolicy`) caught the inline fake manager in `permission-resolver.test.ts` the moment it broke.
+- **The pre-completion reviewer earned its keep.**
+  It caught the stale `SKILL.md` fixture catalog that the implementation missed; fixed before ship.
+
+#### What caused friction (agent side)
+
+- `missing-context` — adding `checkPathPolicy` to the manager required wiring it through the same surface dispatcher in `makeHandler` (`handler-fixtures.ts`); `makeSurfaceCheck({ path: deny })` stubs only `checkPermission`, so the new method returned its fixture default and the real `tool-call.test.ts` bash-path block silently passed `allow`.
+  Self-identified via the full-suite run after step 7 (not the directly-edited test file).
+  Impact: ~3 tool calls to diagnose and fix; folded into the same step-7 commit, no extra commit.
+  A false-green on a deny path is security-relevant, so this is the most consequential friction of the session despite being small.
+- `missing-context` — the package `SKILL.md` fixture catalog (`makeResolver`, `makePathDispatchResolver`, `makeFakePermissionManager`) was not updated when the new stubs were added; the pre-completion reviewer flagged it as the sole WARN.
+  Impact: one extra `docs:` commit before ship; no rework, the safety net held.
+- `other` (plan/file-list divergence) — the plan's Module-Level Changes omitted `docs/architecture/architecture.md`, but the plan's own prose guidance to check `docs/architecture/` for stale module listings applied; the listing referenced the removed `pathTokens`.
+  Self-identified during the post-TDD cross-check.
+  Impact: one extra `docs:` commit; no rework.
+
+#### What caused friction (user side)
+
+- None.
+  The operator's strategic input was front-loaded into the PR-review Decide gate (direction + breaking classification), which let every downstream stage proceed without mechanical oversight — the intended division of labor.
+
+### Diagnostic details
+
+- **Model-performance correlation** — one subagent dispatch (`pre-completion-reviewer`) ran on `anthropic/claude-sonnet-4-6`, a valid registry alias; judgment-heavy review work on sonnet-4-6 is appropriate, no mismatch.
+  Parent session interleaved `claude-opus-4-8` (design/triage/TDD) and `claude-sonnet-4-6`; no reasoning-weak model landed on judgment work.
+- **Escalation-delay tracking** — no `rabbit-hole` points; the longest single-error sequence was the `makeHandler` regression, resolved in ~3 tool calls (locate test → read fixture → grep → edit), well under the 5-call escalation threshold.
+- **Unused-tool detection** — no missing-context point would have been better served by an unused subagent or tool; the `makeHandler` gap was a runtime-behavior issue surfaced correctly by the full suite, not a search gap.
+- **Feedback-loop gap analysis** — verification was incremental throughout: `pnpm run check` after each interface-break step, full suite after the gate migration (step 7) where it caught the fixture regression, and `check`/`lint`/`test`/`fallow` before ship.
+  No end-only verification pattern.
+
+### Changes made
+
+1. `.pi/skills/package-pi-permission-system/SKILL.md` — added a Testing-section note: when a gate resolves through a new manager/resolver method beyond `checkPermission`/`resolve` (e.g. `checkPathPolicy`/`resolvePathPolicy`), wire it through the same surface dispatcher in `makeHandler` (`handler-fixtures.ts`), or `makeSurfaceCheck` leaves the new method returning its default and the gate silently passes `allow`.
+2. `packages/pi-permission-system/docs/retro/0393-normalize-path-policy-inputs.md` — this Final Retrospective entry.
+
+Considered but not implemented (recorded as no-ops): a redundant rule to update the `SKILL.md` fixture catalog when adding stubs (the pre-completion reviewer already catches this), and a generic `tdd-plan.md`/`AGENTS.md` interface-fixture-fanout rule (the lesson is package-specific to `makeHandler`'s surface-dispatch indirection).

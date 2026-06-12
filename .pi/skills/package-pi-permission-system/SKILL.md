@@ -123,6 +123,9 @@ Shared test fixtures live in `test/helpers/`:
 Import from these instead of redefining factories inline.
 When a call site needs different defaults from `makeCheckResult`, pass explicit overrides (e.g. `makeCheckResult({ state: "deny", matchedPattern: "*" })`).
 
+When a gate resolves through a new manager/resolver method beyond `checkPermission`/`resolve` (e.g. `checkPathPolicy`/`resolvePathPolicy`), wire it through the same surface dispatcher in `makeHandler` (`handler-fixtures.ts`).
+Otherwise `makeSurfaceCheck` stubs only `checkPermission`, the new method returns its default, and the gate silently passes `allow` — a false green caught only by the full suite, not the edited test file (#393).
+
 - Test permission resolution (allow/deny/ask decisions across tools, bash, MCP, skills, special).
 - Test wildcard matching (bash patterns, skill globs) including over-match and under-match cases.
 - Test policy merge precedence: global → project → per-agent frontmatter.
