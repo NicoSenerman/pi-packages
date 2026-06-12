@@ -651,7 +651,7 @@ The composition-root forward-reference cycle exists *because* the logger needs l
 
 #### Track D — slash-command reach-through (independent)
 
-7. Remove the `config-modal` controller reach-through ([#368])
+7. Remove the `config-modal` controller reach-through ([#368]) ✓ complete
    - Target: `src/config-modal.ts` — the `show` handler chains `controller.permissionManager.getComposedConfigRules(controller.session.lastKnownActiveAgentName ?? undefined)`, reaching through the controller bag to two strangers.
    - Smell: Category C (Law-of-Demeter reach-through).
    - Outcome: collapse the controller's `permissionManager` + `session` fields into a single `getActiveAgentConfigRules()` accessor wired in the composition root, so the command tells one collaborator; the `PermissionSession.lastKnownActiveAgentName` getter is no longer consumed via object-literal wiring (retiring the `fallow` false-positive suppression).
