@@ -22,7 +22,7 @@ Before reading anything, make sure the working tree is up to date with the remot
 
 ## Load skills
 
-Before investigating the plan, load skills relevant to the change:
+Before investigating the issue, load skills relevant to the change:
 
 - Load the `package-<PKG>` skill for each affected package (e.g., `package-pi-permission-system`) for package-specific architecture, priorities, and testing context.
 - Load the `colgrep` skill before code exploration — it contains the decision table for when to use semantic search vs. exact grep, which shapes how you approach unfamiliar modules.
@@ -177,5 +177,7 @@ Before stopping, persist planning observations for cross-session continuity:
 4. Commit: `git add <retro-file> && git commit -m "docs(retro): add planning stage notes for issue #N"`.
 
 Wrap code identifiers, filenames, and text containing underscores in backticks in the retro file.
+Append with the `Edit` tool (or `Write` for a new file), not a shell heredoc.
+When appending a new stage to an existing retro, anchor the `Edit` on the file's last line or use `Write` with the full content — the repeated `### Observations` / `### Session summary` headers make header-anchored edits ambiguous.
 
 Then print a 5-line summary of the plan's key decisions and stop.

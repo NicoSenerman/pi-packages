@@ -6,6 +6,8 @@ description: Push, close a GitHub issue with a summary, and merge the release-pl
 
 Argument: `$1` is the issue number that was just implemented.
 
+Fetch the issue title via `gh issue view $1 --json title -q .title`, then call `set_session_name` with name `#$1 Ship — <issue title>` to identify this session in the session selector.
+
 ## 1. Sync with remote
 
 Before pushing, make sure local `HEAD` is current with the remote:

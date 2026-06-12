@@ -12,7 +12,9 @@ Do **not** start implementation — only produce the analysis and plan.
 ## Sync with remote (do this first)
 
 1. Run `git pull --ff-only`.
-2. If it fails for **any** reason, stop and report the failure.
+2. If it fails for **any** reason — uncommitted changes, divergent history, merge conflict, network error, detached HEAD — stop immediately and report the failure to the user.
+   Do not attempt to stash, rebase, force, or otherwise resolve.
+3. Only proceed once the pull reports a clean fast-forward (or `Already up to date.`).
 
 ## Load skills
 

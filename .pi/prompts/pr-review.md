@@ -21,7 +21,7 @@ Stop after recording the decision and handing off; do not start implementation h
 ## Gather context
 
 1. Run `gh pr view $1 --json number,title,author,body,headRefName,additions,deletions,changedFiles,mergeable,mergeStateStatus` to read the PR.
-   Call `set_session_name` with name `#$1 PR Review — <PR title>` to identify this session.
+   Call `set_session_name` with name `#$1 PR Review — <PR title>` to identify this session in the session selector.
 2. Determine whether the author is a third party: compare `author.login` to `gh api user --jq .login`.
    A third-party PR is a request to evaluate, not a spec to implement.
 3. Capture attribution now: `gh pr view $1 --json commits --jq '.commits[].authors[] | {name, login, email}'`.
@@ -113,6 +113,9 @@ The concrete assessment — what is valuable, what you would change, and why (ci
 The chosen direction, the agreed scope/non-goals, and the required `Co-authored-by: <name> <email>` trailer + `@<login>` close-comment credit.
 ```
 
+Wrap code identifiers, filenames, and text containing underscores in backticks in the retro file.
+Append with the `Edit` tool (or `Write` for a new file), not a shell heredoc.
+
 Then hand off based on the decision:
 
 1. **Simplified design** — commit the triage note (`docs(pr-review): triage PR #$1 → adopt-with-simplified-design`), then tell the operator to run `/plan-issue #$1`.
@@ -120,6 +123,6 @@ Then hand off based on the decision:
 2. **Adopt as-is** — produce a focused review checklist (correctness, convention fit, test coverage, behavior-change/breaking call-out, attribution) and either request changes on the PR or proceed to merge per the operator's call.
 3. **Decline / defer** — commit the triage note, then close the PR with a comment that credits `@<login>`, explains the reasoning, and (if the problem is real) points at a tracked follow-up.
 
-Commit the triage note before stopping: `git add <retro-file> && git commit -m "docs(pr-review): triage PR #$1 (#$1)"`.
+Commit the triage note before stopping: `git add <retro-file> && git commit -m "docs(pr-review): triage PR #$1 → <decision>"` (e.g. `adopt-as-is`, `decline`), matching the form in direction 1.
 
 Then print a 5-line summary of the evaluation, the chosen direction, and the next step, and stop.
