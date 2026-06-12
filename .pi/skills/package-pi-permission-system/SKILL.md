@@ -99,6 +99,11 @@ Changes to publication timing or teardown order should go through `PermissionSer
 
 Do not propose module-scoped singletons or Node.js module-cache sharing as a cross-extension communication mechanism — they do not work under jiti.
 
+The `path` and `external_directory` gates are path-aware for **all** tools, not just the six built-ins (#352).
+`getToolInputPath` (`src/path-utils.ts`) extracts a path for built-ins (`input.path`), MCP (`input.arguments.path`), and extension tools (default `input.path`, or a custom key via a registered extractor); `getPathBearingToolPath` stays built-in-only for the per-tool gate's cosmetic suggestion/log values.
+The `ToolAccessExtractorRegistry` (`src/tool-access-extractor-registry.ts`) mirrors `ToolInputFormatterRegistry`: one instance created in `index.ts`, its lookup threaded into `ToolCallGatePipeline`, its registrar exposed cross-extension via `PermissionsService.registerToolAccessExtractor`.
+Extension/MCP path gating is default-on (no registration needed); per-tool path maps for extension tools (threading the extractor through `normalizeInput`) are a deferred follow-up.
+
 ## Testing
 
 Shared test fixtures live in `test/helpers/`:
@@ -121,7 +126,7 @@ When a call site needs different defaults from `makeCheckResult`, pass explicit 
 - Test wildcard matching (bash patterns, skill globs) including over-match and under-match cases.
 - Test policy merge precedence: global → project → per-agent frontmatter.
 - Test system-prompt sanitization (denied tools removed, allowed tools preserved).
-- Test the external-directory guard for path-bearing file tools.
+- Test the external-directory guard for path-bearing file tools, including extension and MCP tools (default-on path gating, #352).
 - Test config loading, validation issues, and tolerance of deprecated keys.
 - To test the file-based permission-forwarding round-trip (a subagent's `ask` reaching the parent), do not `await` the child's `pi.fire("tool_call", …)` directly — `PermissionForwarder.requestApproval` polls for a response with a 10-minute timeout when forwarding to the parent.
   Instead: fire without awaiting, poll the parent's `requests/` dir (`createPermissionForwardingLocation(forwardingDir, parentSessionId)`) for the child's request file, write an approval JSON to `responses/<id>.json`, then await the fire.
