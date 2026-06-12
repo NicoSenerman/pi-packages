@@ -23,6 +23,7 @@ vi.mock("node:fs", () => ({
 import {
   canonicalNormalizePathForComparison,
   getPathBearingToolPath,
+  getToolInputPath,
   isPathOutsideWorkingDirectory,
   isPathWithinDirectory,
   isPiInfrastructureRead,
@@ -32,6 +33,7 @@ import {
   READ_ONLY_PATH_BEARING_TOOLS,
   SAFE_SYSTEM_PATHS,
 } from "#src/path-utils";
+import type { ToolAccessExtractorLookup } from "#src/tool-access-extractor-registry";
 
 describe("normalizePathForComparison", () => {
   const cwd = "/projects/my-app";
@@ -241,6 +243,67 @@ describe("getPathBearingToolPath", () => {
     expect(getPathBearingToolPath("read", {})).toBeNull();
     expect(getPathBearingToolPath("read", { path: "" })).toBeNull();
     expect(getPathBearingToolPath("read", null)).toBeNull();
+  });
+});
+
+describe("getToolInputPath", () => {
+  function lookupOf(
+    toolName: string,
+    extractor: (input: Record<string, unknown>) => string | undefined,
+  ): ToolAccessExtractorLookup {
+    return {
+      get: (name) => (name === toolName ? extractor : undefined),
+    };
+  }
+
+  test("returns input.path for a built-in path-bearing tool", () => {
+    expect(getToolInputPath("read", { path: "/src/foo.ts" })).toBe(
+      "/src/foo.ts",
+    );
+    expect(getToolInputPath("write", { path: "/src/bar.ts" })).toBe(
+      "/src/bar.ts",
+    );
+  });
+
+  test("returns null for bash", () => {
+    expect(getToolInputPath("bash", { path: "/src/foo.ts" })).toBeNull();
+  });
+
+  test("returns the MCP arguments.path for an mcp call", () => {
+    expect(getToolInputPath("mcp", { arguments: { path: "/etc/hosts" } })).toBe(
+      "/etc/hosts",
+    );
+  });
+
+  test("returns null for an mcp call without an arguments.path", () => {
+    expect(getToolInputPath("mcp", { arguments: { query: "x" } })).toBeNull();
+    expect(getToolInputPath("mcp", {})).toBeNull();
+  });
+
+  test("defaults to input.path for an unregistered extension tool", () => {
+    expect(getToolInputPath("my-ext", { path: "/work/file.txt" })).toBe(
+      "/work/file.txt",
+    );
+  });
+
+  test("returns null for an extension tool without a path", () => {
+    expect(getToolInputPath("my-ext", { other: true })).toBeNull();
+    expect(getToolInputPath("my-ext", { path: "" })).toBeNull();
+    expect(getToolInputPath("my-ext", null)).toBeNull();
+  });
+
+  test("uses a registered extractor's path over the default convention", () => {
+    const extractors = lookupOf("ffgrep", (input) =>
+      typeof input.target === "string" ? input.target : undefined,
+    );
+    expect(
+      getToolInputPath("ffgrep", { target: "/etc/passwd" }, extractors),
+    ).toBe("/etc/passwd");
+  });
+
+  test("returns null when a registered extractor declines", () => {
+    const extractors = lookupOf("ffgrep", () => undefined);
+    expect(getToolInputPath("ffgrep", { target: "x" }, extractors)).toBeNull();
   });
 });
 
