@@ -45,6 +45,3 @@ Pre-completion reviewer returned PASS; 3512 tests across seven packages all gree
   Decision: adopt `ctx.isProjectTrusted()` guard in a follow-up issue.
 - `typebox@1.1.38` also appears in the lockfile as a transitive dep inside the Pi SDK itself (`@earendil-works/pi-coding-agent@0.79.1` → `typebox@1.1.38`); both versions coexist correctly.
 - Pre-completion reviewer: PASS — all ACs verified, no warnings.
-
-[#360]: https://github.com/gotgenes/pi-packages/issues/360
-[#382]: https://github.com/gotgenes/pi-packages/issues/382
