@@ -6,9 +6,11 @@ import {
   classifyTokenAsRuleCandidate,
 } from "#src/handlers/gates/bash-token-classification";
 import {
+  getPathPolicyValues,
   isPathWithinDirectory,
   isSafeSystemPath,
   normalizePathForComparison,
+  normalizePathPolicyLiteral,
 } from "#src/path-utils";
 import type { BashCommandContext } from "#src/types";
 
@@ -98,6 +100,13 @@ interface PathCandidate {
   readonly base: EffectiveBase;
 }
 
+export interface BashPathRuleCandidate {
+  /** Raw path-like token shown in prompts, logs, and session approvals. */
+  readonly token: string;
+  /** Equivalent values used for permission policy matching. */
+  readonly policyValues: readonly string[];
+}
+
 /**
  * A bash command parsed once into a reusable representation.
  *
@@ -156,6 +165,40 @@ export class BashProgram {
         result.push(candidate);
       }
     }
+    return result;
+  }
+
+  /**
+   * Path-rule candidates paired with their policy lookup values.
+   *
+   * When `cwd` is available, each relative token is resolved against the
+   * effective working directory in force at the token's position (folding
+   * literal current-shell `cd` commands), while raw and project-relative
+   * aliases are retained for backward-compatible relative rules. A token after
+   * a non-literal `cd` keeps only its literal value so no spurious absolute
+   * rule can match.
+   */
+  pathRuleCandidates(cwd?: string): BashPathRuleCandidate[] {
+    const seen = new Set<string>();
+    const result: BashPathRuleCandidate[] = [];
+
+    for (const { token, base } of this.rawCandidates) {
+      const candidate = classifyTokenAsRuleCandidate(token);
+      if (!candidate) continue;
+
+      const policyValues = getPolicyValuesForRuleCandidate(
+        candidate,
+        base,
+        cwd,
+      );
+      if (policyValues.length === 0) continue;
+
+      const key = policyValues.join("\0");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push({ token: candidate, policyValues });
+    }
+
     return result;
   }
 
@@ -892,6 +935,25 @@ function tagTokens(
  */
 function isRelativeCandidate(candidate: string): boolean {
   return !candidate.startsWith("/") && !candidate.startsWith("~");
+}
+
+function getPolicyValuesForRuleCandidate(
+  candidate: string,
+  base: EffectiveBase,
+  cwd: string | undefined,
+): string[] {
+  if (!cwd) {
+    const literal = normalizePathPolicyLiteral(candidate);
+    return literal ? [literal] : [];
+  }
+
+  if (base.kind === "unknown" && isRelativeCandidate(candidate)) {
+    const literal = normalizePathPolicyLiteral(candidate);
+    return literal ? [literal] : [];
+  }
+
+  const resolveBase = base.kind === "known" ? resolve(cwd, base.offset) : cwd;
+  return getPathPolicyValues(candidate, { cwd, resolveBase });
 }
 
 /**

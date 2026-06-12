@@ -30,6 +30,53 @@ describe("BashProgram", () => {
     });
   });
 
+  describe("pathRuleCandidates", () => {
+    const cwd = "/projects/my-app";
+
+    it("adds absolute and relative policy values for relative tokens", async () => {
+      const program = await BashProgram.parse("cat src/foo.ts");
+      expect(program.pathRuleCandidates(cwd)).toEqual([
+        {
+          token: "src/foo.ts",
+          policyValues: ["/projects/my-app/src/foo.ts", "src/foo.ts"],
+        },
+      ]);
+    });
+
+    it("returns the literal token only when no cwd is provided", async () => {
+      const program = await BashProgram.parse("cat src/foo.ts");
+      expect(program.pathRuleCandidates()).toEqual([
+        { token: "src/foo.ts", policyValues: ["src/foo.ts"] },
+      ]);
+    });
+
+    it("resolves tokens after literal cd against the effective directory", async () => {
+      const program = await BashProgram.parse("cd nested && cat src/file.txt");
+      const fileCandidate = program
+        .pathRuleCandidates(cwd)
+        .find((candidate) => candidate.token === "src/file.txt");
+      expect(fileCandidate).toEqual({
+        token: "src/file.txt",
+        policyValues: [
+          "/projects/my-app/nested/src/file.txt",
+          "nested/src/file.txt",
+          "src/file.txt",
+        ],
+      });
+    });
+
+    it("does not absolute-allow relative tokens after unknown cd", async () => {
+      const program = await BashProgram.parse('cd "$DIR" && cat src/foo.ts');
+      const fileCandidate = program
+        .pathRuleCandidates(cwd)
+        .find((candidate) => candidate.token === "src/foo.ts");
+      expect(fileCandidate).toEqual({
+        token: "src/foo.ts",
+        policyValues: ["src/foo.ts"],
+      });
+    });
+  });
+
   describe("externalPaths", () => {
     const cwd = "/projects/my-app";
 
