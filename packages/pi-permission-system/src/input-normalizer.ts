@@ -1,7 +1,6 @@
 import { getNonEmptyString, toRecord } from "./common";
-import { expandHomePath } from "./expand-home";
 import { createMcpPermissionTargets } from "./mcp-targets";
-import { PATH_BEARING_TOOLS } from "./path-utils";
+import { getPathPolicyValues, PATH_BEARING_TOOLS } from "./path-utils";
 
 /**
  * Construct a surface-appropriate input object from a raw value string.
@@ -66,12 +65,13 @@ export function normalizeInput(
   toolName: string,
   input: unknown,
   configuredMcpServerNames: readonly string[],
+  cwd?: string,
 ): NormalizedInput {
   // --- Special surfaces (path, external_directory) ---
   if (SPECIAL_PERMISSION_KEYS.has(toolName)) {
     return {
       surface: toolName,
-      values: [normalizePathSurfaceValue(input)],
+      values: normalizePathSurfaceValues(input, cwd),
       resultExtras: {},
     };
   }
@@ -117,7 +117,7 @@ export function normalizeInput(
   if (PATH_BEARING_TOOLS.has(toolName)) {
     return {
       surface: toolName,
-      values: [normalizePathSurfaceValue(input)],
+      values: normalizePathSurfaceValues(input, cwd),
       resultExtras: {},
     };
   }
@@ -131,15 +131,21 @@ export function normalizeInput(
 }
 
 /**
- * Extract and home-expand the `input.path` lookup value shared by every path
- * surface (`path`, `external_directory`, and the path-bearing tools).
+ * Extract and normalize the path lookup values shared by every path surface
+ * (`path`, `external_directory`, and the path-bearing tools).
  *
  * Missing, empty, or whitespace-only paths collapse to the surface catch-all
- * `"*"`; otherwise `~/…` and `$HOME/…` prefixes are expanded to the OS home
- * directory so values match home-anchored patterns symmetrically with how
- * `compileWildcardPattern` expands the patterns themselves (#350).
+ * `"*"`. When CWD is known, a relative path also produces a normalized
+ * absolute policy value and a project-relative alias while keeping its legacy
+ * relative value, so values match home- and cwd-anchored patterns
+ * symmetrically with how the patterns themselves are expanded (#350).
+ *
+ * Only `input.path` is read — policy values are never sourced from any other
+ * (potentially attacker-controlled) field on the raw tool input.
  */
-function normalizePathSurfaceValue(input: unknown): string {
+function normalizePathSurfaceValues(input: unknown, cwd?: string): string[] {
   const path = getNonEmptyString(toRecord(input).path);
-  return path === null ? "*" : expandHomePath(path);
+  if (path === null) return ["*"];
+  const values = getPathPolicyValues(path, cwd ? { cwd } : {});
+  return values.length > 0 ? values : ["*"];
 }

@@ -68,6 +68,32 @@ describe("normalizeInput — non-MCP surfaces", () => {
       const result = normalizeInput("path", {}, []);
       expect(result.values).toEqual(["*"]);
     });
+
+    it("adds cwd-normalized and relative aliases when cwd is provided", () => {
+      const result = normalizeInput(
+        "path",
+        { path: "src/App.jsx" },
+        [],
+        "/workspace/project",
+      );
+      expect(result.values).toEqual([
+        "/workspace/project/src/App.jsx",
+        "src/App.jsx",
+      ]);
+    });
+
+    it("ignores a user-supplied string pathPolicyValues field", () => {
+      const result = normalizeInput(
+        "path",
+        { path: "src/App.jsx", pathPolicyValues: ["/etc/shadow"] },
+        [],
+        "/workspace/project",
+      );
+      expect(result.values).toEqual([
+        "/workspace/project/src/App.jsx",
+        "src/App.jsx",
+      ]);
+    });
   });
 
   describe("special / external_directory", () => {
@@ -118,6 +144,19 @@ describe("normalizeInput — non-MCP surfaces", () => {
         [],
       );
       expect(result.values).toEqual([join("/mock/home", "dev/project")]);
+    });
+
+    it("adds cwd-normalized and relative aliases when cwd is provided", () => {
+      const result = normalizeInput(
+        "external_directory",
+        { path: "src/App.jsx" },
+        [],
+        "/workspace/project",
+      );
+      expect(result.values).toEqual([
+        "/workspace/project/src/App.jsx",
+        "src/App.jsx",
+      ]);
     });
   });
 
@@ -205,6 +244,19 @@ describe("normalizeInput — non-MCP surfaces", () => {
     it("expands $HOME/... path value to absolute home path", () => {
       const result = normalizeInput("write", { path: "$HOME/.ssh/config" }, []);
       expect(result.values).toEqual([join("/mock/home", ".ssh/config")]);
+    });
+
+    it("adds cwd-normalized and relative aliases when cwd is provided", () => {
+      const result = normalizeInput(
+        "read",
+        { path: "src/App.jsx" },
+        [],
+        "/workspace/project",
+      );
+      expect(result.values).toEqual([
+        "/workspace/project/src/App.jsx",
+        "src/App.jsx",
+      ]);
     });
   });
 
