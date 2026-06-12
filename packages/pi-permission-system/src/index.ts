@@ -32,6 +32,7 @@ import { PermissionSessionLogger } from "./session-logger";
 import { SessionRules } from "./session-rules";
 import { subscribeSubagentLifecycle } from "./subagent-lifecycle-events";
 import { getSubagentSessionRegistry } from "./subagent-registry";
+import { ToolAccessExtractorRegistry } from "./tool-access-extractor-registry";
 import { ToolInputFormatterRegistry } from "./tool-input-formatter-registry";
 
 export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
@@ -44,6 +45,7 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
   const subagentRegistry = getSubagentSessionRegistry();
   const formatterRegistry = new ToolInputFormatterRegistry();
   registerBuiltinToolInputFormatters(formatterRegistry);
+  const accessExtractorRegistry = new ToolAccessExtractorRegistry();
 
   // Both `configStore` and `session` are forward-declared so the logger's
   // lazy thunks can close over them without a cast or null-init holder.
@@ -172,6 +174,7 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
     resolver,
     session,
     formatterRegistry,
+    accessExtractorRegistry,
   );
   const skillInputGatePipeline = new SkillInputGatePipeline(resolver);
   const gates = new PermissionGateHandler(

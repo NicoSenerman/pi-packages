@@ -186,4 +186,67 @@ describe("ToolCallGatePipeline", () => {
       expect(mockBashProgramParse).not.toHaveBeenCalled();
     });
   });
+
+  // ── customExtractors threading (#352) ────────────────────────────────────
+
+  describe("evaluate — customExtractors threading (#352)", () => {
+    // Deny only the cross-cutting `path` surface; allow everything else, so a
+    // block can only come from the path gate seeing the extracted path.
+    function pathDenyingResolver() {
+      const resolver = makeResolver();
+      resolver.resolve.mockImplementation((surface) =>
+        surface === "path"
+          ? makeCheckResult({ state: "deny", matchedPattern: "*" })
+          : makeCheckResult(),
+      );
+      return resolver;
+    }
+
+    const extractors = {
+      get: (name: string) =>
+        name === "ffgrep"
+          ? (input: Record<string, unknown>) =>
+              typeof input.target === "string" ? input.target : undefined
+          : undefined,
+    };
+
+    it("forwards extractors so a custom-shaped tool is path-gated", async () => {
+      const resolver = pathDenyingResolver();
+      const inputs = makeGateInputs();
+      const { runner } = makeGateRunner();
+      const pipeline = new ToolCallGatePipeline(
+        resolver,
+        inputs,
+        undefined,
+        extractors,
+      );
+
+      const result = await pipeline.evaluate(
+        makeTcc({
+          toolName: "ffgrep",
+          input: { target: "/test/project/secret.env" },
+        }),
+        runner,
+      );
+
+      expect(result).toMatchObject({ action: "block" });
+    });
+
+    it("without extractors the custom-shaped tool is not path-gated", async () => {
+      const resolver = pathDenyingResolver();
+      const inputs = makeGateInputs();
+      const { runner } = makeGateRunner();
+      const pipeline = new ToolCallGatePipeline(resolver, inputs);
+
+      const result = await pipeline.evaluate(
+        makeTcc({
+          toolName: "ffgrep",
+          input: { target: "/test/project/secret.env" },
+        }),
+        runner,
+      );
+
+      expect(result).toEqual({ action: "allow" });
+    });
+  });
 });

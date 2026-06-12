@@ -168,3 +168,57 @@ describe("describeExternalDirectoryGate", () => {
     expect(result.logContext.message).toBeDefined();
   });
 });
+
+// Extension and MCP tools are now external-directory gated (#352) ───────────
+
+describe("describeExternalDirectoryGate — extension and MCP tools (#352)", () => {
+  it("gates an extension tool with an external input.path", () => {
+    const result = describeExternalDirectoryGate(
+      makeTcc({
+        toolName: "my-ext",
+        input: { path: "/outside/project/file.ts" },
+      }),
+      ["/test/agent"],
+    );
+    expect(isGateDescriptor(result)).toBe(true);
+    expect((result as GateDescriptor).surface).toBe("external_directory");
+  });
+
+  it("gates an MCP tool with an external arguments.path", () => {
+    const result = describeExternalDirectoryGate(
+      makeTcc({
+        toolName: "mcp",
+        input: { arguments: { path: "/outside/project/file.ts" } },
+      }),
+      ["/test/agent"],
+    );
+    expect(isGateDescriptor(result)).toBe(true);
+  });
+
+  it("uses a registered extractor's external path for a custom-shaped tool", () => {
+    const extractors = {
+      get: (name: string) =>
+        name === "ffgrep"
+          ? (input: Record<string, unknown>) =>
+              typeof input.target === "string" ? input.target : undefined
+          : undefined,
+    };
+    const result = describeExternalDirectoryGate(
+      makeTcc({ toolName: "ffgrep", input: { target: "/outside/project/x" } }),
+      ["/test/agent"],
+      extractors,
+    );
+    expect(isGateDescriptor(result)).toBe(true);
+  });
+
+  it("returns null for an extension tool whose path is inside cwd", () => {
+    const result = describeExternalDirectoryGate(
+      makeTcc({
+        toolName: "my-ext",
+        input: { path: "/test/project/src/x.ts" },
+      }),
+      ["/test/agent"],
+    );
+    expect(result).toBeNull();
+  });
+});

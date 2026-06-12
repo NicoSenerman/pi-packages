@@ -206,3 +206,75 @@ describe("describePathGate — home-relative paths", () => {
     expect(result).toBeNull();
   });
 });
+
+// Extension and MCP tools are now path-gated (#352) ──────────────────────────
+
+describe("describePathGate — extension and MCP tools (#352)", () => {
+  function extractorLookup(toolName: string, key: string) {
+    return {
+      get: (name: string) =>
+        name === toolName
+          ? (input: Record<string, unknown>) =>
+              typeof input[key] === "string" ? input[key] : undefined
+          : undefined,
+    };
+  }
+
+  it("gates an extension tool that exposes input.path", () => {
+    const resolver = makeResolver(
+      makeCheckResult({ state: "deny", matchedPattern: "*.env" }),
+    );
+    const result = describePathGate(
+      makeTcc({ toolName: "my-ext", input: { path: ".env" } }),
+      resolver,
+    );
+    expect(isGateDescriptor(result)).toBe(true);
+    expect(resolver.resolve).toHaveBeenCalledWith(
+      "path",
+      { path: ".env" },
+      undefined,
+    );
+  });
+
+  it("gates an MCP tool via arguments.path", () => {
+    const resolver = makeResolver(
+      makeCheckResult({ state: "deny", matchedPattern: "*.env" }),
+    );
+    const result = describePathGate(
+      makeTcc({ toolName: "mcp", input: { arguments: { path: ".env" } } }),
+      resolver,
+    );
+    expect(isGateDescriptor(result)).toBe(true);
+    expect(resolver.resolve).toHaveBeenCalledWith(
+      "path",
+      { path: ".env" },
+      undefined,
+    );
+  });
+
+  it("uses a registered extractor's path for a custom-shaped tool", () => {
+    const resolver = makeResolver(
+      makeCheckResult({ state: "deny", matchedPattern: "*" }),
+    );
+    describePathGate(
+      makeTcc({ toolName: "ffgrep", input: { target: "/etc/passwd" } }),
+      resolver,
+      extractorLookup("ffgrep", "target"),
+    );
+    expect(resolver.resolve).toHaveBeenCalledWith(
+      "path",
+      { path: "/etc/passwd" },
+      undefined,
+    );
+  });
+
+  it("returns null for an extension tool without a path", () => {
+    const resolver = makeResolver();
+    const result = describePathGate(
+      makeTcc({ toolName: "my-ext", input: { other: true } }),
+      resolver,
+    );
+    expect(result).toBeNull();
+    expect(resolver.resolve).not.toHaveBeenCalled();
+  });
+});

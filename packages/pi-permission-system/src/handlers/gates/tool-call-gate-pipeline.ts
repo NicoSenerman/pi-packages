@@ -1,6 +1,7 @@
 import { getNonEmptyString, toRecord } from "#src/common";
 import type { ScopedPermissionResolver } from "#src/permission-resolver";
 import type { SkillPromptEntry } from "#src/skill-prompt-sanitizer";
+import type { ToolAccessExtractorLookup } from "#src/tool-access-extractor-registry";
 import type { ToolInputFormatterLookup } from "#src/tool-input-formatter-registry";
 import {
   ToolPreviewFormatter,
@@ -53,6 +54,7 @@ export class ToolCallGatePipeline {
     private readonly resolver: ScopedPermissionResolver,
     private readonly inputs: ToolCallGateInputs,
     private readonly customFormatters?: ToolInputFormatterLookup,
+    private readonly customExtractors?: ToolAccessExtractorLookup,
   ) {}
 
   async evaluate(
@@ -77,8 +79,9 @@ export class ToolCallGatePipeline {
     const gateProducers: Array<() => GateResult | Promise<GateResult>> = [
       () =>
         describeSkillReadGate(tcc, () => this.inputs.getActiveSkillEntries()),
-      () => describePathGate(tcc, this.resolver),
-      () => describeExternalDirectoryGate(tcc, infraDirs),
+      () => describePathGate(tcc, this.resolver, this.customExtractors),
+      () =>
+        describeExternalDirectoryGate(tcc, infraDirs, this.customExtractors),
       () => describeBashExternalDirectoryGate(tcc, bashProgram, this.resolver),
       () => describeBashPathGate(tcc, bashProgram, this.resolver),
       () => {
