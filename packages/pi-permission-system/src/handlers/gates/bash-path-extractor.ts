@@ -13,15 +13,3 @@ export async function extractExternalPathsFromBashCommand(
 ): Promise<string[]> {
   return (await BashProgram.parse(command)).externalPaths(cwd);
 }
-
-/**
- * Extract tokens from a bash command that may be file paths, using the broader
- * filter suitable for cross-cutting `path` permission rules.
- *
- * Thin facade over {@link BashProgram.pathTokens}.
- */
-export async function extractTokensForPathRules(
-  command: string,
-): Promise<string[]> {
-  return (await BashProgram.parse(command)).pathTokens();
-}

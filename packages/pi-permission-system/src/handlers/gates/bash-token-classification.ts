@@ -1,7 +1,7 @@
 /**
  * Pure, synchronous token-classification helpers for bash path extraction.
  *
- * Exports two classifiers consumed by `bash-path-extractor.ts`:
+ * Exports two classifiers consumed by `bash-program.ts`:
  *   - `classifyTokenAsPathCandidate` — strict gate for the external-directory guard.
  *   - `classifyTokenAsRuleCandidate` — broader gate for cross-cutting `path` rules.
  *

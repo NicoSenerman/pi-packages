@@ -13,23 +13,6 @@ vi.mock("node:fs", () => ({
 import { BashProgram } from "#src/handlers/gates/bash-program";
 
 describe("BashProgram", () => {
-  describe("pathTokens", () => {
-    it("returns dot-files and relative path tokens", async () => {
-      const program = await BashProgram.parse("cat .env src/foo.ts");
-      expect(program.pathTokens()).toEqual([".env", "src/foo.ts"]);
-    });
-
-    it("returns an empty array when there are no path tokens", async () => {
-      const program = await BashProgram.parse("echo hello");
-      expect(program.pathTokens()).toEqual([]);
-    });
-
-    it("deduplicates repeated tokens across a command chain", async () => {
-      const program = await BashProgram.parse("cat .env && rm .env");
-      expect(program.pathTokens()).toEqual([".env"]);
-    });
-  });
-
   describe("pathRuleCandidates", () => {
     const cwd = "/projects/my-app";
 
@@ -369,7 +352,10 @@ describe("BashProgram", () => {
 
   it("derives both slices from a single parse", async () => {
     const program = await BashProgram.parse("cat .env /etc/hosts");
-    expect(program.pathTokens()).toEqual([".env", "/etc/hosts"]);
+    expect(program.pathRuleCandidates().map(({ token }) => token)).toEqual([
+      ".env",
+      "/etc/hosts",
+    ]);
     const external = program.externalPaths("/projects/my-app");
     expect(external).toContain("/etc/hosts");
     expect(external).not.toContain(".env");

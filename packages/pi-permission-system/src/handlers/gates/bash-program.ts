@@ -148,27 +148,6 @@ export class BashProgram {
   }
 
   /**
-   * Tokens that may be file paths, using the broader `path`-rule filter.
-   *
-   * Accepts relative paths (`.env`, `src/foo.ts`, `./build`) and absolute
-   * paths; does NOT filter by CWD. Returns deduplicated tokens for rule
-   * evaluation.
-   */
-  pathTokens(): string[] {
-    const seen = new Set<string>();
-    const result: string[] = [];
-    for (const { token } of this.rawCandidates) {
-      const candidate = classifyTokenAsRuleCandidate(token);
-      if (!candidate) continue;
-      if (!seen.has(candidate)) {
-        seen.add(candidate);
-        result.push(candidate);
-      }
-    }
-    return result;
-  }
-
-  /**
    * Path-rule candidates paired with their policy lookup values.
    *
    * When `cwd` is available, each relative token is resolved against the
