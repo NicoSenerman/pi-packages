@@ -46,3 +46,44 @@ Test count went 87 → 116 (+29); full suite, `check`, `lint`, and `fallow dead-
 - Pre-completion reviewer verdict: PASS — ready for `/ship-issue`.
   No WARN findings.
   Reviewer noted the pre-existing duplicated inline `exec` wrapper literal in `extension.ts` is not introduced by this PR.
+
+## Stage: Final Retrospective (2026-06-12T02:22:10Z)
+
+### Session summary
+
+Shipped issue #389 end-to-end across four stages (Planning, TDD, Ship, post-ship docs): `pi-colgrep` startup indexing is now non-blocking and disable-able via an `indexOnStartup` config, released as `pi-colgrep-v1.5.0`.
+The ship stage was clean (CI green, issue closed, release-please `UNSTABLE`-no-checks case handled correctly).
+After shipping, the user asked to bring docs up to date and add an architecture document like sibling packages have; that produced `packages/pi-colgrep/docs/architecture/architecture.md` (plus a `README.md` index and a `release-please-config.json` exclude-path).
+
+### Observations
+
+#### What went well
+
+- The three planning-stage `ask_user` gates turned a vague third-party request into a precisely-scoped design: the operator's "do both" answer, the gate-on-existing-index refinement, warn-once, and the `indexExists` naming all came from that dialogue rather than from guessing.
+- Empirical CLI verification during planning (`colgrep status` exit codes, no `--json`, the `No index found` signal) meant the `indexExistsFromStatus` predicate was correct on first implementation — no rework in TDD.
+- Incremental verification: `pnpm run check` / `biome` ran right after the interface-touching cycles (3, 4, 5), not just at the end, so the `runNow()` signature change and the config-mock wiring were validated before each commit.
+- Mermaid diagrams in the new architecture doc were validated with `mmdc` (all three rendered) before committing, per the `mermaid` skill.
+
+#### What caused friction (agent side)
+
+- `other` (tool-schema misuse) — the first two `Edit` attempts on `test/extension.test.ts` included a non-schema `endText` property and were rejected.
+  Impact: 2 wasted tool calls, no code rework; fixed on the third attempt by splitting into two clean edits.
+- `missing-context` — the architecture document was user-caught, not agent-proposed.
+  The plan and the pre-completion reviewer both noticed `pi-colgrep` had no `docs/architecture/` and explicitly concluded "nothing to update," treating absence as a terminal skip even though the change added two modules plus a reindexer state machine and two sibling packages maintain architecture docs.
+  Impact: one extra user request post-ship; cleanly handled, no rework.
+
+#### What caused friction (user side)
+
+- None blocking.
+  The architecture-doc ask is better read as an opportunity (below) than a user-side friction: the workflow's architecture-doc checks are existence-gated, so the user reasonably had to initiate.
+
+### Follow-ups (not implemented here)
+
+- `packages/pi-colgrep/AGENTS.md` references a `package-pi-colgrep` skill that does not exist.
+  Creating that skill (architecture summary, testing notes, priorities — mirroring `package-pi-subagents`) is substantive work; suggest a dedicated issue + `/plan-issue` rather than an inline retro change.
+
+### Changes made
+
+1. Recorded this Final Retrospective entry in `packages/pi-colgrep/docs/retro/0389-configurable-startup-indexing.md`.
+2. No prompt or `AGENTS.md` changes: the user declined the proposed architecture-doc-absence nudge for `.pi/prompts/plan-issue.md`.
+   The missing `package-pi-colgrep` skill is recorded above as a follow-up only (not implemented).
