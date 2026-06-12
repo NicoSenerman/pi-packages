@@ -73,9 +73,22 @@ export function createReindexer(deps: ReindexerDeps): Reindexer {
     }
   }
 
+  // Start a run, coalescing with any in-flight run. A second caller (e.g. a
+  // manual /colgrep-reindex firing during a backgrounded startup index) joins
+  // the in-flight promise instead of launching a second `colgrep init`.
+  // `runReindex()` sets `inFlight` synchronously before its first await, so the
+  // guard is race-free against another synchronous caller.
+  function startRun(): Promise<void> {
+    if (inFlight && inflightPromise !== undefined) {
+      return inflightPromise;
+    }
+    inflightPromise = runReindex();
+    return inflightPromise;
+  }
+
   return {
-    async runNow(): Promise<void> {
-      await runReindex();
+    runNow(): Promise<void> {
+      return startRun();
     },
     schedule(): void {
       if (isShutdown) return;
