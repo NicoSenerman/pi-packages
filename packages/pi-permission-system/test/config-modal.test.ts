@@ -89,8 +89,7 @@ test("permission-system command completions expose top-level config actions", ()
     const controller = {
       config: configStore,
       configPath,
-      permissionManager: { getComposedConfigRules: () => [] as Ruleset },
-      session: { lastKnownActiveAgentName: null },
+      getActiveAgentConfigRules: () => [] as Ruleset,
     };
 
     let definition: {
@@ -163,8 +162,7 @@ test("permission-system command handlers manage config summary, persistence, and
     const controller = {
       config: configStore,
       configPath,
-      permissionManager: { getComposedConfigRules: () => [] as Ruleset },
-      session: { lastKnownActiveAgentName: null },
+      getActiveAgentConfigRules: () => [] as Ruleset,
     };
 
     let registeredName = "";
@@ -262,8 +260,7 @@ test("show output includes rule origins when getComposedRules is provided", asyn
   const controller = {
     config: { current: () => config, save: () => {} } as CommandConfigStore,
     configPath: "/fake/config.json",
-    permissionManager: { getComposedConfigRules: () => composedRules },
-    session: { lastKnownActiveAgentName: null },
+    getActiveAgentConfigRules: () => composedRules,
   };
 
   let definition: {
@@ -295,8 +292,7 @@ test("show output omits rule summary when getComposedRules is not provided", asy
   const controller = {
     config: { current: () => config, save: () => {} } as CommandConfigStore,
     configPath: "/fake/config.json",
-    permissionManager: { getComposedConfigRules: () => [] as Ruleset },
-    session: { lastKnownActiveAgentName: null },
+    getActiveAgentConfigRules: () => [] as Ruleset,
   };
 
   let definition: {

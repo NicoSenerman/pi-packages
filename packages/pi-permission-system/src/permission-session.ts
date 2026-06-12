@@ -150,10 +150,8 @@ export class PermissionSession implements ToolCallGateInputs {
     return this.knownAgentName;
   }
 
-  // Read by config-modal (`controller.session.lastKnownActiveAgentName`).
-  // fallow cannot trace the getter through the command's object-literal
-  // wiring, so it reports a false positive here.
-  // fallow-ignore-next-line unused-class-member
+  // Read by the `index.ts` config-modal adapter closure:
+  // `permissionManager.getComposedConfigRules(session.lastKnownActiveAgentName ?? undefined)`.
   get lastKnownActiveAgentName(): string | null {
     return this.knownAgentName;
   }

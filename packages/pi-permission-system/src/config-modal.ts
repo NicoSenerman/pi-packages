@@ -16,10 +16,8 @@ interface PermissionSystemConfigController {
   config: CommandConfigStore;
   /** Precomputed global config file path. */
   configPath: string;
-  /** Returns the composed config-layer ruleset for origin display. */
-  permissionManager: { getComposedConfigRules(agentName?: string): Ruleset };
-  /** Provides the active agent name for scoped rule lookup. */
-  session: { readonly lastKnownActiveAgentName: string | null };
+  /** Returns the composed config-layer ruleset for the active agent scope. */
+  getActiveAgentConfigRules(): Ruleset;
 }
 
 const ON_OFF = ["on", "off"];
@@ -206,9 +204,7 @@ function handleArgs(
   }
 
   if (normalized === "show") {
-    const rules = controller.permissionManager.getComposedConfigRules(
-      controller.session.lastKnownActiveAgentName ?? undefined,
-    );
+    const rules = controller.getActiveAgentConfigRules();
     ctx.ui.notify(
       `permission-system: ${summarizeConfig(controller.config.current(), rules)}`,
       "info",

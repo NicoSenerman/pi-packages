@@ -115,8 +115,10 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
   registerPermissionSystemCommand(pi, {
     config: configStore,
     configPath,
-    permissionManager,
-    session,
+    getActiveAgentConfigRules: () =>
+      permissionManager.getComposedConfigRules(
+        session.lastKnownActiveAgentName ?? undefined,
+      ),
   });
 
   const rpcHandles = registerPermissionRpcHandlers(pi.events, {
