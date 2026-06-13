@@ -125,8 +125,34 @@
         "minLength": 1
       },
       "additionalProperties": {
-        "$ref": "#/$defs/permissionState"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/permissionState",
+            "description": "A permission decision for this pattern."
+          },
+          {
+            "$ref": "#/$defs/denyWithReason",
+            "description": "Deny this pattern with an optional custom reason."
+          }
+        ]
       }
+    },
+    "denyWithReason": {
+      "type": "object",
+      "description": "Deny with an optional custom reason shown to the agent when the action is blocked.",
+      "properties": {
+        "action": {
+          "const": "deny",
+          "description": "The permission decision \u2014 must be \"deny\"."
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Optional reason shown to the agent when this action is denied."
+        }
+      },
+      "required": ["action"],
+      "additionalProperties": false
     }
   }
 }

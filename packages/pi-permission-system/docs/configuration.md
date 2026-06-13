@@ -58,7 +58,11 @@ Scalar fields (`debugLog`, `permissionReviewLog`, `yoloMode`) use simple replace
     "read": "allow",
     "write": "deny",
     "edit": "deny",
-    "bash": { "git *": "ask", "git status": "allow" },
+    "bash": {
+      "git *": "ask",
+      "git status": "allow",
+      "npm *": { "action": "deny", "reason": "Use pnpm instead" }
+    },
     "mcp": { "mcp_status": "allow" },
     "skill": { "*": "ask" },
     "external_directory": "ask"
@@ -214,7 +218,8 @@ Place a more specific pattern *after* it to carve out exceptions — the later m
       "git *": "ask",
       "git status": "allow",
       "git diff": "allow",
-      "rm -rf *": "deny"
+      "rm -rf *": "deny",
+      "npm *": { "action": "deny", "reason": "Use pnpm instead" }
     }
   }
 }
@@ -227,6 +232,29 @@ String shorthand sets a catch-all for all bash commands:
   "permission": { "bash": "allow" }
 }
 ```
+
+#### Deny with a Custom Reason
+
+In any pattern map, a `deny` value may be written as an object with an optional `reason` instead of the plain `"deny"` string:
+
+```jsonc
+{
+  "permission": {
+    "bash": {
+      "npm *": { "action": "deny", "reason": "Use pnpm instead" }
+    }
+  }
+}
+```
+
+The reason is appended to the block message shown to the agent, so it learns why the command was denied and what to do instead:
+
+```text
+[pi-permission-system] is not permitted to run 'bash' command 'npm install' (matched 'npm *'). Reason: Use pnpm instead.
+```
+
+The object form is only valid at the pattern-value level (inside a pattern map) and only for `deny` — `action` must be `"deny"`, and `reason` must be a string (a non-string reason is ignored).
+A bare `"deny"` string is unchanged and carries no reason.
 
 ### `mcp` Surface
 
