@@ -94,3 +94,21 @@ The plan lands the capability across `types.ts`, `common.ts`, `rule.ts`, `normal
   No structural concerns.
 - Classified non-breaking (additive optional field, no default change) → `feat:`, not `feat!:`.
 - Attribution trailer and `@k0valik` close-comment credit carried into the plan's Risks section so the TDD stage applies them per commit.
+
+## Stage: Implementation — TDD (2026-06-12T21:50:00Z)
+
+### Session summary
+
+Implemented all six planned TDD steps plus two pre-completion fixups; test count went 1972 → 1996 (+24).
+The capability ships end-to-end: `{ "action": "deny", "reason": "..." }` at the pattern-value level now flows config-loader → `normalizeFlatConfig` → `Rule.reason` → `evaluate()` → `PermissionCheckResult.reason` → the agent-facing denial message (`Reason: ...`).
+All three planned simplifications over PR #395 landed as designed (single shared guard, pattern-map-only type, schema scoped to `permissionMap`).
+
+### Observations
+
+- Each step went red→green cleanly with no plan deviations; the plan's prediction that `evaluate()` needs no change held — the `rule.test.ts` cases pass purely from `findLast` returning the matched rule verbatim.
+- TDD step 4's manager end-to-end tests were the only ones requiring the `buildCheckResult` change to go green; the `rule.test.ts` half was already green when added, exactly as the plan noted.
+- Hit one tool-path slip: an `Edit` used the wrong absolute path (`pi-permission-system/...` instead of `pi-packages/packages/pi-permission-system/...`) and was denied by the permission system's own external-directory gate — corrected on retry.
+- No schema-validation test exists for `config.example.json`, so the example/schema changes were verified only by `node`-parsing both files and by rumdl; worth a future AJV round-trip test (out of scope here).
+- Pre-completion reviewer: **WARN** (no failing checks).
+  Two non-blocking findings, both fixed before stopping: (1) `docs/architecture/architecture.md`'s inline `Rule` listing was missing `reason?` — added (`docs:` commit); (2) `buildToolDenyBody` inlined the `Reason:` suffix instead of reusing the existing `reasonSuffix` helper — refactored to reuse it (`refactor:` commit, output unchanged).
+- Final state: `check`, `lint`, `test` (1996), and `fallow dead-code` all green; no lockfile changes; all 10 source/data files from the plan's Module-Level Changes touched, no deviation.
