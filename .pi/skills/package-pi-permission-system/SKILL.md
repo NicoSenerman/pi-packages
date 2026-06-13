@@ -76,6 +76,8 @@ The `permission` object uses deep-shallow merge; scalar fields use simple replac
 - Schema: `schemas/permissions.schema.json`
 - Example: `config/config.example.json`
 - Keep schema, example config, `docs/configuration.md`, `README.md`, and TypeScript types/loaders aligned — changing one without the others is a bug.
+- `docs/architecture/architecture.md` inline-copies the core `rule.ts` types (`Rule`, `RuleOrigin`, `Ruleset`).
+  Adding or removing a field on one of these must update that listing too — a module-move check misses it, and only the pre-completion reviewer catches it otherwise.
 - When removing a config field, keep the loader tolerant: detect the legacy key, emit a non-fatal config issue, and discard the value.
 - When adding an optional field to `PermissionSystemExtensionConfig`, do not include it in `DEFAULT_EXTENSION_CONFIG` with an explicit `undefined` value — tests use `deepEqual` and it breaks equality.
 - When adding a field to `PermissionSystemExtensionConfig`, also carry it through the loader's `UnifiedPermissionConfig` (`config-loader.ts`): parse it in `normalizeUnifiedConfig()` and merge it in `mergeUnifiedConfigs()`.

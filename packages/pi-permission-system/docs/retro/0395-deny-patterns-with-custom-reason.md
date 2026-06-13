@@ -112,3 +112,61 @@ All three planned simplifications over PR #395 landed as designed (single shared
 - Pre-completion reviewer: **WARN** (no failing checks).
   Two non-blocking findings, both fixed before stopping: (1) `docs/architecture/architecture.md`'s inline `Rule` listing was missing `reason?` — added (`docs:` commit); (2) `buildToolDenyBody` inlined the `Reason:` suffix instead of reusing the existing `reasonSuffix` helper — refactored to reuse it (`refactor:` commit, output unchanged).
 - Final state: `check`, `lint`, `test` (1996), and `fallow dead-code` all green; no lockfile changes; all 10 source/data files from the plan's Module-Level Changes touched, no deviation.
+
+## Stage: Final Retrospective (2026-06-12T22:10:00Z)
+
+### Session summary
+
+One continuous session carried PR #395 end-to-end through PR-review → planning → TDD → ship, landing `pi-permission-system-v13.1.0`.
+The third-party capability shipped as a simplified design (single shared guard, pattern-map-only type, schema scoped to `permissionMap`), 1972 → 1996 tests, non-breaking, with `@k0valik` credited via `Co-authored-by` trailers and a curated close comment.
+Execution was clean: no rabbit holes, no plan deviations, and every plan prediction held during TDD.
+
+### Observations
+
+#### What went well
+
+- **The cross-stage retro bridge worked exactly as designed.**
+  The PR-review retro satisfied planning's Decide gate (no re-litigation of direction), and the plan's two load-bearing predictions — `evaluate()` needs no change (it returns the matched `Rule` verbatim) and both parse layers silently strip the object — both held in TDD with zero rework.
+- **The pre-completion reviewer earned its keep.**
+  All deterministic gates (`check`, `lint`, `test`, `fallow dead-code`) were green, yet the judgment-based review surfaced two real issues a pure-determinism pipeline would have shipped: a stale inline `Rule` listing and a missed helper reuse.
+- **Clean `ask-user` re-ask handshake.**
+  When the operator asked a clarifying question ("can the agent ever see the `ask` rationale?"), the response gathered evidence first (`permission-gate.ts`, `gate-prompter.ts`) and then re-asked scope, rather than guessing — resolving the deny-only boundary cleanly.
+
+#### What caused friction (agent side)
+
+- `missing-context` — `docs/architecture/architecture.md` inline-copies the core `rule.ts` types (`Rule`, `RuleOrigin`, `Ruleset`), so adding `reason?` to `Rule` left that listing stale.
+  The plan explicitly concluded "no architecture doc update needed" because no module was added/moved/removed — but a field change to an inline-copied type stales the doc without any module move.
+  Caught by the pre-completion reviewer → one `docs:` fixup (`fd880d49`).
+  Impact: one extra commit; backstop worked, no shipped staleness.
+- `missing-context` — `buildToolDenyBody` inlined the `Reason: <reason>.` suffix instead of reusing the existing `reasonSuffix` helper in the same file.
+  No grep of `denial-messages.ts` for an existing helper before adding the formatting.
+  Caught by the reviewer → one `refactor:` fixup (`4c2dc7c9`, output unchanged).
+  Impact: one extra commit.
+- `other` (tool-path slip) — an `Edit` used the wrong absolute path (dropped the `pi-packages/packages/` segment) and was denied by the permission system's own external-directory gate; corrected on the immediate retry.
+  Self-identified.
+  Impact: one denied tool call, no rework.
+
+#### What caused friction (user side)
+
+- The operator surfaced the attribution-email concern mid-TDD ("we don't have a proper email for `k0valik`?").
+  The no-reply form had already been chosen in the PR-review retro, so there was no rework — but the question shows the placeholder-email rationale, though recorded, was not prominent enough to pre-empt the doubt.
+  Opportunity, not criticism: a one-line "why the no-reply form" note travels well in the close comment itself.
+
+### Follow-ups (not implemented here)
+
+- No schema-validation test exists for `config.example.json`; the schema/example changes were verified only by `node`-parsing and rumdl.
+  An AJV round-trip test (example config validates against `permissions.schema.json`) would catch schema/example drift automatically.
+  Out of scope for this retro (new test infra + dependency) — candidate for a dedicated issue.
+
+### Diagnostic details
+
+- **Model-performance correlation** — one subagent dispatch: the `pre-completion-reviewer` ran on `anthropic/claude-sonnet-4-6` (per its agent frontmatter), a reasoning-capable model appropriate for judgment-heavy review.
+  No mismatch; the verdict (WARN with two actionable findings) confirms the model engaged the judgment checklist rather than rubber-stamping.
+- **Escalation-delay tracking** — no rabbit holes; the path slip resolved in a single retry, well under the 5-call flag.
+- **Unused-tool detection** — the `reasonSuffix` miss was the one avoidable gap: a `grep reasonSuffix denial-messages.ts` before adding the inline suffix would have surfaced the helper.
+- **Feedback-loop gap analysis** — exemplary; verification ran incrementally (per-step red→green on the affected file, `pnpm run check` after each shared-interface step 1/3/4) and comprehensively at the end (full suite + `check` + `lint` + `fallow`).
+  No end-loaded verification.
+
+### Changes made
+
+1. `.pi/skills/package-pi-permission-system/SKILL.md` — added a two-line note to the Configuration alignment list recording that `docs/architecture/architecture.md` inline-copies the core `rule.ts` types (`Rule`, `RuleOrigin`, `Ruleset`), so a field add/remove on those must update the listing (a module-move check misses it).
