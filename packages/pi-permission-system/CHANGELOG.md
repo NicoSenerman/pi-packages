@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [13.1.1](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v13.1.0...pi-permission-system-v13.1.1) (2026-06-13)
+
+
+### Bug Fixes
+
+* preserve forwarded-permission responses dir while requests pending ([#398](https://github.com/gotgenes/pi-packages/issues/398)) ([9914e70](https://github.com/gotgenes/pi-packages/commit/9914e7093c5addee80bd39f2ff99211991b4a238))
+* recreate forwarded-permission responses dir before write ([#398](https://github.com/gotgenes/pi-packages/issues/398)) ([67d34ef](https://github.com/gotgenes/pi-packages/commit/67d34efb33dbda28f363a004d0945c2a4aacea29))
+
 ## [13.1.0](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v13.0.0...pi-permission-system-v13.1.0) (2026-06-13)
 
 
