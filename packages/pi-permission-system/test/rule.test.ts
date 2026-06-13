@@ -216,6 +216,67 @@ describe("evaluate", () => {
     expect(result.origin).toBe("builtin");
   });
 
+  test("evaluate() propagates reason from the matched deny rule", () => {
+    const rule: Rule = {
+      surface: "bash",
+      pattern: "npm *",
+      action: "deny",
+      reason: "Use pnpm instead",
+      layer: "config",
+      origin: "global",
+    };
+    const result = evaluate("bash", "npm install", [rule]);
+    expect(result.action).toBe("deny");
+    expect(result.reason).toBe("Use pnpm instead");
+  });
+
+  test("evaluate() carries reason through last-match-wins when deny wins", () => {
+    const allowAll: Rule = {
+      surface: "bash",
+      pattern: "*",
+      action: "allow",
+      layer: "config",
+      origin: "global",
+    };
+    const denyNpm: Rule = {
+      surface: "bash",
+      pattern: "npm *",
+      action: "deny",
+      reason: "Use pnpm",
+      layer: "config",
+      origin: "global",
+    };
+    const result = evaluate("bash", "npm install", [allowAll, denyNpm]);
+    expect(result.action).toBe("deny");
+    expect(result.reason).toBe("Use pnpm");
+  });
+
+  test("evaluate() drops reason when a later allow overrides the deny", () => {
+    const denyNpm: Rule = {
+      surface: "bash",
+      pattern: "npm *",
+      action: "deny",
+      reason: "Use pnpm",
+      layer: "config",
+      origin: "global",
+    };
+    const allowInstall: Rule = {
+      surface: "bash",
+      pattern: "npm install",
+      action: "allow",
+      layer: "config",
+      origin: "global",
+    };
+    const result = evaluate("bash", "npm install", [denyNpm, allowInstall]);
+    expect(result.action).toBe("allow");
+    expect(result.reason).toBeUndefined();
+  });
+
+  test("evaluate() synthetic fallback rule has no reason", () => {
+    const result = evaluate("bash", "npm install", []);
+    expect(result.reason).toBeUndefined();
+  });
+
   test("RuleOrigin covers all seven provenance values", () => {
     const origins: RuleOrigin[] = [
       "global",
