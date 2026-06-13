@@ -80,7 +80,8 @@ The key phases are:
 - **Phase 15** — Domain model evolution: `AgentRecord` → `Agent` with behavior, async `startAgent`, observer pattern, `ConcurrencyQueue` (#227–#232).
 - **Phase 16** — Invert dependencies (extensions on a minimal core, [ADR-0002]): emit child-session lifecycle events and retire `permission-bridge.ts` (#261); add the `WorkspaceProvider` seam (#262); extract worktrees to `@gotgenes/pi-subagents-worktrees` (#263, supersedes #256); remove `isolated`/`extensions: false`/`noSkills` (#264); born-complete child execution, dissolve the runner (#265).
   The earlier "agent collaborator architecture" framing was abandoned.
-- **Phase 17** — Extract UI to a separate package.
+- **Phase 17** — Core consolidation: resolve the `Subagent` record/executor duality (extract `SubagentState`, make execution deps mandatory), replace the concurrency queue with a thunk limiter, extract the manager observer from `index.ts`, consolidate test fixtures (#373–#381).
+- **Phase 18** — Reconsider the UI (first principles): the inherited widget, conversation viewer, and `/agents` menu are consumers judged on our principles, not preserved by default.
 
 ## Code Style
 

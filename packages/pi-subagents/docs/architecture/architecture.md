@@ -492,6 +492,10 @@ The governing rule — **no vacant hooks**: the architecture must _admit_ a seam
 A provider seam with no consumer is a speculative abstraction that taxes every reader and that `fallow` flags as dead.
 Latent extensibility is the deliverable; a vacant hook is not.
 
+The [first-principles refinement](#first-principles-refinement-the-deeper-target) below sharpens this two-surface split.
+The awaited, behavior-affecting lifecycle events (notably `session-created` before `bindExtensions`) are _hooks_ — the child's own extension surface applied recursively, generative because the core waits on the handler before deciding what to do next.
+The observational surface then carries only fire-and-forget broadcasts of immutable snapshots, which no consumer can use to change the core.
+
 ### Core responsibilities (keep)
 
 - **Agent definitions** — name, model, thinking, system prompt, tools list.
@@ -522,12 +526,90 @@ In the target state, pi-subagents publishes events and a provider seam; other pa
 
 - **pi-permission-system** (observational) subscribes to child-session lifecycle events, detects subagent execution context in the child, and gates tool calls at runtime.
 - **pi-subagents-worktrees** (generative) registers a `WorkspaceProvider` that prepares a git worktree at run-start and tears it down after, supplying the child's cwd.
-- **pi-subagents-ui** (future) subscribes to the service API, renders the widget, conversation viewer, and `/agents` menu.
+- **pi-subagents-ui** (future, under reconsideration — see the [first-principles refinement](#first-principles-refinement-the-deeper-target)) subscribes to the broadcast and the query/behavior interfaces; whether the inherited widget, conversation viewer, and `/agents` menu survive is judged on our principles, not preserved by default.
 - **Any future extension** (OTel, auditing, cost tracking) subscribes to the same events without pi-subagents knowing.
 
 Composition test: install neither extension, only permissions, only workspaces, or both — the core is byte-for-byte identical in all four cases, and the two extensions never reference each other.
 
-This is achieved across phases: Phase 14 (strip policy), Phase 16 (invert dependencies — extensions on a minimal core), and Phase 18 (extract UI).
+This is achieved across phases: Phase 14 (strip policy), Phase 16 (invert dependencies — extensions on a minimal core), and Phase 18 (reconsider UI).
+
+### First-principles refinement (the deeper target)
+
+The two-surface model above is correct but coarse.
+Pushing it against our own principles — construct complete, state owns its mutations, tell-don't-ask, dependency inversion — surfaces sharper boundaries that the current code draws through the middle of classes.
+This subsection records the deeper target; the steps that realize it are sequenced in later phases.
+
+#### `Subagent` is four conflated domains
+
+The construction duality that motivates Phase 17 — a class that is simultaneously a passive record and an executor — is only the two most visible of four domains fused into one class.
+Pulling each apart by asking "who changes this, how often, and who needs to know" surfaces:
+
+1. **Lifecycle state** — status, result, error, timestamps.
+   Owned by the subagent; transitions are rare and meaningful; the right outward shape is an immutable snapshot announced on change.
+2. **Metrics** — tool uses, token usage, compaction count.
+   These are not lifecycle state; they are a projection aggregated over the child session's event stream.
+   `record-observer` already computes them — its only error is writing the aggregate back onto the subagent.
+3. **The hook surface** — the points where an extension alters or augments the child before and around its run.
+   This is the child session's own extension binding (see below), not data on the subagent.
+4. **Result delivery** — whether the parent has consumed the result, when to nudge, how the result reaches the caller.
+   The homeless `notification.resultConsumed` field belongs to this domain, not to execution.
+
+The ~20 optional constructor fields and the runtime `run()` throws are the pressure these four domains exert on one class.
+Separating them is what makes the Phase 17 steps fall out rather than fight back.
+
+#### The subagent is a recursive Pi
+
+A subagent is a child Pi session: created with `createAgentSession`, then `bindExtensions`.
+Its extension surface is therefore Pi's extension surface applied recursively — not a bespoke event bus.
+What the current doc calls "awaited, ordered lifecycle events" are not observations; they are **hooks**, structurally identical to Pi's own (`session_start`, `tool_execution_start`).
+The tell is the awaiting: the core waits for the handler because the handler's completion changes what the core does next — an extension registers before the child binds.
+A handler that can change subsequent behavior is generative, not observational, whatever we name the channel.
+
+This splits the current "lifecycle events" surface cleanly in two:
+
+1. **Broadcast** (observational, fire-and-forget) — "this happened; react if you want; you cannot change anything."
+   Carries immutable snapshots for telemetry, notification, and any renderer.
+   No consumer holds a live `Subagent`.
+2. **Hooks** (generative, awaited, ordered) — the recursive Pi extension surface where workspace, permissions, and future concerns attach to the child.
+   The `WorkspaceProvider` is one _typed_ hook; the general form is "be an extension of the child session."
+
+The "no vacant hooks" rule still governs the generative side: admit the surface, ship a hook only when a real consumer exists.
+
+#### Reactive versus discrete (not internal versus external)
+
+The axis that decides push versus pull is whether a need is reactive or discrete — never whether the consumer is in-package or out.
+
+- **Reactive** (ambient state that changes underneath you) → subscribe to the broadcast; be told.
+  The state-owner announces; the consumer maintains its own read-model; nobody pulls.
+- **Discrete** (a one-shot question: current value, full transcript) → pull a query.
+  `get_subagent_result`, opening a transcript, and the external `SubagentsService.getRecord` are queries by nature and stay pull, in-package or not.
+
+Behavior is a third interface: **tell by id, with outcomes**.
+`steer` and `abort` own their own rules — a non-running agent rejects a steer from inside `steer`, not via a caller's status pre-check — so coordinators never ask-then-tell.
+
+#### Consequences
+
+Two consequences fall straight out, and both cut scope.
+
+1. **The activity/metrics push tier is provisional.**
+   Its only reactive consumer is the inherited widget.
+   Treated from first principles, metrics are accumulated by an observer, exposed as a discrete query, and folded into the completion snapshot — so the high-frequency stream may not need to exist at all.
+   We do not contort the core's event design to feed an inherited consumer.
+2. **Phase 18 is "reconsider the UI," not "extract the UI."**
+   The widget and `/agents` menu predate the fork; they are consumers to be judged on our principles, not requirements to preserve.
+   If a UI survives, it survives as a reactive consumer of the broadcast and a caller of the query/behavior interfaces — built on our terms, possibly smaller, possibly removed.
+
+#### Sibling packages follow the same discipline
+
+`@gotgenes/pi-permission-system` is one of these hooks, and it is subject to the same scrutiny.
+Its boundaries deserve the same first-principles treatment: surface its conflated domains, distinguish what it observes from what it injects, and prefer being told over asking.
+The recursion principle means a consumer's internal design is not exempt because it lives in another package — the same axes (reactive versus discrete, hook versus broadcast, construct complete) apply across the seam.
+
+#### How we find these boundaries
+
+The boundaries above were not deduced top-down; they were surfaced by friction.
+Each place the target got _harder_ to test marked a domain seam drawn through the middle of a class.
+That method — testability friction as a boundary probe, with its limits — is recorded in the `improvement-discovery` skill so it outlives this phase.
 
 ## Current structural analysis
 
@@ -768,8 +850,12 @@ See [phase-16-invert-dependencies.md](history/phase-16-invert-dependencies.md) f
 
 ## Improvement roadmap (Phase 17 — core consolidation)
 
-Phase 17 consolidates the core's remaining structural debt before the UI extraction (now Phase 18).
+Phase 17 consolidates the core's remaining structural debt before the UI reconsideration (now Phase 18).
 The findings come from the standard discovery pass — fallow suite, entry-point trace, design-review checklist, and test-constructibility audit — run after Phase 16 landed.
+
+Phase 17 is the consolidation slice of the [first-principles refinement](#first-principles-refinement-the-deeper-target), not the full domain split.
+It lands the first cut of the lifecycle-state domain (Step 2's `SubagentState`) plus the wiring, queue, and duplication cleanups.
+The fuller four-domain split — metrics as a projection, result delivery as its own domain, the hook/broadcast reclassification, and the push/pull (DIP) inversion — is recorded in the refinement and sequenced into later phases.
 
 ### Findings summary
 
@@ -793,6 +879,7 @@ The syntactic metrics are healthy and stable — the remaining debt is structura
    `SubagentInit` carries ~20 fields, nearly all optional with "required for run(), optional for tests" semantics, and `run()` compensates with runtime throws ("not configured for execution").
    This violates principle 8 (construct complete): the class is simultaneously a passive record (tests build display-only snapshots) and an executor (production wires factory, observer, run config, workspace provider).
    The symptoms are in the tests: external writes `record.promise = …` (manager, queue callback, four test files) and `record.notification = new NotificationState(…)` (seven test sites) are output-argument smells on fields the object should own.
+   This duality is the two most visible of four domains fused into `Subagent`; Phase 17 resolves it (Step 2) and defers the remaining split (metrics, result delivery) to a later phase per the [first-principles refinement](#first-principles-refinement-the-deeper-target).
 2. **Wiring debt in `index.ts`.**
    Two forward references (settings → queue, queue → manager) are replicated with an `eslint-disable prefer-const` dance in `test/lifecycle/subagent-manager.test.ts`; the queue's start callback (`record.promise = record.run()` after a status check) is duplicated verbatim between `index.ts` and the test helper.
    A ~70-line inline `SubagentManagerObserver` literal mixes three concerns (event emission, `appendEntry` persistence, notification dispatch).
@@ -809,7 +896,7 @@ Priority = Impact × (6 − Risk).
 | Step | Title                                                                                | Category | Impact | Risk | Priority |
 | ---- | ------------------------------------------------------------------------------------ | -------- | ------ | ---- | -------- |
 | 1    | Replace ConcurrencyQueue with a thunk-based ConcurrencyLimiter                       | A/C      | 4      | 2    | 16       |
-| 2    | Decompose `SubagentInit` into `SubagentOptions` (identity, run spec, execution deps) | B/D      | 4      | 3    | 12       |
+| 2    | Extract `SubagentState`; make `Subagent` execution deps mandatory                    | B/D      | 4      | 3    | 12       |
 | 3    | Encapsulate run start and notification attachment on Subagent                        | C        | 3      | 2    | 12       |
 | 4    | Extract run-listener and workspace-bracket collaborators from Subagent               | B/C      | 3      | 2    | 12       |
 | 5    | Extract the manager observer from index.ts into a class                              | B/E      | 3      | 2    | 12       |
@@ -827,19 +914,25 @@ Priority = Impact × (6 − Risk).
   The settings `onMaxConcurrentChanged` hook wires to `limiter.recheck()` in `index.ts`; `dispose()` calls `limiter.clear()` to drop pending thunks.
 - Outcome: dependency direction is strictly manager → limiter (no callback back-edge; the `prefer-const` eslint-disable in the test helper is deleted); the observer's two queue relays are gone; every spawned agent has a `promise` at spawn, collapsing `waitForAll`'s `while (true)` drain loop and its eslint-disable.
 
-#### Step 2 — Decompose `SubagentInit` into `SubagentOptions` (identity, run spec, execution deps) ([#373])
+#### Step 2 — Extract `SubagentState`; make `Subagent` execution deps mandatory ([#373])
 
-- Targets: `src/lifecycle/subagent.ts` (`SubagentInit`, constructor, `run()` guards), `src/lifecycle/subagent-manager.ts` (`spawn`), `test/helpers/make-subagent.ts`.
+- Targets: `src/lifecycle/subagent.ts` (state fields, transition/accumulation methods, constructor, `run()` guards), `src/lifecycle/subagent-manager.ts` (`spawn`), `test/helpers/make-subagent.ts`, `test/lifecycle/subagent.test.ts`, `test/observation/record-observer.test.ts`.
 - Smell: Category B (god interface — ~20 fields) and Category D (constructibility: "optional for tests" fields with compensating runtime throws).
-- Change: group the per-run fields (snapshot, prompt, model, maxTurns, thinkingLevel, parentSession, signal) into a `SubagentRunSpec` and the shared collaborators (createSubagentSession, observer, getRunConfig, getWorkspaceProvider, baseCwd) into `SubagentExecutionDeps`; the pair is either fully present (executable agent) or fully absent (passive record), collapsing `run()`'s two guards into one.
-  Rename the decomposed bag `SubagentInit` → `SubagentOptions`: it is the codebase's only DOM-style `*Init` name, while sibling constructor bags use `Options` (`SubagentManagerOptions`, `TurnLoopOptions`).
-- Outcome: `SubagentOptions` (née `SubagentInit`) top-level fields ~20 → ≤ 9; a passive test record is constructible without any execution fields; the record-vs-executor duality is explicit in the types.
+  The record/executor duality is the two most visible of the four conflated domains (see [First-principles refinement](#first-principles-refinement-the-deeper-target)).
+- Change: extract the passive-record state — status, result, error, timestamps, and the stats (toolUses, lifetimeUsage, compactionCount) — into a `SubagentState` value object that owns the transition and accumulation methods.
+  `Subagent` holds one privately; its existing getters and `markX`/`incrementX`/`addUsage` methods become one-line delegations, so the ~40 read sites and the mutation callers are unchanged.
+  This is not reach-through: `SubagentState` is a private owned value, not a foreign collaborator (contrast [#277], which removed reach-through to the raw SDK session).
+  With the readable state extracted, the remaining execution inputs (snapshot, prompt, model, maxTurns, thinkingLevel, parentSession, signal, createSubagentSession, observer, getRunConfig, getWorkspaceProvider, baseCwd) collapse into a single **mandatory** `SubagentExecution` collaborator: production always supplies it (the one `spawn()` site), the passive-record construction moves entirely into `make-subagent.ts`, and `run()`'s two "not configured" throws vanish by construction.
+- Outcome: state-machine and observer tests target `SubagentState` directly (no stub execution); `Subagent` is construct-complete with no optional execution fields and no runtime throws (grep-verifiable: no "not configured for execution" in `subagent.ts`); the record-vs-executor duality is resolved, not type-encoded.
+- Scope boundary: stats stay on `SubagentState` for now.
+  Hoisting **metrics** into a projection over the child session's event stream and extracting **result delivery** (`notification`/`resultConsumed`) into its own domain are the remaining two of the four domains, deferred to a later phase per the refinement.
+- The issue ([#373]) is filed under the prior "decompose `SubagentInit` into present-or-absent bags" framing; update its description to this stronger target before implementation.
 
 #### Step 3 — Encapsulate run start and notification attachment on Subagent ([#374])
 
 - Targets: `src/lifecycle/subagent.ts`, `src/lifecycle/subagent-manager.ts`, `test/tools/get-result-tool.test.ts`, `test/lifecycle/subagent-manager.test.ts`, `test/service/service-adapter.test.ts`, `test/observation/notification.test.ts`, `test/helpers/make-subagent.ts`.
 - Smell: Category C — output arguments: external writes to `record.promise` (3 production/test sites) and `record.notification` (7 test sites).
-- Change: add `Subagent.start()` that runs and stores its own promise (plus an awaitable accessor for `spawnAndWait`/`waitForAll`); make `promise` and `notification` externally read-only; tests attach notification state through `SubagentOptions.parentSession.toolCallId` or a dedicated options field.
+- Change: add `Subagent.start()` that runs and stores its own promise (plus an awaitable accessor for `spawnAndWait`/`waitForAll`); make `promise` and `notification` externally read-only; tests attach notification state through `SubagentExecution.parentSession.toolCallId` or a dedicated options field.
 - Outcome: zero external writes to `Subagent` fields outside its own methods (grep-verifiable: `\.promise =` and `\.notification =` appear only inside `subagent.ts`).
 
 #### Step 4 — Extract run-listener and workspace-bracket collaborators from Subagent ([#375])
@@ -890,7 +983,7 @@ Priority = Impact × (6 − Risk).
 ```mermaid
 flowchart TB
     S1["Step 1 (#381)<br/>ConcurrencyLimiter replacement"]
-    S2["Step 2 (#373)<br/>SubagentOptions decomposition"]
+    S2["Step 2 (#373)<br/>SubagentState extraction"]
     S3["Step 3 (#374)<br/>Encapsulate start + notification"]
     S4["Step 4 (#375)<br/>Run collaborators extraction"]
     S5["Step 5 (#376)<br/>Observer class from index.ts"]
@@ -933,7 +1026,7 @@ Detailed records are preserved in per-phase history files:
 | 3     | Remove group-join, RPC; replace output-file         | Complete            | [phase-3-remove-rpc-groupjoin.md](history/phase-3-remove-rpc-groupjoin.md)           |
 | 4     | Implement and publish SubagentsService              | Complete            | [phase-4-implement-service.md](history/phase-4-implement-service.md)                 |
 | 5     | Decompose index.ts                                  | Complete            | [phase-5-decompose-index.md](history/phase-5-decompose-index.md)                     |
-| 6     | Extract UI to separate package                      | Deferred → Phase 17 | —                                                                                    |
+| 6     | Extract UI to separate package                      | Deferred → Phase 18 | —                                                                                    |
 | 7     | Encapsulation and dependency narrowing              | Complete            | [phase-7-encapsulation.md](history/phase-7-encapsulation.md)                         |
 | 8     | Testability, display extraction, menu decomposition | Complete            | [phase-8-testability.md](history/phase-8-testability.md)                             |
 | 9     | Observation consolidation, ctx elimination          | Complete            | [phase-9-observation-ctx.md](history/phase-9-observation-ctx.md)                     |
@@ -945,7 +1038,7 @@ Detailed records are preserved in per-phase history files:
 | 15    | Domain model evolution                              | Complete            | [phase-15-domain-model-evolution.md](history/phase-15-domain-model-evolution.md)     |
 | 16    | Invert dependencies (extensions on a minimal core)  | Complete            | [phase-16-invert-dependencies.md](history/phase-16-invert-dependencies.md)           |
 | 17    | Core consolidation                                  | Planned             | —                                                                                    |
-| 18    | Extract UI to separate package                      | Planned             | —                                                                                    |
+| 18    | Reconsider UI (first principles)                    | Planned             | —                                                                                    |
 
 ### Structural refactoring issues
 

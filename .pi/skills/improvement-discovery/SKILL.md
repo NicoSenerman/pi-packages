@@ -170,6 +170,14 @@ These are failure modes and corrections discovered empirically.
 - **Test setup is a production-design signal** — `fallow`'s syntactic metrics miss god objects, closure density, and DIP violations.
   When a unit needs module-level `vi.mock`, wide `as unknown as` casts, or a multi-field fixture, the production object is hard to construct — fix the object, not the test.
   The test is the symptom; the production object is the disease.
+- **Testability friction is a boundary probe.**
+  When moving toward the _correct_ architecture makes something _harder_ to test, suspect a domain boundary drawn through the middle of a class before you blame the architecture.
+  The friction is information: it marks a seam where two domains with different owners, change-rates, or directions of dependency are fused.
+  Surface the seam (extract the domain) and the test usually gets _easier_, not harder — a better design is more straightforward to test.
+  Worked example: pushing pi-subagents toward a tell-don't-ask, dependency-inverted target made three things harder to test — constructing a passive record, a metrics firehose, and shared `resultConsumed` state — and each dissolved into a distinct domain (lifecycle state, a metrics projection, result delivery) once surfaced.
+  The limit: this is a heuristic, not a law.
+  A residue of friction is essential, not structural — asynchronous observation (subscription teardown, event ordering) is genuinely harder to test than a synchronous pull no matter how well the boundaries are drawn, and Pi itself pays that cost.
+  Suspect a buried boundary first; force a redraw onto the irreducible async residue and you invent a seam that isn't there.
 - **Audit the architecture doc against the code** — a doc's own rationalization of a smell ("kept inline per the anti-procedure-splitting rule") is a claim to verify, not a fact to repeat.
 
 ### Structural preferences
