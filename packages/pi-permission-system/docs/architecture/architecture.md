@@ -567,23 +567,34 @@ It honors principle 5 (defaults are rules; no side-channel fallbacks): `evaluate
 A future "disable everything" mode — overriding denies too — would be a *different*, deliberately named operation: appending a final `{ surface: "*", pattern: "*", action: "allow" }` rule (last-match-wins).
 It is not built, and it would be requested by name, never conflated with yolo.
 
-### Open decisions
+### Resolved direction
 
-These are unresolved and must be settled before implementation, not assumed:
+These were the open decisions; they are now settled.
 
-1. **Multi-level escalation.**
-   The clean model says serving an escalation consults *your own* authority, which for a middle subagent is the `ParentAuthorizer` — i.e. grandchild → child → root.
-   The current `processInbox` hard-guards `if (!ctx.hasUI) return`, so only a UI root ever serves: one hop, no grandchildren.
-   In scope (the model unlocks it), or a deliberate one-hop limit we preserve?
-2. **Serving evaluation.**
-   Should a serving session run the escalated request through its *own* recorded authority before prompting?
-   It is more correct (the parent may have a standing rule, including its yolo rewrite) and makes parent-side yolo dissolve for free, but it is a behavior change.
-   Leaning yes; not ratified.
-3. **Access-intent extraction.**
-   The package's center of mass is not the decision engine (tiny, pure) but turning `(toolName, input)` into "what is being accessed" — bash decomposition, MCP target derivation, path extraction, external-directory detection.
-   This is a distinct domain (access intent) that gates should *emit* and a single `resolve(intent)` should answer, so adding a gate cannot widen the resolver surface.
-   The [#393] false-green (a stubbed-but-unrouted resolver method silently passing `allow`) is the probe pointing at it.
-   Raised, not yet designed.
+1. **Serving is resolution.**
+   Serving an escalation from below is identical to resolving an action locally: the serving node runs `evaluate()` against its recorded authority, then escalates to its own `Authorizer` on `ask`.
+   `requestApproval` already encodes the three-way `Authorizer` selection; `processInbox` is refactored onto the same pipeline, so the `hasUI` guards and the bespoke serve-time yolo check (`shouldAutoApprovePermissionState`) dissolve into `evaluate()` + selection rather than being separate logic.
+2. **Multi-level escalation: admitted, not shipped.**
+   The model is recursive — a middle node's `Authorizer` is its own `ParentAuthorizer`, so an unanswerable `ask` re-escalates up with no special-casing.
+   In practice the tree is depth-2: pi-subagents' recursion guard removes the subagent tool from children, so there are no grandchildren to escalate.
+   The one-hop ceiling is therefore the *shadow* of that guard, external to this package — not a permission-model choice — and if pi-subagents ever allows nesting, no change is needed here.
+   A cheap **one-hop canary** (assert/log if a forwarded request arrives from a node that is itself a non-root subagent) turns a future invariant break into a loud failure instead of silent mishandling.
+3. **Full delegation of authority down the tree.**
+   A subagent inherits its ancestors' authority: parent `allow` and `deny` rules govern a child's escalation, and **yolo inherits** too. yolo is the blunt "accept the risk" instrument by design — per-principal yolo is not a meaningful grant — so enabling it on the root deliberately lets delegates run unprompted on `ask`.
+   Because yolo is deny-preserving, the protection for a less-trusted, cheaper delegate is an explicit `deny` in its per-agent frontmatter (which survives the yolo rewrite); an `ask` is *not* a safeguard under inherited yolo.
+   This is what makes "parent yolo dissolves for free" true: serving evaluates the parent's composed (yolo-rewritten) ruleset directly, with no separate yolo branch.
+4. **Grant scope is human-selectable.**
+   When a human approves a forwarded request "for this session," the dialog offers a scope: the **entire session (root)**, the **parent**, or the **requesting subagent** — with the requesting subagent pre-selected (the narrowest, least-privilege default).
+   In the current depth-2 tree "parent" and "root" coincide; the three-way choice separates only once trees deepen (the same admitted-not-shipped shape as the escalation chain).
+
+### Remaining design work
+
+**Access-intent extraction** is the one genuinely open piece, and the foundation for the path surface of the decisions above.
+The package's center of mass is not the decision engine (tiny, pure) but turning `(toolName, input)` into "what is being accessed" — bash decomposition, MCP target derivation, path extraction, external-directory detection.
+This is a distinct domain (access intent) that gates should *emit* and a single `resolve(intent)` should answer, so adding a gate cannot widen the resolver surface.
+The [#393] false-green (a stubbed-but-unrouted resolver method silently passing `allow`) is the probe pointing at it: the resolver surface today is `resolve` + `resolvePathPolicy` + `checkPermission` + `checkPathPolicy`, widening per gate.
+The intent must carry **principal identity** (which agent is requesting) so a forwarded request is evaluable on the serving node, and it must define **path portability across cwds** — a subagent in a `pi-subagents-worktrees` worktree resolves paths against a different root than the parent, so cross-session path evaluation is only well-defined once the intent fixes what a path *means*.
+Sequencing: extract access-intent first — it unblocks correct cross-session path evaluation and kills the false-green class; non-path serving, yolo inheritance, and the escalation unification can land alongside.
 
 ### Naming
 
