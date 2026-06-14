@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [16.2.0](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v16.1.1...pi-subagents-v16.2.0) (2026-06-14)
+
+
+### Features
+
+* encapsulate Subagent.start(), promise, and notification ([#374](https://github.com/gotgenes/pi-packages/issues/374)) ([048b4a0](https://github.com/gotgenes/pi-packages/commit/048b4a0a859ec83e1c73c1386484a747e37ba224))
+
 ## [16.1.1](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v16.1.0...pi-subagents-v16.1.1) (2026-06-14)
 
 
