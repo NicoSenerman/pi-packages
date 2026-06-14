@@ -2,14 +2,14 @@
  * subagent-manager.ts - Tracks subagents, background execution, resume support.
  *
  * Background agents are subject to a configurable concurrency limit (default: 4).
- * Excess agents are queued and auto-started as running agents complete.
- * Foreground agents bypass the queue (they block the parent anyway).
+ * Excess agents are scheduled on a ConcurrencyLimiter and auto-started as running
+ * agents complete. Foreground agents bypass the limiter (they block the parent anyway).
  */
 
 import { randomUUID } from "node:crypto";
 import type { Model } from "@earendil-works/pi-ai";
 import { debugLog } from "#src/debug";
-import type { ConcurrencyQueue } from "#src/lifecycle/concurrency-queue";
+import type { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { Subagent, type SubagentLifecycleObserver } from "#src/lifecycle/subagent";
@@ -31,8 +31,8 @@ export interface SubagentManagerObserver {
 export interface SubagentManagerOptions {
   /** Assembly factory that produces a born-complete SubagentSession per spawn. */
   createSubagentSession: (params: CreateSubagentSessionParams) => Promise<SubagentSession>;
-  /** Concurrency queue — owns scheduling, limit checks, and drain logic. */
-  queue: ConcurrencyQueue;
+  /** Concurrency limiter — schedules background run thunks FIFO against the limit. */
+  limiter: ConcurrencyLimiter;
   /** Base working directory handed to a workspace provider (the parent cwd). */
   baseCwd: string;
   getRunConfig?: () => RunConfig;
@@ -67,7 +67,7 @@ export class SubagentManager {
   private cleanupInterval: ReturnType<typeof setInterval>;
   private readonly observer?: SubagentManagerObserver;
   private readonly createSubagentSession: (params: CreateSubagentSessionParams) => Promise<SubagentSession>;
-  private readonly queue: ConcurrencyQueue;
+  private readonly limiter: ConcurrencyLimiter;
   private readonly baseCwd: string;
   private getRunConfig?: () => RunConfig;
   private _workspaceProvider?: WorkspaceProvider;
@@ -79,7 +79,7 @@ export class SubagentManager {
 
   constructor(options: SubagentManagerOptions) {
     this.createSubagentSession = options.createSubagentSession;
-    this.queue = options.queue;
+    this.limiter = options.limiter;
     this.baseCwd = options.baseCwd;
     this.observer = options.observer;
     this.getRunConfig = options.getRunConfig;
@@ -109,7 +109,6 @@ export class SubagentManager {
   private buildObserver(options: AgentSpawnConfig): SubagentLifecycleObserver {
     return {
       onStarted: (agent) => {
-        if (options.isBackground) this.queue.markStarted();
         this.observer?.onSubagentStarted(agent);
       },
       onSessionCreated: options.observer?.onSessionCreated
@@ -117,7 +116,6 @@ export class SubagentManager {
         : undefined,
       onRunFinished: (agent) => {
         if (options.isBackground) {
-          this.queue.markFinished();
           try { this.observer?.onSubagentCompleted(agent); } catch (err) { debugLog("onSubagentCompleted observer", err); }
         }
       },
@@ -166,9 +164,13 @@ export class SubagentManager {
       this.observer?.onSubagentCreated(record);
     }
 
-    if (options.isBackground && !options.bypassQueue && this.queue.isFull()) {
-      // Queue it - will be started when a running agent completes
-      this.queue.enqueue(id);
+    if (options.isBackground && !options.bypassQueue) {
+      // Schedule on the limiter — started when a slot frees. The status guard
+      // makes an abort-while-queued task a no-op (Step 3 folds it into start()).
+      record.promise = this.limiter.schedule(() => {
+        if (record.status !== "queued") return Promise.resolve();
+        return record.run();
+      });
       return id;
     }
 
@@ -221,9 +223,9 @@ export class SubagentManager {
     const record = this.agents.get(id);
     if (!record) return false;
 
-    // Remove from queue if queued
+    // A queued agent has not started; mark it stopped. Its scheduled thunk
+    // becomes a no-op (status guard) when its slot finally opens.
     if (record.status === "queued") {
-      this.queue.dequeue(id);
       record.markStopped();
       return true;
     }
@@ -269,43 +271,44 @@ export class SubagentManager {
   // fallow-ignore-next-line unused-class-member
   abortAll(): number {
     let count = 0;
-    // Clear queued agents first
-    for (const id of this.queue.queuedIds) {
-      const record = this.agents.get(id);
-      if (record) {
+    for (const record of this.agents.values()) {
+      if (record.status === "queued") {
         record.markStopped();
+        count++;
+      } else if (record.abort()) {
         count++;
       }
     }
-    this.queue.clear();
-    // Abort running agents
-    for (const record of this.agents.values()) {
-      if (record.abort()) count++;
-    }
+    // Drop pending thunks (their promises resolve).
+    this.limiter.clear();
     return count;
   }
 
   /** Wait for all running and queued agents to complete (including queued ones). */
   // fallow-ignore-next-line unused-class-member
   async waitForAll(): Promise<void> {
-    // Loop because queue.drain() respects the concurrency limit - as running
-    // agents finish they start queued ones, which need awaiting too.
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- intentional infinite loop with explicit break
-    while (true) {
-      this.queue.drain();
-      const pending = [...this.agents.values()]
-        .filter(r => r.status === "running" || r.status === "queued")
-        .map(r => r.promise)
-        .filter((p): p is Promise<void> => p != null);
-      if (pending.length === 0) break;
+    // Every spawned agent has a settled-on-completion promise (the limiter starts
+    // queued ones as slots free), so a single allSettled covers the queued case.
+    // The loop only catches agents spawned during the wait.
+    let pending = this.pendingPromises();
+    while (pending.length > 0) {
       await Promise.allSettled(pending);
+      pending = this.pendingPromises();
     }
+  }
+
+  /** Promises of all running/queued agents that have one. */
+  private pendingPromises(): Promise<void>[] {
+    return [...this.agents.values()]
+      .filter(r => r.status === "running" || r.status === "queued")
+      .map(r => r.promise)
+      .filter((p): p is Promise<void> => p != null);
   }
 
   dispose() {
     clearInterval(this.cleanupInterval);
-    // Clear queue
-    this.queue.clear();
+    // Drop pending thunks
+    this.limiter.clear();
     for (const record of this.agents.values()) {
       record.disposeSession();
     }

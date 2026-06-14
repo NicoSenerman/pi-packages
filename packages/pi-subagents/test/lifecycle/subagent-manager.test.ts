@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ConcurrencyQueue } from "#src/lifecycle/concurrency-queue";
+import { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
 import { SubagentManager, type SubagentManagerObserver } from "#src/lifecycle/subagent-manager";
 import type { SubagentSession } from "#src/lifecycle/subagent-session";
@@ -38,25 +38,15 @@ function createManager(overrides?: {
         onSubagentCreated: overrides.observer.onSubagentCreated ?? (() => {}),
       }
     : undefined;
-  // Forward-reference via closure — safe because drain is never called during construction.
-  // eslint-disable-next-line prefer-const -- forward reference: must be declared before queue, assigned after
-  let mgr: SubagentManager;
-  const queue = new ConcurrencyQueue(
-    overrides?.getMaxConcurrent ?? (() => DEFAULT_MAX_CONCURRENT),
-    (id) => {
-      const record = mgr.getRecord(id);
-      if (record?.status !== "queued") return;
-      record.promise = record.run();
-    },
-  );
-  mgr = new SubagentManager({
+  const limiter = new ConcurrencyLimiter(overrides?.getMaxConcurrent ?? (() => DEFAULT_MAX_CONCURRENT));
+  const mgr = new SubagentManager({
     createSubagentSession,
     observer,
-    queue,
+    limiter,
     baseCwd: overrides?.baseCwd ?? "/repo",
     getRunConfig: overrides?.getRunConfig,
   });
-  return { manager: mgr, createSubagentSession, queue };
+  return { manager: mgr, createSubagentSession, limiter };
 }
 
 /** Spawn a background agent using STUB_SNAPSHOT. */

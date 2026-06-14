@@ -428,7 +428,8 @@ export class Subagent {
 	/**
 	 * Abort a running agent: fire AbortController and transition to stopped.
 	 * Returns false if the agent is not running.
-	 * Queue removal is handled by SubagentManager via ConcurrencyQueue.dequeue().
+	 * A still-queued agent is stopped by SubagentManager; its scheduled thunk
+	 * then no-ops on the queued-status guard.
 	 */
 	abort(): boolean {
 		if (this._status !== "running") return false;

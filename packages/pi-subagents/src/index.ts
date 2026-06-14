@@ -24,7 +24,7 @@ import { AgentTypeRegistry } from "#src/config/agent-types";
 import { loadCustomAgents } from "#src/config/custom-agents";
 import { SessionLifecycleHandler, ToolStartHandler } from "#src/handlers/index";
 import { createChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
-import { ConcurrencyQueue } from "#src/lifecycle/concurrency-queue";
+import { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
 import { createSubagentSession, type SubagentSessionDeps } from "#src/lifecycle/create-subagent-session";
 import { buildParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { SubagentManager, type SubagentManagerObserver } from "#src/lifecycle/subagent-manager";
@@ -66,12 +66,12 @@ export default function (pi: ExtensionAPI) {
   );
 
   // Settings: owns all three in-memory values and handles load/save/emit.
-  // onMaxConcurrentChanged is wired to the queue directly (closure captures by reference).
+  // onMaxConcurrentChanged is wired to the limiter directly (closure captures by reference).
   const settings = new SettingsManager({
     emit: (event, payload) => pi.events.emit(event, payload),
     cwd: process.cwd(),
     agentDir: getAgentDir(),
-    onMaxConcurrentChanged: () => queue.drain(),
+    onMaxConcurrentChanged: () => limiter.recheck(),
   });
   settings.load();
 
@@ -150,22 +150,15 @@ export default function (pi: ExtensionAPI) {
     lifecycle: createChildLifecyclePublisher((channel, data) => pi.events.emit(channel, data)),
   };
 
-  // ConcurrencyQueue: scheduling extracted from SubagentManager.
-  // startAgent callback forward-references manager via closure (safe — drain is never called during construction).
-  const queue = new ConcurrencyQueue(
-    () => settings.maxConcurrent,
-    (id) => {
-      const agent = manager.getRecord(id);
-      if (agent?.status !== "queued") return;
-      agent.promise = agent.run();
-    },
-  );
+  // ConcurrencyLimiter: schedules background run thunks FIFO against the limit.
+  // It knows nothing about agents or the manager — dependency direction is strictly manager → limiter.
+  const limiter = new ConcurrencyLimiter(() => settings.maxConcurrent);
 
   const manager = new SubagentManager({
     createSubagentSession: (params) => createSubagentSession(params, subagentSessionDeps),
     baseCwd: process.cwd(),
     observer,
-    queue,
+    limiter,
     getRunConfig: () => settings,
   });
 
