@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [16.1.1](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v16.1.0...pi-subagents-v16.1.1) (2026-06-14)
+
+
+### Bug Fixes
+
+* abort all subagents on parent interrupt ([#403](https://github.com/gotgenes/pi-packages/issues/403)) ([0c951d3](https://github.com/gotgenes/pi-packages/commit/0c951d3da27123a61c95a7f9a07ddb4cf5ed7e89))
+
 ## [16.1.0](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v16.0.0...pi-subagents-v16.1.0) (2026-06-14)
 
 
