@@ -26,3 +26,24 @@ Wrote and committed plan `0403-abort-subagents-on-interrupt.md`.
 - Classified as a non-breaking `fix:` (not `fix!:`): no config key, default, or output shape changes; detached-survives-ESC was a limitation, not a contract.
   Noted the behavior change explicitly in Goals.
 - Foreground path is believed already-correct from the code trace; the plan adds a regression guard in `subagent-session.test.ts` (`forwardAbortSignal` is currently untested for the parent-signal path) and will fix only if the guard fails.
+
+## Stage: Implementation — TDD (2026-06-14T18:00:00Z)
+
+### Session summary
+
+Completed all three TDD cycles against a green baseline (967 tests).
+Added the foreground-abort guard, implemented `InterruptHandler` + `turn_start` wiring, and updated the architecture doc.
+Test count went from 967 to 975 (+8: 6 `InterruptHandler` unit tests, 2 foreground guard tests); `check`, `lint`, `test`, and `fallow dead-code` all pass.
+
+### Observations
+
+- The foreground guard (Step 1) passed on the first run, confirming the planning-stage code trace: the parent signal already reaches the child `session.abort()` via `forwardAbortSignal`.
+  No code fix was needed, so it landed as `test:` exactly as the plan anticipated.
+- `InterruptHandler` came out clean against the `code-design` heuristics — one field read from `ctx`, one method on a one-method `InterruptManager` interface, latch state owned internally, `{ once: true }` listener.
+  The reviewer's code-design check was PASS with no structural concerns.
+- `abortAll()` gained a second narrow-interface consumer (the new handler) on top of the shutdown path; `fallow dead-code` stayed green, so its existing `fallow-ignore-next-line unused-class-member` comment was left untouched.
+- Pre-completion reviewer: **WARN**.
+- Reviewer warnings: stale source-file counts in `architecture.md`.
+  Fixed the current-state prose claim (`56` → `58` source files).
+  Left the fallow health-metrics snapshot rows (line ~650, `7,778 (57 files)`) intact — those are point-in-time analysis tables where the file count was computed alongside LOC and other metrics, so bumping one cell in isolation would desync the snapshot.
+  Amended the fix into the docs commit (not yet pushed).
