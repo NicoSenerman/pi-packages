@@ -269,19 +269,32 @@ export class Subagent {
 	}
 
 	/**
-	 * Start execution: call run(), store the promise internally, and return it.
-	 *
-	 * Guards against non-active states (e.g. abort-while-queued): if the agent
-	 * is neither queued nor running, the promise resolves immediately (no-op).
-	 * This folds the inline status guard out of SubagentManager's limiter callback.
+	 * Start execution immediately (foreground / bypassQueue paths).
+	 * Stores the run promise so it is awaitable via the `promise` getter.
 	 */
-	start(): Promise<void> {
-		if (this.status !== "queued" && this.status !== "running") {
-			this._promise = Promise.resolve();
-			return this._promise;
-		}
-		this._promise = this.run();
-		return this._promise;
+	start(): void {
+		this._promise = this.guardedRun();
+	}
+
+	/**
+	 * Schedule execution through an external concurrency scheduler (the limiter).
+	 * Captures the scheduler's promise eagerly, so a still-queued agent is
+	 * awaitable via the `promise` getter from spawn — not only once its slot opens.
+	 * The guard in guardedRun() makes an abort-while-queued run a no-op when the
+	 * slot finally frees.
+	 */
+	scheduleVia(schedule: (thunk: () => Promise<void>) => Promise<void>): void {
+		this._promise = schedule(() => this.guardedRun());
+	}
+
+	/**
+	 * Run unless the agent left the active set before its slot opened
+	 * (e.g. abort-while-queued): a non-queued, non-running status resolves
+	 * immediately without running.
+	 */
+	private guardedRun(): Promise<void> {
+		if (this.status !== "queued" && this.status !== "running") return Promise.resolve();
+		return this.run();
 	}
 
 	/**

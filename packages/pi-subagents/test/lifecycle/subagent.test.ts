@@ -596,18 +596,12 @@ describe("Subagent.run() — RunConfig threading", () => {
 // ── Subagent.start() ───────────────────────────────────────────────────────────
 
 describe("Subagent.start() — promise encapsulation", () => {
-	it("returns a promise that resolves when run completes", async () => {
+	it("stores a run promise that resolves on completion", async () => {
 		const agent = createRunnableAgent();
-		const p = agent.start();
-		expect(p).toBeInstanceOf(Promise);
-		await p;
+		agent.start();
+		expect(agent.promise).toBeInstanceOf(Promise);
+		await agent.promise;
 		expect(agent.status).toBe("completed");
-	});
-
-	it("stores the promise so the getter returns it after start()", () => {
-		const agent = createRunnableAgent();
-		const p = agent.start();
-		expect(agent.promise).toBe(p);
 	});
 
 	it("promise is undefined before start() is called", () => {
@@ -617,22 +611,47 @@ describe("Subagent.start() — promise encapsulation", () => {
 
 	it("is a no-op when status is stopped (abort-while-queued guard)", async () => {
 		const agent = makeSubagent({ status: "stopped", startedAt: 1, completedAt: 1 });
-		const p = agent.start();
-		await expect(p).resolves.toBeUndefined();
+		agent.start();
+		await expect(agent.promise).resolves.toBeUndefined();
 		expect(agent.status).toBe("stopped");
 	});
 
 	it("is a no-op when status is completed", async () => {
 		const agent = makeSubagent({ status: "completed", result: "done", startedAt: 1, completedAt: 2 });
-		const p = agent.start();
-		await expect(p).resolves.toBeUndefined();
+		agent.start();
+		await expect(agent.promise).resolves.toBeUndefined();
+		expect(agent.status).toBe("completed");
+	});
+});
+
+describe("Subagent.scheduleVia() — eager promise capture", () => {
+	it("exposes the scheduler promise before the run starts (queued-awaitable)", async () => {
+		const agent = makeSubagent({ status: "queued" });
+		const { promise: gate, resolve: openSlot } = Promise.withResolvers<void>(); // eslint-disable-line @typescript-eslint/no-invalid-void-type -- Promise.withResolvers<void> is valid; rule does not allow void in generic fn call type args
+		agent.scheduleVia(async (thunk) => {
+			await gate;
+			await thunk();
+		});
+		// Promise is captured at schedule time — before the slot opens.
+		expect(agent.promise).toBeInstanceOf(Promise);
+		expect(agent.status).toBe("queued");
+		openSlot();
+		await agent.promise;
 		expect(agent.status).toBe("completed");
 	});
 
-	it("stores the no-op promise so the getter returns it too", async () => {
-		const agent = makeSubagent({ status: "stopped", startedAt: 1, completedAt: 1 });
-		const p = agent.start();
-		expect(agent.promise).toBe(p);
+	it("runs guardedRun as the thunk — abort-while-queued is a no-op", async () => {
+		const agent = makeSubagent({ status: "queued" });
+		let thunkRan = false;
+		// Abort before the slot opens, then fire the thunk.
+		agent.markStopped();
+		agent.scheduleVia(async (thunk) => {
+			thunkRan = true;
+			await thunk();
+		});
+		await agent.promise;
+		expect(thunkRan).toBe(true);
+		expect(agent.status).toBe("stopped");
 	});
 });
 

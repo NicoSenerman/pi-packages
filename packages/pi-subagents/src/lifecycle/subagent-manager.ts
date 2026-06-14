@@ -168,12 +168,14 @@ export class SubagentManager {
     }
 
     if (options.isBackground && !options.bypassQueue) {
-      // Schedule on the limiter — start() guards against abort-while-queued.
-      void this.limiter.schedule(() => record.start());
+      // Schedule on the limiter — scheduleVia captures the limiter promise
+      // eagerly, so a queued agent is awaitable from spawn; guardedRun guards
+      // against abort-while-queued when the slot frees.
+      record.scheduleVia((thunk) => this.limiter.schedule(thunk));
       return id;
     }
 
-    void record.start();
+    record.start();
     return id;
   }
 

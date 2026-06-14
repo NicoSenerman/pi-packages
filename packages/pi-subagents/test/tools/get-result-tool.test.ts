@@ -103,7 +103,7 @@ describe("GetResultTool", () => {
 				createSubagentSession: async () => toSubagentSession(sessionStub),
 			}),
 		});
-		void record.start();
+		record.start();
 		const records = new Map([["agent-1", record]]);
 		const result = await execute(makeManager(records), makeNotifications(), { agent_id: "agent-1", wait: true });
 		// After waiting, the record is completed and result is shown

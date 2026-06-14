@@ -28,9 +28,9 @@ describe("createTestSubagent", () => {
 	it("exposes promise via getter after start() is called", async () => {
 		const record = createTestSubagent({ status: "running", completedAt: undefined });
 		expect(record.promise).toBeUndefined();
-		const p = record.start();
-		expect(record.promise).toBe(p);
-		await p;
+		record.start();
+		expect(record.promise).toBeInstanceOf(Promise);
+		await record.promise;
 	});
 
 	it("allows overriding defaults to undefined", () => {

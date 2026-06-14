@@ -475,6 +475,24 @@ describe("SubagentManager — queueing and concurrency with injected stubs", () 
     expect(manager.getRecord(id2)!.result).toBe("result-2");
   });
 
+  it("gives a queued agent an awaitable promise at spawn (before its slot opens)", () => {
+    const factory = createBlockingFactory();
+    ({ manager } = createManager({ createSubagentSession: factory, getMaxConcurrent: () => 1 }));
+
+    // First runs, second queues
+    const id1 = spawnBg(manager, "a");
+    const id2 = spawnBg(manager, "b");
+
+    // A still-queued agent must already expose a settle-on-completion promise,
+    // so waitForAll can await it without relying on a re-poll. (Regression
+    // guard: #374 made the promise lazy; the limiter handle is captured eagerly.)
+    expect(manager.getRecord(id2)!.status).toBe("queued");
+    expect(manager.getRecord(id2)!.promise).toBeInstanceOf(Promise);
+
+    manager.abort(id1);
+    manager.abort(id2);
+  });
+
   it("abort removes a queued agent without ever running it", () => {
     const factory = createBlockingFactory();
     ({ manager } = createManager({ createSubagentSession: factory, getMaxConcurrent: () => 1 }));
