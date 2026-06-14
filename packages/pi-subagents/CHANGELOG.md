@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [16.0.0](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v15.0.2...pi-subagents-v16.0.0) (2026-06-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* replace-mode subagents (built-in Explore/Plan and any custom prompt_mode: replace agent) now inherit the parent system prompt as their base instead of a thin standalone header. The custom prompt is appended last and retains full control; the <sub_agent_context> bridge and <agent_instructions> wrapper are still omitted in replace mode.
+
+### Performance Improvements
+
+* include parent system prompt in replace mode ([#400](https://github.com/gotgenes/pi-packages/issues/400)) ([1cc25cf](https://github.com/gotgenes/pi-packages/commit/1cc25cf0106cbfe3015ceb69a820c745c07038e2))
+
+
+### Documentation
+
+* describe replace-mode parent inheritance ([#400](https://github.com/gotgenes/pi-packages/issues/400)) ([6b6e61d](https://github.com/gotgenes/pi-packages/commit/6b6e61d649582c26d2c36edf67dfd1e35d87a802))
+
 ## [15.0.2](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v15.0.1...pi-subagents-v15.0.2) (2026-06-12)
 
 
