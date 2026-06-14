@@ -962,14 +962,14 @@ Priority = Impact × (6 − Risk).
 
 #### Step 3 — Encapsulate run start and notification attachment on Subagent ([#374])
 
-- Targets: `src/lifecycle/subagent.ts`, `src/lifecycle/subagent-manager.ts`, `test/tools/get-result-tool.test.ts`, `test/lifecycle/subagent-manager.test.ts`, `test/service/service-adapter.test.ts`, `test/observation/notification.test.ts`, `test/helpers/make-subagent.ts`.
-- Smell: Category C — output arguments: external writes to `record.promise` (3 production/test sites) and `record.notification` (7 test sites).
+- Targets: `src/lifecycle/subagent.ts`, `src/lifecycle/subagent-manager.ts`, `test/tools/get-result-tool.test.ts`, `test/lifecycle/subagent-manager.test.ts`, `test/service/service-adapter.test.ts`, `test/observation/notification.test.ts`, `test/helpers/make-subagent.test.ts`.
+- Smell: Category C — output arguments: external writes to `record.promise` (2 production sites in `subagent-manager.ts`, 4 test sites) and `record.notification` (7 test sites; the production path was resolved in Step 2 — the constructor creates `notification` from `execution.parentSession?.toolCallId`, so Step 3's remaining work is making the field read-only and updating tests to supply it via `parentSession`).
 - Change: add `Subagent.start()` that runs and stores its own promise (plus an awaitable accessor for `spawnAndWait`/`waitForAll`); make `promise` and `notification` externally read-only; tests attach notification state through `SubagentExecution.parentSession.toolCallId` or a dedicated options field.
 - Outcome: zero external writes to `Subagent` fields outside its own methods (grep-verifiable: `\.promise =` and `\.notification =` appear only inside `subagent.ts`).
 
 #### Step 4 — Extract run-listener and workspace-bracket collaborators from Subagent ([#375])
 
-- Targets: `src/lifecycle/subagent.ts` (533 LOC — largest source file, accelerating churn).
+- Targets: `src/lifecycle/subagent.ts` (455 LOC after Step 2 extracted SubagentState — still the largest source file).
 - Smell: Category B (oversized class; per-run listener fields declared mid-class) and Category C (state owns its mutations: workspace dispose logic appears in `run()`'s catch, `completeRun`, and `failRun`).
 - Change: extract a `RunListeners` object owning the observer-unsubscribe and signal-detach handles (`attach`/`release`), and a workspace-bracket collaborator owning prepare/dispose-with-addendum, so the three dispose paths collapse into one.
 - Outcome: `subagent.ts` ≤ 450 LOC; workspace disposal logic in exactly one place; listener handles no longer raw nullable fields.
