@@ -46,4 +46,50 @@ Test count went 975 → 966 (−22 deleted queue tests, +13 new limiter tests); 
 - Pre-completion reviewer: WARN (no FAILs).
   Reviewer warnings: the single stale-comment finding at `index.ts:125` — now fixed in commit `90135005`.
 
+## Stage: Final Retrospective (2026-06-14T00:30:00Z)
+
+### Session summary
+
+Shipped #381 across planning, TDD, and release: `pi-subagents` `16.0.0` → `16.1.0`, tag `pi-subagents-v16.1.0`.
+Four commits landed (one `feat`, two `refactor`, one `docs`) plus two `docs(retro)` notes; CI passed first try, the issue was closed with an implemented-in summary, and the release-please PR was merged.
+The plan — written down to code sketches — held up across all three TDD cycles with no design rework.
+
+### Observations
+
+#### What went well
+
+- The plan's fidelity paid off: the `clear()`-settles-pending-promises decision, the atomic step-2 sequencing (migrate consumers + delete queue + delete old test in one commit), and the `void`-prefix prediction for floating promises were all made at planning time and executed without surprise.
+  The `queueing and concurrency` manager tests passed unchanged after only the `createManager` helper swap, validating the planning claim that they exercise behavior, not queue internals.
+- The pre-completion-reviewer (on `anthropic/claude-sonnet-4-6`, 161s, 21 tool uses) caught a stale comment at `src/index.ts:125` that all four deterministic gates (`check`, `lint`, `test`, `fallow dead-code`) passed over.
+  This is the backstop working exactly as intended — a judgment-model review surfacing residue that pattern-matchers cannot.
+- Verification cadence was incremental, not end-loaded: file-scoped `vitest` + `biome` + `eslint` after step 1, `pnpm run check` immediately after the shared-interface change mid-step-2 (per the plan's own instruction), then lifecycle suite → full suite → full lint, then `rumdl` for the docs step, then the full gates + `fallow` before push.
+
+#### What caused friction (agent side)
+
+- `missing-context` (self/reviewer-caught) — the stale comment `// before startAgent / queue drain` at `src/index.ts:125` referenced two deleted concepts but was not cataloged in the plan's Module-Level Changes, despite the planning grep output having surfaced that exact line.
+  The grep hit was visible but never converted into a plan action or an explicit leave-as-is.
+  Impact: one small follow-up commit (`90135005`, `refactor:`); no rework, no design impact — the reviewer backstop absorbed it before ship.
+
+#### What caused friction (user side)
+
+- None.
+  The single user touchpoint — the release-timing gate in `/ship-issue` (release now vs. batch the Phase 17 sequence) — was strategic judgment the agent correctly deferred, not mechanical oversight.
+
+### Diagnostic details
+
+- **Model-performance correlation** — one subagent dispatch (`pre-completion-reviewer`) on `anthropic/claude-sonnet-4-6`; appropriate match for judgment-heavy review, and it returned the session's only actionable finding.
+- **Escalation-delay tracking** — no rabbit-holes; the lone lint error (`@typescript-eslint/no-floating-promises`, 18 sites) was resolved in a single test-file rewrite, far under the 5-call escalation threshold.
+- **Unused-tool detection** — nothing under-tooled; `colgrep`/`grep` were used during planning exploration and the reviewer subagent was dispatched as designed.
+- **Feedback-loop gap analysis** — no gap; verification ran after every cycle, with `pnpm run check` correctly invoked right after the shared-interface change rather than at end-of-session.
+
+#### Process note (no inline change)
+
+- The release-please PR merge required the documented `UNSTABLE` → `gh pr merge` fallback (step 6.4 of `/ship-issue`) because default-`GITHUB_TOKEN` release PRs never get checks.
+  This recurs every release; the prompt already handles it, so it is recorded here only as a standing pattern, not a friction point.
+
+### Changes made
+
+1. Added this Final Retrospective stage entry to `packages/pi-subagents/docs/retro/0381-replace-concurrency-queue-with-limiter.md`.
+2. No prompt or `AGENTS.md` changes — the operator chose retro-file-only, since the single friction (the stale `src/index.ts:125` comment) was a one-off execution slip already caught by the pre-completion-reviewer backstop, and the candidate grep-hit rule was judged not worth the prompt verbosity.
+
 [#378]: https://github.com/gotgenes/pi-packages/issues/378
