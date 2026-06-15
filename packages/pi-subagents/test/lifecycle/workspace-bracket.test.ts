@@ -22,6 +22,19 @@ const ctx = {
 	invocation: undefined,
 };
 
+describe("WorkspaceBracket — hasProvider", () => {
+	it("returns false when no provider is registered", () => {
+		const bracket = new WorkspaceBracket(() => undefined);
+		expect(bracket.hasProvider()).toBe(false);
+	});
+
+	it("returns true when a provider is registered", () => {
+		const workspace = makeWorkspace("/ws/dir");
+		const bracket = new WorkspaceBracket(() => makeProvider(workspace));
+		expect(bracket.hasProvider()).toBe(true);
+	});
+});
+
 describe("WorkspaceBracket — prepare", () => {
 	it("returns undefined when there is no provider", async () => {
 		const bracket = new WorkspaceBracket(() => undefined);

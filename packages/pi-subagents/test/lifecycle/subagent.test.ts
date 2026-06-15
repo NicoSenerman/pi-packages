@@ -303,13 +303,6 @@ describe("Subagent — completeRun", () => {
 		expect(onRunFinished).toHaveBeenCalledWith(record);
 	});
 
-	it("releases listeners on completion", () => {
-		const { record } = createCompletionAgent();
-		const unsub = vi.fn();
-		record.attachObserver(unsub);
-		record.completeRun(createTurnLoopResult());
-		expect(unsub).toHaveBeenCalledOnce();
-	});
 });
 
 describe("Subagent — failRun", () => {
@@ -328,13 +321,6 @@ describe("Subagent — failRun", () => {
 		expect(onRunFinished).toHaveBeenCalledWith(record);
 	});
 
-	it("releases listeners on failure", () => {
-		const { record } = createCompletionAgent();
-		const unsub = vi.fn();
-		record.attachObserver(unsub);
-		record.failRun(new Error("boom"));
-		expect(unsub).toHaveBeenCalledOnce();
-	});
 });
 
 describe("Subagent — disposeSession", () => {
@@ -349,62 +335,6 @@ describe("Subagent — disposeSession", () => {
 	it("is a no-op when no session was created", () => {
 		const record = makeSubagent();
 		expect(() => record.disposeSession()).not.toThrow();
-	});
-});
-
-describe("Subagent — wireSignal", () => {
-	it("calls onAbort when the signal fires", () => {
-		const record = makeSubagent();
-		const controller = new AbortController();
-		const onAbort = vi.fn();
-		record.wireSignal(controller.signal, onAbort);
-		controller.abort();
-		expect(onAbort).toHaveBeenCalledOnce();
-	});
-
-	it("does nothing when signal is undefined", () => {
-		const record = makeSubagent();
-		expect(() => record.wireSignal(undefined, vi.fn())).not.toThrow();
-	});
-
-	it("releaseListeners detaches the signal listener", () => {
-		const record = makeSubagent();
-		const controller = new AbortController();
-		const onAbort = vi.fn();
-		record.wireSignal(controller.signal, onAbort);
-		record.releaseListeners();
-		controller.abort();
-		expect(onAbort).not.toHaveBeenCalled();
-	});
-});
-
-describe("Subagent — attachObserver / releaseListeners", () => {
-	it("stores unsub and calls it on releaseListeners", () => {
-		const record = makeSubagent();
-		const unsub = vi.fn();
-		record.attachObserver(unsub);
-		record.releaseListeners();
-		expect(unsub).toHaveBeenCalledOnce();
-	});
-
-	it("is idempotent — second release does not call unsub again", () => {
-		const record = makeSubagent();
-		const unsub = vi.fn();
-		record.attachObserver(unsub);
-		record.releaseListeners();
-		record.releaseListeners();
-		expect(unsub).toHaveBeenCalledOnce();
-	});
-});
-
-describe("Subagent — resetForResume releases listeners", () => {
-	it("releases listeners on reset", () => {
-		const record = makeSubagent({ status: "running" });
-		const unsub = vi.fn();
-		record.attachObserver(unsub);
-		record.markCompleted("done");
-		record.resetForResume(Date.now());
-		expect(unsub).toHaveBeenCalledOnce();
 	});
 });
 

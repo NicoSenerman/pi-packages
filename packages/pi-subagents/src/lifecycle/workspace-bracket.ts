@@ -24,6 +24,15 @@ export class WorkspaceBracket {
 	constructor(private readonly resolveProvider: () => WorkspaceProvider | undefined) {}
 
 	/**
+	 * Returns true when a workspace provider is currently registered.
+	 * Use to guard the `await prepare(...)` call and avoid an unnecessary
+	 * microtask boundary in the no-provider path.
+	 */
+	hasProvider(): boolean {
+		return this.resolveProvider() !== undefined;
+	}
+
+	/**
 	 * Resolve the registered provider and prepare the child workspace.
 	 * Returns the workspace's cwd, or undefined when no provider is registered
 	 * or the provider resolves to undefined.
