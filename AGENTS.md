@@ -12,8 +12,9 @@ When adding a new package, wire it into all of:
 
 1. `release-please-config.json` — add to `packages` (component) and add `docs/plans` + `docs/retro` to `exclude-paths`.
 2. `.release-please-manifest.json` — add the package at `0.0.0`.
-3. `scripts/publish-released.sh` — add the `path:@scope/name` entry, or release-please will tag a version that never publishes to npm.
-4. `.pi/settings.json` — add the `../packages/<pkg>` load path, plus a `{ "source": "npm:@gotgenes/<pkg>", "extensions": [], "skills": [] }` disable entry once it is in global settings (prevents double-load).
+3. `.pi/settings.json` — add the `../packages/<pkg>` load path, plus a `{ "source": "npm:@gotgenes/<pkg>", "extensions": [], "skills": [] }` disable entry once it is in global settings (prevents double-load).
+
+Publishing is automatic — `scripts/publish-released.sh` derives the package list from release-please's `paths_released`, so no publish-script edit is needed.
 
 When adding a new internal docs subdirectory (retro, plans, architecture, decisions, assets), add its path to `exclude-paths` in `release-please-config.json`.
 Commits that only touch excluded paths do not trigger releases.

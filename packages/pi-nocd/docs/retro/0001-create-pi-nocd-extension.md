@@ -48,13 +48,15 @@ Three latent gaps surfaced during shipping — a wrong rationale, an unused copi
 - **Feedback-loop gap analysis** — `pnpm run check`, `test`, and `lint` were run incrementally after each change, but `pnpm fallow dead-code` (part of the CI gate) was not run locally before the first push, which is what caused the CI failure.
 - **Model-performance correlation** and **escalation-delay tracking** — no subagents were dispatched and no error sequence exceeded a couple of tool calls; nothing notable.
 
-### Follow-ups (not implemented in this retro)
+### Follow-ups
 
-- Make `scripts/publish-released.sh` derive the package list dynamically (e.g. from the `RELEASES` payload's `paths_released`) so a new package can never be silently skipped again.
-  This is a behavioral script change — open a GitHub issue and run `/plan-issue` rather than landing it in the retro.
+- ~~Make `scripts/publish-released.sh` derive the package list dynamically so a new package can never be silently skipped again.~~
+  Done in this session (`fix(ci): derive publish list dynamically from paths_released`); a missing `package.json` now fails loudly instead of skipping.
 
 ### Changes made
 
 1. Added `packages/pi-nocd/docs/retro/0001-create-pi-nocd-extension.md` (this file).
-2. Replaced the single `exclude-paths` sentence in `AGENTS.md` with a four-item new-package wiring checklist covering `release-please-config.json`, `.release-please-manifest.json`, `scripts/publish-released.sh`, and `.pi/settings.json`, preserving the existing docs-subdirectory guidance.
+2. Replaced the single `exclude-paths` sentence in `AGENTS.md` with a new-package wiring checklist covering `release-please-config.json`, `.release-please-manifest.json`, and `.pi/settings.json`, preserving the existing docs-subdirectory guidance.
 3. Added a pre-push `pnpm fallow dead-code` rule to `AGENTS.md`.
+4. Rewrote `scripts/publish-released.sh` to derive the publish list from release-please's `paths_released` (reading each name from `package.json`), removing the hardcoded list; a missing `package.json` now fails loudly.
+5. Dropped the now-obsolete `scripts/publish-released.sh` step from the `AGENTS.md` new-package checklist (publishing is automatic).
