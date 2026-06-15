@@ -130,9 +130,6 @@ classDiagram
         +completeRun(result)
         +failRun(err)
         +disposeSession()
-        +wireSignal(signal, onAbort)
-        +attachObserver(unsub)
-        +releaseListeners()
     }
 
     class SubagentState {
@@ -309,8 +306,10 @@ src/
 │   ├── create-subagent-session.ts  assembly factory: session creation, binding, tool filtering
 │   ├── subagent-session.ts         born-complete child session: turn loop, steer, dispose
 │   ├── turn-limits.ts              normalizeMaxTurns (turn-count policy)
-│   ├── subagent.ts                 owns full execution lifecycle (run, abort, steer, workspace)
+│   ├── subagent.ts                 owns full execution lifecycle (run, abort, steer)
 │   ├── subagent-state.ts           lifecycle status + metrics value object (transitions, accumulators)
+│   ├── run-listeners.ts            per-run observer-unsub and signal-detach handles
+│   ├── workspace-bracket.ts        child workspace prepare/dispose lifecycle
 │   ├── concurrency-limiter.ts       background admission gate: schedules run thunks FIFO against the limit
 │   ├── parent-snapshot.ts          immutable spawn-time parent state
 │   ├── child-lifecycle.ts          child-execution lifecycle event publisher
@@ -644,17 +643,17 @@ That method — testability friction as a boundary probe, with its limits — is
 
 ### Health metrics
 
-| Metric                     | Value                             |
-| -------------------------- | --------------------------------- |
-| Health score               | 78/100 (B)                        |
-| Total LOC                  | 7,778 (57 files)                  |
-| Dead code                  | 0 files, 0 exports                |
-| Maintainability index      | 90.8 (good)                       |
-| Avg cyclomatic complexity  | 1.4                               |
-| P90 cyclomatic complexity  | 2                                 |
-| Production duplication     | 11 lines (1 internal clone group) |
-| Test duplication           | 42 clone groups, 661 lines        |
-| Fallow refactoring targets | 0                                 |
+| Metric                     | Value                                   |
+| -------------------------- | --------------------------------------- |
+| Health score               | 78/100 (B)                              |
+| Total LOC                  | 8,356 (60 files, as of Phase 17 Step 4) |
+| Dead code                  | 0 files, 0 exports                      |
+| Maintainability index      | 90.8 (good)                             |
+| Avg cyclomatic complexity  | 1.4                                     |
+| P90 cyclomatic complexity  | 2                                       |
+| Production duplication     | 11 lines (1 internal clone group)       |
+| Test duplication           | 42 clone groups, 661 lines              |
+| Fallow refactoring targets | 0                                       |
 
 ### Dependency bag inventory
 
@@ -894,7 +893,7 @@ Updated health metrics (fallow, package-wide including tests):
 | Metric                     | Phase 16 baseline              | Current                                       |
 | -------------------------- | ------------------------------ | --------------------------------------------- |
 | Health score               | 78/100 (B)                     | 78/100 (B)                                    |
-| Source LOC                 | 7,778 (57 files)               | ~7,400 (57 files)                             |
+| Source LOC                 | 7,778 (57 files)               | 8,356 (60 files, landed Phase 17 Step 4)      |
 | Dead code                  | 0 files, 0 exports             | 0 files, 0 exports                            |
 | Maintainability index      | 90.8 (good)                    | 90.8 (good)                                   |
 | Avg / P90 cyclomatic       | 1.4 / 2                        | 1.4 / 2                                       |
@@ -975,8 +974,12 @@ Priority = Impact × (6 − Risk).
 
 - Targets: `src/lifecycle/subagent.ts` (455 LOC after Step 2 extracted SubagentState — still the largest source file).
 - Smell: Category B (oversized class; per-run listener fields declared mid-class) and Category C (state owns its mutations: workspace dispose logic appears in `run()`'s catch, `completeRun`, and `failRun`).
-- Change: extract a `RunListeners` object owning the observer-unsubscribe and signal-detach handles (`attach`/`release`), and a workspace-bracket collaborator owning prepare/dispose-with-addendum, so the three dispose paths collapse into one.
+- Change: extract a `RunListeners` object owning the observer-unsubscribe and signal-detach handles (`wireSignal`/`attachObserver`/`release`), and a `WorkspaceBracket` collaborator owning prepare/dispose-with-addendum, centralising the dispose logic.
 - Outcome: `subagent.ts` ≤ 450 LOC; workspace disposal logic in exactly one place; listener handles no longer raw nullable fields.
+- Landed: `RunListeners` (`src/lifecycle/run-listeners.ts`) owns the signal-detach and observer-unsub handles with a single `release()` call; `WorkspaceBracket` (`src/lifecycle/workspace-bracket.ts`) owns prepare-at-run-start and dispose-with-addendum — `completeRun` and `failRun` call `workspaceBracket.dispose(outcome)` and receive the addendum string (or `""`) without reaching through to the workspace object directly.
+  `Subagent.wireSignal`, `attachObserver`, and `releaseListeners` are removed.
+  `subagent.ts`: 488 → 448 LOC.
+  Test count: 982 → 994 (+12: 7 RunListeners + 13 WorkspaceBracket − 8 redundant Subagent listener tests).
 
 #### Step 5 — Extract the manager observer from index.ts into a class ([#376])
 
