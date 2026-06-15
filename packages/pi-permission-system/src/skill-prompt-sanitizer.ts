@@ -8,7 +8,7 @@ import type { PermissionCheckResult, PermissionState } from "./types";
 
 /**
  * Narrow interface for the permission checker used by skill prompt resolution.
- * Both `PermissionManager` and `PermissionSession` satisfy this structurally.
+ * Both `PermissionManager` and `PermissionResolver` satisfy this structurally.
  */
 export interface SkillPermissionChecker {
   checkPermission(

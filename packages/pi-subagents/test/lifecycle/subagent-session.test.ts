@@ -186,6 +186,33 @@ describe("SubagentSession — runTurnLoop turn limits", () => {
   });
 });
 
+describe("SubagentSession — runTurnLoop parent abort signal", () => {
+  it("aborts the session when the parent signal fires mid-prompt", async () => {
+    const controller = new AbortController();
+    const { session } = createSession("X");
+    // prompt stays in flight until the parent signal aborts.
+    session.prompt = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          controller.signal.addEventListener("abort", () => resolve(), { once: true });
+        }),
+    );
+    const { sub } = makeSubagentSession(session);
+    const promise = sub.runTurnLoop("go", { signal: controller.signal });
+    controller.abort();
+    await promise;
+    expect(session.abort).toHaveBeenCalled();
+  });
+
+  it("does not abort the session when the parent signal never fires", async () => {
+    const controller = new AbortController();
+    const { session } = createSession("X");
+    const { sub } = makeSubagentSession(session);
+    await sub.runTurnLoop("go", { signal: controller.signal });
+    expect(session.abort).not.toHaveBeenCalled();
+  });
+});
+
 describe("SubagentSession — runTurnLoop lifecycle events", () => {
   it("emits completed with the run outcome on the success path", async () => {
     const { session } = createSession("OK");

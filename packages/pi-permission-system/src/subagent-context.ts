@@ -1,8 +1,19 @@
 import { normalize } from "node:path";
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { SUBAGENT_ENV_HINT_KEYS } from "./permission-forwarding";
 import type { SubagentSessionRegistry } from "./subagent-registry";
+
+/**
+ * Narrow context for subagent detection — the only session-manager readers
+ * {@link isSubagentExecutionContext} and {@link isRegisteredSubagentChild}
+ * consume. A full `ExtensionContext` satisfies this structurally.
+ */
+export interface SubagentDetectionContext {
+  sessionManager: {
+    getSessionId(): string;
+    getSessionDir(): string;
+  };
+}
 
 export function normalizeFilesystemPath(pathValue: string): string {
   const normalizedPath = normalize(pathValue);
@@ -39,7 +50,7 @@ function isPathWithinDirectoryForSubagent(
  * child must not publish over its parent.
  */
 export function isRegisteredSubagentChild(
-  ctx: ExtensionContext,
+  ctx: SubagentDetectionContext,
   registry: SubagentSessionRegistry,
 ): boolean {
   try {
@@ -55,7 +66,7 @@ export function isRegisteredSubagentChild(
 }
 
 export function isSubagentExecutionContext(
-  ctx: ExtensionContext,
+  ctx: SubagentDetectionContext,
   subagentSessionsDir: string,
   registry?: SubagentSessionRegistry,
 ): boolean {

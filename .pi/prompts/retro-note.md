@@ -36,6 +36,7 @@ Otherwise, all arguments (`$@`) are the note — infer the issue number from rec
 
 Append a `## Stage: User Note (<ISO 8601 timestamp>)` section to the retro file with the user's observation.
 Wrap code identifiers, filenames, and text containing underscores in backticks.
+Append with the `Edit` tool (or `Write` for a new file), not a shell heredoc.
 
 ## Step 4 — Commit
 

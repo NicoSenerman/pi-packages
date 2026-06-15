@@ -18,12 +18,12 @@ Follow this order — each step builds context for the next.
 
 ### 1. Run fallow
 
+Run from the repo root — the `fallow:*` scripts exist only in the root `package.json`, and `--workspace` scopes the analysis:
+
 ```bash
-cd packages/<PKG>
-pnpm fallow:health 2>&1 || true
-pnpm fallow:dead-code 2>&1 || true
-pnpm fallow:dupes 2>&1 || true
-pnpm fallow health --hotspots --targets --score 2>&1 || true
+pnpm fallow health --score --hotspots --targets --workspace @gotgenes/<PKG> 2>&1 || true
+pnpm fallow dead-code --workspace @gotgenes/<PKG> 2>&1 || true
+pnpm fallow dupes --workspace @gotgenes/<PKG> 2>&1 || true
 ```
 
 Capture: health score, dead exports, duplication (production vs. test), hotspots, refactoring targets.
@@ -161,20 +161,33 @@ The plan should produce:
 
 ## Lessons from prior phases
 
-These are failure modes and corrections discovered empirically:
+These are failure modes and corrections discovered empirically.
+
+### Planning and analysis
 
 - **Don't plan a single step that rewrites an entire large test file** — use lift-and-shift (introduce new alongside old, migrate incrementally, remove old last).
+- **Start from index.ts outward** — the composition root reveals wiring overhead, coupling, and initialization hazards that file-by-file analysis misses.
+- **Test setup is a production-design signal** — `fallow`'s syntactic metrics miss god objects, closure density, and DIP violations.
+  When a unit needs module-level `vi.mock`, wide `as unknown as` casts, or a multi-field fixture, the production object is hard to construct — fix the object, not the test.
+  The test is the symptom; the production object is the disease.
+- **Testability friction is a boundary probe.**
+  When moving toward the _correct_ architecture makes something _harder_ to test, suspect a domain boundary drawn through the middle of a class before you blame the architecture.
+  The friction is information: it marks a seam where two domains with different owners, change-rates, or directions of dependency are fused.
+  Surface the seam (extract the domain) and the test usually gets _easier_, not harder — a better design is more straightforward to test.
+  Worked example: pushing pi-subagents toward a tell-don't-ask, dependency-inverted target made three things harder to test — constructing a passive record, a metrics firehose, and shared `resultConsumed` state — and each dissolved into a distinct domain (lifecycle state, a metrics projection, result delivery) once surfaced.
+  The limit: this is a heuristic, not a law.
+  A residue of friction is essential, not structural — asynchronous observation (subscription teardown, event ordering) is genuinely harder to test than a synchronous pull no matter how well the boundaries are drawn, and Pi itself pays that cost.
+  Suspect a buried boundary first; force a redraw onto the irreducible async residue and you invent a seam that isn't there.
+- **Audit the architecture doc against the code** — a doc's own rationalization of a smell ("kept inline per the anti-procedure-splitting rule") is a claim to verify, not a fact to repeat.
+
+### Structural preferences
+
 - **Dissolve bags ≤ 4 fields into plain parameters** — the interface adds ceremony without clarity at that size.
 - **Keep bags ≥ 5 fields but destructure in the signature** — eliminates `deps.` noise while keeping the grouped contract.
 - **Push platform types (ExtensionContext, SDK types) to boundaries** — domain code should depend on domain interfaces, not SDK imports.
 - **Observer > callback threading** — when 3+ layers pass callbacks, replace with subscribe-at-the-boundary.
 - **Snapshot > live reference** — when mutable parent state is read at spawn time and never updated, freeze it into a data object.
 - **Pure function > method on wide class** — if the logic doesn't need instance state, extract it.
-- **Start from index.ts outward** — the composition root reveals wiring overhead, coupling, and initialization hazards that file-by-file analysis misses.
-- **Test setup is a production-design signal** — `fallow`'s syntactic metrics miss god objects, closure density, and DIP violations.
-  When a unit needs module-level `vi.mock`, wide `as unknown as` casts, or a multi-field fixture, the production object is hard to construct — fix the object, not the test.
-  The test is the symptom; the production object is the disease.
-- **Audit the architecture doc against the code** — a doc's own rationalization of a smell ("kept inline per the anti-procedure-splitting rule") is a claim to verify, not a fact to repeat.
 - **Lifecycle object > method extraction** — when mutable `let` variables are shared across closures, the fix is an object that owns that state, not extracting methods that still close over the variables.
 - **Behavior on domain object > orchestration in manager** — when a manager reaches into a data object 10+× to check status and perform transitions, the object is anemic; move the behavior to the object itself.
 - **Events > outbound bridges** — when package A needs to notify package B, prefer emitting events that B listens for over A calling B directly via a bridge module.

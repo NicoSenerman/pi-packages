@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test, vi } from "vitest";
+import { loadUnifiedConfig } from "#src/config-loader";
 import { registerPermissionSystemCommand } from "#src/config-modal";
 import type { CommandConfigStore } from "#src/config-store";
 import {
@@ -9,7 +10,7 @@ import {
   normalizePermissionSystemConfig,
   type PermissionSystemExtensionConfig,
 } from "#src/extension-config";
-import type { Rule } from "#src/rule";
+import type { Rule, Ruleset } from "#src/rule";
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({
   getSettingsListTheme: () => ({}),
@@ -88,7 +89,8 @@ test("permission-system command completions expose top-level config actions", ()
     };
     const controller = {
       config: configStore,
-      getConfigPath: () => configPath,
+      configPath,
+      getActiveAgentConfigRules: () => [] as Ruleset,
     };
 
     let definition: {
@@ -144,7 +146,7 @@ test("permission-system command handlers manage config summary, persistence, and
       current: () => config,
       save: (next) => {
         const currentConfig = normalizePermissionSystemConfig(
-          JSON.parse(readFileSync(configPath, "utf-8")) as unknown,
+          loadUnifiedConfig(configPath).config,
         );
         const normalized = normalizePermissionSystemConfig(next);
         writeFileSync(
@@ -153,14 +155,15 @@ test("permission-system command handlers manage config summary, persistence, and
           "utf-8",
         );
         config = normalizePermissionSystemConfig(
-          JSON.parse(readFileSync(configPath, "utf-8")) as unknown,
+          loadUnifiedConfig(configPath).config,
         );
         expect(config).not.toEqual(currentConfig);
       },
     };
     const controller = {
       config: configStore,
-      getConfigPath: () => configPath,
+      configPath,
+      getActiveAgentConfigRules: () => [] as Ruleset,
     };
 
     let registeredName = "";
@@ -257,8 +260,8 @@ test("show output includes rule origins when getComposedRules is provided", asyn
 
   const controller = {
     config: { current: () => config, save: () => {} } as CommandConfigStore,
-    getConfigPath: () => "/fake/config.json",
-    getComposedRules: () => composedRules,
+    configPath: "/fake/config.json",
+    getActiveAgentConfigRules: () => composedRules,
   };
 
   let definition: {
@@ -289,8 +292,8 @@ test("show output omits rule summary when getComposedRules is not provided", asy
 
   const controller = {
     config: { current: () => config, save: () => {} } as CommandConfigStore,
-    getConfigPath: () => "/fake/config.json",
-    // no getComposedRules
+    configPath: "/fake/config.json",
+    getActiveAgentConfigRules: () => [] as Ruleset,
   };
 
   let definition: {

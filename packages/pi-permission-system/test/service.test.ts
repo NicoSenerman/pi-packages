@@ -6,6 +6,7 @@ import {
   publishPermissionsService,
   unpublishPermissionsService,
 } from "#src/service";
+import { ToolAccessExtractorRegistry } from "#src/tool-access-extractor-registry";
 import { ToolInputFormatterRegistry } from "#src/tool-input-formatter-registry";
 import type { PermissionCheckResult } from "#src/types";
 
@@ -18,6 +19,7 @@ function makeService(
     checkPermission: vi.fn(),
     getToolPermission: vi.fn(),
     registerToolInputFormatter: vi.fn(),
+    registerToolAccessExtractor: vi.fn(),
     ...overrides,
   };
 }
@@ -155,6 +157,7 @@ describe("service adapter delegation", () => {
         return getToolPermissionFn(toolName, agentName);
       },
       registerToolInputFormatter: vi.fn(),
+      registerToolAccessExtractor: vi.fn(),
     };
 
     publishPermissionsService(service);
@@ -177,6 +180,7 @@ describe("service adapter delegation", () => {
         return getToolPermissionFn(toolName, agentName);
       },
       registerToolInputFormatter: vi.fn(),
+      registerToolAccessExtractor: vi.fn(),
     };
 
     publishPermissionsService(service);
@@ -251,5 +255,54 @@ describe("registerToolInputFormatter delegation", () => {
     expect(() =>
       getPermissionsService()!.registerToolInputFormatter("my-tool", () => ""),
     ).toThrow("my-tool");
+  });
+});
+
+// ── registerToolAccessExtractor delegation (#352) ────────────────────────
+
+describe("registerToolAccessExtractor delegation", () => {
+  afterEach(() => {
+    const current = getPermissionsService();
+    if (current) {
+      unpublishPermissionsService(current);
+    }
+  });
+
+  it("delegates to the registry and returns its disposer", () => {
+    const registry = new ToolAccessExtractorRegistry();
+    const extractor = () => "/etc/hosts";
+
+    const service = makeService({
+      registerToolAccessExtractor(toolName, ext) {
+        return registry.register(toolName, ext);
+      },
+    });
+
+    publishPermissionsService(service);
+    const dispose = getPermissionsService()!.registerToolAccessExtractor(
+      "ffgrep",
+      extractor,
+    );
+
+    expect(registry.get("ffgrep")).toBe(extractor);
+
+    dispose();
+    expect(registry.get("ffgrep")).toBeUndefined();
+  });
+
+  it("throws when an extractor is already registered for the tool name", () => {
+    const registry = new ToolAccessExtractorRegistry();
+    registry.register("ffgrep", () => undefined);
+
+    const service = makeService({
+      registerToolAccessExtractor(toolName, ext) {
+        return registry.register(toolName, ext);
+      },
+    });
+
+    publishPermissionsService(service);
+    expect(() =>
+      getPermissionsService()!.registerToolAccessExtractor("ffgrep", () => ""),
+    ).toThrow("ffgrep");
   });
 });

@@ -10,7 +10,7 @@ import { GateRunner } from "#src/handlers/gates/runner";
 import type { SkillInputGateInputs } from "#src/handlers/gates/skill-input-gate-pipeline";
 import type { ToolCallGateInputs } from "#src/handlers/gates/tool-call-gate-pipeline";
 import type { ToolCallContext } from "#src/handlers/gates/types";
-import type { PermissionResolver } from "#src/permission-resolver";
+import type { ScopedPermissionResolver } from "#src/permission-resolver";
 import type { SessionApprovalRecorder } from "#src/session-approval-recorder";
 import type { SkillPromptEntry } from "#src/skill-prompt-sanitizer";
 import type { ToolPreviewFormatterOptions } from "#src/tool-preview-formatter";
@@ -25,11 +25,14 @@ import { makeCheckResult } from "#test/helpers/handler-fixtures";
  * mock access (`mockReturnValue`, `mockImplementation`, `mock.calls`).
  */
 export function makeResolver(defaultCheck?: PermissionCheckResult) {
-  const resolve = vi.fn<PermissionResolver["resolve"]>();
+  const resolve = vi.fn<ScopedPermissionResolver["resolve"]>();
+  const resolvePathPolicy =
+    vi.fn<ScopedPermissionResolver["resolvePathPolicy"]>();
   if (defaultCheck) {
     resolve.mockReturnValue(defaultCheck);
+    resolvePathPolicy.mockReturnValue(defaultCheck);
   }
-  return { resolve };
+  return { resolve, resolvePathPolicy };
 }
 
 /**
@@ -91,10 +94,11 @@ export function makeReporter(
 export function makeGateRunner(
   overrides: {
     resolveResult?: PermissionCheckResult;
-    resolve?: PermissionResolver["resolve"];
+    resolve?: ScopedPermissionResolver["resolve"];
+    resolvePathPolicy?: ScopedPermissionResolver["resolvePathPolicy"];
     recordSessionApproval?: SessionApprovalRecorder["recordSessionApproval"];
     canConfirm?: GatePrompter["canConfirm"];
-    promptPermission?: GatePrompter["promptPermission"];
+    prompt?: GatePrompter["prompt"];
     reporter?: Partial<DecisionReporter>;
   } = {},
 ) {
@@ -102,7 +106,14 @@ export function makeGateRunner(
   const resolve =
     overrides.resolve ??
     vi
-      .fn<PermissionResolver["resolve"]>()
+      .fn<ScopedPermissionResolver["resolve"]>()
+      .mockReturnValue(
+        overrides.resolveResult ?? makeCheckResult({ matchedPattern: "*" }),
+      );
+  const resolvePathPolicy =
+    overrides.resolvePathPolicy ??
+    vi
+      .fn<ScopedPermissionResolver["resolvePathPolicy"]>()
       .mockReturnValue(
         overrides.resolveResult ?? makeCheckResult({ matchedPattern: "*" }),
       );
@@ -112,24 +123,25 @@ export function makeGateRunner(
   const canConfirm =
     overrides.canConfirm ??
     (vi.fn().mockReturnValue(true) as GatePrompter["canConfirm"]);
-  const promptPermission =
-    overrides.promptPermission ??
+  const prompt =
+    overrides.prompt ??
     vi
-      .fn<GatePrompter["promptPermission"]>()
+      .fn<GatePrompter["prompt"]>()
       .mockResolvedValue({ approved: true, state: "approved" });
   const runner = new GateRunner(
-    { resolve },
+    { resolve, resolvePathPolicy },
     { recordSessionApproval },
-    { canConfirm, promptPermission },
+    { canConfirm, prompt },
     reporter,
   );
   return {
     runner,
     deps: {
       resolve,
+      resolvePathPolicy,
       recordSessionApproval,
       canConfirm,
-      promptPermission,
+      prompt,
       reporter,
     },
   };
@@ -204,7 +216,7 @@ export function makePathDispatchResolver(
   byPath: Record<string, PermissionCheckResult>,
   defaultResult: PermissionCheckResult,
 ) {
-  const resolve = vi.fn<PermissionResolver["resolve"]>();
+  const resolve = vi.fn<ScopedPermissionResolver["resolve"]>();
   resolve.mockImplementation((_surface, input) => {
     const path = (input as Record<string, unknown>).path;
     if (typeof path === "string" && path in byPath) {
@@ -212,7 +224,15 @@ export function makePathDispatchResolver(
     }
     return defaultResult;
   });
-  return { resolve };
+  const resolvePathPolicy =
+    vi.fn<ScopedPermissionResolver["resolvePathPolicy"]>();
+  resolvePathPolicy.mockImplementation((values) => {
+    for (const value of values) {
+      if (value in byPath) return byPath[value];
+    }
+    return defaultResult;
+  });
+  return { resolve, resolvePathPolicy };
 }
 
 /**
@@ -243,16 +263,12 @@ export function makeGateCheckResult(
  */
 export function makeGateInputs(
   overrides: {
-    resolve?: PermissionResolver["resolve"];
     getActiveSkillEntries?: () => SkillPromptEntry[];
     getInfrastructureReadDirs?: () => string[];
     getToolPreviewLimits?: () => ToolPreviewFormatterOptions;
   } = {},
 ): ToolCallGateInputs {
   return {
-    resolve:
-      overrides.resolve ??
-      vi.fn<PermissionResolver["resolve"]>().mockReturnValue(makeCheckResult()),
     getActiveSkillEntries:
       overrides.getActiveSkillEntries ??
       vi.fn<() => SkillPromptEntry[]>(() => []),

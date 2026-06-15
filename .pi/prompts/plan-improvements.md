@@ -12,7 +12,9 @@ Do **not** start implementation — only produce the analysis and plan.
 ## Sync with remote (do this first)
 
 1. Run `git pull --ff-only`.
-2. If it fails for **any** reason, stop and report the failure.
+2. If it fails for **any** reason — uncommitted changes, divergent history, merge conflict, network error, detached HEAD — stop immediately and report the failure to the user.
+   Do not attempt to stash, rebase, force, or otherwise resolve.
+3. Only proceed once the pull reports a clean fast-forward (or `Already up to date.`).
 
 ## Load skills
 
@@ -28,14 +30,12 @@ Load these skills before starting analysis:
 
 ### Step 1: Run fallow
 
-Run the full fallow suite for the package:
+Run the full fallow suite for the package, from the repo root — the `fallow:*` scripts exist only in the root `package.json`, and `--workspace` scopes the analysis:
 
 ```bash
-cd packages/$1
-pnpm fallow:health 2>&1 || true
-pnpm fallow:dead-code 2>&1 || true
-pnpm fallow:dupes 2>&1 || true
-pnpm fallow health --hotspots --targets --score 2>&1 || true
+pnpm fallow health --score --hotspots --targets --workspace @gotgenes/$1 2>&1 || true
+pnpm fallow dead-code --workspace @gotgenes/$1 2>&1 || true
+pnpm fallow dupes --workspace @gotgenes/$1 2>&1 || true
 ```
 
 Record: health score, dead code findings, production/test duplication, hotspots, refactoring targets.
@@ -51,6 +51,8 @@ Note:
 - Churn hotspots
 
 Determine the next phase number N (last completed phase + 1), then immediately call `set_session_name` with `$1 — Phase N Planning` so the session is labelled for the rest of the work.
+
+If the architecture document already declares a direction for Phase N (e.g. a deferred phase), treat it as a hypothesis, not a commitment — confirm the focus with the user (`ask_user`) before deep-tracing in that direction, and let the discovery findings decide.
 
 ### Step 3: Trace from entry point outward
 
@@ -107,9 +109,10 @@ git push
 The roadmap is not done until each step has a GitHub issue and the document links back to it.
 After the plan is committed, ask whether to file the issues now; if confirmed:
 
-1. Load the `github-voice` skill, then file one issue per step with `gh issue create --label "enhancement,pkg:$1"`, using the repo's `## What` / `## Why` / `## Proposed change` / `## Context` sections.
-   Reference cross-step dependencies as "Phase N Step M" prose, not hardcoded numbers (the issue numbers are not known until filed).
-2. Verify each created issue's title matches its body before continuing — a shell array/index slip can shift one relative to the other.
+1. Load the `github-voice` skill, then file the issues **one `gh issue create --label "enhancement,pkg:$1"` call per issue**, with the title and `--body-file` paired literally in the same command — never via shell-array index arithmetic (the shell is zsh; its 1-indexed arrays silently shift titles relative to bodies).
+   Run `gh` from the repo root (it must execute inside the repository).
+   Use the repo's `## What` / `## Why` / `## Proposed change` / `## Context` sections, referencing cross-step dependencies as "Phase N Step M" prose, not hardcoded numbers (the issue numbers are not known until filed).
+2. Verify each created issue's title matches its body before continuing.
 3. Link the doc back: append `([#N])` to each step heading, add `(#N)` to each Mermaid node, and add reference-link definitions at the end of the file.
 4. Commit with `docs($1): link Phase N roadmap steps to issues #A-#B` and push.
 

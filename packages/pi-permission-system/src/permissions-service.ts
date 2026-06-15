@@ -1,10 +1,14 @@
 import { buildInputForSurface } from "./input-normalizer";
-import type { PermissionManager } from "./permission-manager";
+import type { ScopedPermissionManager } from "./permission-manager";
 import type { PermissionsService } from "./service";
 import type { SessionRules } from "./session-rules";
 import type {
+  ToolAccessExtractor,
+  ToolAccessExtractorRegistrar,
+} from "./tool-access-extractor-registry";
+import type {
   ToolInputFormatter,
-  ToolInputFormatterRegistry,
+  ToolInputFormatterRegistrar,
 } from "./tool-input-formatter-registry";
 
 /**
@@ -16,9 +20,10 @@ import type {
  */
 export class LocalPermissionsService implements PermissionsService {
   constructor(
-    private readonly permissionManager: PermissionManager,
-    private readonly sessionRules: SessionRules,
-    private readonly formatterRegistry: ToolInputFormatterRegistry,
+    private readonly permissionManager: ScopedPermissionManager,
+    private readonly sessionRules: Pick<SessionRules, "getRuleset">,
+    private readonly formatterRegistry: ToolInputFormatterRegistrar,
+    private readonly accessExtractorRegistry: ToolAccessExtractorRegistrar,
   ) {}
 
   checkPermission(
@@ -47,5 +52,12 @@ export class LocalPermissionsService implements PermissionsService {
     formatter: ToolInputFormatter,
   ): ReturnType<PermissionsService["registerToolInputFormatter"]> {
     return this.formatterRegistry.register(toolName, formatter);
+  }
+
+  registerToolAccessExtractor(
+    toolName: string,
+    extractor: ToolAccessExtractor,
+  ): ReturnType<PermissionsService["registerToolAccessExtractor"]> {
+    return this.accessExtractorRegistry.register(toolName, extractor);
   }
 }

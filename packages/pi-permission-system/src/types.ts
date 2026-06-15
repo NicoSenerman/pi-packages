@@ -5,13 +5,26 @@ import type { RuleOrigin } from "./rule";
 export type { RuleOrigin };
 
 /**
+ * A deny action with an optional reason annotation, used when a pattern maps
+ * to an object instead of a plain PermissionState string.
+ */
+export interface DenyWithReason {
+  action: "deny";
+  reason?: string;
+}
+
+/** A pattern value: a PermissionState string OR a DenyWithReason object. */
+export type PatternValue = PermissionState | DenyWithReason;
+
+/**
  * The on-disk permission shape inside the `"permission"` key.
- * Each key is a surface name; values are either a PermissionState string
- * (shorthand for `{ "*": action }`) or a pattern→action map.
+ * A surface value is a PermissionState string (shorthand for `{ "*": action }`)
+ * or a pattern→value map. Pattern values may be a PermissionState string or a
+ * DenyWithReason object. A top-level value is never a bare DenyWithReason.
  */
 export type FlatPermissionConfig = Record<
   string,
-  PermissionState | Record<string, PermissionState>
+  PermissionState | Record<string, PatternValue>
 >;
 
 /**
@@ -34,6 +47,8 @@ export type BashCommandContext =
 export interface PermissionCheckResult {
   toolName: string;
   state: PermissionState;
+  /** Custom denial reason from a deny-with-reason pattern, when present. */
+  reason?: string;
   matchedPattern?: string;
   command?: string;
   target?: string;

@@ -19,7 +19,7 @@ import type {
 } from "#src/handlers/gates/descriptor";
 import { isGateBypass, isGateDescriptor } from "#src/handlers/gates/descriptor";
 import type { ToolCallContext } from "#src/handlers/gates/types";
-import type { PermissionResolver } from "#src/permission-resolver";
+import type { ScopedPermissionResolver } from "#src/permission-resolver";
 
 import {
   makeGateCheckResult as makeCheckResult,
@@ -39,7 +39,7 @@ afterEach(() => {
  */
 async function describeGate(
   tcc: ToolCallContext,
-  resolver: PermissionResolver,
+  resolver: ScopedPermissionResolver,
 ): Promise<GateResult> {
   const command = getNonEmptyString(toRecord(tcc.input).command);
   const bashProgram =
@@ -214,5 +214,105 @@ describe("describeBashPathGate", () => {
     const desc = result as GateDescriptor;
     expect(desc.preCheck?.state).toBe("deny");
     expect(desc.decision.value).toBe(".env");
+  });
+
+  it("resolves cd-aware policy values while keeping the raw prompt token", async () => {
+    const resolver = makeResolver(
+      makeCheckResult({ state: "deny", matchedPattern: "*" }),
+    );
+    const result = (await describeGate(
+      makeTcc({
+        input: { command: "cd nested && cat src/file.txt" },
+        cwd: "/test/project",
+      }),
+      resolver,
+    )) as GateDescriptor;
+
+    expect(resolver.resolvePathPolicy).toHaveBeenCalledWith(
+      [
+        "/test/project/nested/src/file.txt",
+        "nested/src/file.txt",
+        "src/file.txt",
+      ],
+      undefined,
+    );
+    // The raw token drives the prompt, denial context, and session approval.
+    expect(result.denialContext).toMatchObject({ pathValue: "src/file.txt" });
+    expect(result.decision.value).toBe("src/file.txt");
+  });
+
+  it("does not resolve relative policy values through an unknown cd", async () => {
+    const resolver = makeResolver(
+      makeCheckResult({ state: "deny", matchedPattern: "*" }),
+    );
+    await describeGate(
+      makeTcc({
+        input: { command: 'cd "$DIR" && cat src/foo.ts' },
+        cwd: "/test/project",
+      }),
+      resolver,
+    );
+
+    expect(resolver.resolvePathPolicy).toHaveBeenCalledWith(
+      ["src/foo.ts"],
+      undefined,
+    );
+  });
+});
+
+// Home-relative path characterization (#350) ──────────────────────────────
+//
+// The parser extracts ~/... tokens from bash commands; the resolver receives
+// the raw token and normalizeInput handles expansion. These tests verify the
+// gate correctly dispatches ~/... tokens through the deny/ask path.
+
+describe("describeBashPathGate — home-relative paths", () => {
+  it("extracts ~/... token and builds descriptor on deny", async () => {
+    // node:os is mocked: homedir() returns "/mock/home".
+    // cat ~/.ssh/config → token "~/.ssh/config" extracted.
+    const resolver = makePathDispatchResolver(
+      {
+        "/mock/home/.ssh/config": makeCheckResult({
+          state: "deny",
+          matchedPattern: "~/.ssh/*",
+        }),
+      },
+      makeCheckResult({ state: "allow" }),
+    );
+    const result = (await describeGate(
+      makeTcc({ input: { command: "cat ~/.ssh/config" } }),
+      resolver,
+    )) as GateDescriptor;
+
+    expect(isGateDescriptor(result)).toBe(true);
+    expect(result.preCheck?.state).toBe("deny");
+    expect(result.denialContext).toMatchObject({
+      kind: "bash_path",
+      command: "cat ~/.ssh/config",
+      pathValue: "~/.ssh/config",
+    });
+  });
+
+  it("extracts $HOME/... token and builds descriptor on deny", async () => {
+    const resolver = makePathDispatchResolver(
+      {
+        "/mock/home/.ssh/config": makeCheckResult({
+          state: "deny",
+          matchedPattern: "$HOME/.ssh/*",
+        }),
+      },
+      makeCheckResult({ state: "allow" }),
+    );
+    const result = (await describeGate(
+      makeTcc({ input: { command: "cat $HOME/.ssh/config" } }),
+      resolver,
+    )) as GateDescriptor;
+
+    expect(isGateDescriptor(result)).toBe(true);
+    expect(result.preCheck?.state).toBe("deny");
+    expect(result.denialContext).toMatchObject({
+      kind: "bash_path",
+      pathValue: "$HOME/.ssh/config",
+    });
   });
 });

@@ -3,6 +3,7 @@ import { isPermissionState } from "./common";
 import { getGlobalConfigPath, getProjectConfigPath } from "./config-paths";
 import { normalizeInput } from "./input-normalizer";
 import { normalizeFlatConfig } from "./normalize";
+import { PATH_SURFACES } from "./path-utils";
 import {
   FilePolicyLoader,
   type PolicyLoader,
@@ -10,7 +11,7 @@ import {
   type ResolvedPolicyPaths,
 } from "./policy-loader";
 import type { Rule, RuleOrigin, Ruleset } from "./rule";
-import { evaluate, evaluateFirst } from "./rule";
+import { evaluate, evaluateAnyValue, evaluateFirst } from "./rule";
 import { mergeScopesWithOrigins } from "./scope-merge";
 import {
   composeRuleset,
@@ -63,6 +64,17 @@ export interface ScopedPermissionManager {
     agentName?: string,
     sessionRules?: Ruleset,
   ): PermissionCheckResult;
+  /**
+   * Evaluate the cross-cutting `path` surface against a caller-supplied set of
+   * equivalent policy values (e.g. bash tokens already resolved against a
+   * preceding literal `cd`). The values are trusted because they are computed
+   * internally, never read from a field on raw tool input.
+   */
+  checkPathPolicy(
+    values: readonly string[],
+    agentName?: string,
+    sessionRules?: Ruleset,
+  ): PermissionCheckResult;
   getToolPermission(toolName: string, agentName?: string): PermissionState;
   getConfigIssues(agentName?: string): string[];
   getPolicyCacheStamp(agentName?: string): string;
@@ -79,6 +91,7 @@ export interface PermissionManagerOptions extends PolicyLoaderOptions {
 
 export class PermissionManager implements ScopedPermissionManager {
   private readonly agentDir: string | undefined;
+  private currentCwd: string | undefined;
   private loader: PolicyLoader;
   private readonly resolvedPermissionsCache = new Map<
     string,
@@ -104,6 +117,8 @@ export class PermissionManager implements ScopedPermissionManager {
    * built with explicit paths), only the cache is cleared.
    */
   configureForCwd(cwd: string | undefined | null): void {
+    this.currentCwd =
+      typeof cwd === "string" && cwd.trim().length > 0 ? cwd : undefined;
     if (this.agentDir !== undefined) {
       this.loader = new FilePolicyLoader(
         derivePolicyLoaderOptions(this.agentDir, cwd),
@@ -245,27 +260,77 @@ export class PermissionManager implements ScopedPermissionManager {
       normalizedToolName,
       input,
       this.loader.getConfiguredMcpServerNames(),
+      this.currentCwd,
     );
 
-    const { rule, value } = evaluateFirst(surface, values, fullRules);
-
-    // For MCP, replace the normalizer's fallback target with the actual
-    // matched candidate value so PermissionCheckResult.target is accurate.
-    const extras =
-      surface === "mcp" ? { ...resultExtras, target: value } : resultExtras;
-
-    return {
+    return buildCheckResult(
+      surface,
+      values,
+      resultExtras,
+      normalizedToolName,
       toolName,
-      state: rule.action,
-      matchedPattern:
-        rule.layer === "config" || rule.layer === "session"
-          ? rule.pattern
-          : undefined,
-      source: deriveSource(rule, normalizedToolName),
-      origin: rule.origin,
-      ...extras,
-    };
+      fullRules,
+    );
   }
+
+  checkPathPolicy(
+    values: readonly string[],
+    agentName?: string,
+    sessionRules?: Ruleset,
+  ): PermissionCheckResult {
+    const { composedRules } = this.resolvePermissions(agentName);
+    const fullRules: Ruleset = sessionRules?.length
+      ? [...composedRules, ...sessionRules]
+      : composedRules;
+
+    const lookupValues = values.length > 0 ? [...values] : ["*"];
+    return buildCheckResult(
+      "path",
+      lookupValues,
+      {},
+      "path",
+      "path",
+      fullRules,
+    );
+  }
+}
+
+/**
+ * Evaluate a normalized surface/values triple and shape the result.
+ *
+ * Path surfaces use {@link evaluateAnyValue} (last-match-wins across equivalent
+ * aliases); every other surface keeps {@link evaluateFirst}. Shared by
+ * `checkPermission` and `checkPathPolicy`.
+ */
+function buildCheckResult(
+  surface: string,
+  values: string[],
+  resultExtras: Record<string, unknown>,
+  normalizedToolName: string,
+  toolName: string,
+  fullRules: Ruleset,
+): PermissionCheckResult {
+  const { rule, value } = PATH_SURFACES.has(surface)
+    ? evaluateAnyValue(surface, values, fullRules)
+    : evaluateFirst(surface, values, fullRules);
+
+  // For MCP, replace the normalizer's fallback target with the actual
+  // matched candidate value so PermissionCheckResult.target is accurate.
+  const extras =
+    surface === "mcp" ? { ...resultExtras, target: value } : resultExtras;
+
+  return {
+    toolName,
+    state: rule.action,
+    reason: rule.reason,
+    matchedPattern:
+      rule.layer === "config" || rule.layer === "session"
+        ? rule.pattern
+        : undefined,
+    source: deriveSource(rule, normalizedToolName),
+    origin: rule.origin,
+    ...extras,
+  };
 }
 
 /**

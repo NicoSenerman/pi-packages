@@ -90,10 +90,8 @@ function makePolicyPathProvider(
 
 function makeLogger() {
   return {
-    writeDebugLog:
-      vi.fn<(event: string, details?: Record<string, unknown>) => void>(),
-    writeReviewLog:
-      vi.fn<(event: string, details?: Record<string, unknown>) => void>(),
+    debug: vi.fn<(event: string, details?: Record<string, unknown>) => void>(),
+    review: vi.fn<(event: string, details?: Record<string, unknown>) => void>(),
   };
 }
 
@@ -197,7 +195,7 @@ describe("ConfigStore", () => {
     it("writes config.loaded debug log", () => {
       const { store, logger } = makeStore();
       store.refresh();
-      expect(logger.writeDebugLog).toHaveBeenCalledWith(
+      expect(logger.debug).toHaveBeenCalledWith(
         "config.loaded",
         expect.objectContaining({ debugLog: false }),
       );
@@ -295,6 +293,18 @@ describe("ConfigStore", () => {
       store.refresh(ctx);
       expect(mockSyncPermissionSystemStatus).not.toHaveBeenCalled();
     });
+
+    it("carries piInfrastructureReadPaths from merged config into current()", () => {
+      const { store } = makeStore();
+      mockLoadAndMergeConfigs.mockReturnValue({
+        merged: { piInfrastructureReadPaths: ["/extra/path"] },
+        issues: [],
+      });
+      store.refresh();
+      expect(store.current().piInfrastructureReadPaths).toEqual([
+        "/extra/path",
+      ]);
+    });
   });
 
   // ── save() ─────────────────────────────────────────────────────────────
@@ -336,7 +346,7 @@ describe("ConfigStore", () => {
     it("writes config.saved debug log after a successful save", () => {
       const { store, logger } = makeStore();
       store.save({ ...DEFAULT_EXTENSION_CONFIG }, makeCommandCtx());
-      expect(logger.writeDebugLog).toHaveBeenCalledWith(
+      expect(logger.debug).toHaveBeenCalledWith(
         "config.saved",
         expect.objectContaining({ debugLog: false }),
       );
@@ -357,7 +367,7 @@ describe("ConfigStore", () => {
       // current() is not updated on failure
       expect(store.current()).toEqual(DEFAULT_EXTENSION_CONFIG);
       // no debug log on failure
-      expect(logger.writeDebugLog).not.toHaveBeenCalledWith(
+      expect(logger.debug).not.toHaveBeenCalledWith(
         "config.saved",
         expect.anything(),
       );
@@ -373,6 +383,34 @@ describe("ConfigStore", () => {
       store.save({ ...DEFAULT_EXTENSION_CONFIG }, ctx);
       expect(mockUnlinkSync).toHaveBeenCalled();
     });
+
+    it("preserves an existing global toolInputPreviewMaxLength on save", () => {
+      const { store } = makeStore();
+      // Simulate a global config.json that already has the preview-length field.
+      mockLoadUnifiedConfig.mockReturnValue({
+        config: { toolInputPreviewMaxLength: 800 },
+      });
+      store.save({ ...DEFAULT_EXTENSION_CONFIG }, makeCommandCtx());
+      expect(mockWriteFileSync).toHaveBeenCalledWith(
+        expect.stringContaining(".tmp"),
+        expect.stringContaining('"toolInputPreviewMaxLength": 800'),
+        "utf-8",
+      );
+    });
+
+    it("preserves an existing global piInfrastructureReadPaths on save", () => {
+      const { store } = makeStore();
+      // Simulate a global config.json that already has the infra-paths field.
+      mockLoadUnifiedConfig.mockReturnValue({
+        config: { piInfrastructureReadPaths: ["/extra/path"] },
+      });
+      store.save({ ...DEFAULT_EXTENSION_CONFIG }, makeCommandCtx());
+      expect(mockWriteFileSync).toHaveBeenCalledWith(
+        expect.stringContaining(".tmp"),
+        expect.stringContaining('"piInfrastructureReadPaths"'),
+        "utf-8",
+      );
+    });
   });
 
   // ── logResolvedPaths() ─────────────────────────────────────────────────
@@ -381,11 +419,11 @@ describe("ConfigStore", () => {
     it("writes config.resolved to both review and debug logs", () => {
       const { store, logger } = makeStore();
       store.logResolvedPaths();
-      expect(logger.writeReviewLog).toHaveBeenCalledWith(
+      expect(logger.review).toHaveBeenCalledWith(
         "config.resolved",
         expect.any(Object),
       );
-      expect(logger.writeDebugLog).toHaveBeenCalledWith(
+      expect(logger.debug).toHaveBeenCalledWith(
         "config.resolved",
         expect.any(Object),
       );

@@ -1,6 +1,6 @@
 {
   "name": "@gotgenes/pi-session-tools",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Pi extension providing session metadata tools (naming, context) for multi-session workflows",
   "keywords": [
     "pi-package",
@@ -42,8 +42,8 @@
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
-    "@earendil-works/pi-ai": "0.75.4",
-    "@earendil-works/pi-coding-agent": "0.75.4",
+    "@earendil-works/pi-ai": "0.79.1",
+    "@earendil-works/pi-coding-agent": "0.79.1",
     "@types/node": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

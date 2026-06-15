@@ -1,5 +1,6 @@
 ---
 description: Read a GitHub issue, gather context, and write a numbered plan to the package's docs/plans/
+model: anthropic/claude-opus-4-8
 ---
 
 # Plan a GitHub issue
@@ -22,7 +23,7 @@ Before reading anything, make sure the working tree is up to date with the remot
 
 ## Load skills
 
-Before investigating the plan, load skills relevant to the change:
+Before investigating the issue, load skills relevant to the change:
 
 - Load the `package-<PKG>` skill for each affected package (e.g., `package-pi-permission-system`) for package-specific architecture, priorities, and testing context.
 - Load the `colgrep` skill before code exploration — it contains the decision table for when to use semantic search vs. exact grep, which shapes how you approach unfamiliar modules.
@@ -33,8 +34,12 @@ Before investigating the plan, load skills relevant to the change:
 
 ## Gather context
 
-1. Run `gh issue view $1` to read the issue body and labels.
+1. Run `gh issue view $1 --json number,title,author,body,labels` to read the issue body, labels, and author.
    After fetching the issue, call `set_session_name` with name `#N Planning — <issue title>` to identify this session in the session selector.
+   Then check the issue author against the gh CLI user: run `gh api user --jq .login` to get the authenticated user's login and compare it to the issue's `author.login`.
+   If they match, the issue reflects the operator's own intent — treat the "Proposed change" as the working hypothesis (subject to the `Decide` gate below) and proceed normally.
+   If they differ, the issue was filed by a third party (e.g., #389 was filed by `graelo`, an external contributor), so do not assume the proposed change is the direction the operator wants to take.
+   A third-party issue is a request to evaluate, not a spec to implement — note this and surface the direction itself for the operator's confirmation in the `Decide` step before committing to a plan.
 2. **Determine the target package(s).**
    Extract the `pkg:*` label(s) from the issue (e.g., `pkg:pi-permission-system` → package is `pi-permission-system`).
    If no `pkg:*` label exists or it seems incongruent with the issue content, ask the user which package this issue belongs to.
@@ -67,9 +72,20 @@ Treat the issue's "Proposed change" as a hypothesis, not a spec.
 An extraction that only relocates statements to lower a complexity metric — introducing no new collaborator and moving no behavior onto data — is procedure-splitting, not design improvement.
 When the issue prescribes a specific decomposition, verify (against the `code-design` heuristics) that each extracted piece returns a value, owns state, or gives behavior to data before planning around it.
 
+Classify whether the change is breaking — independently of whether it is ambiguous.
+A change is breaking if it alters the observable behavior, output shape, or default of existing code or config on upgrade without a user edit.
+A bug fix that changes a default value is breaking, even when the old behavior was wrong.
+If breaking, state it in Goals and use `feat!:`/`fix!:` with a `BREAKING CHANGE:` footer.
+
 Before writing the plan, identify any genuinely ambiguous design choices.
 If there are 1–2 such choices (breaking-vs-non-breaking, result-shape change, fallback semantics, etc.), use the `ask-user` skill once to surface them with a short context summary and concrete options.
 Skip this step if the issue's "Proposed change" section is unambiguous.
+
+If the issue is third-party (its author is not the gh CLI user, as determined in Gather context), do **not** skip the `ask-user` gate even when the proposed change is unambiguous.
+The ambiguity for a third-party issue is not *how* to build it but *whether* the operator wants it built, and in what form.
+Use `ask-user` to confirm the direction before planning: at minimum ask whether to (a) implement the proposal as described, (b) implement a different approach to the same underlying problem, or (c) decline/defer.
+When the proposal also has design ambiguities, fold those into the same `ask-user` call.
+Let the operator's answers — not the issue body — drive the plan's Goals and Design Overview.
 
 ## Write the plan
 
@@ -102,12 +118,15 @@ Then an H1 title (e.g., `# <short descriptive title>`) — required by markdownl
   If most methods operate on the target owner's fields, the class may be an intermediary that should be dissolved into the owner rather than relocated intact.
 - **Module-Level Changes** — file-by-file list of what's added, changed, or removed.
   When a step removes or renames an export, grep all `src/` and `test/` files — plus `.pi/skills/package-*/SKILL.md`, which document package internals — for every removed symbol before finalizing the file list.
+  When a step reworks the documented behavior of a mechanism rather than removing a symbol (e.g. a patch description, an architecture note, or wording like "prepends" → "includes"), also grep `.pi/skills/package-*/SKILL.md` for the mechanism name — reworded prose carries no removed symbol to match.
   When a step removes a call to a private (non-exported) function, grep the file for other callers — if the removed call was the sole call site, list the function for removal in the same step.
   When the change adds, removes, or moves a module, check `packages/<PKG>/docs/architecture/` for layout listings, complexity tables, health metrics, or domain diagrams that reference the affected files and list them as doc updates.
   When a file appears in Module-Level Changes, verify it is not also claimed as unchanged in Non-Goals — contradictions between these sections cause confusion during implementation.
 - **Test Impact Analysis** — for extraction and refactoring issues: (1) what new unit tests does the extraction enable that were previously impossible or impractical?
   (2) what existing tests become redundant with the new lower-level tests, and can they be simplified or removed?
   (3) which existing tests must stay as-is because they genuinely exercise the layer being extracted?
+- **Invariants at risk** — when the change touches a surface a prior phase step already refactored, list that step's documented invariants (the architecture roadmap's `Outcome:`/`Landed:` bullets) and name the test that pins each — add a test if the invariant lives only in prose.
+  A later step must not regress an earlier step's outcome with a green suite.
 - **TDD Order** — numbered red→green→commit cycles.
   Each item names the test surface, what's covered, and the suggested commit message (`test:`, `feat:`, `feat!:`, `fix:`, `docs:`).
   When a refactor replaces a type, interface, or function that a large test file depends on, use lift-and-shift: introduce the new thing alongside the old, migrate callers and fixtures incrementally across steps, then remove the old in a final step.
@@ -162,5 +181,7 @@ Before stopping, persist planning observations for cross-session continuity:
 4. Commit: `git add <retro-file> && git commit -m "docs(retro): add planning stage notes for issue #N"`.
 
 Wrap code identifiers, filenames, and text containing underscores in backticks in the retro file.
+Append with the `Edit` tool (or `Write` for a new file), not a shell heredoc.
+When appending a new stage to an existing retro, anchor the `Edit` on the file's last line or use `Write` with the full content — the repeated `### Observations` / `### Session summary` headers make header-anchored edits ambiguous.
 
 Then print a 5-line summary of the plan's key decisions and stop.

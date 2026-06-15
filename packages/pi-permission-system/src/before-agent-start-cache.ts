@@ -35,10 +35,3 @@ export function createBeforeAgentStartPromptStateKey(
     normalizePrompt(input.systemPrompt),
   ]);
 }
-
-export function shouldApplyCachedAgentStartState(
-  previousKey: string | null,
-  nextKey: string,
-): boolean {
-  return previousKey !== nextKey;
-}

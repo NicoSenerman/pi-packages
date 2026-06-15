@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { toRecord } from "./common";
+import type { UnifiedPermissionConfig } from "./config-loader";
 
 export const EXTENSION_ID = "pi-permission-system";
 
@@ -46,42 +46,22 @@ export function detectMisplacedPermissionKeys(
   return Object.keys(raw).filter((key) => PERMISSION_POLICY_KEYS.has(key));
 }
 
-/** Returns `raw` if it is a positive integer; otherwise `undefined`. */
-export function normalizeOptionalPositiveInt(raw: unknown): number | undefined {
-  return typeof raw === "number" && Number.isInteger(raw) && raw > 0
-    ? raw
-    : undefined;
-}
-
 export function normalizePermissionSystemConfig(
-  raw: unknown,
+  raw: UnifiedPermissionConfig,
 ): PermissionSystemExtensionConfig {
-  const record = toRecord(raw);
-  const rawPaths = record.piInfrastructureReadPaths;
-  const piInfrastructureReadPaths: string[] | undefined =
-    Array.isArray(rawPaths) &&
-    rawPaths.every((p): p is string => typeof p === "string")
-      ? rawPaths
-      : undefined;
   const result: PermissionSystemExtensionConfig = {
-    debugLog: record.debugLog === true,
-    permissionReviewLog: record.permissionReviewLog !== false,
-    yoloMode: record.yoloMode === true,
+    debugLog: raw.debugLog === true,
+    permissionReviewLog: raw.permissionReviewLog !== false,
+    yoloMode: raw.yoloMode === true,
   };
-  if (piInfrastructureReadPaths !== undefined) {
-    result.piInfrastructureReadPaths = piInfrastructureReadPaths;
+  if (raw.piInfrastructureReadPaths !== undefined) {
+    result.piInfrastructureReadPaths = raw.piInfrastructureReadPaths;
   }
-  const toolInputPreviewMaxLength = normalizeOptionalPositiveInt(
-    record.toolInputPreviewMaxLength,
-  );
-  if (toolInputPreviewMaxLength !== undefined) {
-    result.toolInputPreviewMaxLength = toolInputPreviewMaxLength;
+  if (raw.toolInputPreviewMaxLength !== undefined) {
+    result.toolInputPreviewMaxLength = raw.toolInputPreviewMaxLength;
   }
-  const toolTextSummaryMaxLength = normalizeOptionalPositiveInt(
-    record.toolTextSummaryMaxLength,
-  );
-  if (toolTextSummaryMaxLength !== undefined) {
-    result.toolTextSummaryMaxLength = toolTextSummaryMaxLength;
+  if (raw.toolTextSummaryMaxLength !== undefined) {
+    result.toolTextSummaryMaxLength = raw.toolTextSummaryMaxLength;
   }
   return result;
 }

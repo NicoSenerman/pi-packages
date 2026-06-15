@@ -440,3 +440,64 @@ describe("createReindexer — shutdown()", () => {
     expect(exec).not.toHaveBeenCalled();
   });
 });
+
+// ---- Issue #389: runNow() coalescing & in-flight tracking ----
+
+describe("createReindexer — runNow() coalescing & in-flight tracking", () => {
+  let onStatus: Mock<(status: string | undefined) => void>;
+  let resolveHeld: (() => void) | undefined;
+
+  beforeEach(() => {
+    onStatus = makeOnStatus();
+  });
+
+  afterEach(() => {
+    resolveHeld?.();
+    resolveHeld = undefined;
+  });
+
+  function makeHeldExec(): Mock<Exec> {
+    const held = vi.fn<Exec>();
+    held.mockImplementation(
+      () =>
+        new Promise<{ stdout: string; stderr: string; code: number }>(
+          (resolve) => {
+            resolveHeld = () => resolve({ stdout: "", stderr: "", code: 0 });
+          },
+        ),
+    );
+    return held;
+  }
+
+  it("coalesces concurrent runNow() calls into a single colgrep init", async () => {
+    const exec = makeHeldExec();
+    const reindexer = createReindexer({ exec, cwd: "/project", onStatus });
+    const first = reindexer.runNow();
+    const second = reindexer.runNow();
+    // The second call must join the in-flight run, not start a second init.
+    expect(exec).toHaveBeenCalledTimes(1);
+    resolveHeld?.();
+    resolveHeld = undefined;
+    await Promise.all([first, second]);
+    expect(exec).toHaveBeenCalledTimes(1);
+  });
+
+  it("shutdown() awaits a fire-and-forget runNow()", async () => {
+    const exec = makeHeldExec();
+    const reindexer = createReindexer({ exec, cwd: "/project", onStatus });
+    // Fire and forget — do not await the startup index.
+    void reindexer.runNow();
+    expect(exec).toHaveBeenCalledTimes(1);
+    let shutdownDone = false;
+    const shutdownPromise = reindexer.shutdown().then(() => {
+      shutdownDone = true;
+    });
+    // shutdown must still be pending while the backgrounded run is in flight.
+    await Promise.resolve();
+    expect(shutdownDone).toBe(false);
+    resolveHeld?.();
+    resolveHeld = undefined;
+    await shutdownPromise;
+    expect(shutdownDone).toBe(true);
+  });
+});

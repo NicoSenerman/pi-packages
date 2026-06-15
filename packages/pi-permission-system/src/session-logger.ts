@@ -4,7 +4,26 @@ import {
   ensurePermissionSystemLogsDirectory,
   type PermissionSystemExtensionConfig,
 } from "./extension-config";
-import { createPermissionSystemLogger } from "./logging";
+import {
+  createPermissionSystemLogger,
+  type PermissionSystemLogger,
+} from "./logging";
+
+/**
+ * Narrowest logging seam — consumers that only write review-log entries.
+ * Injected into `PermissionPrompter` and the RPC handlers.
+ */
+export interface ReviewLogger {
+  review(event: string, details?: Record<string, unknown>): void;
+}
+
+/**
+ * Logging seam for consumers that write both debug and review entries.
+ * Injected into `ConfigStore` and `PermissionForwarder`.
+ */
+export interface DebugReviewLogger extends ReviewLogger {
+  debug(event: string, details?: Record<string, unknown>): void;
+}
 
 /**
  * Unified logging + notification surface for handler deps.
@@ -13,9 +32,7 @@ import { createPermissionSystemLogger } from "./logging";
  * `writeReviewLog`, `notifyWarning`) with a single typed collaborator.
  * This is an intermediate abstraction on the path to PermissionSession (#129).
  */
-export interface SessionLogger {
-  debug(event: string, details?: Record<string, unknown>): void;
-  review(event: string, details?: Record<string, unknown>): void;
+export interface SessionLogger extends DebugReviewLogger {
   warn(message: string): void;
 }
 
@@ -30,37 +47,45 @@ export interface SessionLoggerDeps {
 }
 
 /**
- * Create a SessionLogger from narrow dependencies.
+ * Concrete `SessionLogger` implementation.
  *
- * Composes the JSONL log writer, owns the IO-failure warning dedup Set,
- * and routes both IO-failure warnings and explicit warn() calls through
- * the injected notify sink. No ExtensionRuntime reference required.
+ * Composes the JSONL log writer, privately owns the IO-failure warning
+ * dedup Set, and routes both IO-failure warnings and explicit warn() calls
+ * through the injected notify sink. No ExtensionRuntime reference required.
  */
-export function createSessionLogger(deps: SessionLoggerDeps): SessionLogger {
-  const writer = createPermissionSystemLogger({
-    getConfig: deps.getConfig,
-    debugLogPath: join(deps.globalLogsDir, DEBUG_LOG_FILENAME),
-    reviewLogPath: join(deps.globalLogsDir, REVIEW_LOG_FILENAME),
-    ensureLogsDirectory: () =>
-      ensurePermissionSystemLogsDirectory(deps.globalLogsDir),
-  });
+export class PermissionSessionLogger implements SessionLogger {
+  private readonly writer: PermissionSystemLogger;
+  private readonly reported = new Set<string>();
+  private readonly notify: (message: string) => void;
 
-  const reported = new Set<string>();
-  const reportOnce = (warning: string): void => {
-    if (reported.has(warning)) return;
-    reported.add(warning);
-    deps.notify(warning);
-  };
+  constructor(deps: SessionLoggerDeps) {
+    this.writer = createPermissionSystemLogger({
+      getConfig: deps.getConfig,
+      debugLogPath: join(deps.globalLogsDir, DEBUG_LOG_FILENAME),
+      reviewLogPath: join(deps.globalLogsDir, REVIEW_LOG_FILENAME),
+      ensureLogsDirectory: () =>
+        ensurePermissionSystemLogsDirectory(deps.globalLogsDir),
+    });
+    this.notify = deps.notify;
+  }
 
-  return {
-    debug: (event, details) => {
-      const warning = writer.debug(event, details);
-      if (warning) reportOnce(warning);
-    },
-    review: (event, details) => {
-      const warning = writer.review(event, details);
-      if (warning) reportOnce(warning);
-    },
-    warn: (message) => deps.notify(message),
-  };
+  debug(event: string, details?: Record<string, unknown>): void {
+    const warning = this.writer.debug(event, details);
+    if (warning) this.reportOnce(warning);
+  }
+
+  review(event: string, details?: Record<string, unknown>): void {
+    const warning = this.writer.review(event, details);
+    if (warning) this.reportOnce(warning);
+  }
+
+  warn(message: string): void {
+    this.notify(message);
+  }
+
+  private reportOnce(warning: string): void {
+    if (this.reported.has(warning)) return;
+    this.reported.add(warning);
+    this.notify(warning);
+  }
 }

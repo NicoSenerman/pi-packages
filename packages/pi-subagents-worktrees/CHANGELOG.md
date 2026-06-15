@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/gotgenes/pi-packages/compare/pi-subagents-worktrees-v0.2.2...pi-subagents-worktrees-v0.2.3) (2026-06-12)
+
+
+### Miscellaneous Chores
+
+* **deps:** bump @gotgenes/pi-subagents to 15 in worktrees ([#370](https://github.com/gotgenes/pi-packages/issues/370)) ([c27de8d](https://github.com/gotgenes/pi-packages/commit/c27de8d2bd0edd65f6020bd114589b898e6704f3))
+
 ## [0.2.2](https://github.com/gotgenes/pi-packages/compare/pi-subagents-worktrees-v0.2.1...pi-subagents-worktrees-v0.2.2) (2026-06-03)
 
 

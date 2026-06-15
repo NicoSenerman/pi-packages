@@ -1,3 +1,4 @@
+import { PATH_SURFACES } from "./path-utils";
 import type { PermissionState } from "./types";
 import { wildcardMatch } from "./wildcard-matcher";
 
@@ -26,6 +27,8 @@ export interface Rule {
   pattern: string;
   /** The permission decision. */
   action: PermissionState;
+  /** Custom denial reason for deny rules (optional). */
+  reason?: string;
   /**
    * Origin layer — used to derive PermissionCheckResult.source after evaluation.
    * Not used by evaluate(); purely informational metadata.
@@ -52,10 +55,10 @@ export function evaluate(
   pattern: string,
   rules: Ruleset,
   defaultAction?: PermissionState,
+  platform: NodeJS.Platform = process.platform,
 ): Rule {
-  const rule = rules.findLast(
-    (r) =>
-      wildcardMatch(r.surface, surface) && wildcardMatch(r.pattern, pattern),
+  const rule = rules.findLast((r) =>
+    ruleMatches(r, surface, pattern, platform),
   );
   if (rule !== undefined) return rule;
   return {
@@ -64,6 +67,33 @@ export function evaluate(
     action: defaultAction ?? "ask",
     origin: "builtin",
   };
+}
+
+/**
+ * On Windows, path-surface values are canonicalized + lowercased; fold the
+ * pattern→value match (case and separators) so mixed-case / forward-slash
+ * overrides still match. The surface→surface match stays exact.
+ */
+function pathMatchOptions(
+  surface: string,
+  platform: NodeJS.Platform,
+): { caseInsensitive: true; windowsSeparators: true } | undefined {
+  return platform === "win32" && PATH_SURFACES.has(surface)
+    ? { caseInsensitive: true, windowsSeparators: true }
+    : undefined;
+}
+
+function ruleMatches(
+  rule: Rule,
+  surface: string,
+  value: string,
+  platform: NodeJS.Platform,
+): boolean {
+  const matchOptions = pathMatchOptions(surface, platform);
+  return (
+    wildcardMatch(rule.surface, surface) &&
+    wildcardMatch(rule.pattern, value, matchOptions)
+  );
 }
 
 /**
@@ -119,6 +149,38 @@ export function evaluateFirst(
   }
   // All candidates matched only the synthesized default — use the first.
   const fallbackValue = values[0] ?? "*";
+  return {
+    rule: evaluate(surface, fallbackValue, rules),
+    value: fallbackValue,
+  };
+}
+
+/**
+ * Evaluate equivalent lookup values as aliases of the same path.
+ *
+ * Unlike `evaluateFirst()`, this preserves rule ordering across aliases: the
+ * last rule that matches any alias wins. This lets absolute allowlists and
+ * legacy relative rules coexist without a catch-all match on the first alias
+ * masking a later, more specific rule on another alias.
+ */
+export function evaluateAnyValue(
+  surface: string,
+  values: string[],
+  rules: Ruleset,
+  platform: NodeJS.Platform = process.platform,
+): { rule: Rule; value: string } {
+  const fallbackValue = values[0] ?? "*";
+  const rule = rules.findLast((r) =>
+    values.some((value) => ruleMatches(r, surface, value, platform)),
+  );
+  if (rule !== undefined) {
+    return {
+      rule,
+      value:
+        values.find((value) => ruleMatches(rule, surface, value, platform)) ??
+        fallbackValue,
+    };
+  }
   return {
     rule: evaluate(surface, fallbackValue, rules),
     value: fallbackValue,

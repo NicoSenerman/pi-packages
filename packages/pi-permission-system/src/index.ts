@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, getPackageDir } from "@earendil-works/pi-coding-agent";
 import { registerBuiltinToolInputFormatters } from "./builtin-tool-input-formatters";
 import { registerPermissionSystemCommand } from "./config-modal";
 import { getGlobalConfigPath } from "./config-paths";
@@ -23,26 +23,25 @@ import { requestPermissionDecisionFromUi } from "./permission-dialog";
 import { registerPermissionRpcHandlers } from "./permission-event-rpc";
 import { PermissionManager } from "./permission-manager";
 import { PermissionPrompter } from "./permission-prompter";
+import { PermissionResolver } from "./permission-resolver";
 import { PermissionSession } from "./permission-session";
 import { LocalPermissionsService } from "./permissions-service";
+import { PromptingGateway } from "./prompting-gateway";
 import { PermissionServiceLifecycle } from "./service-lifecycle";
-import { createSessionLogger } from "./session-logger";
+import { PermissionSessionLogger } from "./session-logger";
 import { SessionRules } from "./session-rules";
-import { isSubagentExecutionContext } from "./subagent-context";
 import { subscribeSubagentLifecycle } from "./subagent-lifecycle-events";
 import { getSubagentSessionRegistry } from "./subagent-registry";
+import { ToolAccessExtractorRegistry } from "./tool-access-extractor-registry";
 import { ToolInputFormatterRegistry } from "./tool-input-formatter-registry";
 import { Key } from "@earendil-works/pi-tui";
 import {
-  canResolveAskPermissionRequest,
   getCurrentMode,
-  isAutoApproveMode,
   isBachMode,
   setCurrentMode,
   MODE_CYCLE,
   type Mode,
 } from "./yolo-mode";
-import { requiresBachPrompt } from "./bach-gate";
 
 const MODE_DESCRIPTIONS: Record<Mode, string> = {
   yolo: "Full access — all permissions auto-approved",
@@ -135,38 +134,35 @@ function registerModeCommand(pi: ExtensionAPI, configStore: ConfigStore): void {
 
 export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
   const agentDir = getAgentDir();
-  const paths = computeExtensionPaths(agentDir);
+  // getPackageDir() is Pi's own install dir; auto-allow it for read-only tools
+  // so the agent can read Pi's bundled docs/examples regardless of layout.
+  const paths = computeExtensionPaths(agentDir, getPackageDir());
   const permissionManager = new PermissionManager({ agentDir });
   const sessionRules = new SessionRules();
   const subagentRegistry = getSubagentSessionRegistry();
   const formatterRegistry = new ToolInputFormatterRegistry();
   registerBuiltinToolInputFormatters(formatterRegistry);
+  const accessExtractorRegistry = new ToolAccessExtractorRegistry();
 
-  // Forward reference: configStore is declared before the logger so the
-  // logger's getConfig thunk can close over the variable; assigned immediately
-  // after. Typed via cast so the closure compiles without assertions.
-  // The same null-at-init pattern used in the former createExtensionRuntime.
-  let configStore = null as unknown as ConfigStore;
+  // Both `configStore` and `session` are forward-declared so the logger's
+  // lazy thunks can close over them without a cast or null-init holder.
+  // TypeScript exempts closure captures from definite-assignment analysis;
+  // all synchronous reads occur after the assignments below.
+  // eslint-disable-next-line prefer-const -- forward-declared let; `const` requires an initializer
+  let configStore: ConfigStore;
+  // eslint-disable-next-line prefer-const -- forward-declared let; `const` requires an initializer
+  let session: PermissionSession;
 
-  // sessionNotify is a mutable holder so the logger's notify closure can
-  // reach the UI once PermissionSession is constructed. Starts as null;
-  // notify is a best-effort sink (no-op at factory-init when there is no UI).
-  let sessionNotify: PermissionSession | null = null;
-
-  const logger = createSessionLogger({
+  const logger = new PermissionSessionLogger({
     globalLogsDir: paths.globalLogsDir,
     getConfig: () => configStore.current(),
-    notify: (message) =>
-      sessionNotify?.getRuntimeContext()?.ui.notify(message, "warning"),
+    notify: (message) => session.notify(message),
   });
 
   configStore = new ConfigStore({
     agentDir,
     policyPaths: permissionManager,
-    logger: {
-      writeDebugLog: (e, d) => logger.debug(e, d),
-      writeReviewLog: (e, d) => logger.review(e, d),
-    },
+    logger,
   });
 
   const forwardingDeps: PermissionForwarderDeps = {
@@ -174,34 +170,28 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
     subagentSessionsDir: paths.subagentSessionsDir,
     registry: subagentRegistry,
     events: pi.events,
-    logger: {
-      writeReviewLog: (event, details) => logger.review(event, details),
-      writeDebugLog: (event, details) => logger.debug(event, details),
-    },
-    writeReviewLog: (event, details) => logger.review(event, details),
+    logger,
     requestPermissionDecisionFromUi,
-    shouldAutoApprove: (request) => {
-      if (!isAutoApproveMode()) return false;
-      if (isBachMode() && request?.surface === "bash" && request?.value) {
-        return !requiresBachPrompt("bash", request.value);
-      }
-      return true;
-    },
+    config: configStore,
   };
   const forwarder = new PermissionForwarder(forwardingDeps);
 
   const prompter = new PermissionPrompter({
     config: configStore,
-    writeReviewLog: (event, details) => logger.review(event, details),
+    logger,
     events: pi.events,
     forwarder,
   });
 
-  configStore.refresh();
+  const gateway = new PromptingGateway({
+    config: configStore,
+    subagentSessionsDir: paths.subagentSessionsDir,
+    registry: subagentRegistry,
+    prompter,
+  });
 
-  const session = new PermissionSession(
+  session = new PermissionSession(
     paths,
-    logger,
     new ForwardingManager(
       paths.subagentSessionsDir,
       forwarder,
@@ -210,28 +200,19 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
     permissionManager,
     sessionRules,
     configStore,
-    {
-      canRequestPermissionConfirmation: (ctx) =>
-        canResolveAskPermissionRequest({
-          config: configStore.current(),
-          hasUI: ctx.hasUI,
-          isSubagent: isSubagentExecutionContext(
-            ctx,
-            paths.subagentSessionsDir,
-            subagentRegistry,
-          ),
-        }),
-      promptPermission: (ctx, details) => prompter.prompt(ctx, details),
-    },
+    gateway,
   );
 
-  // Connect the notify sink now that session is available.
-  sessionNotify = session;
+  // refresh() must run after `session` is assigned: a debug-write IO failure
+  // triggers the logger's notify sink — `session.notify(m)` — which no-ops
+  // on the null context but requires `session` to be bound.
+  configStore.refresh();
 
+  const configPath = getGlobalConfigPath(agentDir);
   registerPermissionSystemCommand(pi, {
     config: configStore,
-    getConfigPath: () => getGlobalConfigPath(agentDir),
-    getComposedRules: () =>
+    configPath,
+    getActiveAgentConfigRules: () =>
       permissionManager.getComposedConfigRules(
         session.lastKnownActiveAgentName ?? undefined,
       ),
@@ -240,17 +221,18 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
   registerModeCommand(pi, configStore);
 
   const rpcHandles = registerPermissionRpcHandlers(pi.events, {
-    getPermissionManager: () => permissionManager,
-    getSessionRules: () => sessionRules.getRuleset(),
-    getRuntimeContext: () => session.getRuntimeContext(),
+    permissionManager,
+    sessionRules,
+    session,
     requestPermissionDecisionFromUi,
-    writeReviewLog: (event, details) => logger.review(event, details),
+    logger,
   });
 
   const permissionsService = new LocalPermissionsService(
     permissionManager,
     sessionRules,
     formatterRegistry,
+    accessExtractorRegistry,
   );
 
   // Subscribe to @gotgenes/pi-subagents' child lifecycle events so child
@@ -274,18 +256,29 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
 
   const toolRegistry = {
     getAll: () => pi.getAllTools(),
+    getActive: () => pi.getActiveTools(),
     setActive: (names: string[]) => pi.setActiveTools(names),
   };
 
-  const lifecycle = new SessionLifecycleHandler(session, serviceLifecycle);
-  const agentPrep = new AgentPrepHandler(session, toolRegistry);
-  const reporter = new GateDecisionReporter(session.logger, pi.events);
-  const gateRunner = new GateRunner(session, session, session, reporter);
+  const resolver = new PermissionResolver(permissionManager, sessionRules);
+
+  const lifecycle = new SessionLifecycleHandler(
+    session,
+    resolver,
+    serviceLifecycle,
+    logger,
+  );
+  const agentPrep = new AgentPrepHandler(session, resolver, toolRegistry);
+
+  const reporter = new GateDecisionReporter(logger, pi.events);
+  const gateRunner = new GateRunner(resolver, sessionRules, gateway, reporter);
   const toolCallGatePipeline = new ToolCallGatePipeline(
+    resolver,
     session,
     formatterRegistry,
+    accessExtractorRegistry,
   );
-  const skillInputGatePipeline = new SkillInputGatePipeline(session);
+  const skillInputGatePipeline = new SkillInputGatePipeline(resolver);
   const gates = new PermissionGateHandler(
     session,
     toolRegistry,

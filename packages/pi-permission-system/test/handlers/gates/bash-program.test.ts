@@ -1,27 +1,72 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// Mock node:fs so realpathSync (used by canonicalizePath) is controllable.
+// Default is identity so all existing lexical tests are unaffected.
+const realpathSync = vi.hoisted(() =>
+  vi.fn<(path: string) => string>((p) => p),
+);
+vi.mock("node:fs", () => ({
+  realpathSync,
+  default: { realpathSync },
+}));
 
 import { BashProgram } from "#src/handlers/gates/bash-program";
 
 describe("BashProgram", () => {
-  describe("pathTokens", () => {
-    it("returns dot-files and relative path tokens", async () => {
-      const program = await BashProgram.parse("cat .env src/foo.ts");
-      expect(program.pathTokens()).toEqual([".env", "src/foo.ts"]);
+  describe("pathRuleCandidates", () => {
+    const cwd = "/projects/my-app";
+
+    it("adds absolute and relative policy values for relative tokens", async () => {
+      const program = await BashProgram.parse("cat src/foo.ts");
+      expect(program.pathRuleCandidates(cwd)).toEqual([
+        {
+          token: "src/foo.ts",
+          policyValues: ["/projects/my-app/src/foo.ts", "src/foo.ts"],
+        },
+      ]);
     });
 
-    it("returns an empty array when there are no path tokens", async () => {
-      const program = await BashProgram.parse("echo hello");
-      expect(program.pathTokens()).toEqual([]);
+    it("returns the literal token only when no cwd is provided", async () => {
+      const program = await BashProgram.parse("cat src/foo.ts");
+      expect(program.pathRuleCandidates()).toEqual([
+        { token: "src/foo.ts", policyValues: ["src/foo.ts"] },
+      ]);
     });
 
-    it("deduplicates repeated tokens across a command chain", async () => {
-      const program = await BashProgram.parse("cat .env && rm .env");
-      expect(program.pathTokens()).toEqual([".env"]);
+    it("resolves tokens after literal cd against the effective directory", async () => {
+      const program = await BashProgram.parse("cd nested && cat src/file.txt");
+      const fileCandidate = program
+        .pathRuleCandidates(cwd)
+        .find((candidate) => candidate.token === "src/file.txt");
+      expect(fileCandidate).toEqual({
+        token: "src/file.txt",
+        policyValues: [
+          "/projects/my-app/nested/src/file.txt",
+          "nested/src/file.txt",
+          "src/file.txt",
+        ],
+      });
+    });
+
+    it("does not absolute-allow relative tokens after unknown cd", async () => {
+      const program = await BashProgram.parse('cd "$DIR" && cat src/foo.ts');
+      const fileCandidate = program
+        .pathRuleCandidates(cwd)
+        .find((candidate) => candidate.token === "src/foo.ts");
+      expect(fileCandidate).toEqual({
+        token: "src/foo.ts",
+        policyValues: ["src/foo.ts"],
+      });
     });
   });
 
   describe("externalPaths", () => {
     const cwd = "/projects/my-app";
+
+    beforeEach(() => {
+      realpathSync.mockReset();
+      realpathSync.mockImplementation((p: string) => p);
+    });
 
     it("returns absolute paths resolving outside cwd", async () => {
       const program = await BashProgram.parse("cat /etc/hosts");
@@ -141,6 +186,33 @@ describe("BashProgram", () => {
         );
         expect(program.externalPaths(cwd)).toHaveLength(0);
       });
+    });
+
+    it("flags an absolute in-cwd path that resolves externally via a symlink", async () => {
+      // The strict classifier only processes absolute tokens, so the escape
+      // surface is `cat /cwd/link/hosts` (absolute) where `link -> /etc`.
+      // Without canonicalization: /projects/my-app/link/hosts looks internal.
+      // With canonicalization: realpathSync resolves it to /etc/hosts.
+      realpathSync.mockImplementation((p: string) => {
+        if (p === "/projects/my-app/link/hosts") return "/etc/hosts";
+        return p;
+      });
+      const program = await BashProgram.parse(
+        "cat /projects/my-app/link/hosts",
+      );
+      expect(program.externalPaths(cwd)).toContain("/etc/hosts");
+    });
+
+    it("does not flag a token that resolves within a symlinked cwd", async () => {
+      // Simulates /tmp -> /private/tmp on macOS; cwd is the canonical form.
+      const symlinkCwd = "/private/tmp";
+      realpathSync.mockImplementation((p: string) => {
+        if (p === "/tmp") return "/private/tmp";
+        if (p.startsWith("/tmp/")) return "/private/tmp" + p.slice(4);
+        return p;
+      });
+      const program = await BashProgram.parse("cat /tmp/workspace/file.ts");
+      expect(program.externalPaths(symlinkCwd)).toHaveLength(0);
     });
   });
 
@@ -280,7 +352,10 @@ describe("BashProgram", () => {
 
   it("derives both slices from a single parse", async () => {
     const program = await BashProgram.parse("cat .env /etc/hosts");
-    expect(program.pathTokens()).toEqual([".env", "/etc/hosts"]);
+    expect(program.pathRuleCandidates().map(({ token }) => token)).toEqual([
+      ".env",
+      "/etc/hosts",
+    ]);
     const external = program.externalPaths("/projects/my-app");
     expect(external).toContain("/etc/hosts");
     expect(external).not.toContain(".env");

@@ -1,13 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
-import { NotificationState } from "#src/observation/notification-state";
 import {
 	GetResultTool,
 	type GetResultToolManager,
 	type GetResultToolNotifications,
 } from "#src/tools/get-result-tool";
 import type { Subagent } from "#src/types";
-import { createTestSubagent } from "#test/helpers/make-subagent";
+import { createTestSubagent, makeStubExecution } from "#test/helpers/make-subagent";
 import { createSubagentSessionStub, toSubagentSession } from "#test/helpers/mock-session";
 import { STUB_CTX } from "#test/helpers/stub-ctx";
 
@@ -70,12 +69,11 @@ describe("GetResultTool", () => {
 	});
 
 	it("marks notification consumed and cancels nudge for completed agent", async () => {
-		const record = createTestSubagent();
-		record.notification = new NotificationState("tc-1");
+		const record = createTestSubagent({ toolCallId: "tc-1" });
 		const records = new Map([["agent-1", record]]);
 		const notifications = makeNotifications();
 		await execute(makeManager(records), notifications, { agent_id: "agent-1" });
-		expect(record.notification.resultConsumed).toBe(true);
+		expect(record.notification!.resultConsumed).toBe(true);
 		expect(notifications.cancelNudge).toHaveBeenCalledWith("agent-1");
 	});
 
@@ -96,13 +94,16 @@ describe("GetResultTool", () => {
 	});
 
 	it("waits for promise when wait=true and agent is running", async () => {
+		const sessionStub = createSubagentSessionStub();
+		sessionStub.runTurnLoop.mockResolvedValue({ responseText: "Finished after wait.", aborted: false, steered: false });
 		const record = createTestSubagent({
 			status: "running",
 			completedAt: undefined,
+			execution: makeStubExecution({
+				createSubagentSession: async () => toSubagentSession(sessionStub),
+			}),
 		});
-		record.promise = Promise.resolve().then(() => {
-			record.markCompleted("Finished after wait.");
-		});
+		record.start();
 		const records = new Map([["agent-1", record]]);
 		const result = await execute(makeManager(records), makeNotifications(), { agent_id: "agent-1", wait: true });
 		// After waiting, the record is completed and result is shown
@@ -110,11 +111,10 @@ describe("GetResultTool", () => {
 	});
 
 	it("calls notification.markConsumed() when record has a NotificationState", async () => {
-		const record = createTestSubagent();
-		record.notification = new NotificationState("tc-1");
+		const record = createTestSubagent({ toolCallId: "tc-1" });
 		const records = new Map([["agent-1", record]]);
 		await execute(makeManager(records), makeNotifications(), { agent_id: "agent-1" });
-		expect(record.notification.resultConsumed).toBe(true);
+		expect(record.notification!.resultConsumed).toBe(true);
 	});
 
 	it("includes conversation when verbose=true", async () => {

@@ -1,5 +1,20 @@
 # Changelog
 
+## [4.1.4](https://github.com/gotgenes/pi-packages/compare/pi-github-tools-v4.1.3...pi-github-tools-v4.1.4) (2026-06-12)
+
+
+### Miscellaneous Chores
+
+* **deps:** bump Pi SDK to 0.79.1 ([#370](https://github.com/gotgenes/pi-packages/issues/370)) ([704f3b3](https://github.com/gotgenes/pi-packages/commit/704f3b3457ceb12b9df9efffe7a56812a5667d5d))
+* **deps:** bump typebox to 1.2.8 ([#370](https://github.com/gotgenes/pi-packages/issues/370)) ([8066a85](https://github.com/gotgenes/pi-packages/commit/8066a8573eba31b35b03fc7fcd26ab1041cc75d2))
+
+## [4.1.3](https://github.com/gotgenes/pi-packages/compare/pi-github-tools-v4.1.2...pi-github-tools-v4.1.3) (2026-06-12)
+
+
+### Documentation
+
+* **pi-github-tools:** correct config path in doc comment ([acc028f](https://github.com/gotgenes/pi-packages/commit/acc028f8c7392ea032cde5a9c65973d561d9e475))
+
 ## [4.1.2](https://github.com/gotgenes/pi-packages/compare/pi-github-tools-v4.1.1...pi-github-tools-v4.1.2) (2026-06-03)
 
 

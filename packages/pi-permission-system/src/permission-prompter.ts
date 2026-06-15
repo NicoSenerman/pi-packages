@@ -8,6 +8,7 @@ import {
 } from "./permission-events";
 import { buildDirectUiPrompt } from "./permission-ui-prompt";
 import { requiresBachPrompt } from "./bach-gate";
+import type { ReviewLogger } from "./session-logger";
 import {
   isBachMode,
   shouldAutoApprovePermissionState,
@@ -44,14 +45,14 @@ export interface PermissionPrompterApi {
  * Dependencies required by PermissionPrompter.
  *
  * Keeps the prompter's external surface narrow: callers provide config
- * access, review-log writing, the UI-prompt event bus, and the forwarder
+ * access, a review logger, the UI-prompt event bus, and the forwarder
  * that owns the UI/subagent-forwarding branching logic.
  */
 export interface PermissionPrompterDeps {
   /** Read current config for yolo-mode check (called at prompt time). */
   config: ConfigReader;
   /** Write structured entries to the permission review log. */
-  writeReviewLog(event: string, details: Record<string, unknown>): void;
+  logger: ReviewLogger;
   /** Event bus used for UI prompt broadcasts. */
   events: PermissionEventBus;
   /** Resolves the permission decision: direct UI dialog or forwarded to parent. */
@@ -134,7 +135,7 @@ export class PermissionPrompter implements PermissionPrompterApi {
       denialReason?: string;
     },
   ): void {
-    this.deps.writeReviewLog(event, {
+    this.deps.logger.review(event, {
       requestId: details.requestId,
       source: details.source,
       agentName: details.agentName,

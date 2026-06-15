@@ -114,6 +114,67 @@ describe("formatDenyReason", () => {
       );
     });
 
+    test("bash with a custom reason appended after the period", () => {
+      expect(
+        formatDenyReason(
+          toolCtx(
+            toolCheck("bash", {
+              command: "npm install",
+              matchedPattern: "npm *",
+              reason: "Use pnpm instead",
+            }),
+          ),
+        ),
+      ).toBe(
+        "[pi-permission-system] is not permitted to run 'bash' command 'npm install' (matched 'npm *'). Reason: Use pnpm instead.",
+      );
+    });
+
+    test("custom reason with no matched pattern", () => {
+      expect(
+        formatDenyReason(
+          toolCtx(
+            toolCheck("write", {
+              reason: "Write access is disabled for security",
+            }),
+          ),
+        ),
+      ).toBe(
+        "[pi-permission-system] is not permitted to run 'write'. Reason: Write access is disabled for security.",
+      );
+    });
+
+    test("custom reason is included alongside the agent name", () => {
+      expect(
+        formatDenyReason(
+          toolCtx(
+            toolCheck("bash", {
+              command: "yarn build",
+              matchedPattern: "yarn *",
+              reason: "Use pnpm instead",
+            }),
+            "dev-agent",
+          ),
+        ),
+      ).toBe(
+        "[pi-permission-system] Agent 'dev-agent' is not permitted to run 'bash' command 'yarn build' (matched 'yarn *'). Reason: Use pnpm instead.",
+      );
+    });
+
+    test("custom reason on an MCP target", () => {
+      expect(
+        formatDenyReason(
+          toolCtx(
+            mcpCheck("server:deploy", {
+              reason: "Deploy requires approval from a senior engineer",
+            }),
+          ),
+        ),
+      ).toBe(
+        "[pi-permission-system] is not permitted to run MCP target 'server:deploy'. Reason: Deploy requires approval from a senior engineer.",
+      );
+    });
+
     test("MCP source with target on non-mcp toolName", () => {
       expect(
         formatDenyReason(

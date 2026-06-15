@@ -1,13 +1,14 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-
 import {
   getActiveAgentName,
   getActiveAgentNameFromSystemPrompt,
+  type SessionEntryView,
 } from "#src/active-agent";
 import { toRecord } from "#src/common";
+import type { ConfigReader } from "#src/config-store";
 import type {
+  PermissionDecisionUi,
   PermissionPromptDecision,
   RequestPermissionOptions,
 } from "#src/permission-dialog";
@@ -27,13 +28,16 @@ import {
   SUBAGENT_PARENT_SESSION_ENV_CANDIDATES,
 } from "#src/permission-forwarding";
 import { buildForwardedUiPrompt } from "#src/permission-ui-prompt";
+import type { DebugReviewLogger } from "#src/session-logger";
 import { isSubagentExecutionContext } from "#src/subagent-context";
 import type { SubagentSessionRegistry } from "#src/subagent-registry";
+import { isBachMode, shouldAutoApprovePermissionState } from "#src/yolo-mode";
+import { requiresBachPrompt } from "#src/bach-gate";
 
 import {
   cleanupPermissionForwardingLocationIfEmpty,
+  ensureDirectoryExists,
   ensurePermissionForwardingLocation,
-  type ForwardedPermissionLogger,
   getExistingPermissionForwardingLocation,
   listRequestFiles,
   logPermissionForwardingError,
@@ -44,6 +48,25 @@ import {
   sleep,
   writeJsonFileAtomic,
 } from "./io";
+
+/**
+ * Narrow context the forwarder reads: the UI gate (`hasUI`), the dialog UI
+ * surface, and the three session-manager readers it uses directly or via
+ * {@link isSubagentExecutionContext} / {@link getActiveAgentName}.
+ *
+ * `getSystemPrompt` is read reflectively (see `getContextSystemPrompt`), so it
+ * is intentionally not a typed member. A full `ExtensionContext` satisfies this
+ * structurally, so production callers pass `ctx` unchanged.
+ */
+export interface ForwarderContext {
+  hasUI: boolean;
+  ui: PermissionDecisionUi;
+  sessionManager: {
+    getSessionId(): string;
+    getSessionDir(): string;
+    getEntries(): readonly SessionEntryView[];
+  };
+}
 
 /**
  * Constructor config for `PermissionForwarder`.
@@ -59,20 +82,20 @@ export interface PermissionForwarderDeps {
   registry?: SubagentSessionRegistry;
   /** Event bus used for UI prompt broadcasts. */
   events?: PermissionEventBus;
-  logger: ForwardedPermissionLogger;
-  writeReviewLog: (event: string, details: Record<string, unknown>) => void;
+  logger: DebugReviewLogger;
   requestPermissionDecisionFromUi: (
-    ui: ExtensionContext["ui"],
+    ui: PermissionDecisionUi,
     title: string,
     message: string,
     options?: RequestPermissionOptions,
   ) => Promise<PermissionPromptDecision>;
-  shouldAutoApprove: (request?: { surface?: string; value?: string }) => boolean;
+  /** Read current config for yolo-mode auto-approve check (called at prompt time). */
+  config: ConfigReader;
 }
 
 // ── Module-private helpers ────────────────────────────────────────────────
 
-function getSessionId(ctx: ExtensionContext): string {
+function getSessionId(ctx: ForwarderContext): string {
   try {
     const sessionId = ctx.sessionManager.getSessionId();
     if (typeof sessionId === "string" && sessionId.trim()) {
@@ -83,7 +106,7 @@ function getSessionId(ctx: ExtensionContext): string {
   return "unknown";
 }
 
-function getContextSystemPrompt(ctx: ExtensionContext): string | undefined {
+function getContextSystemPrompt(ctx: ForwarderContext): string | undefined {
   const getSystemPrompt = toRecord(ctx).getSystemPrompt;
   if (typeof getSystemPrompt !== "function") {
     return undefined;
@@ -130,7 +153,7 @@ function formatForwardedPermissionPrompt(
  */
 export interface ApprovalRequester {
   requestApproval(
-    ctx: ExtensionContext,
+    ctx: ForwarderContext,
     message: string,
     options?: RequestPermissionOptions,
     forwarded?: ForwardedPromptDisplay,
@@ -146,7 +169,7 @@ export interface ApprovalRequester {
  * `{ processInbox: vi.fn() }` mock.
  */
 export interface InboxProcessor {
-  processInbox(ctx: ExtensionContext): Promise<void>;
+  processInbox(ctx: ForwarderContext): Promise<void>;
 }
 
 // ── PermissionForwarder ───────────────────────────────────────────────────
@@ -165,18 +188,14 @@ export class PermissionForwarder implements ApprovalRequester, InboxProcessor {
   private readonly subagentSessionsDir: string;
   private readonly registry: SubagentSessionRegistry | undefined;
   private readonly events: PermissionEventBus | undefined;
-  private readonly logger: ForwardedPermissionLogger;
-  private readonly writeReviewLog: (
-    event: string,
-    details: Record<string, unknown>,
-  ) => void;
+  private readonly logger: DebugReviewLogger;
   private readonly requestPermissionDecisionFromUi: (
-    ui: ExtensionContext["ui"],
+    ui: PermissionDecisionUi,
     title: string,
     message: string,
     options?: RequestPermissionOptions,
   ) => Promise<PermissionPromptDecision>;
-  private readonly shouldAutoApprove: (request?: { surface?: string; value?: string }) => boolean;
+  private readonly config: ConfigReader;
 
   constructor(deps: PermissionForwarderDeps) {
     this.forwardingDir = deps.forwardingDir;
@@ -184,9 +203,8 @@ export class PermissionForwarder implements ApprovalRequester, InboxProcessor {
     this.registry = deps.registry;
     this.events = deps.events;
     this.logger = deps.logger;
-    this.writeReviewLog = deps.writeReviewLog;
     this.requestPermissionDecisionFromUi = deps.requestPermissionDecisionFromUi;
-    this.shouldAutoApprove = deps.shouldAutoApprove;
+    this.config = deps.config;
   }
 
   // ── Public seam methods ────────────────────────────────────────────────
@@ -196,7 +214,7 @@ export class PermissionForwarder implements ApprovalRequester, InboxProcessor {
    * when this session has UI, otherwise forward to the parent session.
    */
   requestApproval(
-    ctx: ExtensionContext,
+    ctx: ForwarderContext,
     message: string,
     options?: RequestPermissionOptions,
     forwarded?: ForwardedPromptDisplay,
@@ -220,7 +238,7 @@ export class PermissionForwarder implements ApprovalRequester, InboxProcessor {
   }
 
   /** Drain and respond to this session's forwarded-permission inbox. */
-  async processInbox(ctx: ExtensionContext): Promise<void> {
+  async processInbox(ctx: ForwarderContext): Promise<void> {
     if (!ctx.hasUI) {
       return;
     }
@@ -236,6 +254,20 @@ export class PermissionForwarder implements ApprovalRequester, InboxProcessor {
 
     const requestFiles = listRequestFiles(this.logger, location.requestsDir);
     if (requestFiles.length === 0) {
+      return;
+    }
+
+    // Defensively recreate responses/ before writing any response — a
+    // concurrent cleanup pass may have removed it between the requestsDir
+    // existence check above and the write inside processSingleForwardedRequest
+    // (the ENOENT write loop reported in issue #398).
+    if (
+      !ensureDirectoryExists(
+        this.logger,
+        location.responsesDir,
+        "permission forwarding responses",
+      )
+    ) {
       return;
     }
 
@@ -266,7 +298,7 @@ export class PermissionForwarder implements ApprovalRequester, InboxProcessor {
   // ── Private methods ────────────────────────────────────────────────────
 
   private async waitForForwardedApproval(
-    ctx: ExtensionContext,
+    ctx: ForwarderContext,
     message: string,
     forwarded?: ForwardedPromptDisplay,
   ): Promise<PermissionPromptDecision> {
@@ -319,7 +351,7 @@ export class PermissionForwarder implements ApprovalRequester, InboxProcessor {
     const requestPath = join(location.requestsDir, `${request.id}.json`);
     const responsePath = join(location.responsesDir, `${request.id}.json`);
 
-    this.writeReviewLog("forwarded_permission.request_created", {
+    this.logger.review("forwarded_permission.request_created", {
       requestId: request.id,
       requesterAgentName: request.requesterAgentName,
       requesterSessionId: request.requesterSessionId,
@@ -348,7 +380,7 @@ export class PermissionForwarder implements ApprovalRequester, InboxProcessor {
   }
 
   private buildForwardedRequest(
-    ctx: ExtensionContext,
+    ctx: ForwarderContext,
     message: string,
     requesterSessionId: string,
     targetSessionId: string,
@@ -391,7 +423,7 @@ export class PermissionForwarder implements ApprovalRequester, InboxProcessor {
           this.logger,
           responsePath,
         );
-        this.writeReviewLog("forwarded_permission.response_received", {
+        this.logger.review("forwarded_permission.response_received", {
           requestId,
           approved: response?.approved ?? null,
           state: response?.state ?? null,
@@ -421,7 +453,7 @@ export class PermissionForwarder implements ApprovalRequester, InboxProcessor {
       this.logger,
       `Timed out waiting for forwarded permission response '${responsePath}'`,
     );
-    this.writeReviewLog("forwarded_permission.response_timed_out", {
+    this.logger.review("forwarded_permission.response_timed_out", {
       requestId,
       requesterAgentName,
       targetSessionId,
@@ -433,7 +465,7 @@ export class PermissionForwarder implements ApprovalRequester, InboxProcessor {
   }
 
   private async processSingleForwardedRequest(
-    ctx: ExtensionContext,
+    ctx: ForwarderContext,
     request: ForwardedPermissionRequest,
     location: PermissionForwardingLocation,
     requestPath: string,
@@ -465,14 +497,19 @@ export class PermissionForwarder implements ApprovalRequester, InboxProcessor {
       approved: false,
       state: "denied",
     };
-    if (this.shouldAutoApprove({ surface: request.surface ?? undefined, value: request.value ?? undefined })) {
-      this.writeReviewLog(
+    // Adapted: upstream now owns the auto-approve check here (config-based),
+    // but we add BACH gate logic to force-prompt for destructive commands
+    // even when auto-approve is active.
+    const autoApproveBase = shouldAutoApprovePermissionState("ask", this.config.current());
+    const bachBlocked = isBachMode() && requiresBachPrompt("bash", request.value ?? undefined);
+    if (autoApproveBase && !bachBlocked) {
+      this.logger.review(
         "forwarded_permission.auto_approved",
         forwardedPermissionLogDetails,
       );
       decision = { approved: true, state: "approved" };
     } else {
-      this.writeReviewLog(
+      this.logger.review(
         "forwarded_permission.prompted",
         forwardedPermissionLogDetails,
       );
@@ -508,7 +545,7 @@ export class PermissionForwarder implements ApprovalRequester, InboxProcessor {
     }
 
     const responsePath = join(location.responsesDir, `${request.id}.json`);
-    this.writeReviewLog(
+    this.logger.review(
       decision.approved
         ? "forwarded_permission.approved"
         : "forwarded_permission.denied",

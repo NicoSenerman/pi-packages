@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-
+import type { GatePrompter } from "#src/gate-prompter";
 import { extractSkillNameFromInput } from "#src/handlers/permission-gate-handler";
 
 import { makeCtx, makeHandler } from "#test/helpers/handler-fixtures";
@@ -49,9 +49,10 @@ describe("extractSkillNameFromInput", () => {
 describe("handleInput", () => {
   it("activates session with ctx", async () => {
     const ctx = makeCtx();
-    const { handler, session } = makeHandler();
+    const { handler, forwarding } = makeHandler();
     await handler.handleInput(makeInputEvent("hello"), ctx);
-    expect(session.activate).toHaveBeenCalledWith(ctx);
+    // session.activate(ctx) calls forwarding.start(ctx) on the real session
+    expect(forwarding.start).toHaveBeenCalledWith(ctx);
   });
 
   it("returns continue for non-skill input", async () => {
@@ -64,9 +65,9 @@ describe("handleInput", () => {
   });
 
   it("does not check permissions for non-skill input", async () => {
-    const { handler, session } = makeHandler();
+    const { handler, permissionManager } = makeHandler();
     await handler.handleInput(makeInputEvent("just a message"), makeCtx());
-    expect(session.checkPermission).not.toHaveBeenCalled();
+    expect(permissionManager.checkPermission).not.toHaveBeenCalled();
   });
 
   it("returns continue when skill is allowed", async () => {
@@ -120,7 +121,10 @@ describe("handleInput", () => {
     const { handler } = makeHandler({
       session: {
         checkPermission: vi.fn().mockReturnValue({ state: "ask" }),
-        canPrompt: vi.fn().mockReturnValue(false),
+      },
+      prompter: {
+        canConfirm: vi.fn().mockReturnValue(false),
+        prompt: vi.fn<GatePrompter["prompt"]>(),
       },
     });
     const result = await handler.handleInput(
@@ -131,12 +135,16 @@ describe("handleInput", () => {
   });
 
   it("prompts and returns continue when skill ask is approved", async () => {
-    const { handler, session } = makeHandler({
+    const approvePrompt = vi
+      .fn<GatePrompter["prompt"]>()
+      .mockResolvedValue({ approved: true, state: "approved" });
+    const { handler, prompter } = makeHandler({
       session: {
         checkPermission: vi.fn().mockReturnValue({ state: "ask" }),
-        prompt: vi
-          .fn()
-          .mockResolvedValue({ approved: true, state: "approved" }),
+      },
+      prompter: {
+        canConfirm: vi.fn().mockReturnValue(true),
+        prompt: approvePrompt,
       },
     });
     const result = await handler.handleInput(
@@ -144,14 +152,19 @@ describe("handleInput", () => {
       makeCtx(),
     );
     expect(result).toEqual({ action: "continue" });
-    expect(session.prompt).toHaveBeenCalledOnce();
+    expect(prompter.prompt).toHaveBeenCalledOnce();
   });
 
   it("returns handled when skill ask is denied by user", async () => {
     const { handler } = makeHandler({
       session: {
         checkPermission: vi.fn().mockReturnValue({ state: "ask" }),
-        prompt: vi.fn().mockResolvedValue({ approved: false, state: "denied" }),
+      },
+      prompter: {
+        canConfirm: vi.fn().mockReturnValue(true),
+        prompt: vi
+          .fn<GatePrompter["prompt"]>()
+          .mockResolvedValue({ approved: false, state: "denied" }),
       },
     });
     const result = await handler.handleInput(
@@ -162,17 +175,21 @@ describe("handleInput", () => {
   });
 
   it("passes agentName in the prompt permission request", async () => {
-    const { handler, session } = makeHandler({
+    const approvePrompt = vi
+      .fn<GatePrompter["prompt"]>()
+      .mockResolvedValue({ approved: true, state: "approved" });
+    const { handler, prompter } = makeHandler({
       session: {
         checkPermission: vi.fn().mockReturnValue({ state: "ask" }),
         resolveAgentName: vi.fn().mockReturnValue("code-agent"),
-        prompt: vi
-          .fn()
-          .mockResolvedValue({ approved: true, state: "approved" }),
+      },
+      prompter: {
+        canConfirm: vi.fn().mockReturnValue(true),
+        prompt: approvePrompt,
       },
     });
     await handler.handleInput(makeInputEvent("/skill:librarian"), makeCtx());
-    expect(session.promptPermission).toHaveBeenCalledWith(
+    expect(prompter.prompt).toHaveBeenCalledWith(
       expect.objectContaining({
         agentName: "code-agent",
         skillName: "librarian",

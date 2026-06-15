@@ -5,6 +5,82 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [16.2.1](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v16.2.0...pi-subagents-v16.2.1) (2026-06-15)
+
+
+### Bug Fixes
+
+* restore at-spawn promise for queued subagents ([#374](https://github.com/gotgenes/pi-packages/issues/374)) ([4f08c6c](https://github.com/gotgenes/pi-packages/commit/4f08c6c37814b5386a23cd60479efc39c4b22612))
+
+## [16.2.0](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v16.1.1...pi-subagents-v16.2.0) (2026-06-14)
+
+
+### Features
+
+* encapsulate Subagent.start(), promise, and notification ([#374](https://github.com/gotgenes/pi-packages/issues/374)) ([048b4a0](https://github.com/gotgenes/pi-packages/commit/048b4a0a859ec83e1c73c1386484a747e37ba224))
+
+## [16.1.1](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v16.1.0...pi-subagents-v16.1.1) (2026-06-14)
+
+
+### Bug Fixes
+
+* abort all subagents on parent interrupt ([#403](https://github.com/gotgenes/pi-packages/issues/403)) ([0c951d3](https://github.com/gotgenes/pi-packages/commit/0c951d3da27123a61c95a7f9a07ddb4cf5ed7e89))
+
+## [16.1.0](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v16.0.0...pi-subagents-v16.1.0) (2026-06-14)
+
+
+### Features
+
+* **pi-subagents:** add ConcurrencyLimiter ([#381](https://github.com/gotgenes/pi-packages/issues/381)) ([26f4203](https://github.com/gotgenes/pi-packages/commit/26f420337094d81d39bcc3e0522e12262c7767b7))
+
+## [16.0.0](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v15.0.2...pi-subagents-v16.0.0) (2026-06-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* replace-mode subagents (built-in Explore/Plan and any custom prompt_mode: replace agent) now inherit the parent system prompt as their base instead of a thin standalone header. The custom prompt is appended last and retains full control; the <sub_agent_context> bridge and <agent_instructions> wrapper are still omitted in replace mode.
+
+### Performance Improvements
+
+* include parent system prompt in replace mode ([#400](https://github.com/gotgenes/pi-packages/issues/400)) ([1cc25cf](https://github.com/gotgenes/pi-packages/commit/1cc25cf0106cbfe3015ceb69a820c745c07038e2))
+
+
+### Documentation
+
+* describe replace-mode parent inheritance ([#400](https://github.com/gotgenes/pi-packages/issues/400)) ([6b6e61d](https://github.com/gotgenes/pi-packages/commit/6b6e61d649582c26d2c36edf67dfd1e35d87a802))
+
+## [15.0.2](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v15.0.1...pi-subagents-v15.0.2) (2026-06-12)
+
+
+### Miscellaneous Chores
+
+* **deps:** bump Pi SDK to 0.79.1 ([#370](https://github.com/gotgenes/pi-packages/issues/370)) ([704f3b3](https://github.com/gotgenes/pi-packages/commit/704f3b3457ceb12b9df9efffe7a56812a5667d5d))
+* **deps:** bump rollup to 4.61.1 ([#370](https://github.com/gotgenes/pi-packages/issues/370)) ([250b729](https://github.com/gotgenes/pi-packages/commit/250b7296093b091297c57463693eaa2db59d5fe3))
+
+## [15.0.1](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v15.0.0...pi-subagents-v15.0.1) (2026-06-10)
+
+
+### Miscellaneous Chores
+
+* **deps:** bump pnpm to 11.5.2 and fallow to 2.91.0 ([b34cef4](https://github.com/gotgenes/pi-packages/commit/b34cef4df692dbb279c859d56be49894d63c0c45))
+* **deps:** bump tooling dependencies to latest minor/patch ([8b9105d](https://github.com/gotgenes/pi-packages/commit/8b9105d4011816fe8085dfed3a3b9d7bc9918c56))
+
+## [15.0.0](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v14.0.1...pi-subagents-v15.0.0) (2026-06-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* **pi-subagents:** Custom agents in .pi/agents/*.md that omit the prompt_mode frontmatter key now default to append instead of replace, so they inherit the parent system prompt (AGENTS.md / CLAUDE.md / skills). Add `prompt_mode: replace` explicitly to restore the previous standalone-prompt behavior.
+
+### Bug Fixes
+
+* **pi-subagents:** default custom agents to append prompt mode ([#360](https://github.com/gotgenes/pi-packages/issues/360)) ([e3a3c96](https://github.com/gotgenes/pi-packages/commit/e3a3c9623eb0448a005f436c7c8a98504ceaf6e9))
+
+
+### Documentation
+
+* **pi-subagents:** note custom agents default to append prompt mode ([#360](https://github.com/gotgenes/pi-packages/issues/360)) ([9d6038c](https://github.com/gotgenes/pi-packages/commit/9d6038c515dd1b6681bf47d9cbff090da70cf014))
+
 ## [14.0.1](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v14.0.0...pi-subagents-v14.0.1) (2026-06-03)
 
 

@@ -1,7 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import { normalize } from "node:path";
-
-import { isPermissionState, toRecord } from "./common";
+import {
+  isDenyWithReason,
+  isPermissionState,
+  normalizeOptionalPositiveInt,
+  normalizeOptionalStringArray,
+  toRecord,
+} from "./common";
 import {
   getGlobalConfigPath,
   getLegacyExtensionConfigPath,
@@ -10,7 +15,7 @@ import {
   getProjectConfigPath,
 } from "./config-paths";
 import { mergeFlatPermissions } from "./permission-merge";
-import type { FlatPermissionConfig } from "./types";
+import type { FlatPermissionConfig, PatternValue } from "./types";
 
 /**
  * Unified config shape combining runtime knobs and flat permission policy.
@@ -21,6 +26,9 @@ export interface UnifiedPermissionConfig {
   debugLog?: boolean;
   permissionReviewLog?: boolean;
   yoloMode?: boolean;
+  toolInputPreviewMaxLength?: number;
+  toolTextSummaryMaxLength?: number;
+  piInfrastructureReadPaths?: string[];
 
   // Flat permission policy
   permission?: FlatPermissionConfig;
@@ -119,7 +127,8 @@ function normalizeOptionalBoolean(value: unknown): boolean | undefined {
 
 /**
  * Normalize a raw `permission` value from parsed JSON into a FlatPermissionConfig.
- * Drops non-object top-level values, invalid PermissionState strings, and
+ * Accepts PermissionState strings and DenyWithReason objects inside pattern
+ * maps. Drops non-object top-level values, invalid PermissionState strings, and
  * invalid action values inside object maps.
  */
 function normalizeFlatPermissionValue(
@@ -139,12 +148,15 @@ function normalizeFlatPermissionValue(
         hasAny = true;
       }
     } else if (typeof val === "object" && val !== null && !Array.isArray(val)) {
-      const map: Record<string, import("./types").PermissionState> = {};
+      const map: Record<string, PatternValue> = {};
       let mapHasAny = false;
       for (const [pattern, action] of Object.entries(
         val as Record<string, unknown>,
       )) {
-        if (isPermissionState(action)) {
+        if (isDenyWithReason(action)) {
+          map[pattern] = action;
+          mapHasAny = true;
+        } else if (isPermissionState(action)) {
           map[pattern] = action;
           mapHasAny = true;
         }
@@ -183,6 +195,24 @@ export function normalizeUnifiedConfig(raw: unknown): {
   const yoloMode = normalizeOptionalBoolean(record.yoloMode);
   if (yoloMode !== undefined) config.yoloMode = yoloMode;
 
+  const toolInputPreviewMaxLength = normalizeOptionalPositiveInt(
+    record.toolInputPreviewMaxLength,
+  );
+  if (toolInputPreviewMaxLength !== undefined)
+    config.toolInputPreviewMaxLength = toolInputPreviewMaxLength;
+
+  const toolTextSummaryMaxLength = normalizeOptionalPositiveInt(
+    record.toolTextSummaryMaxLength,
+  );
+  if (toolTextSummaryMaxLength !== undefined)
+    config.toolTextSummaryMaxLength = toolTextSummaryMaxLength;
+
+  const piInfrastructureReadPaths = normalizeOptionalStringArray(
+    record.piInfrastructureReadPaths,
+  );
+  if (piInfrastructureReadPaths !== undefined)
+    config.piInfrastructureReadPaths = piInfrastructureReadPaths;
+
   // Flat permission policy
   const permission = normalizeFlatPermissionValue(record.permission);
   if (permission !== undefined) config.permission = permission;
@@ -195,6 +225,8 @@ export function normalizeUnifiedConfig(raw: unknown): {
  * - `permission` is deep-shallow merged (surface-level object maps are shallow-merged).
  * - Scalar fields (debugLog, permissionReviewLog, yoloMode) are replaced when
  *   present in the override.
+ * - Array fields (piInfrastructureReadPaths) replace the base when present in
+ *   the override (override-wins, same as scalars).
  */
 export function mergeUnifiedConfigs(
   base: UnifiedPermissionConfig,
@@ -202,12 +234,30 @@ export function mergeUnifiedConfigs(
 ): UnifiedPermissionConfig {
   const merged: UnifiedPermissionConfig = {};
 
-  // Scalars: override replaces base when defined
+  // Boolean scalars: override replaces base when defined
   for (const key of ["debugLog", "permissionReviewLog", "yoloMode"] as const) {
     const value = override[key] ?? base[key];
     if (value !== undefined) {
       merged[key] = value;
     }
+  }
+
+  // Number scalars: override replaces base when defined
+  for (const key of [
+    "toolInputPreviewMaxLength",
+    "toolTextSummaryMaxLength",
+  ] as const) {
+    const value = override[key] ?? base[key];
+    if (value !== undefined) {
+      merged[key] = value;
+    }
+  }
+
+  // Array fields: override replaces base when defined
+  const piInfrastructureReadPaths =
+    override.piInfrastructureReadPaths ?? base.piInfrastructureReadPaths;
+  if (piInfrastructureReadPaths !== undefined) {
+    merged.piInfrastructureReadPaths = piInfrastructureReadPaths;
   }
 
   // Permission: deep-shallow merge

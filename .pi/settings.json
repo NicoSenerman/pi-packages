@@ -7,6 +7,7 @@
     "../packages/pi-subagents",
     "../packages/pi-subagents-worktrees",
     "../packages/pi-session-tools",
+    "../packages/pi-nocd",
 
     { "source": "npm:@gotgenes/pi-colgrep", "extensions": [], "skills": [] },
     {
@@ -26,6 +27,7 @@
       "extensions": [],
       "skills": []
     },
+    { "source": "npm:@gotgenes/pi-nocd", "extensions": [], "skills": [] },
 
     "npm:pi-prompt-template-model",
     "npm:pi-web-access",

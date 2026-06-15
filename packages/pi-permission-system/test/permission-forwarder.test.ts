@@ -1,10 +1,10 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, test, vi } from "vitest";
-
+import { DEFAULT_EXTENSION_CONFIG } from "#src/extension-config";
 import {
+  type ForwarderContext,
   PermissionForwarder,
   type PermissionForwarderDeps,
 } from "#src/forwarded-permissions/permission-forwarder";
@@ -18,13 +18,31 @@ function makeDeps(
   return {
     forwardingDir: "/tmp/forwarding",
     subagentSessionsDir: "/tmp/subagents",
-    logger: { writeReviewLog: vi.fn(), writeDebugLog: vi.fn() },
-    writeReviewLog: vi.fn(),
+    logger: { review: vi.fn(), debug: vi.fn() },
     requestPermissionDecisionFromUi: vi
       .fn()
       .mockResolvedValue({ approved: true, state: "approved" as const }),
-    shouldAutoApprove: () => false,
+    config: { current: () => ({ ...DEFAULT_EXTENSION_CONFIG }) },
     ...overrides,
+  };
+}
+
+function makeCtx(
+  overrides: {
+    hasUI?: boolean;
+    ui?: ForwarderContext["ui"];
+    sessionManager?: Partial<ForwarderContext["sessionManager"]>;
+  } = {},
+): ForwarderContext {
+  return {
+    hasUI: overrides.hasUI ?? false,
+    ui: overrides.ui ?? { select: vi.fn(), input: vi.fn() },
+    sessionManager: {
+      getSessionId: vi.fn(() => ""),
+      getSessionDir: vi.fn(() => ""),
+      getEntries: vi.fn(() => []),
+      ...overrides.sessionManager,
+    },
   };
 }
 
@@ -49,10 +67,7 @@ describe("requestApproval — UI fast path", () => {
     );
 
     await forwarder.requestApproval(
-      {
-        hasUI: true,
-        ui: { select: vi.fn(), input: vi.fn() },
-      } as unknown as ExtensionContext,
+      makeCtx({ hasUI: true }),
       "Allow git push?",
     );
 
@@ -77,12 +92,7 @@ describe("requestApproval — non-UI, non-subagent path", () => {
     );
 
     const result = await forwarder.requestApproval(
-      {
-        hasUI: false,
-        sessionManager: {
-          getSessionDir: vi.fn().mockReturnValue(null),
-        },
-      } as unknown as ExtensionContext,
+      makeCtx({ hasUI: false }),
       "Allow git push?",
     );
 
@@ -137,13 +147,14 @@ describe("processInbox", () => {
         }),
       );
 
-      await forwarder.processInbox({
-        hasUI: true,
-        ui: { select: vi.fn(), input: vi.fn() },
-        sessionManager: {
-          getSessionId: vi.fn().mockReturnValue("parent-session"),
-        },
-      } as unknown as ExtensionContext);
+      await forwarder.processInbox(
+        makeCtx({
+          hasUI: true,
+          sessionManager: {
+            getSessionId: vi.fn(() => "parent-session"),
+          },
+        }),
+      );
 
       expect(events.emit).toHaveBeenCalledWith(
         "permissions:ui_prompt",
@@ -208,13 +219,14 @@ describe("processInbox", () => {
         }),
       );
 
-      await forwarder.processInbox({
-        hasUI: true,
-        ui: { select: vi.fn(), input: vi.fn() },
-        sessionManager: {
-          getSessionId: vi.fn().mockReturnValue("parent-session"),
-        },
-      } as unknown as ExtensionContext);
+      await forwarder.processInbox(
+        makeCtx({
+          hasUI: true,
+          sessionManager: {
+            getSessionId: vi.fn(() => "parent-session"),
+          },
+        }),
+      );
 
       expect(events.emit).toHaveBeenCalledWith(
         "permissions:ui_prompt",
@@ -271,23 +283,85 @@ describe("processInbox", () => {
           forwardingDir,
           events,
           requestPermissionDecisionFromUi,
-          shouldAutoApprove: () => true,
+          config: {
+            current: () => ({ ...DEFAULT_EXTENSION_CONFIG, yoloMode: true }),
+          },
         }),
       );
 
-      await forwarder.processInbox({
-        hasUI: true,
-        ui: { select: vi.fn(), input: vi.fn() },
-        sessionManager: {
-          getSessionId: vi.fn().mockReturnValue("parent-session"),
-        },
-      } as unknown as ExtensionContext);
+      await forwarder.processInbox(
+        makeCtx({
+          hasUI: true,
+          sessionManager: {
+            getSessionId: vi.fn(() => "parent-session"),
+          },
+        }),
+      );
 
       expect(events.emit).not.toHaveBeenCalledWith(
         "permissions:ui_prompt",
         expect.anything(),
       );
       expect(requestPermissionDecisionFromUi).not.toHaveBeenCalled();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("recreates a missing responses/ directory and still writes the response", async () => {
+    const root = mkdtempSync(join(tmpdir(), "permission-forwarding-"));
+    try {
+      const forwardingDir = join(root, "forwarding");
+      const location = createPermissionForwardingLocation(
+        forwardingDir,
+        "parent-session",
+      );
+      // Simulate the race: requests/ exists with a pending file, but
+      // responses/ was removed by a concurrent cleanup pass.
+      mkdirSync(location.requestsDir, { recursive: true });
+      // Deliberately do NOT create location.responsesDir.
+      writeFileSync(
+        join(location.requestsDir, "req-race.json"),
+        JSON.stringify({
+          id: "req-race",
+          createdAt: Date.now(),
+          requesterSessionId: "child-session",
+          targetSessionId: "parent-session",
+          requesterAgentName: "Explore",
+          message: "Allow read?",
+        }),
+        "utf-8",
+      );
+
+      const logger = { review: vi.fn(), debug: vi.fn() };
+      const requestPermissionDecisionFromUi = vi
+        .fn()
+        .mockResolvedValue({ approved: true, state: "approved" as const });
+
+      const forwarder = new PermissionForwarder(
+        makeDeps({
+          forwardingDir,
+          logger,
+          requestPermissionDecisionFromUi,
+        }),
+      );
+
+      await forwarder.processInbox(
+        makeCtx({
+          hasUI: true,
+          sessionManager: {
+            getSessionId: vi.fn(() => "parent-session"),
+          },
+        }),
+      );
+
+      // processInbox must have recreated responses/ and written a response
+      // file — no permission_forwarding.error should have been logged.
+      expect(logger.review).not.toHaveBeenCalledWith(
+        "permission_forwarding.error",
+        expect.anything(),
+      );
+      expect(requestPermissionDecisionFromUi).toHaveBeenCalled();
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

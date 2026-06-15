@@ -3,6 +3,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
+import type { GatePrompter } from "#src/gate-prompter";
 import {
   getDecisionEvents,
   makeCheckResult,
@@ -70,8 +71,11 @@ describe("handleInput decision events — skill gate", () => {
     const { handler, events } = makeHandler({
       session: {
         checkPermission: makeSkillCheckPermission("ask"),
+      },
+      prompter: {
+        canConfirm: vi.fn().mockReturnValue(true),
         prompt: vi
-          .fn()
+          .fn<GatePrompter["prompt"]>()
           .mockResolvedValue({ approved: true, state: "approved" }),
       },
     });
@@ -91,7 +95,12 @@ describe("handleInput decision events — skill gate", () => {
     const { handler, events } = makeHandler({
       session: {
         checkPermission: makeSkillCheckPermission("ask"),
-        prompt: vi.fn().mockResolvedValue({ approved: false, state: "denied" }),
+      },
+      prompter: {
+        canConfirm: vi.fn().mockReturnValue(true),
+        prompt: vi
+          .fn<GatePrompter["prompt"]>()
+          .mockResolvedValue({ approved: false, state: "denied" }),
       },
     });
     await handler.handleInput({ text: "/skill:explorer" }, makeCtx());
@@ -110,7 +119,10 @@ describe("handleInput decision events — skill gate", () => {
     const { handler, events } = makeHandler({
       session: {
         checkPermission: makeSkillCheckPermission("ask"),
-        canPrompt: vi.fn().mockReturnValue(false),
+      },
+      prompter: {
+        canConfirm: vi.fn().mockReturnValue(false),
+        prompt: vi.fn<GatePrompter["prompt"]>(),
       },
     });
     await handler.handleInput(
@@ -132,7 +144,10 @@ describe("handleInput decision events — skill gate", () => {
     const { handler, events } = makeHandler({
       session: {
         checkPermission: makeSkillCheckPermission("ask"),
-        prompt: vi.fn().mockResolvedValue({
+      },
+      prompter: {
+        canConfirm: vi.fn().mockReturnValue(true),
+        prompt: vi.fn<GatePrompter["prompt"]>().mockResolvedValue({
           approved: true,
           state: "approved",
           autoApproved: true,

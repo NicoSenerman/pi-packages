@@ -1,10 +1,13 @@
+import { resolve } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { PermissionManager } from "#src/permission-manager";
 import {
   findSkillPathMatch,
+  parseAllSkillPromptSections,
   resolveSkillPromptEntries,
 } from "#src/skill-prompt-sanitizer";
 import type { PermissionCheckResult } from "#src/types";
+import { createManager } from "#test/helpers/manager-harness";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -241,4 +244,131 @@ describe("findSkillPathMatch", () => {
     );
     expect(match?.name).toBe("child");
   });
+});
+
+// ---------------------------------------------------------------------------
+// Moved from permission-system.test.ts catch-all (#342)
+// ---------------------------------------------------------------------------
+
+test("parseAllSkillPromptSections finds every available_skills block", () => {
+  const prompt = [
+    "Some preamble",
+    "<available_skills>",
+    "  <skill>",
+    "    <name>skill-one</name>",
+    "    <description>First skill</description>",
+    "    <location>/path/to/one</location>",
+    "  </skill>",
+    "</available_skills>",
+    "Some content between",
+    "<available_skills>",
+    "  <skill>",
+    "    <name>skill-two</name>",
+    "    <description>Second skill</description>",
+    "    <location>/path/to/two</location>",
+    "  </skill>",
+    "</available_skills>",
+    "Footer",
+  ].join("\n");
+
+  const sections = parseAllSkillPromptSections(prompt);
+
+  expect(sections.length).toBe(2);
+  expect(sections[0].entries[0]?.name).toBe("skill-one");
+  expect(sections[1].entries[0]?.name).toBe("skill-two");
+});
+
+test("REGRESSION: resolveSkillPromptEntries sanitizes every available_skills block", () => {
+  const { manager, cleanup } = createManager({
+    permission: {
+      "*": "ask",
+      skill: { "denied-skill": "deny" },
+    },
+  });
+
+  try {
+    const prompt = [
+      "System prompt start",
+      "<available_skills>",
+      "  <skill>",
+      "    <name>visible-skill</name>",
+      "    <description>Allowed skill</description>",
+      "    <location>/skills/visible/index.ts</location>",
+      "  </skill>",
+      "  <skill>",
+      "    <name>denied-skill</name>",
+      "    <description>Denied in first block</description>",
+      "    <location>/skills/blocked/one.ts</location>",
+      "  </skill>",
+      "</available_skills>",
+      "Agent identity section",
+      "<available_skills>",
+      "  <skill>",
+      "    <name>denied-skill</name>",
+      "    <description>Denied in second block</description>",
+      "    <location>/skills/blocked/two.ts</location>",
+      "  </skill>",
+      "</available_skills>",
+      "System prompt end",
+    ].join("\n");
+
+    const result = resolveSkillPromptEntries(prompt, manager, null, "/cwd");
+
+    expect(result.prompt).not.toContain("denied-skill");
+    expect(result.prompt).toContain("visible-skill");
+    expect((result.prompt.match(/<available_skills>/g) ?? []).length).toBe(1);
+    expect(result.entries.map((entry) => entry.name)).toEqual([
+      "visible-skill",
+    ]);
+  } finally {
+    cleanup();
+  }
+});
+
+test("REGRESSION: resolveSkillPromptEntries keeps only visible skills available for path matching", () => {
+  const { manager, cleanup } = createManager({
+    permission: {
+      "*": "ask",
+      skill: { "blocked-skill": "deny" },
+    },
+  });
+
+  try {
+    const prompt = [
+      "System prompt start",
+      "<available_skills>",
+      "  <skill>",
+      "    <name>blocked-skill</name>",
+      "    <description>Blocked skill</description>",
+      "    <location>@./skills/blocked/entry.ts</location>",
+      "  </skill>",
+      "</available_skills>",
+      "Middle section",
+      "<available_skills>",
+      "  <skill>",
+      "    <name>visible-skill</name>",
+      "    <description>Visible skill</description>",
+      "    <location>@./skills/visible/entry.ts</location>",
+      "  </skill>",
+      "</available_skills>",
+      "System prompt end",
+    ].join("\n");
+
+    const result = resolveSkillPromptEntries(prompt, manager, null, "/cwd");
+    const visiblePath = resolve("/cwd", "./skills/visible/file.ts");
+    const blockedPath = resolve("/cwd", "./skills/blocked/file.ts");
+    const matchedVisibleSkill = findSkillPathMatch(
+      process.platform === "win32" ? visiblePath.toLowerCase() : visiblePath,
+      result.entries,
+    );
+    const matchedBlockedSkill = findSkillPathMatch(
+      process.platform === "win32" ? blockedPath.toLowerCase() : blockedPath,
+      result.entries,
+    );
+
+    expect(matchedVisibleSkill?.name).toBe("visible-skill");
+    expect(matchedBlockedSkill).toBe(null);
+  } finally {
+    cleanup();
+  }
 });

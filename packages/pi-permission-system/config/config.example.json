@@ -23,9 +23,10 @@
     "edit": "deny",
     "bash": {
       "*": "ask",
+      "git *": "ask",
       "git status": "allow",
       "git diff": "allow",
-      "git *": "ask"
+      "npm *": { "action": "deny", "reason": "Use pnpm instead" }
     },
     "mcp": { "*": "ask", "mcp_status": "allow", "mcp_list": "allow" },
     "skill": { "*": "ask" },

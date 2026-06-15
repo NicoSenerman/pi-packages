@@ -1,6 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const mockHomedir = vi.hoisted(() => vi.fn(() => "/mock/home"));
+
+vi.mock("node:os", () => ({
+  homedir: mockHomedir,
+  default: { homedir: mockHomedir },
+}));
+
 import { normalizeInput } from "#src/input-normalizer";
 import { createMcpPermissionTargets } from "#src/mcp-targets";
+
+afterEach(() => {
+  mockHomedir.mockClear();
+});
 
 describe("normalizeInput — non-MCP surfaces", () => {
   describe("special / path", () => {
@@ -21,9 +34,65 @@ describe("normalizeInput — non-MCP surfaces", () => {
       expect(result.values).toEqual(["*"]);
     });
 
+    it("falls back to '*' when path is an empty string", () => {
+      const result = normalizeInput("path", { path: "" }, []);
+      expect(result.values).toEqual(["*"]);
+    });
+
+    it("falls back to '*' when path is whitespace-only", () => {
+      const result = normalizeInput("path", { path: "   " }, []);
+      expect(result.values).toEqual(["*"]);
+    });
+
     it("handles null input", () => {
       const result = normalizeInput("path", null, []);
       expect(result.values).toEqual(["*"]);
+    });
+
+    it("expands ~/... path value to absolute home path", () => {
+      const result = normalizeInput("path", { path: "~/.ssh/config" }, []);
+      expect(result.values).toEqual([join("/mock/home", ".ssh/config")]);
+    });
+
+    it("expands $HOME/... path value to absolute home path", () => {
+      const result = normalizeInput("path", { path: "$HOME/.ssh/config" }, []);
+      expect(result.values).toEqual([join("/mock/home", ".ssh/config")]);
+    });
+
+    it("does not expand non-home values", () => {
+      const result = normalizeInput("path", { path: ".env" }, []);
+      expect(result.values).toEqual([".env"]);
+    });
+
+    it("does not expand the '*' fallback", () => {
+      const result = normalizeInput("path", {}, []);
+      expect(result.values).toEqual(["*"]);
+    });
+
+    it("adds cwd-normalized and relative aliases when cwd is provided", () => {
+      const result = normalizeInput(
+        "path",
+        { path: "src/App.jsx" },
+        [],
+        "/workspace/project",
+      );
+      expect(result.values).toEqual([
+        "/workspace/project/src/App.jsx",
+        "src/App.jsx",
+      ]);
+    });
+
+    it("ignores a user-supplied string pathPolicyValues field", () => {
+      const result = normalizeInput(
+        "path",
+        { path: "src/App.jsx", pathPolicyValues: ["/etc/shadow"] },
+        [],
+        "/workspace/project",
+      );
+      expect(result.values).toEqual([
+        "/workspace/project/src/App.jsx",
+        "src/App.jsx",
+      ]);
     });
   });
 
@@ -49,9 +118,45 @@ describe("normalizeInput — non-MCP surfaces", () => {
       expect(result.values).toEqual(["*"]);
     });
 
+    it("falls back to '*' when path is an empty string", () => {
+      const result = normalizeInput("external_directory", { path: "" }, []);
+      expect(result.values).toEqual(["*"]);
+    });
+
     it("handles null input", () => {
       const result = normalizeInput("external_directory", null, []);
       expect(result.values).toEqual(["*"]);
+    });
+
+    it("expands ~/... path value to absolute home path", () => {
+      const result = normalizeInput(
+        "external_directory",
+        { path: "~/dev/project" },
+        [],
+      );
+      expect(result.values).toEqual([join("/mock/home", "dev/project")]);
+    });
+
+    it("expands $HOME/... path value to absolute home path", () => {
+      const result = normalizeInput(
+        "external_directory",
+        { path: "$HOME/dev/project" },
+        [],
+      );
+      expect(result.values).toEqual([join("/mock/home", "dev/project")]);
+    });
+
+    it("adds cwd-normalized and relative aliases when cwd is provided", () => {
+      const result = normalizeInput(
+        "external_directory",
+        { path: "src/App.jsx" },
+        [],
+        "/workspace/project",
+      );
+      expect(result.values).toEqual([
+        "/workspace/project/src/App.jsx",
+        "src/App.jsx",
+      ]);
     });
   });
 
@@ -129,6 +234,29 @@ describe("normalizeInput — non-MCP surfaces", () => {
     it("falls back to '*' when input is null", () => {
       const result = normalizeInput("edit", null, []);
       expect(result.values).toEqual(["*"]);
+    });
+
+    it("expands ~/... path value to absolute home path", () => {
+      const result = normalizeInput("read", { path: "~/.ssh/config" }, []);
+      expect(result.values).toEqual([join("/mock/home", ".ssh/config")]);
+    });
+
+    it("expands $HOME/... path value to absolute home path", () => {
+      const result = normalizeInput("write", { path: "$HOME/.ssh/config" }, []);
+      expect(result.values).toEqual([join("/mock/home", ".ssh/config")]);
+    });
+
+    it("adds cwd-normalized and relative aliases when cwd is provided", () => {
+      const result = normalizeInput(
+        "read",
+        { path: "src/App.jsx" },
+        [],
+        "/workspace/project",
+      );
+      expect(result.values).toEqual([
+        "/workspace/project/src/App.jsx",
+        "src/App.jsx",
+      ]);
     });
   });
 

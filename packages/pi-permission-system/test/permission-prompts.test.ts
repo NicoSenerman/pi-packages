@@ -151,6 +151,73 @@ describe("formatAskPrompt", () => {
     expect(result).toContain("matched 'git *'");
   });
 
+  test("appends full command when input contains a chain that differs from the sub-command", () => {
+    const result = formatAskPrompt(
+      toolResult("bash", { command: "rm -rf ." }),
+      undefined,
+      { command: 'echo "hello" && rm -rf .' },
+      makeFormatter(),
+    );
+    expect(result).toBe(
+      `Current agent requested bash command 'rm -rf .' (full command: 'echo "hello" && rm -rf .'). Allow this command?`,
+    );
+  });
+
+  test("suppresses full-command suffix when input command matches the sub-command (no chain)", () => {
+    const result = formatAskPrompt(
+      toolResult("bash", { command: "git push" }),
+      undefined,
+      { command: "git push" },
+      makeFormatter(),
+    );
+    expect(result).not.toContain("full command:");
+    expect(result).toBe(
+      "Current agent requested bash command 'git push'. Allow this command?",
+    );
+  });
+
+  test("suppresses full-command suffix when input is undefined", () => {
+    const result = formatAskPrompt(
+      toolResult("bash", { command: "git push" }),
+      undefined,
+      undefined,
+      makeFormatter(),
+    );
+    expect(result).not.toContain("full command:");
+  });
+
+  test("suppresses full-command suffix when input has no command field", () => {
+    const result = formatAskPrompt(
+      toolResult("bash", { command: "git push" }),
+      undefined,
+      { unrelated: "value" },
+      makeFormatter(),
+    );
+    expect(result).not.toContain("full command:");
+  });
+
+  test("suppresses full-command suffix when input command is empty", () => {
+    const result = formatAskPrompt(
+      toolResult("bash", { command: "git push" }),
+      undefined,
+      { command: "" },
+      makeFormatter(),
+    );
+    expect(result).not.toContain("full command:");
+  });
+
+  test("places full-command suffix after the qualifier and before the terminal sentence", () => {
+    const result = formatAskPrompt(
+      toolResult("bash", { command: "rm -rf foo", matchedPattern: "rm *" }),
+      undefined,
+      { command: "cd /tmp && rm -rf foo" },
+      makeFormatter(),
+    );
+    expect(result).toBe(
+      "Current agent requested bash command 'rm -rf foo' (matched 'rm *') (full command: 'cd /tmp && rm -rf foo'). Allow this command?",
+    );
+  });
+
   test("formats bash prompt with nested execution context", () => {
     const result = formatAskPrompt(
       toolResult("bash", {

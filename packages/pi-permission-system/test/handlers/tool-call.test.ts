@@ -49,9 +49,10 @@ describe("getEventInput", () => {
 describe("handleToolCall", () => {
   it("activates session with ctx", async () => {
     const ctx = makeCtx();
-    const { handler, session } = makeHandler();
+    const { handler, forwarding } = makeHandler();
     await handler.handleToolCall(makeToolCallEvent("read"), ctx);
-    expect(session.activate).toHaveBeenCalledWith(ctx);
+    // session.activate(ctx) calls forwarding.start(ctx) on the real session
+    expect(forwarding.start).toHaveBeenCalledWith(ctx);
   });
 
   it("blocks when tool name cannot be resolved", async () => {
@@ -287,5 +288,108 @@ describe("handleToolCall — bash command chain gate", () => {
     const event = makeToolCallEvent("bash", { input: { command: "echo hi" } });
     const result = await handler.handleToolCall(event, makeCtx());
     expect(result).toEqual({});
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Moved from permission-system.test.ts catch-all (#342)
+// ---------------------------------------------------------------------------
+
+describe("handleToolCall — bash external-directory policy states", () => {
+  it("allows bash command with only internal paths when external_directory is denied", async () => {
+    const { handler } = makeHandler({ tools: ["bash"] });
+    const event = makeToolCallEvent("bash", {
+      input: { command: "cat src/index.ts" },
+    });
+    const result = await handler.handleToolCall(event, makeCtx());
+    expect(result).toEqual({});
+  });
+
+  it("blocks bash command with external path when external_directory is ask and no UI", async () => {
+    const { handler } = makeHandler({
+      session: {
+        checkPermission: makeSurfaceCheck({
+          external_directory: { state: "ask", source: "special" },
+        }),
+      },
+      tools: ["bash"],
+      prompter: {
+        canConfirm: vi.fn().mockReturnValue(false),
+        prompt: vi.fn().mockResolvedValue({ approved: false, state: "denied" }),
+      },
+    });
+    const event = makeToolCallEvent("bash", {
+      input: { command: "cat /etc/hosts" },
+    });
+    const result = await handler.handleToolCall(
+      event,
+      makeCtx({ hasUI: false }),
+    );
+    expect(result).toMatchObject({ block: true });
+    expect(String((result as { reason?: unknown }).reason)).toMatch(
+      /no interactive UI/i,
+    );
+  });
+
+  it("allows bash command with external path when external_directory is allow", async () => {
+    const { handler } = makeHandler({
+      session: {
+        checkPermission: makeSurfaceCheck({
+          external_directory: { state: "allow", source: "special" },
+        }),
+      },
+      tools: ["bash"],
+    });
+    const event = makeToolCallEvent("bash", {
+      input: { command: "cat /etc/hosts" },
+    });
+    const result = await handler.handleToolCall(event, makeCtx());
+    expect(result).toEqual({});
+  });
+
+  it("applies bash pattern deny after external_directory allow", async () => {
+    const { handler } = makeHandler({
+      session: {
+        checkPermission: makeSurfaceCheck(
+          {
+            external_directory: { state: "allow", source: "special" },
+            bash: { state: "deny", source: "bash" },
+          },
+          { state: "allow" },
+        ),
+      },
+      tools: ["bash"],
+    });
+    const event = makeToolCallEvent("bash", {
+      input: { command: "cat /etc/hosts" },
+    });
+    const result = await handler.handleToolCall(event, makeCtx());
+    expect(result).toMatchObject({ block: true });
+  });
+});
+
+describe("handleToolCall — generic ask prompt content", () => {
+  it("ask prompt includes serialized tool input for informed approval", async () => {
+    const { handler, prompter } = makeHandler({
+      session: {
+        checkPermission: makeSurfaceCheck({
+          weather_lookup: { state: "ask" },
+        }),
+      },
+      tools: ["weather_lookup"],
+      prompter: {
+        canConfirm: vi.fn().mockReturnValue(true),
+        prompt: vi.fn().mockResolvedValue({ approved: false, state: "denied" }),
+      },
+    });
+    const event = makeToolCallEvent("weather_lookup", {
+      input: { city: "Chicago", units: "metric" },
+    });
+    await handler.handleToolCall(event, makeCtx());
+    expect(vi.mocked(prompter.prompt)).toHaveBeenCalledTimes(1);
+    const promptDetails = vi.mocked(prompter.prompt).mock.calls[0][0];
+    expect(promptDetails.message).toMatch(
+      /\{"city":"Chicago","units":"metric"\}/,
+    );
   });
 });

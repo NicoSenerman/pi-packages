@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.5.1](https://github.com/gotgenes/pi-packages/compare/pi-colgrep-v1.5.0...pi-colgrep-v1.5.1) (2026-06-12)
+
+
+### Miscellaneous Chores
+
+* **deps:** bump Pi SDK to 0.79.1 ([#370](https://github.com/gotgenes/pi-packages/issues/370)) ([704f3b3](https://github.com/gotgenes/pi-packages/commit/704f3b3457ceb12b9df9efffe7a56812a5667d5d))
+* **deps:** bump typebox to 1.2.8 ([#370](https://github.com/gotgenes/pi-packages/issues/370)) ([8066a85](https://github.com/gotgenes/pi-packages/commit/8066a8573eba31b35b03fc7fcd26ab1041cc75d2))
+
+## [1.5.0](https://github.com/gotgenes/pi-packages/compare/pi-colgrep-v1.4.2...pi-colgrep-v1.5.0) (2026-06-12)
+
+
+### Features
+
+* add colgrep config loader with indexOnStartup ([#389](https://github.com/gotgenes/pi-packages/issues/389)) ([42681b3](https://github.com/gotgenes/pi-packages/commit/42681b37fd6ab3655b5131cd80ba7008618059ef))
+* add colgrep index-existence probe ([#389](https://github.com/gotgenes/pi-packages/issues/389)) ([f2ac61a](https://github.com/gotgenes/pi-packages/commit/f2ac61a35d03f9e3ef50c3e2206aa1006a7083d2))
+* coalesce concurrent reindex runs and track in-flight promise ([#389](https://github.com/gotgenes/pi-packages/issues/389)) ([9f4cea6](https://github.com/gotgenes/pi-packages/commit/9f4cea6f3370ab9ca73a05e85bb5b60ab9263d45))
+* gate write/edit reindex on existing index with one-time skip warning ([#389](https://github.com/gotgenes/pi-packages/issues/389)) ([f5505ae](https://github.com/gotgenes/pi-packages/commit/f5505ae554589a600700028090e1a212fe12655a))
+* run startup index in background, gated by indexOnStartup ([#389](https://github.com/gotgenes/pi-packages/issues/389)) ([a4738a8](https://github.com/gotgenes/pi-packages/commit/a4738a8fbcc2983dc27d4d62bdb08d83c7d720b0))
+
+
+### Documentation
+
+* document colgrep indexOnStartup configuration ([#389](https://github.com/gotgenes/pi-packages/issues/389)) ([cfc4e3e](https://github.com/gotgenes/pi-packages/commit/cfc4e3e0ba08bcb87f17697942396b57380e6712))
+
 ## [1.4.2](https://github.com/gotgenes/pi-packages/compare/pi-colgrep-v1.4.1...pi-colgrep-v1.4.2) (2026-06-03)
 
 

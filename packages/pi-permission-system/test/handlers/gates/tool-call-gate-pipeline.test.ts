@@ -23,7 +23,7 @@ vi.mock("#src/handlers/gates/bash-program", () => ({
 function makeMockBashProgram() {
   return {
     commands: vi.fn<() => []>(() => []),
-    pathTokens: vi.fn<() => []>(() => []),
+    pathRuleCandidates: vi.fn<() => []>(() => []),
     externalPaths: vi.fn<() => []>(() => []),
   };
 }
@@ -40,9 +40,10 @@ describe("ToolCallGatePipeline", () => {
 
   describe("evaluate — non-bash tool", () => {
     it("returns allow when all gates pass", async () => {
+      const resolver = makeResolver(makeCheckResult());
       const inputs = makeGateInputs();
-      const { runner } = makeGateRunner({ resolve: inputs.resolve });
-      const pipeline = new ToolCallGatePipeline(inputs);
+      const { runner } = makeGateRunner();
+      const pipeline = new ToolCallGatePipeline(resolver, inputs);
 
       const result = await pipeline.evaluate(
         makeTcc({ toolName: "read", input: {} }),
@@ -53,12 +54,12 @@ describe("ToolCallGatePipeline", () => {
     });
 
     it("returns block when the tool gate denies", async () => {
-      const { resolve } = makeResolver(
+      const resolver = makeResolver(
         makeCheckResult({ state: "deny", matchedPattern: "*" }),
       );
-      const inputs = makeGateInputs({ resolve });
-      const { runner } = makeGateRunner({ resolve });
-      const pipeline = new ToolCallGatePipeline(inputs);
+      const inputs = makeGateInputs();
+      const { runner } = makeGateRunner();
+      const pipeline = new ToolCallGatePipeline(resolver, inputs);
 
       const result = await pipeline.evaluate(
         makeTcc({ toolName: "read", input: {} }),
@@ -69,13 +70,14 @@ describe("ToolCallGatePipeline", () => {
     });
 
     it("short-circuits after the first blocking gate without evaluating later ones", async () => {
+      const resolver = makeResolver(makeCheckResult());
       const inputs = makeGateInputs();
       const { runner } = makeGateRunner();
       const runSpy = vi
         .spyOn(runner, "run")
         .mockResolvedValue({ action: "block", reason: "first gate blocked" });
 
-      const pipeline = new ToolCallGatePipeline(inputs);
+      const pipeline = new ToolCallGatePipeline(resolver, inputs);
       const result = await pipeline.evaluate(
         makeTcc({ toolName: "read", input: {} }),
         runner,
@@ -92,9 +94,10 @@ describe("ToolCallGatePipeline", () => {
         toolTextSummaryMaxLength: 100,
         toolInputLogPreviewMaxLength: 200,
       }));
+      const resolver = makeResolver(makeCheckResult());
       const inputs = makeGateInputs({ getToolPreviewLimits });
-      const { runner } = makeGateRunner({ resolve: inputs.resolve });
-      const pipeline = new ToolCallGatePipeline(inputs);
+      const { runner } = makeGateRunner();
+      const pipeline = new ToolCallGatePipeline(resolver, inputs);
 
       await pipeline.evaluate(makeTcc({ toolName: "read", input: {} }), runner);
 
@@ -103,9 +106,10 @@ describe("ToolCallGatePipeline", () => {
 
     it("calls getInfrastructureReadDirs() during evaluate", async () => {
       const getInfrastructureReadDirs = vi.fn<() => string[]>(() => []);
+      const resolver = makeResolver(makeCheckResult());
       const inputs = makeGateInputs({ getInfrastructureReadDirs });
-      const { runner } = makeGateRunner({ resolve: inputs.resolve });
-      const pipeline = new ToolCallGatePipeline(inputs);
+      const { runner } = makeGateRunner();
+      const pipeline = new ToolCallGatePipeline(resolver, inputs);
 
       await pipeline.evaluate(makeTcc({ toolName: "read", input: {} }), runner);
 
@@ -114,9 +118,10 @@ describe("ToolCallGatePipeline", () => {
 
     it("calls getActiveSkillEntries() during evaluate", async () => {
       const getActiveSkillEntries = vi.fn<() => []>(() => []);
+      const resolver = makeResolver(makeCheckResult());
       const inputs = makeGateInputs({ getActiveSkillEntries });
-      const { runner } = makeGateRunner({ resolve: inputs.resolve });
-      const pipeline = new ToolCallGatePipeline(inputs);
+      const { runner } = makeGateRunner();
+      const pipeline = new ToolCallGatePipeline(resolver, inputs);
 
       await pipeline.evaluate(makeTcc({ toolName: "read", input: {} }), runner);
 
@@ -124,9 +129,10 @@ describe("ToolCallGatePipeline", () => {
     });
 
     it("does not call BashProgram.parse for non-bash tools", async () => {
+      const resolver = makeResolver(makeCheckResult());
       const inputs = makeGateInputs();
-      const { runner } = makeGateRunner({ resolve: inputs.resolve });
-      const pipeline = new ToolCallGatePipeline(inputs);
+      const { runner } = makeGateRunner();
+      const pipeline = new ToolCallGatePipeline(resolver, inputs);
 
       await pipeline.evaluate(makeTcc({ toolName: "read", input: {} }), runner);
 
@@ -138,9 +144,10 @@ describe("ToolCallGatePipeline", () => {
 
   describe("evaluate — bash tool", () => {
     it("returns allow when the bash command is permitted", async () => {
+      const resolver = makeResolver(makeCheckResult());
       const inputs = makeGateInputs();
-      const { runner } = makeGateRunner({ resolve: inputs.resolve });
-      const pipeline = new ToolCallGatePipeline(inputs);
+      const { runner } = makeGateRunner();
+      const pipeline = new ToolCallGatePipeline(resolver, inputs);
 
       const result = await pipeline.evaluate(
         makeTcc({ toolName: "bash", input: { command: "echo hello" } }),
@@ -151,9 +158,10 @@ describe("ToolCallGatePipeline", () => {
     });
 
     it("parses BashProgram exactly once per evaluate for bash tools with a command", async () => {
+      const resolver = makeResolver(makeCheckResult());
       const inputs = makeGateInputs();
-      const { runner } = makeGateRunner({ resolve: inputs.resolve });
-      const pipeline = new ToolCallGatePipeline(inputs);
+      const { runner } = makeGateRunner();
+      const pipeline = new ToolCallGatePipeline(resolver, inputs);
 
       await pipeline.evaluate(
         makeTcc({ toolName: "bash", input: { command: "echo hello" } }),
@@ -165,9 +173,10 @@ describe("ToolCallGatePipeline", () => {
     });
 
     it("does not parse BashProgram when the bash command is empty", async () => {
+      const resolver = makeResolver(makeCheckResult());
       const inputs = makeGateInputs();
-      const { runner } = makeGateRunner({ resolve: inputs.resolve });
-      const pipeline = new ToolCallGatePipeline(inputs);
+      const { runner } = makeGateRunner();
+      const pipeline = new ToolCallGatePipeline(resolver, inputs);
 
       await pipeline.evaluate(
         makeTcc({ toolName: "bash", input: { command: "" } }),
@@ -175,6 +184,69 @@ describe("ToolCallGatePipeline", () => {
       );
 
       expect(mockBashProgramParse).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── customExtractors threading (#352) ────────────────────────────────────
+
+  describe("evaluate — customExtractors threading (#352)", () => {
+    // Deny only the cross-cutting `path` surface; allow everything else, so a
+    // block can only come from the path gate seeing the extracted path.
+    function pathDenyingResolver() {
+      const resolver = makeResolver();
+      resolver.resolve.mockImplementation((surface) =>
+        surface === "path"
+          ? makeCheckResult({ state: "deny", matchedPattern: "*" })
+          : makeCheckResult(),
+      );
+      return resolver;
+    }
+
+    const extractors = {
+      get: (name: string) =>
+        name === "ffgrep"
+          ? (input: Record<string, unknown>) =>
+              typeof input.target === "string" ? input.target : undefined
+          : undefined,
+    };
+
+    it("forwards extractors so a custom-shaped tool is path-gated", async () => {
+      const resolver = pathDenyingResolver();
+      const inputs = makeGateInputs();
+      const { runner } = makeGateRunner();
+      const pipeline = new ToolCallGatePipeline(
+        resolver,
+        inputs,
+        undefined,
+        extractors,
+      );
+
+      const result = await pipeline.evaluate(
+        makeTcc({
+          toolName: "ffgrep",
+          input: { target: "/test/project/secret.env" },
+        }),
+        runner,
+      );
+
+      expect(result).toMatchObject({ action: "block" });
+    });
+
+    it("without extractors the custom-shaped tool is not path-gated", async () => {
+      const resolver = pathDenyingResolver();
+      const inputs = makeGateInputs();
+      const { runner } = makeGateRunner();
+      const pipeline = new ToolCallGatePipeline(resolver, inputs);
+
+      const result = await pipeline.evaluate(
+        makeTcc({
+          toolName: "ffgrep",
+          input: { target: "/test/project/secret.env" },
+        }),
+        runner,
+      );
+
+      expect(result).toEqual({ action: "allow" });
     });
   });
 });

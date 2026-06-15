@@ -148,3 +148,133 @@ describe("describePathGate", () => {
     );
   });
 });
+
+// Home-relative path characterization (#350) ──────────────────────────────
+//
+// The gate passes the raw path to the resolver; home expansion is handled
+// downstream by normalizeInput. These tests lock in that the gate works
+// correctly when the tool input contains a ~/... or $HOME/... path.
+
+describe("describePathGate — home-relative paths", () => {
+  it("passes raw ~/... path to resolver and builds descriptor on deny", () => {
+    const resolver = makeResolver(
+      makeCheckResult({ state: "deny", matchedPattern: "~/.ssh/*" }),
+    );
+    const result = describePathGate(
+      makeTcc({ input: { path: "~/.ssh/config" } }),
+      resolver,
+    ) as GateDescriptor;
+
+    expect(isGateDescriptor(result)).toBe(true);
+    expect(result.preCheck?.state).toBe("deny");
+    // Raw path preserved in denial context for display.
+    expect(result.denialContext).toMatchObject({
+      kind: "path",
+      toolName: "read",
+      pathValue: "~/.ssh/config",
+    });
+    expect(resolver.resolve).toHaveBeenCalledWith(
+      "path",
+      { path: "~/.ssh/config" },
+      undefined,
+    );
+  });
+
+  it("passes raw $HOME/... path to resolver and builds descriptor on deny", () => {
+    const resolver = makeResolver(
+      makeCheckResult({ state: "deny", matchedPattern: "$HOME/.ssh/*" }),
+    );
+    const result = describePathGate(
+      makeTcc({ input: { path: "$HOME/.ssh/config" } }),
+      resolver,
+    ) as GateDescriptor;
+
+    expect(isGateDescriptor(result)).toBe(true);
+    expect(result.preCheck?.state).toBe("deny");
+    expect(result.denialContext).toMatchObject({
+      kind: "path",
+      pathValue: "$HOME/.ssh/config",
+    });
+  });
+
+  it("returns null when home-relative path resolves to allow", () => {
+    const resolver = makeResolver(makeCheckResult({ state: "allow" }));
+    const result = describePathGate(
+      makeTcc({ input: { path: "~/.ssh/config" } }),
+      resolver,
+    );
+    expect(result).toBeNull();
+  });
+});
+
+// Extension and MCP tools are now path-gated (#352) ──────────────────────────
+
+describe("describePathGate — extension and MCP tools (#352)", () => {
+  function extractorLookup(toolName: string, key: string) {
+    return {
+      get: (name: string) =>
+        name === toolName
+          ? (input: Record<string, unknown>) =>
+              typeof input[key] === "string" ? input[key] : undefined
+          : undefined,
+    };
+  }
+
+  it("gates an extension tool that exposes input.path", () => {
+    const resolver = makeResolver(
+      makeCheckResult({ state: "deny", matchedPattern: "*.env" }),
+    );
+    const result = describePathGate(
+      makeTcc({ toolName: "my-ext", input: { path: ".env" } }),
+      resolver,
+    );
+    expect(isGateDescriptor(result)).toBe(true);
+    expect(resolver.resolve).toHaveBeenCalledWith(
+      "path",
+      { path: ".env" },
+      undefined,
+    );
+  });
+
+  it("gates an MCP tool via arguments.path", () => {
+    const resolver = makeResolver(
+      makeCheckResult({ state: "deny", matchedPattern: "*.env" }),
+    );
+    const result = describePathGate(
+      makeTcc({ toolName: "mcp", input: { arguments: { path: ".env" } } }),
+      resolver,
+    );
+    expect(isGateDescriptor(result)).toBe(true);
+    expect(resolver.resolve).toHaveBeenCalledWith(
+      "path",
+      { path: ".env" },
+      undefined,
+    );
+  });
+
+  it("uses a registered extractor's path for a custom-shaped tool", () => {
+    const resolver = makeResolver(
+      makeCheckResult({ state: "deny", matchedPattern: "*" }),
+    );
+    describePathGate(
+      makeTcc({ toolName: "ffgrep", input: { target: "/etc/passwd" } }),
+      resolver,
+      extractorLookup("ffgrep", "target"),
+    );
+    expect(resolver.resolve).toHaveBeenCalledWith(
+      "path",
+      { path: "/etc/passwd" },
+      undefined,
+    );
+  });
+
+  it("returns null for an extension tool without a path", () => {
+    const resolver = makeResolver();
+    const result = describePathGate(
+      makeTcc({ toolName: "my-ext", input: { other: true } }),
+      resolver,
+    );
+    expect(result).toBeNull();
+    expect(resolver.resolve).not.toHaveBeenCalled();
+  });
+});

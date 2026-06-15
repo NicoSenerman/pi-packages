@@ -2,8 +2,8 @@
  * Extension configuration loading.
  *
  * Config files live at:
- *  - Global:  <agentDir>/extensions/@gotgenes/pi-github-tools/config.json
- *  - Project: <cwd>/.pi/extensions/@gotgenes/pi-github-tools/config.json
+ *  - Global:  <agentDir>/extensions/pi-github-tools/config.json
+ *  - Project: <cwd>/.pi/extensions/pi-github-tools/config.json
  *
  * Project config takes precedence over global.
  */

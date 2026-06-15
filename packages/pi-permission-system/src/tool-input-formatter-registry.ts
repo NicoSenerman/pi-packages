@@ -20,13 +20,23 @@ export interface ToolInputFormatterLookup {
 }
 
 /**
+ * Registration side of the formatter registry (ISP — exposes only the
+ * write surface, mirroring the read-only {@link ToolInputFormatterLookup}).
+ */
+export interface ToolInputFormatterRegistrar {
+  register(toolName: string, formatter: ToolInputFormatter): () => void;
+}
+
+/**
  * Persistent registry mapping tool names to custom preview formatters.
  *
  * Owned by the extension factory (`index.ts`) so it survives across the
  * per-tool-call `ToolPreviewFormatter` construction cycle.
  * Exposed to sibling extensions via `PermissionsService.registerToolInputFormatter`.
  */
-export class ToolInputFormatterRegistry implements ToolInputFormatterLookup {
+export class ToolInputFormatterRegistry
+  implements ToolInputFormatterLookup, ToolInputFormatterRegistrar
+{
   private readonly formatters = new Map<string, ToolInputFormatter>();
 
   /**

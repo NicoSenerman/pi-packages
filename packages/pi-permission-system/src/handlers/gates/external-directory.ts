@@ -1,11 +1,12 @@
 import {
-  getPathBearingToolPath,
+  canonicalNormalizePathForComparison,
+  getToolInputPath,
   isPathOutsideWorkingDirectory,
   isPiInfrastructureRead,
-  normalizePathForComparison,
 } from "#src/path-utils";
 import { SessionApproval } from "#src/session-approval";
 import { deriveApprovalPattern } from "#src/session-rules";
+import type { ToolAccessExtractorLookup } from "#src/tool-access-extractor-registry";
 import type { GateResult } from "./descriptor";
 import { formatExternalDirectoryAskPrompt } from "./external-directory-messages";
 import type { ToolCallContext } from "./types";
@@ -21,17 +22,22 @@ import type { ToolCallContext } from "./types";
 export function describeExternalDirectoryGate(
   tcc: ToolCallContext,
   infraDirs: string[],
+  extractors?: ToolAccessExtractorLookup,
 ): GateResult {
   if (!tcc.cwd) return null;
 
-  const externalDirectoryPath = getPathBearingToolPath(tcc.toolName, tcc.input);
+  const externalDirectoryPath = getToolInputPath(
+    tcc.toolName,
+    tcc.input,
+    extractors,
+  );
   if (!externalDirectoryPath) return null;
 
   if (!isPathOutsideWorkingDirectory(externalDirectoryPath, tcc.cwd)) {
     return null;
   }
 
-  const normalizedExtPath = normalizePathForComparison(
+  const normalizedExtPath = canonicalNormalizePathForComparison(
     externalDirectoryPath,
     tcc.cwd,
   );

@@ -8,7 +8,5 @@ import type { PromptPermissionDetails } from "./permission-prompter";
  */
 export interface GatePrompter {
   canConfirm(): boolean;
-  promptPermission(
-    details: PromptPermissionDetails,
-  ): Promise<PermissionPromptDecision>;
+  prompt(details: PromptPermissionDetails): Promise<PermissionPromptDecision>;
 }

@@ -50,7 +50,7 @@ function makeDeps(
 ): PermissionPrompterDeps {
   return {
     config: makeConfigReader(),
-    writeReviewLog: vi.fn(),
+    logger: { review: vi.fn() },
     events: { emit: vi.fn(), on: vi.fn().mockReturnValue(() => undefined) },
     forwarder: { requestApproval: mockRequestApproval },
     ...overrides,
@@ -97,32 +97,32 @@ describe("PermissionPrompter", () => {
     });
 
     it("logs permission_request.auto_approved in yolo mode", async () => {
-      const writeReviewLog = vi.fn();
+      const logger = { review: vi.fn() };
       const deps = makeDeps({
         config: makeConfigReader({ yoloMode: true }),
-        writeReviewLog,
+        logger,
       });
       const prompter = new PermissionPrompter(deps);
 
       await prompter.prompt(makeCtx(false), makeDetails());
 
-      expect(writeReviewLog).toHaveBeenCalledWith(
+      expect(logger.review).toHaveBeenCalledWith(
         "permission_request.auto_approved",
         expect.objectContaining({ requestId: "req-123" }),
       );
     });
 
     it("does not log permission_request.waiting in yolo mode", async () => {
-      const writeReviewLog = vi.fn();
+      const logger = { review: vi.fn() };
       const deps = makeDeps({
         config: makeConfigReader({ yoloMode: true }),
-        writeReviewLog,
+        logger,
       });
       const prompter = new PermissionPrompter(deps);
 
       await prompter.prompt(makeCtx(false), makeDetails());
 
-      expect(writeReviewLog).not.toHaveBeenCalledWith(
+      expect(logger.review).not.toHaveBeenCalledWith(
         "permission_request.waiting",
         expect.anything(),
       );
@@ -144,18 +144,18 @@ describe("PermissionPrompter", () => {
 
   describe("non-yolo path (UI present)", () => {
     it("logs permission_request.waiting before calling confirmPermission", async () => {
-      const writeReviewLog = vi.fn();
+      const logger = { review: vi.fn() };
       const approved: PermissionPromptDecision = {
         approved: true,
         state: "approved",
       };
       mockRequestApproval.mockResolvedValue(approved);
-      const deps = makeDeps({ writeReviewLog });
+      const deps = makeDeps({ logger });
       const prompter = new PermissionPrompter(deps);
 
       await prompter.prompt(makeCtx(true), makeDetails());
 
-      const calls = writeReviewLog.mock.calls.map((c) => c[0] as string);
+      const calls = logger.review.mock.calls.map((c) => c[0] as string);
       expect(
         calls.indexOf("permission_request.waiting"),
       ).toBeGreaterThanOrEqual(0);
@@ -249,17 +249,17 @@ describe("PermissionPrompter", () => {
     });
 
     it("logs permission_request.approved when confirmPermission returns approved", async () => {
-      const writeReviewLog = vi.fn();
+      const logger = { review: vi.fn() };
       mockRequestApproval.mockResolvedValue({
         approved: true,
         state: "approved",
       });
-      const deps = makeDeps({ writeReviewLog });
+      const deps = makeDeps({ logger });
       const prompter = new PermissionPrompter(deps);
 
       await prompter.prompt(makeCtx(true), makeDetails());
 
-      expect(writeReviewLog).toHaveBeenCalledWith(
+      expect(logger.review).toHaveBeenCalledWith(
         "permission_request.approved",
         expect.objectContaining({
           requestId: "req-123",
@@ -269,17 +269,17 @@ describe("PermissionPrompter", () => {
     });
 
     it("logs permission_request.denied when confirmPermission returns denied", async () => {
-      const writeReviewLog = vi.fn();
+      const logger = { review: vi.fn() };
       mockRequestApproval.mockResolvedValue({
         approved: false,
         state: "denied",
       });
-      const deps = makeDeps({ writeReviewLog });
+      const deps = makeDeps({ logger });
       const prompter = new PermissionPrompter(deps);
 
       await prompter.prompt(makeCtx(true), makeDetails());
 
-      expect(writeReviewLog).toHaveBeenCalledWith(
+      expect(logger.review).toHaveBeenCalledWith(
         "permission_request.denied",
         expect.objectContaining({
           requestId: "req-123",
@@ -289,18 +289,18 @@ describe("PermissionPrompter", () => {
     });
 
     it("logs permission_request.denied with denialReason when present", async () => {
-      const writeReviewLog = vi.fn();
+      const logger = { review: vi.fn() };
       mockRequestApproval.mockResolvedValue({
         approved: false,
         state: "denied_with_reason",
         denialReason: "too sensitive",
       });
-      const deps = makeDeps({ writeReviewLog });
+      const deps = makeDeps({ logger });
       const prompter = new PermissionPrompter(deps);
 
       await prompter.prompt(makeCtx(true), makeDetails());
 
-      expect(writeReviewLog).toHaveBeenCalledWith(
+      expect(logger.review).toHaveBeenCalledWith(
         "permission_request.denied",
         expect.objectContaining({
           denialReason: "too sensitive",
@@ -406,12 +406,12 @@ describe("PermissionPrompter", () => {
 
   describe("review log fields", () => {
     it("includes all standard fields in the waiting log entry", async () => {
-      const writeReviewLog = vi.fn();
+      const logger = { review: vi.fn() };
       mockRequestApproval.mockResolvedValue({
         approved: true,
         state: "approved",
       });
-      const deps = makeDeps({ writeReviewLog });
+      const deps = makeDeps({ logger });
       const prompter = new PermissionPrompter(deps);
       const details = makeDetails({
         toolCallId: "tc-1",
@@ -424,7 +424,7 @@ describe("PermissionPrompter", () => {
 
       await prompter.prompt(makeCtx(true), details);
 
-      expect(writeReviewLog).toHaveBeenCalledWith(
+      expect(logger.review).toHaveBeenCalledWith(
         "permission_request.waiting",
         expect.objectContaining({
           requestId: "req-123",
@@ -443,17 +443,17 @@ describe("PermissionPrompter", () => {
     });
 
     it("uses null for optional fields not present in details", async () => {
-      const writeReviewLog = vi.fn();
+      const logger = { review: vi.fn() };
       mockRequestApproval.mockResolvedValue({
         approved: true,
         state: "approved",
       });
-      const deps = makeDeps({ writeReviewLog });
+      const deps = makeDeps({ logger });
       const prompter = new PermissionPrompter(deps);
 
       await prompter.prompt(makeCtx(true), makeDetails());
 
-      expect(writeReviewLog).toHaveBeenCalledWith(
+      expect(logger.review).toHaveBeenCalledWith(
         "permission_request.waiting",
         expect.objectContaining({
           toolCallId: null,
@@ -499,17 +499,17 @@ describe("PermissionPrompter", () => {
     });
 
     it("logs the outcome when confirmPermission resolves via forwarding", async () => {
-      const writeReviewLog = vi.fn();
+      const logger = { review: vi.fn() };
       mockRequestApproval.mockResolvedValue({
         approved: true,
         state: "approved",
       });
-      const deps = makeDeps({ writeReviewLog });
+      const deps = makeDeps({ logger });
       const prompter = new PermissionPrompter(deps);
 
       await prompter.prompt(makeCtx(false), makeDetails());
 
-      expect(writeReviewLog).toHaveBeenCalledWith(
+      expect(logger.review).toHaveBeenCalledWith(
         "permission_request.approved",
         expect.objectContaining({ requestId: "req-123" }),
       );

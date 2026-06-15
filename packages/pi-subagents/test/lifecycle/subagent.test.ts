@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
-import { Subagent, type SubagentLifecycleObserver } from "#src/lifecycle/subagent";
+import { Subagent, type SubagentExecution, type SubagentLifecycleObserver } from "#src/lifecycle/subagent";
 import type { SubagentSession, TurnLoopResult } from "#src/lifecycle/subagent-session";
+import { SubagentState, type SubagentStateInit } from "#src/lifecycle/subagent-state";
 import type { Workspace, WorkspaceProvider } from "#src/lifecycle/workspace";
-import type { CompactionInfo } from "#src/types";
+import type { AgentInvocation, CompactionInfo, SubagentType } from "#src/types";
+import { makeStubExecution } from "#test/helpers/make-subagent";
 import { createMockSession, createSubagentSessionStub, toSubagentSession } from "#test/helpers/mock-session";
 import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 
@@ -21,63 +23,37 @@ function defaultFactory(): SessionFactory {
 	return createFactory().factory;
 }
 
+interface MakeSubagentOptions extends SubagentStateInit {
+	id?: string;
+	type?: SubagentType;
+	description?: string;
+	invocation?: AgentInvocation;
+	execution?: SubagentExecution;
+}
+
+/** Construct a Subagent with default identity and a stub execution, overridable per test. */
+function makeSubagent(overrides: MakeSubagentOptions = {}): Subagent {
+	const { id, type, description, invocation, execution, ...stateOverrides } = overrides;
+	return new Subagent({
+		id: id ?? "1",
+		type: type ?? "general-purpose",
+		description: description ?? "test",
+		invocation,
+		execution: execution ?? makeStubExecution(),
+		state: Object.keys(stateOverrides).length > 0 ? new SubagentState(stateOverrides) : undefined,
+	});
+}
+
 describe("Subagent — constructor", () => {
 	it("sets required fields from init", () => {
-		const record = new Subagent({
-			id: "abc-123",
-			type: "Explore",
-			description: "Find stale TODOs",
-		});
+		const record = makeSubagent({ id: "abc-123", type: "Explore", description: "Find stale TODOs" });
 		expect(record.id).toBe("abc-123");
 		expect(record.type).toBe("Explore");
 		expect(record.description).toBe("Find stale TODOs");
 	});
 
-	it("defaults status to 'queued'", () => {
-		const record = new Subagent({
-			id: "1",
-			type: "general-purpose",
-			description: "test",
-		});
-		expect(record.status).toBe("queued");
-	});
-
-	it("defaults numeric counters to zero", () => {
-		const record = new Subagent({
-			id: "1",
-			type: "general-purpose",
-			description: "test",
-		});
-		expect(record.toolUses).toBe(0);
-		expect(record.compactionCount).toBe(0);
-		expect(record.lifetimeUsage).toEqual({ input: 0, output: 0, cacheWrite: 0 });
-	});
-
-	it("passes through optional transition fields", () => {
-		const record = new Subagent({
-			id: "1",
-			type: "general-purpose",
-			description: "test",
-			status: "completed",
-			result: "done",
-			error: "oops",
-			startedAt: 1000,
-			completedAt: 2000,
-		});
-		expect(record.status).toBe("completed");
-		expect(record.result).toBe("done");
-		expect(record.error).toBe("oops");
-		expect(record.startedAt).toBe(1000);
-		expect(record.completedAt).toBe(2000);
-	});
-
 	it("passes through optional identity fields", () => {
-		const record = new Subagent({
-			id: "1",
-			type: "general-purpose",
-			description: "test",
-			invocation: { modelName: "haiku" },
-		});
+		const record = makeSubagent({ invocation: { modelName: "haiku" } });
 		expect(record.abortController).toBeInstanceOf(AbortController);
 		expect(record.invocation).toEqual({ modelName: "haiku" });
 		// Stats always start at zero — set via mutation methods after construction
@@ -86,12 +62,9 @@ describe("Subagent — constructor", () => {
 		expect(record.lifetimeUsage).toEqual({ input: 0, output: 0, cacheWrite: 0 });
 	});
 
-	it("leaves optional fields undefined when not provided", () => {
-		const record = new Subagent({
-			id: "1",
-			type: "general-purpose",
-			description: "test",
-		});
+	it("defaults to a fresh queued state when none is supplied", () => {
+		const record = makeSubagent();
+		expect(record.status).toBe("queued");
 		expect(record.result).toBeUndefined();
 		expect(record.error).toBeUndefined();
 		expect(record.completedAt).toBeUndefined();
@@ -101,345 +74,45 @@ describe("Subagent — constructor", () => {
 	});
 
 	it("always creates its own AbortController", () => {
-		const record = new Subagent({
-			id: "1",
-			type: "general-purpose",
-			description: "test",
-		});
+		const record = makeSubagent();
 		expect(record.abortController).toBeInstanceOf(AbortController);
 		expect(record.abortController.signal.aborted).toBe(false);
 	});
 
-	it("creates NotificationState when parentSession.toolCallId is provided", () => {
-		const record = new Subagent({
-			id: "1",
-			type: "general-purpose",
-			description: "test",
-			parentSession: { toolCallId: "tc-42" },
-		});
+	it("creates NotificationState when execution.parentSession.toolCallId is provided", () => {
+		const record = makeSubagent({ execution: makeStubExecution({ parentSession: { toolCallId: "tc-42" } }) });
 		expect(record.notification).toBeDefined();
 		expect(record.notification!.toolCallId).toBe("tc-42");
 	});
 
 	it("does not create NotificationState when toolCallId is absent", () => {
-		const record = new Subagent({
-			id: "1",
-			type: "general-purpose",
-			description: "test",
-			parentSession: { parentSessionFile: "/sessions/p.jsonl" },
+		const record = makeSubagent({
+			execution: makeStubExecution({ parentSession: { parentSessionFile: "/sessions/p.jsonl" } }),
 		});
 		expect(record.notification).toBeUndefined();
 	});
 
 	it("does not create NotificationState when parentSession is absent", () => {
-		const record = new Subagent({
-			id: "1",
-			type: "general-purpose",
-			description: "test",
-		});
+		const record = makeSubagent();
 		expect(record.notification).toBeUndefined();
-	});
-});
-
-describe("Subagent — markRunning", () => {
-	it("sets status to 'running' and updates startedAt", () => {
-		const record = new Subagent({
-			id: "1",
-			type: "general-purpose",
-			description: "test",
-			status: "queued",
-			startedAt: 1000,
-		});
-		record.markRunning(2000);
-		expect(record.status).toBe("running");
-		expect(record.startedAt).toBe(2000);
-	});
-});
-
-describe("Subagent — markCompleted", () => {
-	it("sets status, result, and completedAt", () => {
-		const record = new Subagent({
-			id: "1",
-			type: "general-purpose",
-			description: "test",
-			status: "running",
-		});
-		record.markCompleted("all done", 5000);
-		expect(record.status).toBe("completed");
-		expect(record.result).toBe("all done");
-		expect(record.completedAt).toBe(5000);
-	});
-
-	it("defaults completedAt to Date.now() when not provided", () => {
-		const record = new Subagent({
-			id: "1",
-			type: "general-purpose",
-			description: "test",
-			status: "running",
-		});
-		const before = Date.now();
-		record.markCompleted("done");
-		const after = Date.now();
-		expect(record.completedAt).toBeGreaterThanOrEqual(before);
-		expect(record.completedAt).toBeLessThanOrEqual(after);
-	});
-
-	it("preserves existing completedAt (??= semantics)", () => {
-		const record = new Subagent({
-			id: "1",
-			type: "general-purpose",
-			description: "test",
-			status: "running",
-			completedAt: 1000,
-		});
-		record.markCompleted("done", 9999);
-		expect(record.completedAt).toBe(1000);
-	});
-
-	it("preserves status when already stopped, but still sets result and completedAt", () => {
-		const record = new Subagent({
-			id: "1",
-			type: "general-purpose",
-			description: "test",
-			status: "stopped",
-			completedAt: 1000,
-		});
-		record.markCompleted("late result", 2000);
-		expect(record.status).toBe("stopped");
-		expect(record.result).toBe("late result");
-		// completedAt preserved via ??= — already set to 1000
-		expect(record.completedAt).toBe(1000);
-	});
-});
-
-describe("Subagent — markAborted", () => {
-	it("sets status to 'aborted' with result and completedAt", () => {
-		const record = new Subagent({
-			id: "1",
-			type: "general-purpose",
-			description: "test",
-			status: "running",
-		});
-		record.markAborted("partial result", 3000);
-		expect(record.status).toBe("aborted");
-		expect(record.result).toBe("partial result");
-		expect(record.completedAt).toBe(3000);
-	});
-
-	it("preserves status when already stopped, but still sets result", () => {
-		const record = new Subagent({
-			id: "1",
-			type: "general-purpose",
-			description: "test",
-			status: "stopped",
-			completedAt: 500,
-		});
-		record.markAborted("partial", 2000);
-		expect(record.status).toBe("stopped");
-		expect(record.result).toBe("partial");
-		expect(record.completedAt).toBe(500);
-	});
-});
-
-describe("Subagent — markSteered", () => {
-	it("sets status to 'steered' with result and completedAt", () => {
-		const record = new Subagent({
-			id: "1",
-			type: "general-purpose",
-			description: "test",
-			status: "running",
-		});
-		record.markSteered("redirected", 4000);
-		expect(record.status).toBe("steered");
-		expect(record.result).toBe("redirected");
-		expect(record.completedAt).toBe(4000);
-	});
-
-	it("preserves status when already stopped, but still sets result", () => {
-		const record = new Subagent({
-			id: "1",
-			type: "general-purpose",
-			description: "test",
-			status: "stopped",
-			completedAt: 500,
-		});
-		record.markSteered("redirected", 2000);
-		expect(record.status).toBe("stopped");
-		expect(record.result).toBe("redirected");
-		expect(record.completedAt).toBe(500);
-	});
-});
-
-describe("Subagent — markError", () => {
-	it("sets status to 'error' and formats Error objects to .message", () => {
-		const record = new Subagent({
-			id: "1",
-			type: "general-purpose",
-			description: "test",
-			status: "running",
-		});
-		record.markError(new Error("something broke"), 6000);
-		expect(record.status).toBe("error");
-		expect(record.error).toBe("something broke");
-		expect(record.completedAt).toBe(6000);
-	});
-
-	it("formats non-Error values with String()", () => {
-		const record = new Subagent({
-			id: "1",
-			type: "general-purpose",
-			description: "test",
-			status: "running",
-		});
-		record.markError(42, 6000);
-		expect(record.error).toBe("42");
-	});
-
-	it("preserves status when already stopped, but still sets error and completedAt", () => {
-		const record = new Subagent({
-			id: "1",
-			type: "general-purpose",
-			description: "test",
-			status: "stopped",
-			completedAt: 1000,
-		});
-		record.markError(new Error("late error"), 2000);
-		expect(record.status).toBe("stopped");
-		expect(record.error).toBe("late error");
-		expect(record.completedAt).toBe(1000);
-	});
-
-	it("preserves existing completedAt (??= semantics)", () => {
-		const record = new Subagent({
-			id: "1",
-			type: "general-purpose",
-			description: "test",
-			status: "running",
-			completedAt: 1000,
-		});
-		record.markError(new Error("err"), 9999);
-		expect(record.completedAt).toBe(1000);
-	});
-});
-
-describe("Subagent — markStopped", () => {
-	it("sets status to 'stopped' and completedAt", () => {
-		const record = new Subagent({
-			id: "1",
-			type: "general-purpose",
-			description: "test",
-			status: "running",
-		});
-		record.markStopped(7000);
-		expect(record.status).toBe("stopped");
-		expect(record.completedAt).toBe(7000);
-	});
-
-	it("defaults completedAt to Date.now() when not provided", () => {
-		const record = new Subagent({
-			id: "1",
-			type: "general-purpose",
-			description: "test",
-			status: "running",
-		});
-		const before = Date.now();
-		record.markStopped();
-		const after = Date.now();
-		expect(record.completedAt).toBeGreaterThanOrEqual(before);
-		expect(record.completedAt).toBeLessThanOrEqual(after);
-	});
-
-	it("overwrites any previous status — no guard", () => {
-		const record = new Subagent({
-			id: "1",
-			type: "general-purpose",
-			description: "test",
-			status: "completed",
-		});
-		record.markStopped(8000);
-		expect(record.status).toBe("stopped");
-	});
-});
-
-describe("Subagent — incrementToolUses", () => {
-	it("starts at 0 and increments by 1 each call", () => {
-		const record = new Subagent({ id: "1", type: "general-purpose", description: "test" });
-		expect(record.toolUses).toBe(0);
-		record.incrementToolUses();
-		expect(record.toolUses).toBe(1);
-		record.incrementToolUses();
-		expect(record.toolUses).toBe(2);
-	});
-});
-
-describe("Subagent — addUsage", () => {
-	it("accumulates usage deltas into lifetimeUsage", () => {
-		const record = new Subagent({ id: "1", type: "general-purpose", description: "test" });
-		expect(record.lifetimeUsage).toEqual({ input: 0, output: 0, cacheWrite: 0 });
-		record.addUsage({ input: 100, output: 50, cacheWrite: 10 });
-		expect(record.lifetimeUsage).toEqual({ input: 100, output: 50, cacheWrite: 10 });
-		record.addUsage({ input: 200, output: 80, cacheWrite: 20 });
-		expect(record.lifetimeUsage).toEqual({ input: 300, output: 130, cacheWrite: 30 });
-	});
-});
-
-describe("Subagent — incrementCompactions", () => {
-	it("starts at 0 and increments by 1 each call", () => {
-		const record = new Subagent({ id: "1", type: "general-purpose", description: "test" });
-		expect(record.compactionCount).toBe(0);
-		record.incrementCompactions();
-		expect(record.compactionCount).toBe(1);
-		record.incrementCompactions();
-		expect(record.compactionCount).toBe(2);
-	});
-});
-
-describe("Subagent — resetForResume", () => {
-	it("sets status to 'running' and new startedAt", () => {
-		const record = new Subagent({
-			id: "1",
-			type: "general-purpose",
-			description: "test",
-			status: "completed",
-			startedAt: 1000,
-		});
-		record.resetForResume(9000);
-		expect(record.status).toBe("running");
-		expect(record.startedAt).toBe(9000);
-	});
-
-	it("clears completedAt, result, and error", () => {
-		const record = new Subagent({
-			id: "1",
-			type: "general-purpose",
-			description: "test",
-			status: "error",
-			result: "old result",
-			error: "old error",
-			completedAt: 5000,
-		});
-		record.resetForResume(9000);
-		expect(record.completedAt).toBeUndefined();
-		expect(record.result).toBeUndefined();
-		expect(record.error).toBeUndefined();
 	});
 });
 
 describe("convenience getters", () => {
 	describe("outputFile", () => {
 		it("returns undefined when subagentSession is not set", () => {
-			const record = new Subagent({ id: "1", type: "general-purpose", description: "test" });
+			const record = makeSubagent();
 			expect(record.outputFile).toBeUndefined();
 		});
 
 		it("returns outputFile from subagentSession when set", () => {
-			const record = new Subagent({ id: "1", type: "general-purpose", description: "test" });
+			const record = makeSubagent();
 			record.subagentSession = toSubagentSession(createSubagentSessionStub(createMockSession(), "/path/to/session.jsonl"));
 			expect(record.outputFile).toBe("/path/to/session.jsonl");
 		});
 
 		it("returns undefined when subagentSession is set but outputFile is undefined", () => {
-			const record = new Subagent({ id: "1", type: "general-purpose", description: "test" });
+			const record = makeSubagent();
 			record.subagentSession = toSubagentSession(createSubagentSessionStub(createMockSession()));
 			expect(record.outputFile).toBeUndefined();
 		});
@@ -449,12 +122,12 @@ describe("convenience getters", () => {
 describe("Subagent — session-encapsulation methods", () => {
 	describe("isSessionReady", () => {
 		it("returns false when no subagentSession", () => {
-			const agent = new Subagent({ id: "1", type: "general-purpose", description: "test" });
+			const agent = makeSubagent();
 			expect(agent.isSessionReady()).toBe(false);
 		});
 
 		it("returns true when subagentSession is set", () => {
-			const agent = new Subagent({ id: "1", type: "general-purpose", description: "test" });
+			const agent = makeSubagent();
 			agent.subagentSession = toSubagentSession(createSubagentSessionStub());
 			expect(agent.isSessionReady()).toBe(true);
 		});
@@ -462,14 +135,14 @@ describe("Subagent — session-encapsulation methods", () => {
 
 	describe("steer", () => {
 		it("buffers message and returns false when session not ready", async () => {
-			const agent = new Subagent({ id: "1", type: "general-purpose", description: "test" });
+			const agent = makeSubagent();
 			const delivered = await agent.steer("hello");
 			expect(delivered).toBe(false);
 			expect(agent.pendingSteerCount).toBe(1);
 		});
 
 		it("delivers message to session and returns true when session is ready", async () => {
-			const agent = new Subagent({ id: "1", type: "general-purpose", description: "test" });
+			const agent = makeSubagent();
 			const stub = createSubagentSessionStub();
 			agent.subagentSession = toSubagentSession(stub);
 			const delivered = await agent.steer("go faster");
@@ -481,12 +154,12 @@ describe("Subagent — session-encapsulation methods", () => {
 
 	describe("getConversation", () => {
 		it("returns undefined when no session", () => {
-			const agent = new Subagent({ id: "1", type: "general-purpose", description: "test" });
+			const agent = makeSubagent();
 			expect(agent.getConversation()).toBeUndefined();
 		});
 
 		it("delegates to SubagentSession.getConversation when session is ready", () => {
-			const agent = new Subagent({ id: "1", type: "general-purpose", description: "test" });
+			const agent = makeSubagent();
 			const stub = createSubagentSessionStub();
 			stub.getConversation.mockReturnValue("[User]: hi");
 			agent.subagentSession = toSubagentSession(stub);
@@ -496,12 +169,12 @@ describe("Subagent — session-encapsulation methods", () => {
 
 	describe("getContextPercent", () => {
 		it("returns null when no session", () => {
-			const agent = new Subagent({ id: "1", type: "general-purpose", description: "test" });
+			const agent = makeSubagent();
 			expect(agent.getContextPercent()).toBeNull();
 		});
 
 		it("delegates to SubagentSession.getContextPercent when session is ready", () => {
-			const agent = new Subagent({ id: "1", type: "general-purpose", description: "test" });
+			const agent = makeSubagent();
 			const stub = createSubagentSessionStub();
 			stub.getContextPercent.mockReturnValue(55);
 			agent.subagentSession = toSubagentSession(stub);
@@ -511,12 +184,12 @@ describe("Subagent — session-encapsulation methods", () => {
 
 	describe("subscribeToUpdates", () => {
 		it("returns undefined when no session", () => {
-			const agent = new Subagent({ id: "1", type: "general-purpose", description: "test" });
+			const agent = makeSubagent();
 			expect(agent.subscribeToUpdates(vi.fn())).toBeUndefined();
 		});
 
 		it("delegates to SubagentSession.subscribe when session is ready", () => {
-			const agent = new Subagent({ id: "1", type: "general-purpose", description: "test" });
+			const agent = makeSubagent();
 			const stub = createSubagentSessionStub();
 			agent.subagentSession = toSubagentSession(stub);
 			const fn = vi.fn();
@@ -528,12 +201,12 @@ describe("Subagent — session-encapsulation methods", () => {
 
 	describe("messages", () => {
 		it("returns empty array when no session", () => {
-			const agent = new Subagent({ id: "1", type: "general-purpose", description: "test" });
+			const agent = makeSubagent();
 			expect(agent.messages).toEqual([]);
 		});
 
 		it("delegates to SubagentSession.messages when session is ready", () => {
-			const agent = new Subagent({ id: "1", type: "general-purpose", description: "test" });
+			const agent = makeSubagent();
 			const session = createMockSession();
 			session.messages.push({ role: "user", content: "hi" });
 			const stub = createSubagentSessionStub(session);
@@ -545,38 +218,38 @@ describe("Subagent — session-encapsulation methods", () => {
 
 describe("Subagent — steer buffer", () => {
 	it("starts with an empty steer buffer", () => {
-		const record = new Subagent({ id: "1", type: "general-purpose", description: "test" });
+		const record = makeSubagent();
 		expect(record.pendingSteerCount).toBe(0);
 	});
 });
 
 describe("Subagent — abort", () => {
 	it("returns false and does nothing when not running", () => {
-		const record = new Subagent({ id: "1", type: "general-purpose", description: "test", status: "queued" });
+		const record = makeSubagent({ status: "queued" });
 		expect(record.abort()).toBe(false);
 		expect(record.status).toBe("queued");
 	});
 
 	it("fires the AbortController, marks stopped, and returns true when running", () => {
-		const record = new Subagent({ id: "1", type: "general-purpose", description: "test", status: "running" });
+		const record = makeSubagent({ status: "running" });
 		expect(record.abort()).toBe(true);
 		expect(record.abortController.signal.aborted).toBe(true);
 		expect(record.status).toBe("stopped");
 	});
 
 	it("marks stopped and returns true even without an AbortController", () => {
-		const record = new Subagent({ id: "1", type: "general-purpose", description: "test", status: "running" });
+		const record = makeSubagent({ status: "running" });
 		expect(record.abort()).toBe(true);
 		expect(record.status).toBe("stopped");
 	});
 
 	it("returns false when already stopped", () => {
-		const record = new Subagent({ id: "1", type: "general-purpose", description: "test", status: "stopped" });
+		const record = makeSubagent({ status: "stopped" });
 		expect(record.abort()).toBe(false);
 	});
 
 	it("returns false when completed", () => {
-		const record = new Subagent({ id: "1", type: "general-purpose", description: "test", status: "completed" });
+		const record = makeSubagent({ status: "completed" });
 		expect(record.abort()).toBe(false);
 	});
 });
@@ -586,7 +259,10 @@ describe("Subagent — abort", () => {
 /** Create a Subagent for completeRun / failRun tests. */
 function createCompletionAgent(overrides?: { observer?: SubagentLifecycleObserver }) {
 	return {
-		record: new Subagent({ id: "1", type: "general-purpose", description: "test", status: "running", observer: overrides?.observer }),
+		record: makeSubagent({
+			status: "running",
+			execution: makeStubExecution({ observer: overrides?.observer }),
+		}),
 	};
 }
 
@@ -627,13 +303,6 @@ describe("Subagent — completeRun", () => {
 		expect(onRunFinished).toHaveBeenCalledWith(record);
 	});
 
-	it("releases listeners on completion", () => {
-		const { record } = createCompletionAgent();
-		const unsub = vi.fn();
-		record.attachObserver(unsub);
-		record.completeRun(createTurnLoopResult());
-		expect(unsub).toHaveBeenCalledOnce();
-	});
 });
 
 describe("Subagent — failRun", () => {
@@ -652,18 +321,11 @@ describe("Subagent — failRun", () => {
 		expect(onRunFinished).toHaveBeenCalledWith(record);
 	});
 
-	it("releases listeners on failure", () => {
-		const { record } = createCompletionAgent();
-		const unsub = vi.fn();
-		record.attachObserver(unsub);
-		record.failRun(new Error("boom"));
-		expect(unsub).toHaveBeenCalledOnce();
-	});
 });
 
 describe("Subagent — disposeSession", () => {
 	it("disposes the wrapped SubagentSession", () => {
-		const record = new Subagent({ id: "1", type: "general-purpose", description: "test" });
+		const record = makeSubagent();
 		const stub = createSubagentSessionStub();
 		record.subagentSession = toSubagentSession(stub);
 		record.disposeSession();
@@ -671,64 +333,8 @@ describe("Subagent — disposeSession", () => {
 	});
 
 	it("is a no-op when no session was created", () => {
-		const record = new Subagent({ id: "1", type: "general-purpose", description: "test" });
+		const record = makeSubagent();
 		expect(() => record.disposeSession()).not.toThrow();
-	});
-});
-
-describe("Subagent — wireSignal", () => {
-	it("calls onAbort when the signal fires", () => {
-		const record = new Subagent({ id: "1", type: "general-purpose", description: "test" });
-		const controller = new AbortController();
-		const onAbort = vi.fn();
-		record.wireSignal(controller.signal, onAbort);
-		controller.abort();
-		expect(onAbort).toHaveBeenCalledOnce();
-	});
-
-	it("does nothing when signal is undefined", () => {
-		const record = new Subagent({ id: "1", type: "general-purpose", description: "test" });
-		expect(() => record.wireSignal(undefined, vi.fn())).not.toThrow();
-	});
-
-	it("releaseListeners detaches the signal listener", () => {
-		const record = new Subagent({ id: "1", type: "general-purpose", description: "test" });
-		const controller = new AbortController();
-		const onAbort = vi.fn();
-		record.wireSignal(controller.signal, onAbort);
-		record.releaseListeners();
-		controller.abort();
-		expect(onAbort).not.toHaveBeenCalled();
-	});
-});
-
-describe("Subagent — attachObserver / releaseListeners", () => {
-	it("stores unsub and calls it on releaseListeners", () => {
-		const record = new Subagent({ id: "1", type: "general-purpose", description: "test" });
-		const unsub = vi.fn();
-		record.attachObserver(unsub);
-		record.releaseListeners();
-		expect(unsub).toHaveBeenCalledOnce();
-	});
-
-	it("is idempotent — second release does not call unsub again", () => {
-		const record = new Subagent({ id: "1", type: "general-purpose", description: "test" });
-		const unsub = vi.fn();
-		record.attachObserver(unsub);
-		record.releaseListeners();
-		record.releaseListeners();
-		expect(unsub).toHaveBeenCalledOnce();
-	});
-});
-
-describe("Subagent — resetForResume releases listeners", () => {
-	it("releases listeners on reset", () => {
-		const record = new Subagent({ id: "1", type: "general-purpose", description: "test", status: "running" });
-		const unsub = vi.fn();
-		record.attachObserver(unsub);
-		record.markCompleted("done");
-		record.resetForResume(Date.now());
-		expect(unsub).toHaveBeenCalledOnce();
 	});
 });
 
@@ -751,15 +357,17 @@ function createRunnableAgent(overrides?: {
 		id: "run-1",
 		type: "general-purpose",
 		description: "run test",
-		createSubagentSession,
-		observer,
-		snapshot: STUB_SNAPSHOT,
-		prompt: "do something",
-		getRunConfig: overrides?.getRunConfig,
-		parentSession: overrides?.parentSession,
-		signal: overrides?.signal,
-		baseCwd: overrides?.baseCwd ?? "/base",
-		getWorkspaceProvider: provider ? () => provider : undefined,
+		execution: {
+			createSubagentSession,
+			observer,
+			snapshot: STUB_SNAPSHOT,
+			prompt: "do something",
+			getRunConfig: overrides?.getRunConfig,
+			parentSession: overrides?.parentSession,
+			signal: overrides?.signal,
+			baseCwd: overrides?.baseCwd ?? "/base",
+			getWorkspaceProvider: provider ? () => provider : undefined,
+		},
 	});
 }
 
@@ -888,11 +496,6 @@ describe("Subagent.run() — error handling", () => {
 		expect(agent.status).toBe("error");
 		expect(agent.error).toBe("creation failed");
 	});
-
-	it("throws when the session factory is missing", async () => {
-		const agent = new Subagent({ id: "1", type: "general-purpose", description: "test", snapshot: STUB_SNAPSHOT, prompt: "go" });
-		await expect(agent.run()).rejects.toThrow(/missing session factory/);
-	});
 });
 
 describe("Subagent.run() — abort signal forwarding", () => {
@@ -920,6 +523,68 @@ describe("Subagent.run() — RunConfig threading", () => {
 	});
 });
 
+// ── Subagent.start() ───────────────────────────────────────────────────────────
+
+describe("Subagent.start() — promise encapsulation", () => {
+	it("stores a run promise that resolves on completion", async () => {
+		const agent = createRunnableAgent();
+		agent.start();
+		expect(agent.promise).toBeInstanceOf(Promise);
+		await agent.promise;
+		expect(agent.status).toBe("completed");
+	});
+
+	it("promise is undefined before start() is called", () => {
+		const agent = createRunnableAgent();
+		expect(agent.promise).toBeUndefined();
+	});
+
+	it("is a no-op when status is stopped (abort-while-queued guard)", async () => {
+		const agent = makeSubagent({ status: "stopped", startedAt: 1, completedAt: 1 });
+		agent.start();
+		await expect(agent.promise).resolves.toBeUndefined();
+		expect(agent.status).toBe("stopped");
+	});
+
+	it("is a no-op when status is completed", async () => {
+		const agent = makeSubagent({ status: "completed", result: "done", startedAt: 1, completedAt: 2 });
+		agent.start();
+		await expect(agent.promise).resolves.toBeUndefined();
+		expect(agent.status).toBe("completed");
+	});
+});
+
+describe("Subagent.scheduleVia() — eager promise capture", () => {
+	it("exposes the scheduler promise before the run starts (queued-awaitable)", async () => {
+		const agent = makeSubagent({ status: "queued" });
+		const { promise: gate, resolve: openSlot } = Promise.withResolvers<void>(); // eslint-disable-line @typescript-eslint/no-invalid-void-type -- Promise.withResolvers<void> is valid; rule does not allow void in generic fn call type args
+		agent.scheduleVia(async (thunk) => {
+			await gate;
+			await thunk();
+		});
+		// Promise is captured at schedule time — before the slot opens.
+		expect(agent.promise).toBeInstanceOf(Promise);
+		expect(agent.status).toBe("queued");
+		openSlot();
+		await agent.promise;
+		expect(agent.status).toBe("completed");
+	});
+
+	it("runs guardedRun as the thunk — abort-while-queued is a no-op", async () => {
+		const agent = makeSubagent({ status: "queued" });
+		let thunkRan = false;
+		// Abort before the slot opens, then fire the thunk.
+		agent.markStopped();
+		agent.scheduleVia(async (thunk) => {
+			thunkRan = true;
+			await thunk();
+		});
+		await agent.promise;
+		expect(thunkRan).toBe(true);
+		expect(agent.status).toBe("stopped");
+	});
+});
+
 // ── Agent.resume() ─────────────────────────────────────────────────────────────
 
 /** Create an Agent with a SubagentSession already attached, ready for resume(). */
@@ -934,9 +599,8 @@ function createResumableAgent(overrides?: {
 		id: "resume-1",
 		type: "general-purpose",
 		description: "resume test",
-		status: "completed",
-		result: "first",
-		observer: overrides?.observer ?? {},
+		execution: makeStubExecution({ observer: overrides?.observer ?? {} }),
+		state: new SubagentState({ status: "completed", result: "first" }),
 	});
 	agent.subagentSession = toSubagentSession(stub);
 	return { agent, session, stub };
@@ -1028,7 +692,7 @@ describe("Subagent.resume() — error handling", () => {
 	});
 
 	it("throws when no session exists", async () => {
-		const agent = new Subagent({ id: "1", type: "general-purpose", description: "test" });
+		const agent = makeSubagent();
 		await expect(agent.resume("more")).rejects.toThrow(/missing session/);
 	});
 });

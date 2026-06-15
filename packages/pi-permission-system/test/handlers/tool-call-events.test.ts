@@ -4,6 +4,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
+import type { GatePrompter } from "#src/gate-prompter";
 import {
   getDecisionEvents,
   makeCheckResult,
@@ -110,8 +111,11 @@ describe("handleToolCall decision events — user_approved", () => {
         checkPermission: vi
           .fn()
           .mockReturnValue(makeCheckResult({ state: "ask" })),
+      },
+      prompter: {
+        canConfirm: vi.fn().mockReturnValue(true),
         prompt: vi
-          .fn()
+          .fn<GatePrompter["prompt"]>()
           .mockResolvedValue({ approved: true, state: "approved" }),
       },
     });
@@ -132,7 +136,10 @@ describe("handleToolCall decision events — user_approved", () => {
         checkPermission: vi
           .fn()
           .mockReturnValue(makeCheckResult({ state: "ask" })),
-        prompt: vi.fn().mockResolvedValue({
+      },
+      prompter: {
+        canConfirm: vi.fn().mockReturnValue(true),
+        prompt: vi.fn<GatePrompter["prompt"]>().mockResolvedValue({
           approved: true,
           state: "approved_for_session",
         }),
@@ -159,7 +166,12 @@ describe("handleToolCall decision events — user_denied", () => {
         checkPermission: vi
           .fn()
           .mockReturnValue(makeCheckResult({ state: "ask" })),
-        prompt: vi.fn().mockResolvedValue({ approved: false, state: "denied" }),
+      },
+      prompter: {
+        canConfirm: vi.fn().mockReturnValue(true),
+        prompt: vi
+          .fn<GatePrompter["prompt"]>()
+          .mockResolvedValue({ approved: false, state: "denied" }),
       },
     });
 
@@ -183,7 +195,10 @@ describe("handleToolCall decision events — confirmation_unavailable", () => {
         checkPermission: vi
           .fn()
           .mockReturnValue(makeCheckResult({ state: "ask" })),
-        canPrompt: vi.fn().mockReturnValue(false),
+      },
+      prompter: {
+        canConfirm: vi.fn().mockReturnValue(false),
+        prompt: vi.fn<GatePrompter["prompt"]>(),
       },
     });
 
@@ -239,7 +254,10 @@ describe("handleToolCall decision events — auto_approved", () => {
         checkPermission: vi
           .fn()
           .mockReturnValue(makeCheckResult({ state: "ask" })),
-        prompt: vi.fn().mockResolvedValue({
+      },
+      prompter: {
+        canConfirm: vi.fn().mockReturnValue(true),
+        prompt: vi.fn<GatePrompter["prompt"]>().mockResolvedValue({
           approved: true,
           state: "approved",
           autoApproved: true,

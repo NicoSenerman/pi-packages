@@ -153,3 +153,45 @@ describe("checkRequestedToolRegistration", () => {
     expect(result.status).toBe("registered");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Moved from permission-system.test.ts catch-all (#342)
+// ---------------------------------------------------------------------------
+
+test("Tool registry resolves event tool names from string and object payloads", () => {
+  expect(getToolNameFromValue("  read  ")).toBe("read");
+  expect(getToolNameFromValue({ toolName: "write" })).toBe("write");
+  expect(getToolNameFromValue({ name: "find" })).toBe("find");
+  expect(getToolNameFromValue({ tool: "grep" })).toBe("grep");
+  expect(getToolNameFromValue({})).toBe(null);
+});
+
+test("Tool registry blocks unregistered tools and handles aliases", () => {
+  const registeredTools = [
+    { toolName: "mcp" },
+    { toolName: "read" },
+    { toolName: "bash" },
+  ];
+
+  const unknownCheck = checkRequestedToolRegistration(
+    "third_party_tool",
+    registeredTools,
+  );
+  expect(unknownCheck.status).toBe("unregistered");
+  if (unknownCheck.status === "unregistered") {
+    expect(unknownCheck.availableToolNames).toEqual(["bash", "mcp", "read"]);
+  }
+
+  const aliasCheck = checkRequestedToolRegistration(
+    "legacy_read",
+    registeredTools,
+    { legacy_read: "read" },
+  );
+  expect(aliasCheck.status).toBe("registered");
+
+  const missingNameCheck = checkRequestedToolRegistration(
+    "   ",
+    registeredTools,
+  );
+  expect(missingNameCheck.status).toBe("missing-tool-name");
+});

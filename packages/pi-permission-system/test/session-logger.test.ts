@@ -8,7 +8,7 @@ import {
   type PermissionSystemExtensionConfig,
 } from "#src/extension-config";
 import type { SessionLoggerDeps } from "#src/session-logger";
-import { createSessionLogger } from "#src/session-logger";
+import { PermissionSessionLogger } from "#src/session-logger";
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -42,9 +42,9 @@ function makeBlockedLogsDir(): string {
   return join(barrier, "logs");
 }
 
-// ── createSessionLogger ────────────────────────────────────────────────────
+// ── PermissionSessionLogger ────────────────────────────────────────────────────
 
-describe("createSessionLogger", () => {
+describe("PermissionSessionLogger", () => {
   // ── debug ────────────────────────────────────────────────────────────────
 
   describe("debug", () => {
@@ -52,7 +52,7 @@ describe("createSessionLogger", () => {
       const deps = makeDeps({
         getConfig: () => ({ ...DEFAULT_EXTENSION_CONFIG, debugLog: true }),
       });
-      const logger = createSessionLogger(deps);
+      const logger = new PermissionSessionLogger(deps);
 
       logger.debug("test.event", { key: "value" });
 
@@ -63,7 +63,7 @@ describe("createSessionLogger", () => {
     it("does not write to the debug log when debugLog is false", () => {
       // DEFAULT_EXTENSION_CONFIG.debugLog === false
       const deps = makeDeps();
-      const logger = createSessionLogger(deps);
+      const logger = new PermissionSessionLogger(deps);
 
       logger.debug("test.event");
 
@@ -76,7 +76,7 @@ describe("createSessionLogger", () => {
       const deps = makeDeps({
         getConfig: () => ({ ...DEFAULT_EXTENSION_CONFIG, debugLog }),
       });
-      const logger = createSessionLogger(deps);
+      const logger = new PermissionSessionLogger(deps);
       debugLog = false;
 
       logger.debug("test.event");
@@ -91,7 +91,7 @@ describe("createSessionLogger", () => {
     it("writes a JSONL line to the review log file when permissionReviewLog is true", () => {
       // DEFAULT_EXTENSION_CONFIG.permissionReviewLog === true
       const deps = makeDeps();
-      const logger = createSessionLogger(deps);
+      const logger = new PermissionSessionLogger(deps);
 
       logger.review("permission.granted", { agentName: "coder" });
 
@@ -106,7 +106,7 @@ describe("createSessionLogger", () => {
           permissionReviewLog: false,
         }),
       });
-      const logger = createSessionLogger(deps);
+      const logger = new PermissionSessionLogger(deps);
 
       logger.review("permission.granted");
 
@@ -123,7 +123,7 @@ describe("createSessionLogger", () => {
         globalLogsDir: makeBlockedLogsDir(),
         getConfig: () => ({ ...DEFAULT_EXTENSION_CONFIG, debugLog: true }),
       });
-      const logger = createSessionLogger(deps);
+      const logger = new PermissionSessionLogger(deps);
 
       logger.debug("test.event");
 
@@ -138,7 +138,7 @@ describe("createSessionLogger", () => {
         globalLogsDir: makeBlockedLogsDir(),
         getConfig: () => ({ ...DEFAULT_EXTENSION_CONFIG, debugLog: true }),
       });
-      const logger = createSessionLogger(deps);
+      const logger = new PermissionSessionLogger(deps);
 
       logger.debug("event.one");
       logger.debug("event.two");
@@ -155,7 +155,7 @@ describe("createSessionLogger", () => {
           permissionReviewLog: true,
         }),
       });
-      const logger = createSessionLogger(deps);
+      const logger = new PermissionSessionLogger(deps);
 
       logger.debug("event.one"); // emits warning
       logger.review("event.two"); // same error message → suppressed
@@ -169,7 +169,7 @@ describe("createSessionLogger", () => {
   describe("warn", () => {
     it("calls notify with the message directly", () => {
       const deps = makeDeps();
-      const logger = createSessionLogger(deps);
+      const logger = new PermissionSessionLogger(deps);
 
       logger.warn("Something went wrong");
 
@@ -178,7 +178,7 @@ describe("createSessionLogger", () => {
 
     it("calls notify for every warn — not deduplicated", () => {
       const deps = makeDeps();
-      const logger = createSessionLogger(deps);
+      const logger = new PermissionSessionLogger(deps);
 
       logger.warn("same message");
       logger.warn("same message");
@@ -192,7 +192,7 @@ describe("createSessionLogger", () => {
         getConfig: () => ({ ...DEFAULT_EXTENSION_CONFIG }),
         notify: () => {},
       };
-      const logger = createSessionLogger(deps);
+      const logger = new PermissionSessionLogger(deps);
 
       expect(() => logger.warn("test")).not.toThrow();
     });

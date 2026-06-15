@@ -12,6 +12,19 @@ export type WildcardPatternMatch<TState> = {
   matchedName: string;
 };
 
+/**
+ * Optional folding applied when matching path-surface patterns on Windows.
+ *
+ * - `caseInsensitive` compiles the pattern with the `i` flag so a mixed-case
+ *   pattern matches a lowercased (canonicalized) path value.
+ * - `windowsSeparators` rewrites `/` to `\` in the expanded pattern so a
+ *   forward-slash pattern matches a backslash-separated path value.
+ */
+export interface WildcardMatchOptions {
+  caseInsensitive?: boolean;
+  windowsSeparators?: boolean;
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -19,8 +32,12 @@ function escapeRegExp(value: string): string {
 export function compileWildcardPattern<TState>(
   pattern: string,
   state: TState,
+  options?: WildcardMatchOptions,
 ): CompiledWildcardPattern<TState> {
-  const expanded = expandHomePath(pattern);
+  let expanded = expandHomePath(pattern);
+  if (options?.windowsSeparators) {
+    expanded = expanded.replaceAll("/", "\\");
+  }
   let escaped = expanded
     .split("*")
     .map((part) => escapeRegExp(part).replaceAll("\\?", "."))
@@ -36,7 +53,7 @@ export function compileWildcardPattern<TState>(
   return {
     pattern,
     state,
-    regex: new RegExp(`^${escaped}$`, "s"),
+    regex: new RegExp(`^${escaped}$`, options?.caseInsensitive ? "si" : "s"),
   };
 }
 
@@ -73,8 +90,12 @@ export function findCompiledWildcardMatch<TState>(
  * `?` matches exactly one character.
  * Used by evaluate() for rule matching.
  */
-export function wildcardMatch(pattern: string, value: string): boolean {
-  return compileWildcardPattern(pattern, null).regex.test(value);
+export function wildcardMatch(
+  pattern: string,
+  value: string,
+  options?: WildcardMatchOptions,
+): boolean {
+  return compileWildcardPattern(pattern, null, options).regex.test(value);
 }
 
 export function findCompiledWildcardMatchForNames<TState>(

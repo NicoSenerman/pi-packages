@@ -287,6 +287,46 @@ describe("wildcardMatch", () => {
       expect(wildcardMatch("*", "")).toBe(true);
     });
   });
+
+  describe("match options (Windows path folding)", () => {
+    test("caseInsensitive matches a value differing only in case", () => {
+      expect(
+        wildcardMatch("C:\\Users\\Foo\\*", "c:\\users\\foo\\bar.md", {
+          caseInsensitive: true,
+        }),
+      ).toBe(true);
+    });
+
+    test("case folding is off by default", () => {
+      expect(wildcardMatch("C:\\Users\\Foo\\*", "c:\\users\\foo\\bar.md")).toBe(
+        false,
+      );
+    });
+
+    test("windowsSeparators matches a backslash value against a forward-slash pattern", () => {
+      expect(
+        wildcardMatch("C:/Users/Foo/*", "C:\\Users\\Foo\\bar.md", {
+          windowsSeparators: true,
+        }),
+      ).toBe(true);
+    });
+
+    test("separator normalization is off by default", () => {
+      expect(wildcardMatch("C:/Users/Foo/*", "C:\\Users\\Foo\\bar.md")).toBe(
+        false,
+      );
+    });
+
+    test("both options fold a mixed-case forward-slash pattern onto a lowercased backslash value", () => {
+      expect(
+        wildcardMatch(
+          "C:/Users/Foo/AppData/Roaming/*",
+          "c:\\users\\foo\\appdata\\roaming\\npm\\x.md",
+          { caseInsensitive: true, windowsSeparators: true },
+        ),
+      ).toBe(true);
+    });
+  });
 });
 
 describe("? single-character wildcard", () => {

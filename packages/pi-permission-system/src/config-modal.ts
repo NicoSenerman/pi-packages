@@ -14,9 +14,10 @@ import type { Ruleset } from "./rule";
 
 interface PermissionSystemConfigController {
   config: CommandConfigStore;
-  getConfigPath(): string;
-  /** Optional: returns the composed config-layer ruleset for origin display. */
-  getComposedRules?(): Ruleset;
+  /** Precomputed global config file path. */
+  configPath: string;
+  /** Returns the composed config-layer ruleset for the active agent scope. */
+  getActiveAgentConfigRules(): Ruleset;
 }
 
 const ON_OFF = ["on", "off"];
@@ -203,7 +204,7 @@ function handleArgs(
   }
 
   if (normalized === "show") {
-    const rules = controller.getComposedRules?.();
+    const rules = controller.getActiveAgentConfigRules();
     ctx.ui.notify(
       `permission-system: ${summarizeConfig(controller.config.current(), rules)}`,
       "info",
@@ -212,10 +213,7 @@ function handleArgs(
   }
 
   if (normalized === "path") {
-    ctx.ui.notify(
-      `permission-system config: ${controller.getConfigPath()}`,
-      "info",
-    );
+    ctx.ui.notify(`permission-system config: ${controller.configPath}`, "info");
     return true;
   }
 

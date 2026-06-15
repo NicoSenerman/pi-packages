@@ -65,11 +65,12 @@ All permissions use one of three states:
 When the dialog prompts, you can approve once or approve a pattern for the rest of the session.
 See [docs/session-approvals.md](docs/session-approvals.md) for details on session-scoped rules and pattern suggestions.
 
-The `path` surface is a cross-cutting gate that applies to **all** file access — both Pi tools and bash commands.
-A `path` deny cannot be overridden by a per-tool allow, making it the right place to protect sensitive files like `.env` or `~/.ssh/*` from every tool at once.
+The `path` surface is a cross-cutting gate that applies to **all** file access — Pi tools, bash commands, MCP calls, and extension tools alike.
+Extension and MCP tools that operate on paths (via `input.path`, MCP's `input.arguments.path`, or a registered access extractor) are gated by default, so a `path` deny cannot be overridden by a per-tool allow — making it the right place to protect sensitive files like `.env` or `~/.ssh/*` from every tool at once.
 
 For per-tool path patterns (`read`, `write`, `edit`, `find`, `grep`, `ls`), patterns are matched against the file path from `input.path`.
 This lets you express rules like "allow reads but deny `.env` files" at the individual tool level.
+When Pi's current working directory is known, relative path inputs also match their cwd-normalized absolute form, so `src/App.jsx` can match both `src/*` and `/workspace/project/*`.
 
 Four layers compose with most-restrictive-wins: `path` (cross-cutting) → `external_directory` (CWD boundary) → per-tool patterns → `bash` command patterns.
 
@@ -104,19 +105,16 @@ For the full reference — all surfaces, runtime knobs, per-agent overrides, mer
 ## Development
 
 ```bash
-pnpm run build       # Type-check TypeScript (no emit)
-pnpm run lint        # Biome lint + format check
-pnpm run lint:fix    # Biome lint + format auto-fix
-pnpm run lint:md     # markdownlint-cli2 on README etc.
-pnpm run lint:all    # lint + lint:md
-pnpm run format      # Biome format --write
-pnpm run test        # Run tests from ./tests
-pnpm run check       # build + lint:all + test
+pnpm run check       # Type-check TypeScript (no emit)
+pnpm run lint        # Biome + ESLint + lint:md
+pnpm run lint:md     # rumdl on README and docs
+pnpm run test        # Run tests from ./test
+pnpm run test:watch  # Run tests in watch mode
 ```
 
 ### Pre-commit hooks
 
-This project uses [prek](https://prek.j178.dev/) to run Biome and markdownlint on staged files before each commit.
+This project uses [prek](https://prek.j178.dev/) to run Biome, ESLint, and rumdl on staged files before each commit.
 Run `pnpm install` to set up hooks automatically.
 
 ## Acknowledgments

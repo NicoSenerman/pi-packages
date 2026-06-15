@@ -9,11 +9,16 @@ vi.mock("node:os", () => {
   };
 });
 
+// Mock node:fs with an identity realpathSync so canonicalizePath
+// (used by BashProgram.externalPaths) leaves test paths unchanged and
+// existing expected-value literals remain accurate across platforms.
+vi.mock("node:fs", () => ({
+  realpathSync: (p: string) => p,
+  default: { realpathSync: (p: string) => p },
+}));
+
 import { formatDenyReason } from "#src/denial-messages";
-import {
-  extractExternalPathsFromBashCommand,
-  extractTokensForPathRules,
-} from "#src/handlers/gates/bash-path-extractor";
+import { extractExternalPathsFromBashCommand } from "#src/handlers/gates/bash-path-extractor";
 import { formatBashExternalDirectoryAskPrompt } from "#src/handlers/gates/external-directory-messages";
 
 afterEach(() => {
@@ -947,82 +952,5 @@ describe("bash external-directory denial messages (centralized)", () => {
     expect(result).toContain("/projects/my-app");
     expect(result).toContain("[pi-permission-system]");
     expect(result).not.toContain("Hard stop");
-  });
-});
-
-describe("extractTokensForPathRules", () => {
-  test("extracts dot-files: cat .env", async () => {
-    const tokens = await extractTokensForPathRules("cat .env");
-    expect(tokens).toContain(".env");
-  });
-
-  test("extracts relative dot-paths: git add src/.env", async () => {
-    const tokens = await extractTokensForPathRules("git add src/.env");
-    expect(tokens).toContain("src/.env");
-  });
-
-  test("extracts nothing from plain words: echo hello", async () => {
-    const tokens = await extractTokensForPathRules("echo hello");
-    expect(tokens).toHaveLength(0);
-  });
-
-  test("extracts ./src and skips flags: rm -rf ./src", async () => {
-    const tokens = await extractTokensForPathRules("rm -rf ./src");
-    expect(tokens).toContain("./src");
-    expect(tokens).not.toContain("-rf");
-  });
-
-  test("extracts absolute paths: cat /etc/hosts", async () => {
-    const tokens = await extractTokensForPathRules("cat /etc/hosts");
-    expect(tokens).toContain("/etc/hosts");
-  });
-
-  test("skips URLs: curl https://example.com", async () => {
-    const tokens = await extractTokensForPathRules("curl https://example.com");
-    expect(tokens).not.toContain("https://example.com");
-  });
-
-  test("extracts slash-containing tokens: cat src/foo.ts", async () => {
-    const tokens = await extractTokensForPathRules("cat src/foo.ts");
-    expect(tokens).toContain("src/foo.ts");
-  });
-
-  test("skips heredoc content", async () => {
-    const tokens = await extractTokensForPathRules("cat <<EOF\n.env\nEOF");
-    expect(tokens).not.toContain(".env");
-  });
-
-  test("skips @scope/package patterns", async () => {
-    const tokens = await extractTokensForPathRules(
-      "npm install @scope/package",
-    );
-    expect(tokens).not.toContain("@scope/package");
-  });
-
-  test("skips env assignments", async () => {
-    const tokens = await extractTokensForPathRules("FOO=/bar command");
-    expect(tokens).not.toContain("FOO=/bar");
-  });
-
-  test("skips bare-slash tokens", async () => {
-    const tokens = await extractTokensForPathRules("ls /");
-    expect(tokens).not.toContain("/");
-  });
-
-  test("extracts redirect targets: echo test > .env", async () => {
-    const tokens = await extractTokensForPathRules("echo test > .env");
-    expect(tokens).toContain(".env");
-  });
-
-  test("extracts multiple path tokens: cp .env .env.backup", async () => {
-    const tokens = await extractTokensForPathRules("cp .env .env.backup");
-    expect(tokens).toContain(".env");
-    expect(tokens).toContain(".env.backup");
-  });
-
-  test("deduplicates repeated tokens", async () => {
-    const tokens = await extractTokensForPathRules("cat .env && rm .env");
-    const envCount = tokens.filter((t) => t === ".env").length;
-    expect(envCount).toBe(1);
   });
 });

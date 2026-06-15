@@ -1,5 +1,5 @@
 import { getNonEmptyString, toRecord } from "#src/common";
-import type { PermissionResolver } from "#src/permission-resolver";
+import type { ScopedPermissionResolver } from "#src/permission-resolver";
 import { SessionApproval } from "#src/session-approval";
 import { deriveApprovalPattern } from "#src/session-rules";
 import type { PermissionCheckResult } from "#src/types";
@@ -12,10 +12,12 @@ import type { ToolCallContext } from "./types";
 /**
  * Build a pure descriptor for the cross-cutting path permission gate (bash).
  *
- * Reads path-candidate tokens from the injected `BashProgram` (the broader
- * `path`-rule filter, accepting dot-files and relative paths). Evaluates each
- * token against the `path` permission surface and returns the most
- * restrictive result.
+ * Reads path-rule candidates from the injected `BashProgram` (the broader
+ * `path`-rule filter, accepting dot-files and relative paths). Each candidate
+ * pairs the raw token with cd-aware policy values; the gate evaluates those
+ * values against the `path` permission surface and returns the most
+ * restrictive result, while prompts, logs, and session approvals use the raw
+ * token.
  *
  * Returns `null` when the gate does not apply (tool is not bash, no command,
  * no tokens extracted, or all tokens evaluate to `allow`).
@@ -25,7 +27,7 @@ import type { ToolCallContext } from "./types";
 export function describeBashPathGate(
   tcc: ToolCallContext,
   bashProgram: BashProgram | null,
-  resolver: PermissionResolver,
+  resolver: ScopedPermissionResolver,
 ): GateResult {
   if (tcc.toolName !== "bash") return null;
 
@@ -34,18 +36,18 @@ export function describeBashPathGate(
 
   if (!bashProgram) return null;
 
-  const tokens = bashProgram.pathTokens();
-  if (tokens.length === 0) return null;
+  const candidates = bashProgram.pathRuleCandidates(tcc.cwd);
+  if (candidates.length === 0) return null;
+  const tokens = candidates.map(({ token }) => token);
 
   // Tokens whose resolved state needs a check (deny/ask), paired with the
   // token that produced them so the descriptor can derive its pattern.
   const uncovered: Array<{ token: string; check: PermissionCheckResult }> = [];
   let allSessionCovered = true;
 
-  for (const token of tokens) {
-    const check = resolver.resolve(
-      "path",
-      { path: token },
+  for (const { token, policyValues } of candidates) {
+    const check = resolver.resolvePathPolicy(
+      policyValues,
       tcc.agentName ?? undefined,
     );
 

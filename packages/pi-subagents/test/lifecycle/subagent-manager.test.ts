@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ConcurrencyQueue } from "#src/lifecycle/concurrency-queue";
+import { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
 import { SubagentManager, type SubagentManagerObserver } from "#src/lifecycle/subagent-manager";
 import type { SubagentSession } from "#src/lifecycle/subagent-session";
@@ -38,25 +38,15 @@ function createManager(overrides?: {
         onSubagentCreated: overrides.observer.onSubagentCreated ?? (() => {}),
       }
     : undefined;
-  // Forward-reference via closure — safe because drain is never called during construction.
-  // eslint-disable-next-line prefer-const -- forward reference: must be declared before queue, assigned after
-  let mgr: SubagentManager;
-  const queue = new ConcurrencyQueue(
-    overrides?.getMaxConcurrent ?? (() => DEFAULT_MAX_CONCURRENT),
-    (id) => {
-      const record = mgr.getRecord(id);
-      if (record?.status !== "queued") return;
-      record.promise = record.run();
-    },
-  );
-  mgr = new SubagentManager({
+  const limiter = new ConcurrencyLimiter(overrides?.getMaxConcurrent ?? (() => DEFAULT_MAX_CONCURRENT));
+  const mgr = new SubagentManager({
     createSubagentSession,
     observer,
-    queue,
+    limiter,
     baseCwd: overrides?.baseCwd ?? "/repo",
     getRunConfig: overrides?.getRunConfig,
   });
-  return { manager: mgr, createSubagentSession, queue };
+  return { manager: mgr, createSubagentSession, limiter };
 }
 
 /** Spawn a background agent using STUB_SNAPSHOT. */
@@ -87,13 +77,16 @@ describe("SubagentManager — Bug 1 race condition (notification.resultConsumed 
       seenConsumed = r.notification?.resultConsumed;
     } } }));
 
-    const id = spawnBg(manager);
+    const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "test", {
+      description: "test",
+      isBackground: true,
+      parentSession: { toolCallId: "tc-1" },
+    });
     const record = manager.getRecord(id)!;
-    record.notification = new NotificationState("tc-1");
 
     // Simulate the buggy get_subagent_result: await THEN mark consumed
     await record.promise;
-    record.notification.markConsumed(); // too late — onComplete already fired
+    record.notification!.markConsumed(); // too late — onComplete already fired
 
     // onComplete saw resultConsumed as false — would queue a notification (the bug)
     expect(seenConsumed).toBeFalsy();
@@ -105,12 +98,15 @@ describe("SubagentManager — Bug 1 race condition (notification.resultConsumed 
       seenConsumed = r.notification?.resultConsumed;
     } } }));
 
-    const id = spawnBg(manager);
+    const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "test", {
+      description: "test",
+      isBackground: true,
+      parentSession: { toolCallId: "tc-1" },
+    });
     const record = manager.getRecord(id)!;
-    record.notification = new NotificationState("tc-1");
 
     // The fix: pre-mark BEFORE awaiting
-    record.notification.markConsumed();
+    record.notification!.markConsumed();
     await record.promise;
 
     expect(seenConsumed).toBe(true);
@@ -477,6 +473,24 @@ describe("SubagentManager — queueing and concurrency with injected stubs", () 
     expect(startOrder).toEqual(["start-1", "start-2"]);
     expect(manager.getRecord(id1)!.result).toBe("result-1");
     expect(manager.getRecord(id2)!.result).toBe("result-2");
+  });
+
+  it("gives a queued agent an awaitable promise at spawn (before its slot opens)", () => {
+    const factory = createBlockingFactory();
+    ({ manager } = createManager({ createSubagentSession: factory, getMaxConcurrent: () => 1 }));
+
+    // First runs, second queues
+    const id1 = spawnBg(manager, "a");
+    const id2 = spawnBg(manager, "b");
+
+    // A still-queued agent must already expose a settle-on-completion promise,
+    // so waitForAll can await it without relying on a re-poll. (Regression
+    // guard: #374 made the promise lazy; the limiter handle is captured eagerly.)
+    expect(manager.getRecord(id2)!.status).toBe("queued");
+    expect(manager.getRecord(id2)!.promise).toBeInstanceOf(Promise);
+
+    manager.abort(id1);
+    manager.abort(id2);
   });
 
   it("abort removes a queued agent without ever running it", () => {

@@ -7,7 +7,7 @@ import {
 import type { GatePrompter } from "#src/gate-prompter";
 import type { PermissionPromptDecision } from "#src/permission-dialog";
 import { applyPermissionGate } from "#src/permission-gate";
-import type { PermissionResolver } from "#src/permission-resolver";
+import type { ScopedPermissionResolver } from "#src/permission-resolver";
 import type { SessionApprovalRecorder } from "#src/session-approval-recorder";
 import type { PermissionCheckResult } from "#src/types";
 import type { GateDescriptor, GateResult } from "./descriptor";
@@ -28,7 +28,7 @@ import type { GateOutcome } from "./types";
  */
 export class GateRunner {
   constructor(
-    private readonly resolver: PermissionResolver,
+    private readonly resolver: ScopedPermissionResolver,
     private readonly recorder: SessionApprovalRecorder,
     private readonly prompter: GatePrompter,
     private readonly reporter: DecisionReporter,
@@ -121,7 +121,7 @@ export class GateRunner {
       canConfirm,
       sessionApproval: descriptor.sessionApproval?.toGateApproval(),
       promptForApproval: async () => {
-        const decision = await this.prompter.promptPermission({
+        const decision = await this.prompter.prompt({
           requestId: toolCallId,
           ...descriptor.promptDetails,
         });

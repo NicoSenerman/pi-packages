@@ -58,7 +58,11 @@ Scalar fields (`debugLog`, `permissionReviewLog`, `yoloMode`) use simple replace
     "read": "allow",
     "write": "deny",
     "edit": "deny",
-    "bash": { "git status": "allow", "git *": "ask" },
+    "bash": {
+      "git *": "ask",
+      "git status": "allow",
+      "npm *": { "action": "deny", "reason": "Use pnpm instead" }
+    },
     "mcp": { "mcp_status": "allow" },
     "skill": { "*": "ask" },
     "external_directory": "ask"
@@ -148,6 +152,7 @@ If a tool is not registered at runtime, this extension blocks it before permissi
 
 For path-bearing tools (`read`, `write`, `edit`, `find`, `grep`, `ls`), an object value maps file-path patterns to actions.
 Patterns are matched against `input.path` using the same last-match-wins wildcard semantics as bash command patterns.
+When Pi's current working directory is known, a relative path input is matched with both its original relative form and its cwd-normalized absolute form, so an absolute allowlist rule and a legacy relative rule can both apply to the same file.
 `*` matches zero or more of any character **including** path separators — `src/*` matches both `src/foo.ts` and `src/deep/nested/foo.ts`.
 There is no single-segment vs. multi-segment distinction; `**` is not a supported token and behaves identically to `*`.
 
@@ -199,7 +204,7 @@ Control-flow bodies (`if`/`while`/`for`/`case`) and `{ … }` brace groups are n
 
 A pattern ending with `*` (space + wildcard) also matches the bare command without arguments.
 For example, `"git *"` matches both `"git status"` and bare `"git"`.
-Use a more specific pattern before it to carve out exceptions.
+Place a more specific pattern *after* it to carve out exceptions — the later matching rule wins.
 
 > **Patterns match individual commands, not whole chains.**
 > A pattern that embeds a chain operator (e.g. `"cd * && npm *"`) will not match, because each command in the chain is evaluated separately.
@@ -210,10 +215,11 @@ Use a more specific pattern before it to carve out exceptions.
   "permission": {
     "bash": {
       "*": "ask",
+      "git *": "ask",
       "git status": "allow",
       "git diff": "allow",
-      "git *": "ask",
-      "rm -rf *": "deny"
+      "rm -rf *": "deny",
+      "npm *": { "action": "deny", "reason": "Use pnpm instead" }
     }
   }
 }
@@ -226,6 +232,29 @@ String shorthand sets a catch-all for all bash commands:
   "permission": { "bash": "allow" }
 }
 ```
+
+#### Deny with a Custom Reason
+
+In any pattern map, a `deny` value may be written as an object with an optional `reason` instead of the plain `"deny"` string:
+
+```jsonc
+{
+  "permission": {
+    "bash": {
+      "npm *": { "action": "deny", "reason": "Use pnpm instead" }
+    }
+  }
+}
+```
+
+The reason is appended to the block message shown to the agent, so it learns why the command was denied and what to do instead:
+
+```text
+[pi-permission-system] is not permitted to run 'bash' command 'npm install' (matched 'npm *'). Reason: Use pnpm instead.
+```
+
+The object form is only valid at the pattern-value level (inside a pattern map) and only for `deny` — `action` must be `"deny"`, and `reason` must be a string (a non-string reason is ignored).
+A bare `"deny"` string is unchanged and carries no reason.
 
 ### `mcp` Surface
 
@@ -283,8 +312,9 @@ Skill name patterns use `*` and `?` wildcards (note: surface is `skill`, not `sk
 
 ### `path` Surface
 
-Cross-cutting gate that applies to **all** file access — both Pi tools (`read`, `write`, `edit`, `find`, `grep`, `ls`) and bash commands.
+Cross-cutting gate that applies to **all** file access — built-in Pi tools (`read`, `write`, `edit`, `find`, `grep`, `ls`), bash commands, MCP calls (via `input.arguments.path`), and extension tools (via `input.path` or a registered access extractor).
 A `path` deny cannot be overridden by a per-tool allow.
+Extension and MCP path tools are gated by default — no registration needed — so a `path` deny protects sensitive files from every path-aware tool, not just the built-in six.
 
 ```jsonc
 {
@@ -305,6 +335,7 @@ If it denies, the command is blocked without reaching subsequent gates — no wa
 
 For bash commands, the extension extracts path-candidate tokens from the command (dot-files like `.env`, relative paths like `src/foo.ts`, and absolute paths) and evaluates each against the path rules.
 The most restrictive result across all tokens determines the outcome.
+When the current working directory is known, relative bash tokens are matched with cwd-normalized policy values, resolved against the effective directory after literal `cd` commands; a token after a non-literal `cd` (e.g. `cd "$DIR"`) stays conservative and matches only its literal form.
 
 Four orthogonal layers compose with most-restrictive-wins:
 
@@ -391,10 +422,15 @@ Infrastructure directories include:
 1. The agent config directory (`~/.pi/agent/` or `$PI_CODING_AGENT_DIR`)
 2. Git-cloned global packages (`<agentDir>/git/`)
 3. The global `node_modules` root (auto-discovered from the extension's own install path; falls back to `npm root -g` when running from a local development checkout)
-4. Project-local Pi packages (`<cwd>/.pi/npm/` and `<cwd>/.pi/git/`)
-5. Any paths listed in `piInfrastructureReadPaths`
+4. Pi's own install directory (auto-discovered via the coding-agent `getPackageDir()` API, so Pi's bundled docs and examples are readable regardless of install layout)
+5. Project-local Pi packages (`<cwd>/.pi/npm/` and `<cwd>/.pi/git/`)
+6. Any paths listed in `piInfrastructureReadPaths`
 
 Write tools (`write`, `edit`) to infrastructure paths are **not** auto-allowed and still go through the gate.
+
+On Windows, path matching for `external_directory`, `path`, and the path-bearing tools is case-insensitive and tolerant of either separator (`\` or `/`), matching the case-insensitive filesystem.
+A mixed-case allow override such as `~/AppData/Roaming/npm/node_modules/@earendil-works/pi-coding-agent/*` therefore matches a lowercased, backslash-normalized path value.
+POSIX matching remains case-sensitive.
 
 ### Home Directory Expansion in Patterns
 
@@ -414,6 +450,9 @@ They are expanded to the OS home directory at match time, so configs are portabl
 
 The pattern is stored and displayed as written (e.g. `~/development/*`) in logs and approval dialogs.
 
+Path **values** supplied by tool calls and bash commands are expanded the same way.
+This means `~/...`, `$HOME/...`, and the fully-expanded absolute form all match a single home-anchored pattern: a `read` tool called with path `~/.ssh/config`, `$HOME/.ssh/config`, or `/Users/me/.ssh/config` is all caught by a `"~/.ssh/*": "deny"` rule.
+
 ---
 
 ## Per-Agent Overrides
@@ -432,8 +471,8 @@ permission:
   write: deny
   mcp: allow
   bash:
-    git status: allow
     git *: ask
+    git status: allow
   mcp:
     chrome_devtools_*: deny
     exa_*: allow
@@ -546,15 +585,16 @@ permission:
 
 The extension integrates via Pi's lifecycle hooks:
 
-| Hook                 | Behavior                                                                                          |
-| -------------------- | ------------------------------------------------------------------------------------------------- |
-| `before_agent_start` | Filters active tools, removes denied tool entries from the system prompt, and hides denied skills |
-| `tool_call`          | Enforces permissions for every tool invocation                                                    |
-| `input`              | Intercepts `/skill:<name>` requests and enforces skill policy                                     |
+| Hook                 | Behavior                                                                                                                 |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `before_agent_start` | Filters the active tool set (restrict-only), removes denied tool entries from the system prompt, and hides denied skills |
+| `tool_call`          | Enforces permissions for every tool invocation                                                                           |
+| `input`              | Intercepts `/skill:<name>` requests and enforces skill policy                                                            |
 
 Additional behaviors:
 
 - Unknown/unregistered tools are blocked before permission checks (prevents bypass attempts)
+- Tool filtering is restrict-only: the active set starts from pi's already-active tools (`pi.getActiveTools()`) and only ever has denied tools removed — the permission system never activates a tool pi left off by default (e.g. `find`, `grep`, `ls`)
 - The `Available tools:` system prompt section is rewritten to match the filtered active tool set
 - Extension-provided tools like `task`, `mcp`, and third-party tools are handled by exact registered name
 - Generic extension-tool approval prompts include a bounded input preview; built-in file tools use concise human-readable summaries

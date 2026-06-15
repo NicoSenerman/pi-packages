@@ -1,10 +1,10 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { SUBAGENT_ENV_HINT_KEYS } from "#src/permission-forwarding";
 import {
   isRegisteredSubagentChild,
   isSubagentExecutionContext,
   normalizeFilesystemPath,
+  type SubagentDetectionContext,
 } from "#src/subagent-context";
 import { SubagentSessionRegistry } from "#src/subagent-registry";
 
@@ -16,13 +16,13 @@ afterEach(() => {
 function makeCtx(
   sessionDir: string | null,
   sessionId: string = "",
-): ExtensionContext {
+): SubagentDetectionContext {
   return {
     sessionManager: {
-      getSessionDir: vi.fn(() => sessionDir),
+      getSessionDir: vi.fn(() => sessionDir ?? ""),
       getSessionId: vi.fn(() => sessionId),
     },
-  } as unknown as ExtensionContext;
+  };
 }
 
 describe("isRegisteredSubagentChild", () => {
@@ -52,14 +52,14 @@ describe("isRegisteredSubagentChild", () => {
   test("returns false when getSessionId throws", () => {
     const registry = new SubagentSessionRegistry();
     registry.register(childSessionId, {});
-    const ctx = {
+    const ctx: SubagentDetectionContext = {
       sessionManager: {
-        getSessionDir: vi.fn(() => null),
+        getSessionDir: vi.fn(() => ""),
         getSessionId: vi.fn(() => {
           throw new Error("session id unavailable");
         }),
       },
-    } as unknown as ExtensionContext;
+    };
     expect(isRegisteredSubagentChild(ctx, registry)).toBe(false);
   });
 });

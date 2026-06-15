@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 // Mock node:os so tilde-expansion is deterministic across platforms.
 vi.mock("node:os", () => {
@@ -10,17 +10,32 @@ vi.mock("node:os", () => {
   };
 });
 
+// Mock node:fs so realpathSync (used by canonicalizePath) is controllable.
+// Default implementation is identity — existing lexical tests are unaffected.
+const realpathSync = vi.hoisted(() =>
+  vi.fn<(path: string) => string>((p) => p),
+);
+vi.mock("node:fs", () => ({
+  realpathSync,
+  default: { realpathSync },
+}));
+
 import {
+  canonicalNormalizePathForComparison,
   getPathBearingToolPath,
+  getPathPolicyValues,
+  getToolInputPath,
   isPathOutsideWorkingDirectory,
   isPathWithinDirectory,
   isPiInfrastructureRead,
   isSafeSystemPath,
   normalizePathForComparison,
+  normalizePathPolicyLiteral,
   PATH_BEARING_TOOLS,
   READ_ONLY_PATH_BEARING_TOOLS,
   SAFE_SYSTEM_PATHS,
 } from "#src/path-utils";
+import type { ToolAccessExtractorLookup } from "#src/tool-access-extractor-registry";
 
 describe("normalizePathForComparison", () => {
   const cwd = "/projects/my-app";
@@ -44,6 +59,16 @@ describe("normalizePathForComparison", () => {
   test("expands ~/... to homedir-relative path", () => {
     expect(normalizePathForComparison("~/docs/readme.md", cwd)).toBe(
       join("/mock/home", "docs/readme.md"),
+    );
+  });
+
+  test("expands bare $HOME to homedir", () => {
+    expect(normalizePathForComparison("$HOME", cwd)).toBe("/mock/home");
+  });
+
+  test("expands $HOME/... to homedir-relative path", () => {
+    expect(normalizePathForComparison("$HOME/.ssh/config", cwd)).toBe(
+      join("/mock/home", ".ssh/config"),
     );
   });
 
@@ -95,6 +120,42 @@ describe("isPathWithinDirectory", () => {
 
   test("returns false for empty directory", () => {
     expect(isPathWithinDirectory("/a/b", "")).toBe(false);
+  });
+
+  // ── platform-aware containment (Windows is case-insensitive) ────────────
+
+  test("win32: folds case for a case-different descendant", () => {
+    expect(
+      isPathWithinDirectory(
+        "c:\\users\\foo\\dir\\sub\\x.md",
+        "C:\\Users\\Foo\\dir",
+        "win32",
+      ),
+    ).toBe(true);
+  });
+
+  test("win32: folds case when path equals directory in different case", () => {
+    expect(
+      isPathWithinDirectory(
+        "c:\\users\\foo\\dir\\sub",
+        "C:\\USERS\\foo\\DIR",
+        "win32",
+      ),
+    ).toBe(true);
+  });
+
+  test("win32: rejects a sibling directory", () => {
+    expect(
+      isPathWithinDirectory(
+        "C:\\Users\\Foo\\other",
+        "C:\\Users\\Foo\\dir",
+        "win32",
+      ),
+    ).toBe(false);
+  });
+
+  test("posix platform stays case-sensitive", () => {
+    expect(isPathWithinDirectory("/a/B/c", "/a/b", "linux")).toBe(false);
   });
 });
 
@@ -187,8 +248,75 @@ describe("getPathBearingToolPath", () => {
   });
 });
 
+describe("getToolInputPath", () => {
+  function lookupOf(
+    toolName: string,
+    extractor: (input: Record<string, unknown>) => string | undefined,
+  ): ToolAccessExtractorLookup {
+    return {
+      get: (name) => (name === toolName ? extractor : undefined),
+    };
+  }
+
+  test("returns input.path for a built-in path-bearing tool", () => {
+    expect(getToolInputPath("read", { path: "/src/foo.ts" })).toBe(
+      "/src/foo.ts",
+    );
+    expect(getToolInputPath("write", { path: "/src/bar.ts" })).toBe(
+      "/src/bar.ts",
+    );
+  });
+
+  test("returns null for bash", () => {
+    expect(getToolInputPath("bash", { path: "/src/foo.ts" })).toBeNull();
+  });
+
+  test("returns the MCP arguments.path for an mcp call", () => {
+    expect(getToolInputPath("mcp", { arguments: { path: "/etc/hosts" } })).toBe(
+      "/etc/hosts",
+    );
+  });
+
+  test("returns null for an mcp call without an arguments.path", () => {
+    expect(getToolInputPath("mcp", { arguments: { query: "x" } })).toBeNull();
+    expect(getToolInputPath("mcp", {})).toBeNull();
+  });
+
+  test("defaults to input.path for an unregistered extension tool", () => {
+    expect(getToolInputPath("my-ext", { path: "/work/file.txt" })).toBe(
+      "/work/file.txt",
+    );
+  });
+
+  test("returns null for an extension tool without a path", () => {
+    expect(getToolInputPath("my-ext", { other: true })).toBeNull();
+    expect(getToolInputPath("my-ext", { path: "" })).toBeNull();
+    expect(getToolInputPath("my-ext", null)).toBeNull();
+  });
+
+  test("uses a registered extractor's path over the default convention", () => {
+    const extractors = lookupOf("ffgrep", (input) =>
+      typeof input.target === "string" ? input.target : undefined,
+    );
+    expect(
+      getToolInputPath("ffgrep", { target: "/etc/passwd" }, extractors),
+    ).toBe("/etc/passwd");
+  });
+
+  test("returns null when a registered extractor declines", () => {
+    const extractors = lookupOf("ffgrep", () => undefined);
+    expect(getToolInputPath("ffgrep", { target: "x" }, extractors)).toBeNull();
+  });
+});
+
 describe("isPathOutsideWorkingDirectory", () => {
   const cwd = "/projects/my-app";
+
+  beforeEach(() => {
+    // Reset then restore the identity default so symlink tests don't bleed.
+    realpathSync.mockReset();
+    realpathSync.mockImplementation((p: string) => p);
+  });
 
   test("returns false when path is inside cwd", () => {
     expect(isPathOutsideWorkingDirectory("/projects/my-app/src", cwd)).toBe(
@@ -234,6 +362,57 @@ describe("isPathOutsideWorkingDirectory", () => {
 
   test("returns true for /dev/null/subdir (not a safe path)", () => {
     expect(isPathOutsideWorkingDirectory("/dev/null/subdir", cwd)).toBe(true);
+  });
+
+  test("returns true for in-cwd symlink that resolves to external path", () => {
+    // ./link -> /etc: realpathSync resolves the full token in one call.
+    realpathSync.mockImplementation((p: string) => {
+      if (p === "/projects/my-app/link/hosts") return "/etc/hosts";
+      return p;
+    });
+    expect(isPathOutsideWorkingDirectory("./link/hosts", cwd)).toBe(true);
+  });
+
+  test("returns false for path inside a symlinked cwd", () => {
+    // /tmp -> /private/tmp on macOS; cwd reported as /private/tmp.
+    const symlinkCwd = "/private/tmp";
+    realpathSync.mockImplementation((p: string) => {
+      if (p.startsWith("/tmp/")) return "/private/tmp" + p.slice(4);
+      if (p === "/tmp") return "/private/tmp";
+      return p;
+    });
+    expect(
+      isPathOutsideWorkingDirectory("/tmp/workspace/file.ts", symlinkCwd),
+    ).toBe(false);
+  });
+});
+
+describe("canonicalNormalizePathForComparison", () => {
+  const cwd = "/projects/my-app";
+
+  beforeEach(() => {
+    realpathSync.mockReset();
+    realpathSync.mockImplementation((p: string) => p);
+  });
+
+  test("returns canonical form of an existing path", () => {
+    realpathSync.mockImplementation((p: string) => {
+      if (p === "/projects/link") return "/real/projects/app";
+      return p;
+    });
+    expect(canonicalNormalizePathForComparison("/projects/link", cwd)).toBe(
+      "/real/projects/app",
+    );
+  });
+
+  test("returns empty string for empty input", () => {
+    expect(canonicalNormalizePathForComparison("", cwd)).toBe("");
+  });
+
+  test("returns lexical form when no symlinks (identity realpathSync)", () => {
+    expect(
+      canonicalNormalizePathForComparison("/projects/my-app/src/index.ts", cwd),
+    ).toBe("/projects/my-app/src/index.ts");
   });
 });
 
@@ -325,5 +504,113 @@ describe("isPiInfrastructureRead", () => {
         cwd,
       ),
     ).toBe(true);
+  });
+
+  // ── Windows: case-insensitive infra-read matching ─────────────────────
+
+  test("win32: plain infra dir matches a case-different path", () => {
+    expect(
+      isPiInfrastructureRead(
+        "read",
+        "c:\\users\\foo\\.pi\\agent\\config.json",
+        ["C:\\Users\\Foo\\.pi\\agent"],
+        "C:\\proj",
+        "win32",
+      ),
+    ).toBe(true);
+  });
+
+  test("win32: glob infra dir matches case-insensitively", () => {
+    expect(
+      isPiInfrastructureRead(
+        "read",
+        "c:\\users\\foo\\npm\\node_modules\\@earendil-works\\pi-coding-agent\\skill.md",
+        ["C:\\Users\\Foo\\**\\pi-coding-agent\\**"],
+        "C:\\proj",
+        "win32",
+      ),
+    ).toBe(true);
+  });
+
+  test("win32: rejects a path outside every infra dir", () => {
+    expect(
+      isPiInfrastructureRead(
+        "read",
+        "c:\\windows\\system32\\drivers\\etc\\hosts",
+        ["C:\\Users\\Foo\\.pi\\agent"],
+        "C:\\proj",
+        "win32",
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("normalizePathPolicyLiteral", () => {
+  test("returns a relative token unchanged", () => {
+    expect(normalizePathPolicyLiteral("src/foo.ts")).toBe("src/foo.ts");
+  });
+
+  test("trims and strips simple wrapping quotes", () => {
+    expect(normalizePathPolicyLiteral("  'src/foo.ts'  ")).toBe("src/foo.ts");
+    expect(normalizePathPolicyLiteral('"a/b"')).toBe("a/b");
+  });
+
+  test("strips a leading @ prefix", () => {
+    expect(normalizePathPolicyLiteral("@src/foo.ts")).toBe("src/foo.ts");
+  });
+
+  test("expands ~ to the home directory", () => {
+    expect(normalizePathPolicyLiteral("~/docs/readme.md")).toBe(
+      join("/mock/home", "docs/readme.md"),
+    );
+  });
+
+  test("does not resolve a relative value against any cwd", () => {
+    expect(normalizePathPolicyLiteral("foo.ts")).toBe("foo.ts");
+  });
+
+  test("returns empty string for blank input", () => {
+    expect(normalizePathPolicyLiteral("   ")).toBe("");
+  });
+
+  test("preserves the surface catch-all", () => {
+    expect(normalizePathPolicyLiteral("*")).toBe("*");
+  });
+});
+
+describe("getPathPolicyValues", () => {
+  const cwd = "/projects/my-app";
+
+  test("returns only the literal when no base is available", () => {
+    expect(getPathPolicyValues("src/foo.ts")).toEqual(["src/foo.ts"]);
+    expect(getPathPolicyValues("src/foo.ts", {})).toEqual(["src/foo.ts"]);
+  });
+
+  test("adds absolute and project-relative aliases for a relative token", () => {
+    expect(getPathPolicyValues("src/foo.ts", { cwd })).toEqual([
+      "/projects/my-app/src/foo.ts",
+      "src/foo.ts",
+    ]);
+  });
+
+  test("omits the relative alias for a token outside cwd", () => {
+    expect(getPathPolicyValues("/etc/hosts", { cwd })).toEqual(["/etc/hosts"]);
+  });
+
+  test("resolves against resolveBase while aliasing relative to cwd", () => {
+    expect(
+      getPathPolicyValues("foo.txt", {
+        cwd,
+        resolveBase: "/projects/my-app/nested",
+      }),
+    ).toEqual(["/projects/my-app/nested/foo.txt", "nested/foo.txt", "foo.txt"]);
+  });
+
+  test("preserves the surface catch-all", () => {
+    expect(getPathPolicyValues("*", { cwd })).toEqual(["*"]);
+  });
+
+  test("returns empty for blank input", () => {
+    expect(getPathPolicyValues("   ", { cwd })).toEqual([]);
   });
 });

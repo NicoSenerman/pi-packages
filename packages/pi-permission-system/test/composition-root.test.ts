@@ -337,6 +337,42 @@ describe("service and gate share one formatter registry", () => {
   });
 });
 
+describe("service and gate share one access extractor registry", () => {
+  // An extractor registered through the published service must be consulted by
+  // the live gate handler — proving both reference the same
+  // ToolAccessExtractorRegistry instance the factory created once (#352).
+  it("path-gates a custom-shaped tool via a service-registered extractor", async () => {
+    writeGlobalConfig({
+      permission: { "*": "allow", path: { "*.env": "deny" } },
+    });
+
+    const cwd = mkdtempSync(join(tmpdir(), "pi-perm-ext-cwd-"));
+    const pi = makeFakePi({ toolNames: ["ffgrep"] });
+    piPermissionSystemExtension(pi as unknown as ExtensionAPI);
+
+    const { ctx } = makeUiCtx(cwd, []);
+    await fireSessionStart(pi, ctx);
+
+    // ffgrep carries its path under a non-standard key; without the extractor
+    // the default input.path convention would miss it.
+    getPermissionsService()!.registerToolAccessExtractor("ffgrep", (input) =>
+      typeof input.target === "string" ? input.target : undefined,
+    );
+
+    const result = (await pi.fire(
+      "tool_call",
+      { toolName: "ffgrep", toolCallId: "ff-1", input: { target: ".env" } },
+      ctx,
+    )) as { block?: true };
+
+    // The path deny fired — so the gate extracted ffgrep's path through the
+    // same registry the service wrote to.
+    expect(result.block).toBe(true);
+
+    rmSync(cwd, { recursive: true, force: true });
+  });
+});
+
 describe("ready emitted after service publication", () => {
   // Ordering contracts exist only at the composition root: a consumer reacting
   // to permissions:ready must be able to resolve the service immediately. The

@@ -1,23 +1,65 @@
-import { Subagent, type SubagentInit } from "#src/lifecycle/subagent";
+import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
+import { Subagent, type SubagentExecution } from "#src/lifecycle/subagent";
+import type { SubagentSession } from "#src/lifecycle/subagent-session";
+import { SubagentState, type SubagentStatus } from "#src/lifecycle/subagent-state";
+import type { AgentInvocation, SubagentType } from "#src/types";
+import { createSubagentSessionStub, toSubagentSession } from "#test/helpers/mock-session";
+import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 
-export function createTestSubagent(overrides: Partial<SubagentInit> & {
-	/** Legacy shorthand: set toolUses via incrementToolUses(). */
+/**
+ * A minimal, mandatory SubagentExecution for tests that build a passive record
+ * and never call run(). The factory resolves to a default session stub.
+ */
+export function makeStubExecution(overrides: Partial<SubagentExecution> = {}): SubagentExecution {
+	return {
+		createSubagentSession: async (_params: CreateSubagentSessionParams): Promise<SubagentSession> =>
+			toSubagentSession(createSubagentSessionStub()),
+		snapshot: STUB_SNAPSHOT,
+		prompt: "do something",
+		baseCwd: "",
+		...overrides,
+	};
+}
+
+export interface TestSubagentOptions {
+	id?: string;
+	type?: SubagentType;
+	description?: string;
+	invocation?: AgentInvocation;
+	execution?: SubagentExecution;
+	/** Shorthand to wire a NotificationState via the constructor path. Ignored when execution is supplied. */
+	toolCallId?: string;
+	/** Passive lifecycle state shorthands. */
+	status?: SubagentStatus;
+	result?: string;
+	error?: string;
+	startedAt?: number;
+	completedAt?: number;
+	/** Set toolUses via incrementToolUses(). */
 	toolUses?: number;
-	/** Legacy shorthand: set lifetimeUsage via addUsage(). */
+	/** Set lifetimeUsage via addUsage(). */
 	lifetimeUsage?: { input: number; output: number; cacheWrite: number };
-	/** Legacy shorthand: set compactionCount via incrementCompactions(). */
+	/** Set compactionCount via incrementCompactions(). */
 	compactionCount?: number;
-} = {}): Subagent {
-	const { toolUses, lifetimeUsage, compactionCount, ...init } = overrides;
-	const record = new Subagent({
-		id: "agent-1",
-		type: "general-purpose",
-		description: "Test task",
+}
+
+export function createTestSubagent(overrides: TestSubagentOptions = {}): Subagent {
+	const { id, type, description, invocation, execution, toolCallId, toolUses, lifetimeUsage, compactionCount, ...stateOverrides } =
+		overrides;
+	const state = new SubagentState({
 		status: "completed",
 		result: "All done.",
 		startedAt: 1000,
 		completedAt: 2000,
-		...init,
+		...stateOverrides,
+	});
+	const record = new Subagent({
+		id: id ?? "agent-1",
+		type: type ?? "general-purpose",
+		description: description ?? "Test task",
+		invocation,
+		execution: execution ?? makeStubExecution(toolCallId ? { parentSession: { toolCallId } } : {}),
+		state,
 	});
 	// Apply stat overrides via mutation methods
 	if (toolUses !== undefined) {

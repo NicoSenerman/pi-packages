@@ -25,11 +25,12 @@ describe("createTestSubagent", () => {
 		expect(record.toolUses).toBe(3);
 	});
 
-	it("allows setting promise directly after construction", () => {
-		const promise = Promise.resolve();
-		const record = createTestSubagent();
-		record.promise = promise;
-		expect(record.promise).toBe(promise);
+	it("exposes promise via getter after start() is called", async () => {
+		const record = createTestSubagent({ status: "running", completedAt: undefined });
+		expect(record.promise).toBeUndefined();
+		record.start();
+		expect(record.promise).toBeInstanceOf(Promise);
+		await record.promise;
 	});
 
 	it("allows overriding defaults to undefined", () => {

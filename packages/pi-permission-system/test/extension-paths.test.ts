@@ -78,6 +78,25 @@ describe("computeExtensionPaths", () => {
     }
   });
 
+  it("includes piPackageDir in piInfrastructureDirs when provided", () => {
+    const paths = computeExtensionPaths("/test/agent", "/pi/install");
+    expect(paths.piInfrastructureDirs).toContain("/pi/install");
+  });
+
+  it("omits piPackageDir when not provided (current behavior preserved)", () => {
+    const paths = computeExtensionPaths("/test/agent");
+    expect(paths.piInfrastructureDirs).toEqual([
+      "/test/agent",
+      "/test/agent/git",
+      "/mock/global/node_modules",
+    ]);
+  });
+
+  it("omits piPackageDir when given an empty string", () => {
+    const paths = computeExtensionPaths("/test/agent", "");
+    expect(paths.piInfrastructureDirs).not.toContain("");
+  });
+
   it("two calls with different agentDirs produce independent results", () => {
     const a = computeExtensionPaths("/agent/a");
     const b = computeExtensionPaths("/agent/b");

@@ -11,6 +11,7 @@
  * reference — this ensures resilience across `/reload` and load-order edge cases.
  */
 
+import type { ToolAccessExtractor } from "./tool-access-extractor-registry";
 import type { ToolInputFormatter } from "./tool-input-formatter-registry";
 import type { PermissionCheckResult, PermissionState } from "./types";
 
@@ -78,6 +79,29 @@ export interface PermissionsService {
   registerToolInputFormatter(
     toolName: string,
     formatter: ToolInputFormatter,
+  ): () => void;
+
+  /**
+   * Register a custom access-intent extractor for a specific tool name.
+   *
+   * The extractor declares the filesystem path a tool will access so the
+   * cross-cutting `path` and `external_directory` gates can see it. Use it for
+   * tools whose path lives under a non-standard key — built-in file tools and
+   * any tool exposing `input.path` (plus MCP via `input.arguments.path`) are
+   * already covered by convention without registration.
+   *
+   * The extractor receives the raw `input` record and returns the path string,
+   * or `undefined` to decline. Only one extractor may be registered per tool
+   * name — a second call for the same name throws. The returned disposer
+   * unregisters the extractor.
+   *
+   * @param toolName  - Exact tool name to register for (e.g. `"ffgrep"`).
+   * @param extractor - Receives the raw `input` record; return the path string,
+   *                    or `undefined` to decline.
+   */
+  registerToolAccessExtractor(
+    toolName: string,
+    extractor: ToolAccessExtractor,
   ): () => void;
 
   /**

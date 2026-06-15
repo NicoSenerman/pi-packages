@@ -9,7 +9,7 @@ import type {
 } from "#src/handlers/gates/descriptor";
 import { isGateBypass, isGateDescriptor } from "#src/handlers/gates/descriptor";
 import type { ToolCallContext } from "#src/handlers/gates/types";
-import type { PermissionResolver } from "#src/permission-resolver";
+import type { ScopedPermissionResolver } from "#src/permission-resolver";
 import type { PermissionCheckResult } from "#src/types";
 
 import { makeResolver } from "#test/helpers/gate-fixtures";
@@ -47,7 +47,7 @@ function makeCheckResult(
  */
 async function describeGate(
   tcc: ToolCallContext,
-  resolver: PermissionResolver,
+  resolver: ScopedPermissionResolver,
 ): Promise<GateResult> {
   const command = getNonEmptyString(toRecord(tcc.input).command);
   const bashProgram =

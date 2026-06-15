@@ -5,6 +5,237 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [13.1.1](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v13.1.0...pi-permission-system-v13.1.1) (2026-06-13)
+
+
+### Bug Fixes
+
+* preserve forwarded-permission responses dir while requests pending ([#398](https://github.com/gotgenes/pi-packages/issues/398)) ([9914e70](https://github.com/gotgenes/pi-packages/commit/9914e7093c5addee80bd39f2ff99211991b4a238))
+* recreate forwarded-permission responses dir before write ([#398](https://github.com/gotgenes/pi-packages/issues/398)) ([67d34ef](https://github.com/gotgenes/pi-packages/commit/67d34efb33dbda28f363a004d0945c2a4aacea29))
+
+## [13.1.0](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v13.0.0...pi-permission-system-v13.1.0) (2026-06-13)
+
+
+### Features
+
+* **pi-permission-system:** add DenyWithReason type and shared guard ([51750e1](https://github.com/gotgenes/pi-packages/commit/51750e188592520798eaf9676a15a709a779cf96)), closes [#395](https://github.com/gotgenes/pi-packages/issues/395)
+* **pi-permission-system:** append custom reason to denial messages ([d8e5756](https://github.com/gotgenes/pi-packages/commit/d8e575632678b806d381f1436dbb06197d742104)), closes [#395](https://github.com/gotgenes/pi-packages/issues/395)
+* **pi-permission-system:** build deny rules with reason in normalizeFlatConfig ([186c15a](https://github.com/gotgenes/pi-packages/commit/186c15a74944bc2800bcea738984021169fabc8d)), closes [#395](https://github.com/gotgenes/pi-packages/issues/395)
+* **pi-permission-system:** preserve deny-with-reason from JSON config ([3201bfd](https://github.com/gotgenes/pi-packages/commit/3201bfd55d68aac1ee87ac452723f6d0783dba6d)), closes [#395](https://github.com/gotgenes/pi-packages/issues/395)
+* **pi-permission-system:** thread deny reason into PermissionCheckResult ([ed712e4](https://github.com/gotgenes/pi-packages/commit/ed712e47458a662e3d1159e2f5096c709ab2ddf5)), closes [#395](https://github.com/gotgenes/pi-packages/issues/395)
+
+
+### Documentation
+
+* **pi-permission-system:** document deny-with-reason config form ([45be4e7](https://github.com/gotgenes/pi-packages/commit/45be4e72c0ca43040cb0f55ca196a0cab0b9fc14)), closes [#395](https://github.com/gotgenes/pi-packages/issues/395)
+
+## [13.0.0](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v12.0.0...pi-permission-system-v13.0.0) (2026-06-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* A relative bash path token now also matches absolute allowlist rules naming the same file, resolved against the effective directory after literal cd commands. A token under a config like `path: { "*": "ask", "/workspace/project/*": "allow" }` moves from `ask` to `allow`. Tokens after a non-literal cd (e.g. cd "$DIR") stay conservative and match only their literal form.
+* When Pi's working directory is known, a relative path input now also matches absolute allowlist rules naming the same file. A config like `path: { "*": "ask", "/workspace/project/*": "allow" }` moves a relative `src/App.jsx` from `ask` to `allow`. To keep tighter control, narrow the allowlist patterns or add an explicit `path` deny for the sensitive paths.
+
+### Features
+
+* add alias-aware evaluateAnyValue ([#393](https://github.com/gotgenes/pi-packages/issues/393)) ([2b7d240](https://github.com/gotgenes/pi-packages/commit/2b7d24091fbeb078bcfbc363bc0062199ee1de24))
+* add cd-aware pathRuleCandidates to BashProgram ([#393](https://github.com/gotgenes/pi-packages/issues/393)) ([102a491](https://github.com/gotgenes/pi-packages/commit/102a491ef73e225a6a93008195ff958e4c5bd315))
+* add path-policy value derivation ([#393](https://github.com/gotgenes/pi-packages/issues/393)) ([d34e57f](https://github.com/gotgenes/pi-packages/commit/d34e57fe96c74b2ba87e9d0ebe9be5055db0855f))
+* add resolvePathPolicy resolver method ([#393](https://github.com/gotgenes/pi-packages/issues/393)) ([8ec81da](https://github.com/gotgenes/pi-packages/commit/8ec81da65e7f994beb5f65bead8b11174277fa53))
+* match relative path inputs against absolute allowlists ([#393](https://github.com/gotgenes/pi-packages/issues/393)) ([6d0c564](https://github.com/gotgenes/pi-packages/commit/6d0c564d1d7b48227898d0be5fbbf5c91cc7ca89))
+* normalize path inputs to cwd-aware policy values ([#393](https://github.com/gotgenes/pi-packages/issues/393)) ([3c2784f](https://github.com/gotgenes/pi-packages/commit/3c2784fc2199b4903a0aaa8a22a971c1bfb4969d))
+* resolve bash path tokens with cd-aware policy values ([#393](https://github.com/gotgenes/pi-packages/issues/393)) ([7bcdbe7](https://github.com/gotgenes/pi-packages/commit/7bcdbe708a29448cbfda4a76b7e8917795fbb741))
+
+
+### Documentation
+
+* document cwd-aware path policy matching ([#393](https://github.com/gotgenes/pi-packages/issues/393)) ([8ab53a2](https://github.com/gotgenes/pi-packages/commit/8ab53a2de6c4deea5bbcd9c72a36ec0943e1a69a))
+* **pi-permission-system:** update Development section to current scripts and tooling ([ebda301](https://github.com/gotgenes/pi-packages/commit/ebda301798290f528f930917b6792a5c21379a5d))
+
+## [12.0.0](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v11.0.0...pi-permission-system-v12.0.0) (2026-06-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* extension and MCP tools that expose a filesystem path (input.path, or input.arguments.path for MCP) are now subject to the path and external_directory permission gates. Tools previously ungated may now prompt or be denied under existing path rules.
+
+### Features
+
+* add extensible tool input path extraction ([#352](https://github.com/gotgenes/pi-packages/issues/352)) ([3a54ea1](https://github.com/gotgenes/pi-packages/commit/3a54ea16be4d621bd7474f7a728d97ce9781a994))
+* add tool access extractor registry ([#352](https://github.com/gotgenes/pi-packages/issues/352)) ([7a34f01](https://github.com/gotgenes/pi-packages/commit/7a34f0187f6b3fbb75e056082f04d3b805a37c8a))
+* expose registerToolAccessExtractor via permissions service ([#352](https://github.com/gotgenes/pi-packages/issues/352)) ([5e02c16](https://github.com/gotgenes/pi-packages/commit/5e02c163b212adf9648a2631e4788f030539a36a))
+* gate extension and MCP path tools by default ([#352](https://github.com/gotgenes/pi-packages/issues/352)) ([1d53f4f](https://github.com/gotgenes/pi-packages/commit/1d53f4ffa1a08e953b96437e9adf0214c6ca7465))
+
+
+### Documentation
+
+* document path-aware extension/MCP gating and registerToolAccessExtractor ([#352](https://github.com/gotgenes/pi-packages/issues/352)) ([a2f825f](https://github.com/gotgenes/pi-packages/commit/a2f825f031ec26f1c47dbf13d056e724fda87021))
+
+## [11.0.0](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v10.10.1...pi-permission-system-v11.0.0) (2026-06-11)
+
+
+### ⚠ BREAKING CHANGES
+
+* The permission system no longer auto-activates pi's off-by-default tools (`find`, `grep`, `ls`) in the main session. Users who want them active should enable them via pi's own `activeTools` configuration rather than relying on the permission system to expose every non-denied tool.
+
+### Features
+
+* add getActive to ToolRegistry wired to pi.getActiveTools ([#385](https://github.com/gotgenes/pi-packages/issues/385)) ([79c4594](https://github.com/gotgenes/pi-packages/commit/79c459443294c1b58643b746e3511fc17c9f8961))
+
+
+### Bug Fixes
+
+* respect pi's default active tool set in before_agent_start ([#385](https://github.com/gotgenes/pi-packages/issues/385)) ([bf5be48](https://github.com/gotgenes/pi-packages/commit/bf5be48ca8b06e8cb08f66d08eccb85af0673987))
+
+
+### Documentation
+
+* clarify before_agent_start filters pi's active tool set ([#385](https://github.com/gotgenes/pi-packages/issues/385)) ([bdb5a6a](https://github.com/gotgenes/pi-packages/commit/bdb5a6a08e3c1bb611c8b1795c4d46856104b3b0))
+
+## [10.10.1](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v10.10.0...pi-permission-system-v10.10.1) (2026-06-11)
+
+
+### Documentation
+
+* fix bash rule precedence examples and wording ([#387](https://github.com/gotgenes/pi-packages/issues/387)) ([9e18d6f](https://github.com/gotgenes/pi-packages/commit/9e18d6faab6e3ceaa1a8839f5b6753d5457a2a28))
+
+## [10.10.0](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v10.9.0...pi-permission-system-v10.10.0) (2026-06-10)
+
+
+### Features
+
+* **pi-permission-system:** add case-insensitive and Windows-separator options to wildcard matcher ([587b3e8](https://github.com/gotgenes/pi-packages/commit/587b3e88d0deed365ab690d38145e2f9ce8eaee6))
+
+
+### Bug Fixes
+
+* **pi-permission-system:** auto-allow infrastructure reads case-insensitively on Windows ([a3f137a](https://github.com/gotgenes/pi-packages/commit/a3f137ad5edb8f42378144fa9ca556996954155c))
+* **pi-permission-system:** auto-detect Pi's install directory for infrastructure reads ([#382](https://github.com/gotgenes/pi-packages/issues/382)) ([c3d89ba](https://github.com/gotgenes/pi-packages/commit/c3d89ba4f58805fb5012258beb2db108ef61ebbe))
+* **pi-permission-system:** include an optional Pi package dir in infrastructure reads ([da667ec](https://github.com/gotgenes/pi-packages/commit/da667eca95f02f8de246bdc42ca90df7696fe2ca))
+* **pi-permission-system:** make path containment case-insensitive on Windows via path.relative ([c10b84a](https://github.com/gotgenes/pi-packages/commit/c10b84ad4508b1cf8ead763e3fa0560a1e9ba370))
+* **pi-permission-system:** match external_directory/path patterns case-insensitively on Windows ([3ed92da](https://github.com/gotgenes/pi-packages/commit/3ed92dabc1643fb5e0c52b9eac76e0940f8a8dc4))
+
+
+### Documentation
+
+* **pi-permission-system:** document Windows case-insensitive matching and Pi-install auto-allow ([c98d33b](https://github.com/gotgenes/pi-packages/commit/c98d33b775eea9cbe83f019222841a6ab820942f))
+
+## [10.9.0](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v10.8.0...pi-permission-system-v10.9.0) (2026-06-10)
+
+
+### Features
+
+* add ToolInputFormatterRegistrar write-side interface ([#366](https://github.com/gotgenes/pi-packages/issues/366)) ([e000eb0](https://github.com/gotgenes/pi-packages/commit/e000eb02a507c06e241b5a35cac5334e06dca1e2))
+
+## [10.8.0](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v10.7.2...pi-permission-system-v10.8.0) (2026-06-10)
+
+
+### Features
+
+* add CacheKeyGate for agent-start cache keys ([#365](https://github.com/gotgenes/pi-packages/issues/365)) ([e99285c](https://github.com/gotgenes/pi-packages/commit/e99285c50fef3f6fd8ea7dac00080eeb9957adaa))
+
+
+### Documentation
+
+* mark Phase 5 Step 4 complete ([#365](https://github.com/gotgenes/pi-packages/issues/365)) ([4bd0e30](https://github.com/gotgenes/pi-packages/commit/4bd0e30fb4cb03d6cff76242f75955e9698c7d0d))
+
+## [10.7.2](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v10.7.1...pi-permission-system-v10.7.2) (2026-06-10)
+
+
+### Miscellaneous Chores
+
+* **deps:** bump tooling dependencies to latest minor/patch ([8b9105d](https://github.com/gotgenes/pi-packages/commit/8b9105d4011816fe8085dfed3a3b9d7bc9918c56))
+
+## [10.7.1](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v10.7.0...pi-permission-system-v10.7.1) (2026-06-09)
+
+
+### Bug Fixes
+
+* surface full chained command in bash permission prompt ([#333](https://github.com/gotgenes/pi-packages/issues/333)) ([7f448fb](https://github.com/gotgenes/pi-packages/commit/7f448fb6e394bc37f94c98e04332abdcc8528c46))
+
+## [10.7.0](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v10.6.0...pi-permission-system-v10.7.0) (2026-06-09)
+
+
+### Features
+
+* add normalizeOptionalStringArray to common ([8be9154](https://github.com/gotgenes/pi-packages/commit/8be9154d7a492f13526f7bd8d4e33fc2e209f98d))
+
+
+### Bug Fixes
+
+* carry piInfrastructureReadPaths through the unified config loader ([#347](https://github.com/gotgenes/pi-packages/issues/347)) ([51bc145](https://github.com/gotgenes/pi-packages/commit/51bc145c15cc54bc69333d1e6cc48c74dda267d1))
+
+## [10.6.0](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v10.5.3...pi-permission-system-v10.6.0) (2026-06-08)
+
+
+### Features
+
+* **pi-permission-system:** add best-effort canonicalizePath helper ([5b5002e](https://github.com/gotgenes/pi-packages/commit/5b5002e1b5400485f30a9f22440a88d14ed5135d))
+
+
+### Bug Fixes
+
+* **pi-permission-system:** canonicalize bash external-path containment ([#345](https://github.com/gotgenes/pi-packages/issues/345)) ([89f8e9b](https://github.com/gotgenes/pi-packages/commit/89f8e9bb35cd268e46a2b124663f44c11a44be97))
+* **pi-permission-system:** canonicalize tool-call external-directory containment ([#345](https://github.com/gotgenes/pi-packages/issues/345)) ([d7f3bd1](https://github.com/gotgenes/pi-packages/commit/d7f3bd1c02d115621cd87065de240b816837065f))
+
+
+### Documentation
+
+* **pi-permission-system:** note symlink canonicalization in architecture ([b758a48](https://github.com/gotgenes/pi-packages/commit/b758a48bc55485ad9e751543db59858886ba360c))
+
+## [10.5.3](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v10.5.2...pi-permission-system-v10.5.3) (2026-06-08)
+
+
+### Bug Fixes
+
+* merge tool preview length fields across config layers ([803fbb4](https://github.com/gotgenes/pi-packages/commit/803fbb4a118d4c26dc7b23fcec3f88d23aec0065))
+* parse tool preview length fields in unified config loader ([3241956](https://github.com/gotgenes/pi-packages/commit/3241956b5656bc44788061c4a0a4ee334cb3ace5))
+
+## [10.5.2](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v10.5.1...pi-permission-system-v10.5.2) (2026-06-08)
+
+
+### Bug Fixes
+
+* **pi-permission-system:** expand $HOME in normalizePathForComparison ([#350](https://github.com/gotgenes/pi-packages/issues/350)) ([1b92ed3](https://github.com/gotgenes/pi-packages/commit/1b92ed3d2364174d3287171c58ce8452239b3e8d))
+* **pi-permission-system:** home-expand path values before matching ([#350](https://github.com/gotgenes/pi-packages/issues/350)) ([48a7b37](https://github.com/gotgenes/pi-packages/commit/48a7b3783857b449442d30edefe04f8255e5f4f8))
+
+
+### Documentation
+
+* **pi-permission-system:** note path values are home-expanded for matching ([#350](https://github.com/gotgenes/pi-packages/issues/350)) ([e9c264d](https://github.com/gotgenes/pi-packages/commit/e9c264de85d327a0bfbcd84401a259cb509a5dfa))
+
+## [10.5.1](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v10.5.0...pi-permission-system-v10.5.1) (2026-06-07)
+
+
+### Documentation
+
+* correct SkillPermissionChecker comment after resolver rewire ([#341](https://github.com/gotgenes/pi-packages/issues/341)) ([1528382](https://github.com/gotgenes/pi-packages/commit/15283820a920fead92b348410828332b69f0a0d9))
+
+## [10.5.0](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v10.4.0...pi-permission-system-v10.5.0) (2026-06-07)
+
+
+### Features
+
+* add PermissionResolver class and route gate runner through it ([#340](https://github.com/gotgenes/pi-packages/issues/340)) ([4133601](https://github.com/gotgenes/pi-packages/commit/41336018d495f85b30b7b77fadb5912870f0dedd))
+
+
+### Bug Fixes
+
+* suppress fallow unused-class-member for pre-Step-8 resolver methods ([#340](https://github.com/gotgenes/pi-packages/issues/340)) ([fd65626](https://github.com/gotgenes/pi-packages/commit/fd65626ae867457edeb829ea28d0ab94fe51dea6))
+
+## [10.4.0](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v10.3.1...pi-permission-system-v10.4.0) (2026-06-07)
+
+
+### Features
+
+* add context-owning PromptingGateway ([1885be2](https://github.com/gotgenes/pi-packages/commit/1885be28fb797eb5ed67a7a30d51e58fa73e3ff0))
+
+
+### Documentation
+
+* mark Phase 4 Step 6 complete; drop unused beforeEach import ([217057a](https://github.com/gotgenes/pi-packages/commit/217057ab5f8a1d3290322b442e267287b31635cf))
+
 ## [10.3.1](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v10.3.0...pi-permission-system-v10.3.1) (2026-06-06)
 
 

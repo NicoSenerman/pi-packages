@@ -1,6 +1,6 @@
 {
   "name": "@gotgenes/pi-colgrep",
-  "version": "1.4.2",
+  "version": "1.5.1",
   "description": "Pi extension that integrates ColGrep semantic code search as an agent tool.",
   "type": "module",
   "imports": {
@@ -64,11 +64,11 @@
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
-    "@earendil-works/pi-coding-agent": "0.75.4",
-    "@earendil-works/pi-tui": "0.75.4",
+    "@earendil-works/pi-coding-agent": "0.79.1",
+    "@earendil-works/pi-tui": "0.79.1",
     "@types/node": "catalog:",
     "rumdl": "catalog:",
-    "typebox": "^1.1.38",
+    "typebox": "^1.2.8",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

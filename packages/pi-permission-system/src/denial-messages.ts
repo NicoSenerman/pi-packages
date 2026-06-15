@@ -126,7 +126,8 @@ function buildToolDenyBody(
     parts.push(qualifier);
   }
 
-  return `${parts.join(" ")}.`;
+  // reasonSuffix appends ` Reason: <reason>.` after the sentence-ending period.
+  return `${parts.join(" ")}.${reasonSuffix(check.reason)}`;
 }
 
 /**

@@ -4,11 +4,11 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 
 import { toRecord } from "#src/common";
-import type { GateHandlerSession } from "#src/gate-handler-session";
 import {
   formatMissingToolNameReason,
   formatUnknownToolReason,
 } from "#src/permission-prompts";
+import type { PermissionSession } from "#src/permission-session";
 import {
   checkRequestedToolRegistration,
   getToolNameFromValue,
@@ -31,7 +31,7 @@ interface InputPayload {
  * Handles permission gate events: tool_call and input.
  *
  * Constructor deps:
- * - `session` — narrow two-method context role: bind per-event context, resolve agent name
+ * - `session` — state/lifecycle owner: bind per-event context, resolve agent name
  * - `toolRegistry` — Pi tool API subset (getAll + setActive)
  * - `pipeline` — owns tool-call gate-producer assembly and the run loop
  * - `skillInputPipeline` — owns skill-input gate assembly (pre-check, notify, run)
@@ -39,7 +39,7 @@ interface InputPayload {
  */
 export class PermissionGateHandler {
   constructor(
-    private readonly session: GateHandlerSession,
+    private readonly session: PermissionSession,
     private readonly toolRegistry: ToolRegistry,
     private readonly pipeline: ToolCallGatePipeline,
     private readonly skillInputPipeline: SkillInputGatePipeline,

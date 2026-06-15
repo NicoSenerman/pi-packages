@@ -1,5 +1,6 @@
 ---
 description: Review this session for workflow improvements and persist retro notes to the package's docs/retro/
+model: anthropic/claude-opus-4-8
 ---
 
 # Review session and persist retro notes
@@ -32,7 +33,7 @@ After identifying the issue number and title, call `set_session_name` with name 
 ## Step 1 — Identify the retro file
 
 1. If `$1` is set, treat it as the issue number `N`.
-2. Otherwise, infer `N` from the most recent commit subject in the deterministic output above (look for `(#N)` at the end of `feat:`, `fix:`, or `docs:` commits).
+2. Otherwise, infer `N` from recent commit subjects (`git log --oneline -25`; look for `(#N)` at the end of `feat:`, `fix:`, or `docs:` commits).
    If multiple issues appear, list them and ask the user which to retro on with `ask-user`.
 3. **Determine the target package(s).**
    Find the plan for issue `N` at `packages/*/docs/plans/NNNN-<slug>.md` or `docs/plans/NNNN-<slug>.md`.
@@ -100,7 +101,7 @@ Skip a lens entirely when it finds nothing notable.
 
 Append (or create) `packages/<PKG>/docs/retro/NNNN-<slug>.md` with this structure.
 Author and append the retro file with the `Edit`/`Write` tools, not a shell heredoc.
-When creating a new file, include YAML frontmatter (see `AGENTS.md` § Documentation frontmatter):
+When creating a new file, include YAML frontmatter (see the `markdown-conventions` skill § Documentation frontmatter):
 
 ```markdown
 ---

@@ -56,6 +56,7 @@ describe("session_start handler consolidation", () => {
       },
       registerCommand: (): void => {},
       getAllTools: (): Array<{ name: string }> => [],
+      getActiveTools: (): string[] => [],
       setActiveTools: (): void => {},
       registerProvider: (): void => {},
       events: {
@@ -79,6 +80,7 @@ describe("session_start handler consolidation", () => {
       },
       registerCommand: (): void => {},
       getAllTools: (): Array<{ name: string }> => [],
+      getActiveTools: (): string[] => [],
       setActiveTools: (): void => {},
       registerProvider: (): void => {},
       events: {

@@ -7,7 +7,6 @@ import {
   getStatusLabel,
   NotificationManager,
 } from "#src/observation/notification";
-import { NotificationState } from "#src/observation/notification-state";
 import { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
 import { createTestSubagent } from "#test/helpers/make-subagent";
 
@@ -71,8 +70,7 @@ describe("formatTaskNotification", () => {
   });
 
   it("includes toolCallId from record.notification when present", () => {
-    const record = createTestSubagent();
-    record.notification = new NotificationState("tc-123");
+    const record = createTestSubagent({ toolCallId: "tc-123" });
     const xml = formatTaskNotification(record, 500);
     expect(xml).toContain("<tool-use-id>tc-123</tool-use-id>");
   });
@@ -217,9 +215,8 @@ describe("NotificationManager", () => {
   it("sendCompletion skips nudge when notification.resultConsumed is true", () => {
     const args = makeArgs();
     const system = makeManager(args);
-    const record = createTestSubagent();
-    record.notification = new NotificationState("tc-1");
-    record.notification.markConsumed();
+    const record = createTestSubagent({ toolCallId: "tc-1" });
+    record.notification!.markConsumed();
     system.sendCompletion(record);
     vi.advanceTimersByTime(300);
     expect(args.sendMessage).not.toHaveBeenCalled();

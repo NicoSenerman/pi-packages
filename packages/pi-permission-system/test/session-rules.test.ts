@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { evaluate } from "#src/rule";
 import { SessionApproval } from "#src/session-approval";
+import type { SessionApprovalRecorder } from "#src/session-approval-recorder";
 import { deriveApprovalPattern, SessionRules } from "#src/session-rules";
 
 // ── SessionRules ───────────────────────────────────────────────────────────
@@ -67,10 +68,15 @@ describe("SessionRules", () => {
     });
   });
 
-  describe("record", () => {
+  describe("recordSessionApproval", () => {
+    it("satisfies the SessionApprovalRecorder interface", () => {
+      const rules: SessionApprovalRecorder = new SessionRules();
+      expect(typeof rules.recordSessionApproval).toBe("function");
+    });
+
     it("records a single-pattern approval as one rule", () => {
       const rules = new SessionRules();
-      rules.record(SessionApproval.single("bash", "git *"));
+      rules.recordSessionApproval(SessionApproval.single("bash", "git *"));
       expect(rules.getRuleset()).toEqual([
         {
           surface: "bash",
@@ -84,7 +90,7 @@ describe("SessionRules", () => {
 
     it("records a multi-pattern approval as one rule per pattern", () => {
       const rules = new SessionRules();
-      rules.record(
+      rules.recordSessionApproval(
         SessionApproval.multiple("external_directory", [
           "/outside/a/*",
           "/outside/b/*",
@@ -97,7 +103,7 @@ describe("SessionRules", () => {
 
     it("records each rule with the correct surface", () => {
       const rules = new SessionRules();
-      rules.record(
+      rules.recordSessionApproval(
         SessionApproval.multiple("external_directory", [
           "/outside/a/*",
           "/outside/b/*",
@@ -110,7 +116,9 @@ describe("SessionRules", () => {
 
     it("records nothing for an empty patterns list", () => {
       const rules = new SessionRules();
-      rules.record(SessionApproval.multiple("external_directory", []));
+      rules.recordSessionApproval(
+        SessionApproval.multiple("external_directory", []),
+      );
       expect(rules.getRuleset()).toEqual([]);
     });
   });

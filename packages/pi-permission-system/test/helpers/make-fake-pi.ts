@@ -42,6 +42,8 @@ export interface FakePi {
   fire(event: string, input?: unknown, ctx?: unknown): Promise<unknown>;
   /** Minimal tool registry — returns the configured tool names. */
   getAllTools(): { name: string }[];
+  /** Active tool names (`pi.getActiveTools()` shape — bare strings). */
+  getActiveTools(): string[];
   setActiveTools(names: string[]): void;
 }
 
@@ -79,6 +81,9 @@ export function makeFakePi(options: MakeFakePiOptions = {}): FakePi {
     },
     getAllTools(): { name: string }[] {
       return toolNames.map((name) => ({ name }));
+    },
+    getActiveTools(): string[] {
+      return [...toolNames];
     },
     setActiveTools: vi.fn(),
     // ── ExtensionAPI methods the factory touches (recorded) ────────────────

@@ -1,3 +1,4 @@
+import { getNonEmptyString, toRecord } from "./common";
 import { matchQualifier } from "./denial-messages";
 import type { SkillPromptEntry } from "./skill-prompt-sanitizer";
 import type { ToolPreviewFormatter } from "./tool-preview-formatter";
@@ -37,12 +38,18 @@ export function formatAskPrompt(
   const subject = agentName ? `Agent '${agentName}'` : "Current agent";
 
   if (result.toolName === "bash") {
+    const subCommand = result.command ?? "";
     const qualifier = matchQualifier(
       result.matchedPattern,
       result.commandContext,
     );
     const qualifierInfo = qualifier ? ` ${qualifier}` : "";
-    return `${subject} requested bash command '${result.command ?? ""}'${qualifierInfo}. Allow this command?`;
+    const fullCommand = getNonEmptyString(toRecord(input).command);
+    const fullCommandInfo =
+      fullCommand && fullCommand !== subCommand
+        ? ` (full command: '${fullCommand}')`
+        : "";
+    return `${subject} requested bash command '${subCommand}'${qualifierInfo}${fullCommandInfo}. Allow this command?`;
   }
 
   if ((result.source === "mcp" || result.toolName === "mcp") && result.target) {

@@ -1,6 +1,6 @@
-import { toRecord } from "./common";
+import { getNonEmptyString, toRecord } from "./common";
 import { createMcpPermissionTargets } from "./mcp-targets";
-import { getPathBearingToolPath, PATH_BEARING_TOOLS } from "./path-utils";
+import { getPathPolicyValues, PATH_BEARING_TOOLS } from "./path-utils";
 
 /**
  * Construct a surface-appropriate input object from a raw value string.
@@ -65,14 +65,13 @@ export function normalizeInput(
   toolName: string,
   input: unknown,
   configuredMcpServerNames: readonly string[],
+  cwd?: string,
 ): NormalizedInput {
-  // --- Special surfaces (external_directory) ---
+  // --- Special surfaces (path, external_directory) ---
   if (SPECIAL_PERMISSION_KEYS.has(toolName)) {
-    const record = toRecord(input);
-    const pathValue = typeof record.path === "string" ? record.path : null;
     return {
       surface: toolName,
-      values: [pathValue ?? "*"],
+      values: normalizePathSurfaceValues(input, cwd),
       resultExtras: {},
     };
   }
@@ -116,10 +115,9 @@ export function normalizeInput(
 
   // --- Path-bearing tools (read, write, edit, grep, find, ls) ---
   if (PATH_BEARING_TOOLS.has(toolName)) {
-    const path = getPathBearingToolPath(toolName, input);
     return {
       surface: toolName,
-      values: [path ?? "*"],
+      values: normalizePathSurfaceValues(input, cwd),
       resultExtras: {},
     };
   }
@@ -130,4 +128,24 @@ export function normalizeInput(
     values: ["*"],
     resultExtras: {},
   };
+}
+
+/**
+ * Extract and normalize the path lookup values shared by every path surface
+ * (`path`, `external_directory`, and the path-bearing tools).
+ *
+ * Missing, empty, or whitespace-only paths collapse to the surface catch-all
+ * `"*"`. When CWD is known, a relative path also produces a normalized
+ * absolute policy value and a project-relative alias while keeping its legacy
+ * relative value, so values match home- and cwd-anchored patterns
+ * symmetrically with how the patterns themselves are expanded (#350).
+ *
+ * Only `input.path` is read — policy values are never sourced from any other
+ * (potentially attacker-controlled) field on the raw tool input.
+ */
+function normalizePathSurfaceValues(input: unknown, cwd?: string): string[] {
+  const path = getNonEmptyString(toRecord(input).path);
+  if (path === null) return ["*"];
+  const values = getPathPolicyValues(path, cwd ? { cwd } : {});
+  return values.length > 0 ? values : ["*"];
 }

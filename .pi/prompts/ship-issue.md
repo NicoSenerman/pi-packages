@@ -6,6 +6,8 @@ description: Push, close a GitHub issue with a summary, and merge the release-pl
 
 Argument: `$1` is the issue number that was just implemented.
 
+Fetch the issue title via `gh issue view $1 --json title -q .title`, then call `set_session_name` with name `#$1 Ship — <issue title>` to identify this session in the session selector.
+
 ## 1. Sync with remote
 
 Before pushing, make sure local `HEAD` is current with the remote:
@@ -32,11 +34,13 @@ If either fails, fix the issues and commit before pushing.
 
 ## 4. Verify CI on the pushed commit
 
-1. Use `ci_find` with the pushed SHA (`git rev-parse HEAD`) and workflow `ci` to locate the CI run.
-2. Use `ci_watch` with the returned `run_id` and workflow `ci` to wait for it to complete.
-3. If the run conclusion is `failure`, stop and report.
+1. Run `git rev-parse HEAD` to capture the full 40-char SHA.
+   Pass that exact value to `ci_find` — never hand-expand the short SHA from the `git push` output, and never type a SHA from memory.
+2. Use `ci_find` with that SHA and workflow `ci` to locate the CI run.
+3. Use `ci_watch` with the returned `run_id` and workflow `ci` to wait for it to complete.
+4. If the run conclusion is `failure`, stop and report.
    Do not close the issue or merge anything.
-4. If it lands `success`, continue.
+5. If it lands `success`, continue.
 
 ## 4b. Check for a stacked release
 
@@ -77,6 +81,9 @@ Close each with its own short summary — release-please omits `refactor:` commi
    - Note: release-please PRs typically have **no CI runs** because PRs created by the default `GITHUB_TOKEN` do not trigger workflows.
      This is expected; do not block on it.
    - If `release_pr_merge` returns an error (not mergeable), stop and report — let the user decide.
+   - Exception: if it fails with `merge_state: UNSTABLE`, check `gh pr view <N> --json statusCheckRollup`.
+     An empty rollup means no checks ran — the `GITHUB_TOKEN` case above; merge with `gh pr merge <N> --merge`, then `git pull --ff-only`.
+     Stop and report only when the PR is genuinely blocked (`CONFLICTING`/`DIRTY`/`BEHIND` or a failing check).
 5. Use `release_watch` to wait for the release tag to land on HEAD.
 
 ## 7. Final report
@@ -91,6 +98,6 @@ Print:
 ## Constraints
 
 - Never force-push.
-- Never merge a release-please PR that is not `MERGEABLE`/`CLEAN`.
+- Never merge a release-please PR that is genuinely blocked (`CONFLICTING`/`DIRTY`/`BEHIND` or a failing check); `UNSTABLE` from no checks running is the expected `GITHUB_TOKEN` case (step 6.4).
 - If CI fails, the issue stays open.
 - If multiple release-please PRs exist for the same component, stop and ask — that's a configuration issue, not a normal merge.

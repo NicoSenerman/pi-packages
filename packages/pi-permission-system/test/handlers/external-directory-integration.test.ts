@@ -12,6 +12,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { EXTENSION_TAG } from "#src/denial-messages";
+import type { GatePrompter } from "#src/gate-prompter";
 import { formatExternalDirectoryAskPrompt } from "#src/handlers/gates/external-directory-messages";
 import type { PermissionCheckResult } from "#src/types";
 
@@ -190,14 +191,13 @@ describe("external_directory policy state — allow", () => {
   });
 
   it("does not write a block review-log entry when external_directory is allow", async () => {
-    const { handler, session } = makeHandler({
+    const { handler, logger } = makeHandler({
       session: { checkPermission: makeExtDirCheck("allow") },
       tools: ALL_TOOLS,
     });
     const event = makeToolCallEvent("read", { input: { path: EXTERNAL_PATH } });
     await handler.handleToolCall(event, makeCtx());
-    const reviewCalls = (session.logger.review as ReturnType<typeof vi.fn>).mock
-      .calls;
+    const reviewCalls = (logger.review as ReturnType<typeof vi.fn>).mock.calls;
     const blockEntries = reviewCalls.filter(
       ([eventName]: string[]) => eventName === "permission_request.blocked",
     );
@@ -218,13 +218,13 @@ describe("external_directory — allow external reads, gate external writes (#14
   });
 
   it("prompts for write to external path when external_directory allows but write is ask", async () => {
-    const prompt = vi
-      .fn()
-      .mockResolvedValue({ approved: true, state: "approved" });
-    const { handler } = makeHandler({
-      session: {
-        checkPermission: makeExtDirCheck("allow", "ask"),
-        prompt,
+    const { handler, prompter } = makeHandler({
+      session: { checkPermission: makeExtDirCheck("allow", "ask") },
+      prompter: {
+        canConfirm: vi.fn().mockReturnValue(true),
+        prompt: vi
+          .fn<GatePrompter["prompt"]>()
+          .mockResolvedValue({ approved: true, state: "approved" }),
       },
       tools: ALL_TOOLS,
     });
@@ -234,7 +234,7 @@ describe("external_directory — allow external reads, gate external writes (#14
     const result = await handler.handleToolCall(event, makeCtx());
     // external_directory passes; write gate prompts and user approves
     expect(result).toEqual({});
-    expect(prompt).toHaveBeenCalledOnce();
+    expect(prompter.prompt).toHaveBeenCalledOnce();
   });
 
   it("blocks write to external path when external_directory allows but write is deny", async () => {
@@ -300,14 +300,13 @@ describe("external_directory policy state — deny", () => {
   });
 
   it("writes review-log entry with resolution policy_denied", async () => {
-    const { handler, session } = makeHandler({
+    const { handler, logger } = makeHandler({
       session: { checkPermission: makeExtDirCheck("deny") },
       tools: ALL_TOOLS,
     });
     const event = makeToolCallEvent("read", { input: { path: EXTERNAL_PATH } });
     await handler.handleToolCall(event, makeCtx());
-    const reviewCalls = (session.logger.review as ReturnType<typeof vi.fn>).mock
-      .calls;
+    const reviewCalls = (logger.review as ReturnType<typeof vi.fn>).mock.calls;
     const blockEntries = reviewCalls.filter(
       ([eventName]: string[]) => eventName === "permission_request.blocked",
     );
@@ -341,10 +340,11 @@ describe("external_directory policy state — deny", () => {
 describe("external_directory policy state — ask", () => {
   it("does not block when user approves", async () => {
     const { handler } = makeHandler({
-      session: {
-        checkPermission: makeExtDirCheck("ask"),
+      session: { checkPermission: makeExtDirCheck("ask") },
+      prompter: {
+        canConfirm: vi.fn().mockReturnValue(true),
         prompt: vi
-          .fn()
+          .fn<GatePrompter["prompt"]>()
           .mockResolvedValue({ approved: true, state: "approved" }),
       },
       tools: ALL_TOOLS,
@@ -356,10 +356,11 @@ describe("external_directory policy state — ask", () => {
 
   it("emits user_approved decision when user approves", async () => {
     const { handler, events } = makeHandler({
-      session: {
-        checkPermission: makeExtDirCheck("ask"),
+      session: { checkPermission: makeExtDirCheck("ask") },
+      prompter: {
+        canConfirm: vi.fn().mockReturnValue(true),
         prompt: vi
-          .fn()
+          .fn<GatePrompter["prompt"]>()
           .mockResolvedValue({ approved: true, state: "approved" }),
       },
       tools: ALL_TOOLS,
@@ -379,9 +380,12 @@ describe("external_directory policy state — ask", () => {
 
   it("blocks when user denies", async () => {
     const { handler } = makeHandler({
-      session: {
-        checkPermission: makeExtDirCheck("ask"),
-        prompt: vi.fn().mockResolvedValue({ approved: false, state: "denied" }),
+      session: { checkPermission: makeExtDirCheck("ask") },
+      prompter: {
+        canConfirm: vi.fn().mockReturnValue(true),
+        prompt: vi
+          .fn<GatePrompter["prompt"]>()
+          .mockResolvedValue({ approved: false, state: "denied" }),
       },
       tools: ALL_TOOLS,
     });
@@ -392,9 +396,12 @@ describe("external_directory policy state — ask", () => {
 
   it("emits user_denied decision when user denies", async () => {
     const { handler, events } = makeHandler({
-      session: {
-        checkPermission: makeExtDirCheck("ask"),
-        prompt: vi.fn().mockResolvedValue({ approved: false, state: "denied" }),
+      session: { checkPermission: makeExtDirCheck("ask") },
+      prompter: {
+        canConfirm: vi.fn().mockReturnValue(true),
+        prompt: vi
+          .fn<GatePrompter["prompt"]>()
+          .mockResolvedValue({ approved: false, state: "denied" }),
       },
       tools: ALL_TOOLS,
     });
@@ -413,9 +420,10 @@ describe("external_directory policy state — ask", () => {
 
   it("block reason includes denialReason when user provides one", async () => {
     const { handler } = makeHandler({
-      session: {
-        checkPermission: makeExtDirCheck("ask"),
-        prompt: vi.fn().mockResolvedValue({
+      session: { checkPermission: makeExtDirCheck("ask") },
+      prompter: {
+        canConfirm: vi.fn().mockReturnValue(true),
+        prompt: vi.fn<GatePrompter["prompt"]>().mockResolvedValue({
           approved: false,
           state: "denied",
           denialReason: "not needed",
@@ -431,9 +439,10 @@ describe("external_directory policy state — ask", () => {
 
   it("blocks with confirmation_unavailable when no UI is available", async () => {
     const { handler } = makeHandler({
-      session: {
-        checkPermission: makeExtDirCheck("ask"),
-        canPrompt: vi.fn().mockReturnValue(false),
+      session: { checkPermission: makeExtDirCheck("ask") },
+      prompter: {
+        canConfirm: vi.fn().mockReturnValue(false),
+        prompt: vi.fn<GatePrompter["prompt"]>(),
       },
       tools: ALL_TOOLS,
     });
@@ -447,17 +456,17 @@ describe("external_directory policy state — ask", () => {
   });
 
   it("writes review-log entry with confirmation_unavailable when no UI", async () => {
-    const { handler, session } = makeHandler({
-      session: {
-        checkPermission: makeExtDirCheck("ask"),
-        canPrompt: vi.fn().mockReturnValue(false),
+    const { handler, logger } = makeHandler({
+      session: { checkPermission: makeExtDirCheck("ask") },
+      prompter: {
+        canConfirm: vi.fn().mockReturnValue(false),
+        prompt: vi.fn<GatePrompter["prompt"]>(),
       },
       tools: ALL_TOOLS,
     });
     const event = makeToolCallEvent("read", { input: { path: EXTERNAL_PATH } });
     await handler.handleToolCall(event, makeCtx({ hasUI: false }));
-    const reviewCalls = (session.logger.review as ReturnType<typeof vi.fn>).mock
-      .calls;
+    const reviewCalls = (logger.review as ReturnType<typeof vi.fn>).mock.calls;
     const blockEntries = reviewCalls.filter(
       ([eventName]: string[]) => eventName === "permission_request.blocked",
     );
@@ -469,9 +478,10 @@ describe("external_directory policy state — ask", () => {
 
   it("emits confirmation_unavailable decision when no UI", async () => {
     const { handler, events } = makeHandler({
-      session: {
-        checkPermission: makeExtDirCheck("ask"),
-        canPrompt: vi.fn().mockReturnValue(false),
+      session: { checkPermission: makeExtDirCheck("ask") },
+      prompter: {
+        canConfirm: vi.fn().mockReturnValue(false),
+        prompt: vi.fn<GatePrompter["prompt"]>(),
       },
       tools: ALL_TOOLS,
     });

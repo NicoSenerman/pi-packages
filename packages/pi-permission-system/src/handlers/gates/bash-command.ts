@@ -1,6 +1,6 @@
 import type { BashCommand } from "#src/handlers/gates/bash-program";
 import { pickMostRestrictive } from "#src/handlers/gates/candidate-check";
-import type { PermissionResolver } from "#src/permission-resolver";
+import type { ScopedPermissionResolver } from "#src/permission-resolver";
 import type { PermissionCheckResult } from "#src/types";
 
 /**
@@ -30,7 +30,7 @@ export function resolveBashCommandCheck(
   command: string,
   commands: BashCommand[],
   agentName: string | undefined,
-  resolver: PermissionResolver,
+  resolver: ScopedPermissionResolver,
 ): PermissionCheckResult {
   const results = commands.map((cmd) => {
     const result = resolver.resolve("bash", { command: cmd.text }, agentName);

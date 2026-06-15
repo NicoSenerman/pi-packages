@@ -1,28 +1,23 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   ACTIVE_AGENT_TAG_REGEX,
+  type ActiveAgentContext,
   getActiveAgentName,
   getActiveAgentNameFromSystemPrompt,
   normalizeAgentName,
+  type SessionEntryView,
 } from "#src/active-agent";
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
-type SessionEntry = {
-  type: string;
-  customType?: string;
-  data?: unknown;
-};
-
-function makeCtx(entries: SessionEntry[]): ExtensionContext {
+function makeCtx(entries: SessionEntryView[]): ActiveAgentContext {
   return {
     sessionManager: {
       getEntries: vi.fn(() => entries),
     },
-  } as unknown as ExtensionContext;
+  };
 }
 
 describe("ACTIVE_AGENT_TAG_REGEX", () => {

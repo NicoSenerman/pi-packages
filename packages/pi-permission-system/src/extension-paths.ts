@@ -17,8 +17,9 @@ export interface ExtensionPaths {
   readonly globalLogsDir: string;
   /**
    * Static Pi infrastructure directories used for external-directory
-   * read auto-allow. Computed once from `agentDir` and
-   * `discoverGlobalNodeModulesRoot()`. Config-based extras
+   * read auto-allow. Computed once from `agentDir`,
+   * `discoverGlobalNodeModulesRoot()`, and (when provided) Pi's own
+   * install directory (`getPackageDir()`). Config-based extras
    * (`piInfrastructureReadPaths`) are read from `runtime.config` at
    * call time in the handler so they pick up config reloads.
    */
@@ -30,8 +31,17 @@ export interface ExtensionPaths {
  *
  * Calls `discoverGlobalNodeModulesRoot()` internally so the result is
  * self-contained. Call this once at extension startup, not at module scope.
+ *
+ * `piPackageDir` is Pi's own install directory (from the coding-agent
+ * `getPackageDir()` API, resolved at the composition root). When provided it is
+ * auto-allowed for read-only tools so the agent can read Pi's bundled docs and
+ * examples regardless of install layout. It is strictly narrower than the
+ * discovered global `node_modules` root already included here.
  */
-export function computeExtensionPaths(agentDir: string): ExtensionPaths {
+export function computeExtensionPaths(
+  agentDir: string,
+  piPackageDir?: string,
+): ExtensionPaths {
   const sessionsDir = join(agentDir, "sessions");
   const subagentSessionsDir = join(agentDir, "subagent-sessions");
   const forwardingDir = join(sessionsDir, "permission-forwarding");
@@ -42,6 +52,7 @@ export function computeExtensionPaths(agentDir: string): ExtensionPaths {
     agentDir,
     join(agentDir, "git"),
     ...(globalNodeModulesRoot ? [globalNodeModulesRoot] : []),
+    ...(piPackageDir ? [piPackageDir] : []),
   ];
 
   return {

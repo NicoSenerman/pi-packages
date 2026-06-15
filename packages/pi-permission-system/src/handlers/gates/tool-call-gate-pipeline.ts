@@ -1,6 +1,7 @@
 import { getNonEmptyString, toRecord } from "#src/common";
-import type { PermissionResolver } from "#src/permission-resolver";
+import type { ScopedPermissionResolver } from "#src/permission-resolver";
 import type { SkillPromptEntry } from "#src/skill-prompt-sanitizer";
+import type { ToolAccessExtractorLookup } from "#src/tool-access-extractor-registry";
 import type { ToolInputFormatterLookup } from "#src/tool-input-formatter-registry";
 import {
   ToolPreviewFormatter,
@@ -21,14 +22,14 @@ import type { GateOutcome, ToolCallContext } from "./types";
 /**
  * Narrow interface the pipeline needs from its session-side dependency.
  *
- * Extends `PermissionResolver` (the `resolve` method gate factories use)
- * with the three query methods needed to assemble gate inputs.
+ * The three query methods needed to assemble gate inputs.
+ * The resolver is injected separately as a constructor parameter.
  *
  * `PermissionSession` satisfies this structurally at the construction call
  * site; no `implements` clause is needed and would create a layer-inversion
  * import from the domain module into the handler layer.
  */
-export interface ToolCallGateInputs extends PermissionResolver {
+export interface ToolCallGateInputs {
   /** Active skill prompt entries for the skill-read gate. */
   getActiveSkillEntries(): SkillPromptEntry[];
   /** Combined infrastructure read directories (static + config-derived). */
@@ -50,8 +51,10 @@ export interface ToolCallGateInputs extends PermissionResolver {
  */
 export class ToolCallGatePipeline {
   constructor(
+    private readonly resolver: ScopedPermissionResolver,
     private readonly inputs: ToolCallGateInputs,
     private readonly customFormatters?: ToolInputFormatterLookup,
+    private readonly customExtractors?: ToolAccessExtractorLookup,
   ) {}
 
   async evaluate(
@@ -76,10 +79,11 @@ export class ToolCallGatePipeline {
     const gateProducers: Array<() => GateResult | Promise<GateResult>> = [
       () =>
         describeSkillReadGate(tcc, () => this.inputs.getActiveSkillEntries()),
-      () => describePathGate(tcc, this.inputs),
-      () => describeExternalDirectoryGate(tcc, infraDirs),
-      () => describeBashExternalDirectoryGate(tcc, bashProgram, this.inputs),
-      () => describeBashPathGate(tcc, bashProgram, this.inputs),
+      () => describePathGate(tcc, this.resolver, this.customExtractors),
+      () =>
+        describeExternalDirectoryGate(tcc, infraDirs, this.customExtractors),
+      () => describeBashExternalDirectoryGate(tcc, bashProgram, this.resolver),
+      () => describeBashPathGate(tcc, bashProgram, this.resolver),
       () => {
         // Bash commands may chain several sub-commands (`a && b`, `a | b`, …);
         // evaluate each unit from the shared parse on the bash surface and
@@ -91,9 +95,9 @@ export class ToolCallGatePipeline {
                 command ?? "",
                 bashProgram.commands(),
                 tcc.agentName ?? undefined,
-                this.inputs,
+                this.resolver,
               )
-            : this.inputs.resolve(
+            : this.resolver.resolve(
                 tcc.toolName,
                 tcc.input,
                 tcc.agentName ?? undefined,

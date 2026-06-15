@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.3](https://github.com/gotgenes/pi-packages/compare/pi-session-tools-v1.0.2...pi-session-tools-v1.0.3) (2026-06-12)
+
+
+### Miscellaneous Chores
+
+* **deps:** bump Pi SDK to 0.79.1 ([#370](https://github.com/gotgenes/pi-packages/issues/370)) ([704f3b3](https://github.com/gotgenes/pi-packages/commit/704f3b3457ceb12b9df9efffe7a56812a5667d5d))
+
 ## [1.0.2](https://github.com/gotgenes/pi-packages/compare/pi-session-tools-v1.0.1...pi-session-tools-v1.0.2) (2026-06-03)
 
 

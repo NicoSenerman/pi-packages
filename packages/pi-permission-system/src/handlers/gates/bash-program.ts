@@ -1,14 +1,16 @@
 import { createRequire } from "node:module";
 import { basename, isAbsolute, join, resolve } from "node:path";
-
+import { canonicalizePath } from "#src/canonicalize-path";
 import {
   classifyTokenAsPathCandidate,
   classifyTokenAsRuleCandidate,
 } from "#src/handlers/gates/bash-token-classification";
 import {
+  getPathPolicyValues,
   isPathWithinDirectory,
   isSafeSystemPath,
   normalizePathForComparison,
+  normalizePathPolicyLiteral,
 } from "#src/path-utils";
 import type { BashCommandContext } from "#src/types";
 
@@ -98,6 +100,13 @@ interface PathCandidate {
   readonly base: EffectiveBase;
 }
 
+export interface BashPathRuleCandidate {
+  /** Raw path-like token shown in prompts, logs, and session approvals. */
+  readonly token: string;
+  /** Equivalent values used for permission policy matching. */
+  readonly policyValues: readonly string[];
+}
+
 /**
  * A bash command parsed once into a reusable representation.
  *
@@ -139,23 +148,36 @@ export class BashProgram {
   }
 
   /**
-   * Tokens that may be file paths, using the broader `path`-rule filter.
+   * Path-rule candidates paired with their policy lookup values.
    *
-   * Accepts relative paths (`.env`, `src/foo.ts`, `./build`) and absolute
-   * paths; does NOT filter by CWD. Returns deduplicated tokens for rule
-   * evaluation.
+   * When `cwd` is available, each relative token is resolved against the
+   * effective working directory in force at the token's position (folding
+   * literal current-shell `cd` commands), while raw and project-relative
+   * aliases are retained for backward-compatible relative rules. A token after
+   * a non-literal `cd` keeps only its literal value so no spurious absolute
+   * rule can match.
    */
-  pathTokens(): string[] {
+  pathRuleCandidates(cwd?: string): BashPathRuleCandidate[] {
     const seen = new Set<string>();
-    const result: string[] = [];
-    for (const { token } of this.rawCandidates) {
+    const result: BashPathRuleCandidate[] = [];
+
+    for (const { token, base } of this.rawCandidates) {
       const candidate = classifyTokenAsRuleCandidate(token);
       if (!candidate) continue;
-      if (!seen.has(candidate)) {
-        seen.add(candidate);
-        result.push(candidate);
-      }
+
+      const policyValues = getPolicyValuesForRuleCandidate(
+        candidate,
+        base,
+        cwd,
+      );
+      if (policyValues.length === 0) continue;
+
+      const key = policyValues.join("\0");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push({ token: candidate, policyValues });
     }
+
     return result;
   }
 
@@ -186,7 +208,9 @@ export class BashProgram {
    * the running directory.
    */
   externalPaths(cwd: string): string[] {
-    const normalizedCwd = normalizePathForComparison(cwd, cwd);
+    const normalizedCwd = canonicalizePath(
+      normalizePathForComparison(cwd, cwd),
+    );
 
     const seen = new Set<string>();
     const externalPaths: string[] = [];
@@ -200,7 +224,9 @@ export class BashProgram {
       // display path). Absolute / `~` candidates are base-independent and
       // resolve normally below.
       if (base.kind === "unknown" && isRelativeCandidate(candidate)) {
-        const normalized = normalizePathForComparison(candidate, cwd);
+        const normalized = canonicalizePath(
+          normalizePathForComparison(candidate, cwd),
+        );
         if (
           normalized &&
           normalizedCwd !== "" &&
@@ -215,7 +241,9 @@ export class BashProgram {
 
       const resolveBase =
         base.kind === "known" ? resolve(cwd, base.offset) : cwd;
-      const normalized = normalizePathForComparison(candidate, resolveBase);
+      const normalized = canonicalizePath(
+        normalizePathForComparison(candidate, resolveBase),
+      );
       if (!normalized) continue;
 
       if (
@@ -886,6 +914,25 @@ function tagTokens(
  */
 function isRelativeCandidate(candidate: string): boolean {
   return !candidate.startsWith("/") && !candidate.startsWith("~");
+}
+
+function getPolicyValuesForRuleCandidate(
+  candidate: string,
+  base: EffectiveBase,
+  cwd: string | undefined,
+): string[] {
+  if (!cwd) {
+    const literal = normalizePathPolicyLiteral(candidate);
+    return literal ? [literal] : [];
+  }
+
+  if (base.kind === "unknown" && isRelativeCandidate(candidate)) {
+    const literal = normalizePathPolicyLiteral(candidate);
+    return literal ? [literal] : [];
+  }
+
+  const resolveBase = base.kind === "known" ? resolve(cwd, base.offset) : cwd;
+  return getPathPolicyValues(candidate, { cwd, resolveBase });
 }
 
 /**

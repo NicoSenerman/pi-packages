@@ -77,7 +77,7 @@ Just a prompt.`);
     expect(agent.model).toBeUndefined();
     expect(agent.thinking).toBeUndefined();
     expect(agent.maxTurns).toBeUndefined();
-    expect(agent.promptMode).toBe("replace");
+    expect(agent.promptMode).toBe("append");
     expect(agent.inheritContext).toBeUndefined();
     expect(agent.runInBackground).toBeUndefined();
     expect(agent.systemPrompt).toBe("Just a prompt.");
@@ -92,6 +92,7 @@ Just a prompt.`);
     expect(agent.name).toBe("bare");
     expect(agent.description).toBe("bare");
     expect(agent.builtinToolNames).toEqual(BUILTIN_TOOL_NAMES);
+    expect(agent.promptMode).toBe("append");
     expect(agent.systemPrompt).toBe("Just a system prompt, no frontmatter.");
   });
 
@@ -163,7 +164,7 @@ Extra instructions.`);
     expect(result.get("appender")!.promptMode).toBe("append");
   });
 
-  it("defaults unknown prompt_mode to replace", () => {
+  it("defaults unknown prompt_mode to append", () => {
     writeAgent("badmode", `---
 prompt_mode: merge
 ---
@@ -171,7 +172,7 @@ prompt_mode: merge
 Unknown mode.`);
 
     const result = loadCustomAgents(tmpDir);
-    expect(result.get("badmode")!.promptMode).toBe("replace");
+    expect(result.get("badmode")!.promptMode).toBe("append");
   });
 
   it("loads multiple agents", () => {

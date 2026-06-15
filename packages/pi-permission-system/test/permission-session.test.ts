@@ -17,22 +17,19 @@ vi.mock("../src/active-agent", () => ({
 
 // ── Test helpers ───────────────────────────────────────────────────────────
 
-import type { SessionConfigStore } from "#src/config-store";
-import { DEFAULT_EXTENSION_CONFIG } from "#src/extension-config";
-import type { ExtensionPaths } from "#src/extension-paths";
-import type { ForwardingController } from "#src/forwarding-manager";
-import type { ScopedPermissionManager } from "#src/permission-manager";
-import {
-  PermissionSession,
-  type PermissionSessionRuntimeDeps,
-} from "#src/permission-session";
-import type { Ruleset } from "#src/rule";
+import type { DEFAULT_EXTENSION_CONFIG } from "#src/extension-config";
 import { SessionApproval } from "#src/session-approval";
-import type { SessionLogger } from "#src/session-logger";
-import { SessionRules } from "#src/session-rules";
 import type { SkillPromptEntry } from "#src/skill-prompt-sanitizer";
-import type { PermissionCheckResult, PermissionState } from "#src/types";
 import { makeCtx } from "#test/helpers/handler-fixtures";
+import {
+  makeConfigStore,
+  makeFakePermissionManager,
+  makeRealSession,
+} from "#test/helpers/session-fixtures";
+
+// Alias so the existing tests read naturally.
+const createSession = makeRealSession;
+const makePermissionManager = makeFakePermissionManager;
 
 function makeSkillEntry(
   name: string,
@@ -49,127 +46,6 @@ function makeSkillEntry(
   };
 }
 
-function makePaths(overrides: Partial<ExtensionPaths> = {}): ExtensionPaths {
-  return {
-    agentDir: "/test/agent",
-    sessionsDir: "/test/agent/sessions",
-    subagentSessionsDir: "/test/agent/subagent-sessions",
-    forwardingDir: "/test/agent/sessions/permission-forwarding",
-    globalLogsDir: "/test/agent/logs",
-    piInfrastructureDirs: ["/test/agent", "/test/agent/git"],
-    ...overrides,
-  };
-}
-
-function makeLogger(): SessionLogger {
-  return {
-    debug: vi.fn(),
-    review: vi.fn(),
-    warn: vi.fn(),
-  };
-}
-
-function makeConfigStore(
-  overrides: Partial<SessionConfigStore> = {},
-): SessionConfigStore {
-  return {
-    current:
-      overrides.current ??
-      vi
-        .fn<() => typeof DEFAULT_EXTENSION_CONFIG>()
-        .mockReturnValue({ ...DEFAULT_EXTENSION_CONFIG }),
-    refresh: overrides.refresh ?? vi.fn<(ctx?: ExtensionContext) => void>(),
-    logResolvedPaths: overrides.logResolvedPaths ?? vi.fn<() => void>(),
-  };
-}
-
-function makeRuntimeDeps(): PermissionSessionRuntimeDeps {
-  return {
-    canRequestPermissionConfirmation: vi.fn().mockReturnValue(true),
-    promptPermission: vi
-      .fn()
-      .mockResolvedValue({ approved: true, state: "approved" }),
-  };
-}
-
-function makeForwarding(): ForwardingController {
-  return {
-    start: vi.fn(),
-    stop: vi.fn(),
-  };
-}
-
-function makePermissionManager() {
-  return {
-    configureForCwd: vi.fn<(cwd: string | undefined | null) => void>(),
-    checkPermission: vi
-      .fn<
-        (
-          toolName: string,
-          input: unknown,
-          agentName?: string,
-          sessionRules?: Ruleset,
-        ) => PermissionCheckResult
-      >()
-      .mockReturnValue({
-        state: "allow",
-        toolName: "read",
-        source: "tool",
-        origin: "builtin",
-      }),
-    getToolPermission: vi
-      .fn<(toolName: string, agentName?: string) => PermissionState>()
-      .mockReturnValue("allow"),
-    getConfigIssues: vi.fn((): string[] => []),
-    getPolicyCacheStamp: vi.fn((): string => "stamp-1"),
-  };
-}
-
-function createSession(overrides?: {
-  paths?: Partial<ExtensionPaths>;
-  logger?: SessionLogger;
-  forwarding?: ForwardingController;
-  permissionManager?: ScopedPermissionManager;
-  sessionRules?: SessionRules;
-  configStore?: SessionConfigStore;
-  runtimeDeps?: PermissionSessionRuntimeDeps;
-}): {
-  session: PermissionSession;
-  paths: ExtensionPaths;
-  logger: SessionLogger;
-  forwarding: ForwardingController;
-  sessionRules: SessionRules;
-  configStore: SessionConfigStore;
-  runtimeDeps: PermissionSessionRuntimeDeps;
-} {
-  const paths = makePaths(overrides?.paths);
-  const logger = overrides?.logger ?? makeLogger();
-  const forwarding = overrides?.forwarding ?? makeForwarding();
-  const permissionManager =
-    overrides?.permissionManager ?? makePermissionManager();
-  const sessionRules = overrides?.sessionRules ?? new SessionRules();
-  const configStore = overrides?.configStore ?? makeConfigStore();
-  const runtimeDeps = overrides?.runtimeDeps ?? makeRuntimeDeps();
-  const session = new PermissionSession(
-    paths,
-    logger,
-    forwarding,
-    permissionManager,
-    sessionRules,
-    configStore,
-    runtimeDeps,
-  );
-  return {
-    session,
-    paths,
-    logger,
-    forwarding,
-    sessionRules,
-    configStore,
-    runtimeDeps,
-  };
-}
-
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
@@ -180,138 +56,6 @@ beforeEach(() => {
 });
 
 describe("PermissionSession", () => {
-  describe("constructor and delegation", () => {
-    it("delegates checkPermission to internal PermissionManager", () => {
-      const pm = makePermissionManager();
-      const { session } = createSession({ permissionManager: pm });
-
-      const result = session.checkPermission("bash", { command: "ls" });
-
-      expect(pm.checkPermission).toHaveBeenCalledWith(
-        "bash",
-        { command: "ls" },
-        undefined,
-        undefined,
-      );
-      expect(result.state).toBe("allow");
-    });
-
-    it("delegates getToolPermission to internal PermissionManager", () => {
-      const pm = makePermissionManager();
-      const { session } = createSession({ permissionManager: pm });
-
-      const result = session.getToolPermission("read");
-
-      expect(pm.getToolPermission).toHaveBeenCalledWith("read", undefined);
-      expect(result).toBe("allow");
-    });
-
-    it("delegates getConfigIssues to internal PermissionManager", () => {
-      const pm = makePermissionManager();
-      vi.mocked(pm.getConfigIssues).mockReturnValue(["issue1"]);
-      const { session } = createSession({ permissionManager: pm });
-
-      expect(session.getConfigIssues("agent1")).toEqual(["issue1"]);
-      expect(pm.getConfigIssues).toHaveBeenCalledWith("agent1");
-    });
-
-    it("delegates getPolicyCacheStamp to internal PermissionManager", () => {
-      const pm = makePermissionManager();
-      const { session } = createSession({ permissionManager: pm });
-
-      expect(session.getPolicyCacheStamp("agent1")).toBe("stamp-1");
-      expect(pm.getPolicyCacheStamp).toHaveBeenCalledWith("agent1");
-    });
-
-    it("delegates getSessionRuleset to internal SessionRules", () => {
-      const { session } = createSession();
-      const rules = session.getSessionRuleset();
-      expect(rules).toEqual([]);
-    });
-
-    it("delegates recordSessionApproval to internal SessionRules", () => {
-      const { session } = createSession();
-      session.recordSessionApproval(
-        SessionApproval.single("bash", "/usr/bin/*"),
-      );
-      const rules = session.getSessionRuleset();
-      expect(rules).toHaveLength(1);
-      expect(rules[0]).toMatchObject({
-        surface: "bash",
-        pattern: "/usr/bin/*",
-        action: "allow",
-      });
-    });
-  });
-
-  describe("resolve", () => {
-    it("forwards surface, input, and agentName, applying the empty session ruleset", () => {
-      const pm = makePermissionManager();
-      const { session } = createSession({ permissionManager: pm });
-
-      session.resolve("bash", { command: "ls" }, "agent-x");
-
-      expect(pm.checkPermission).toHaveBeenCalledWith(
-        "bash",
-        { command: "ls" },
-        "agent-x",
-        [],
-      );
-    });
-
-    it("defaults agentName to undefined when omitted", () => {
-      const pm = makePermissionManager();
-      const { session } = createSession({ permissionManager: pm });
-
-      session.resolve("read", { path: ".env" });
-
-      expect(pm.checkPermission).toHaveBeenCalledWith(
-        "read",
-        { path: ".env" },
-        undefined,
-        [],
-      );
-    });
-
-    it("applies a recorded session approval on the next resolve", () => {
-      const pm = makePermissionManager();
-      const { session } = createSession({ permissionManager: pm });
-
-      session.recordSessionApproval(SessionApproval.single("bash", "git *"));
-      session.resolve("bash", { command: "git status" });
-
-      const sessionRules = vi.mocked(pm.checkPermission).mock.calls[0][3];
-      expect(sessionRules).toHaveLength(1);
-      expect(sessionRules?.[0]).toMatchObject({
-        surface: "bash",
-        pattern: "git *",
-        action: "allow",
-      });
-    });
-
-    it("returns the PermissionManager's check result", () => {
-      const pm = makePermissionManager();
-      vi.mocked(pm.checkPermission).mockReturnValue({
-        state: "deny",
-        toolName: "bash",
-        source: "bash",
-        origin: "global",
-        matchedPattern: "rm *",
-      });
-      const { session } = createSession({ permissionManager: pm });
-
-      const result = session.resolve("bash", { command: "rm -rf /" });
-
-      expect(result).toEqual({
-        state: "deny",
-        toolName: "bash",
-        source: "bash",
-        origin: "global",
-        matchedPattern: "rm *",
-      });
-    });
-  });
-
   describe("activate and deactivate", () => {
     it("stores the context on activate", () => {
       const { session, forwarding } = createSession();
@@ -329,6 +73,23 @@ describe("PermissionSession", () => {
 
       expect(forwarding.stop).toHaveBeenCalled();
     });
+
+    it("forwards activate to the gateway", () => {
+      const { session, gateway } = createSession();
+      const ctx = makeCtx();
+
+      session.activate(ctx);
+
+      expect(gateway.activate).toHaveBeenCalledWith(ctx);
+    });
+
+    it("forwards deactivate to the gateway", () => {
+      const { session, gateway } = createSession();
+      session.activate(makeCtx());
+      session.deactivate();
+
+      expect(gateway.deactivate).toHaveBeenCalled();
+    });
   });
 
   describe("resetForNewSession", () => {
@@ -344,16 +105,19 @@ describe("PermissionSession", () => {
 
     it("clears cache keys", () => {
       const { session } = createSession();
-      session.commitActiveToolsCacheKey("key-1");
-      session.commitPromptStateCacheKey("key-2");
-      expect(session.shouldUpdateActiveTools("key-1")).toBe(false);
-      expect(session.shouldUpdatePromptState("key-2")).toBe(false);
+      // Prime both gates with a key
+      session.activeToolsGate.runIfChanged("key-1", () => {});
+      session.promptStateGate.runIfChanged("key-2", () => {});
 
       session.resetForNewSession(makeCtx());
 
-      // After reset, same keys should be treated as new
-      expect(session.shouldUpdateActiveTools("key-1")).toBe(true);
-      expect(session.shouldUpdatePromptState("key-2")).toBe(true);
+      // After reset, the same keys should run the effect again
+      const toolsEffect = vi.fn();
+      const promptEffect = vi.fn();
+      session.activeToolsGate.runIfChanged("key-1", toolsEffect);
+      session.promptStateGate.runIfChanged("key-2", promptEffect);
+      expect(toolsEffect).toHaveBeenCalledOnce();
+      expect(promptEffect).toHaveBeenCalledOnce();
     });
 
     it("clears skill entries", () => {
@@ -390,24 +154,30 @@ describe("PermissionSession", () => {
 
   describe("shutdown", () => {
     it("clears session rules", () => {
-      const { session } = createSession();
-      session.recordSessionApproval(SessionApproval.single("bash", "*"));
-      expect(session.getSessionRuleset()).toHaveLength(1);
+      const { session, sessionRules } = createSession();
+      sessionRules.recordSessionApproval(SessionApproval.single("bash", "*"));
+      expect(sessionRules.getRuleset()).toHaveLength(1);
 
       session.shutdown();
 
-      expect(session.getSessionRuleset()).toEqual([]);
+      expect(sessionRules.getRuleset()).toEqual([]);
     });
 
     it("clears cache keys", () => {
       const { session } = createSession();
-      session.commitActiveToolsCacheKey("k1");
-      session.commitPromptStateCacheKey("k2");
+      // Prime both gates with a key
+      session.activeToolsGate.runIfChanged("k1", () => {});
+      session.promptStateGate.runIfChanged("k2", () => {});
 
       session.shutdown();
 
-      expect(session.shouldUpdateActiveTools("k1")).toBe(true);
-      expect(session.shouldUpdatePromptState("k2")).toBe(true);
+      // After shutdown, the same keys should run the effect again
+      const toolsEffect = vi.fn();
+      const promptEffect = vi.fn();
+      session.activeToolsGate.runIfChanged("k1", toolsEffect);
+      session.promptStateGate.runIfChanged("k2", promptEffect);
+      expect(toolsEffect).toHaveBeenCalledOnce();
+      expect(promptEffect).toHaveBeenCalledOnce();
     });
 
     it("clears skill entries", () => {
@@ -426,36 +196,6 @@ describe("PermissionSession", () => {
       session.shutdown();
 
       expect(forwarding.stop).toHaveBeenCalled();
-    });
-  });
-
-  describe("cache key methods", () => {
-    it("shouldUpdateActiveTools returns true for new key", () => {
-      const { session } = createSession();
-      expect(session.shouldUpdateActiveTools("key-1")).toBe(true);
-    });
-
-    it("shouldUpdateActiveTools returns false for committed key", () => {
-      const { session } = createSession();
-      session.commitActiveToolsCacheKey("key-1");
-      expect(session.shouldUpdateActiveTools("key-1")).toBe(false);
-    });
-
-    it("shouldUpdateActiveTools returns true for different key", () => {
-      const { session } = createSession();
-      session.commitActiveToolsCacheKey("key-1");
-      expect(session.shouldUpdateActiveTools("key-2")).toBe(true);
-    });
-
-    it("shouldUpdatePromptState returns true for new key", () => {
-      const { session } = createSession();
-      expect(session.shouldUpdatePromptState("key-1")).toBe(true);
-    });
-
-    it("shouldUpdatePromptState returns false for committed key", () => {
-      const { session } = createSession();
-      session.commitPromptStateCacheKey("key-1");
-      expect(session.shouldUpdatePromptState("key-1")).toBe(false);
     });
   });
 
@@ -595,14 +335,20 @@ describe("PermissionSession", () => {
 
     it("clears caches and skill entries", () => {
       const { session } = createSession();
-      session.commitActiveToolsCacheKey("k1");
-      session.commitPromptStateCacheKey("k2");
+      // Prime both gates with a key
+      session.activeToolsGate.runIfChanged("k1", () => {});
+      session.promptStateGate.runIfChanged("k2", () => {});
       session.setActiveSkillEntries([makeSkillEntry("s")]);
 
       session.reload();
 
-      expect(session.shouldUpdateActiveTools("k1")).toBe(true);
-      expect(session.shouldUpdatePromptState("k2")).toBe(true);
+      // After reload, the same keys should run the effect again
+      const toolsEffect = vi.fn();
+      const promptEffect = vi.fn();
+      session.activeToolsGate.runIfChanged("k1", toolsEffect);
+      session.promptStateGate.runIfChanged("k2", promptEffect);
+      expect(toolsEffect).toHaveBeenCalledOnce();
+      expect(promptEffect).toHaveBeenCalledOnce();
       expect(session.getActiveSkillEntries()).toEqual([]);
     });
   });
@@ -628,101 +374,34 @@ describe("PermissionSession", () => {
     });
   });
 
-  describe("canConfirm", () => {
-    it("returns true when context is active and canPrompt returns true", () => {
+  describe("notify", () => {
+    it("forwards the message to ctx.ui.notify with 'warning' severity after activation", () => {
       const { session } = createSession();
-      session.activate(makeCtx());
-      expect(session.canConfirm()).toBe(true);
-    });
-
-    it("returns false when no context is active", () => {
-      const { session } = createSession();
-      expect(session.canConfirm()).toBe(false);
-    });
-
-    it("returns false when canPrompt returns false", () => {
-      const runtimeDeps = makeRuntimeDeps();
-      (
-        runtimeDeps.canRequestPermissionConfirmation as ReturnType<typeof vi.fn>
-      ).mockReturnValue(false);
-      const { session } = createSession({ runtimeDeps });
-      session.activate(makeCtx());
-      expect(session.canConfirm()).toBe(false);
-    });
-  });
-
-  describe("promptPermission", () => {
-    it("delegates to prompt with stored context", async () => {
-      const { session, runtimeDeps } = createSession();
       const ctx = makeCtx();
       session.activate(ctx);
-      const details = {
-        requestId: "req-1",
-        source: "tool_call" as const,
-        agentName: null,
-        message: "Allow?",
-      };
 
-      const result = await session.promptPermission(details);
+      session.notify("something went wrong");
 
-      expect(runtimeDeps.promptPermission).toHaveBeenCalledWith(ctx, details);
-      expect(result).toEqual({ approved: true, state: "approved" });
+      expect(ctx.ui.notify).toHaveBeenCalledOnce();
+      expect(ctx.ui.notify).toHaveBeenCalledWith(
+        "something went wrong",
+        "warning",
+      );
     });
 
-    it("throws when no context is active", async () => {
+    it("is a no-op and does not throw before activation", () => {
       const { session } = createSession();
-      const details = {
-        requestId: "req-1",
-        source: "tool_call" as const,
-        agentName: null,
-        message: "Allow?",
-      };
 
-      await expect(session.promptPermission(details)).rejects.toThrow(
-        "promptPermission called before the session was activated",
-      );
+      expect(() => session.notify("msg")).not.toThrow();
     });
-  });
 
-  describe("canPrompt", () => {
-    it("delegates to runtimeDeps.canRequestPermissionConfirmation", () => {
-      const { session, runtimeDeps } = createSession();
+    it("is a no-op and does not throw after deactivation", () => {
+      const { session } = createSession();
       const ctx = makeCtx();
+      session.activate(ctx);
+      session.deactivate();
 
-      const result = session.canPrompt(ctx);
-
-      expect(runtimeDeps.canRequestPermissionConfirmation).toHaveBeenCalledWith(
-        ctx,
-      );
-      expect(result).toBe(true);
-    });
-
-    it("returns false when runtimeDeps says no", () => {
-      const runtimeDeps = makeRuntimeDeps();
-      (
-        runtimeDeps.canRequestPermissionConfirmation as ReturnType<typeof vi.fn>
-      ).mockReturnValue(false);
-      const { session } = createSession({ runtimeDeps });
-
-      expect(session.canPrompt(makeCtx())).toBe(false);
-    });
-  });
-
-  describe("prompt", () => {
-    it("delegates to runtimeDeps.promptPermission", async () => {
-      const { session, runtimeDeps } = createSession();
-      const ctx = makeCtx();
-      const details = {
-        requestId: "req-1",
-        source: "tool_call" as const,
-        agentName: null,
-        message: "Allow?",
-      };
-
-      const result = await session.prompt(ctx, details);
-
-      expect(runtimeDeps.promptPermission).toHaveBeenCalledWith(ctx, details);
-      expect(result).toEqual({ approved: true, state: "approved" });
+      expect(() => session.notify("msg")).not.toThrow();
     });
   });
 });

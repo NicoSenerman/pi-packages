@@ -3,11 +3,11 @@ name: code-design
 description: |
   TypeScript conventions, code design principles (SOLID, self-documenting code, file organization),
   structural design heuristics (dependency width, LoD, output arguments),
-  pnpm rules, ES2024 target, and Pi SDK patterns.
+  pnpm rules, ES2024 target, Pi SDK patterns, and Biome/ESLint conflict workarounds.
   Load during implementation, refactoring, or code review.
 ---
 
-# Code Style
+# Code Design
 
 Load this skill when implementing, refactoring, or reviewing TypeScript code.
 
@@ -16,27 +16,40 @@ Load this skill when implementing, refactoring, or reviewing TypeScript code.
 Code should be its own primary documentation.
 Prefer names that reveal intent — for functions, methods, classes, variables, and modules.
 
-**Names over comments:** If a comment is needed to explain _what_ code does, extract a well-named function or rename the symbol.
-Comments should explain _why_ — the reasoning or non-obvious context behind a decision.
+### Names over comments
 
-**Scope-appropriate naming:** Name length should correspond to scope.
+If a comment is needed to explain _what_ code does, extract a well-named function or rename the symbol.
+Comments should explain _why_ — the reasoning or non-obvious context behind a decision.
+Do not leave tombstone comments that narrate removed code or the absence of a guard, test, or branch — the type system and the diff already document it.
+
+### Scope-appropriate naming
+
+Name length should correspond to scope.
 Short names (`i`, `x`, `fn`) are fine for small scopes (loop counters, short lambdas).
 Exported functions, module-level variables, and class names warrant longer, descriptive names.
 
-**Doc comments:** Add JSDoc/docstrings where the ecosystem expects them — typically on public/exported APIs.
+### Doc comments
+
+Add JSDoc/docstrings where the ecosystem expects them — typically on public/exported APIs.
 Do not add doc comments when the name and signature already convey usage.
 
 ## Code Organization
 
 Source files should read like a newspaper article: high-level intent at the top, progressively deeper detail as you read down.
 
-**Public API first:** Exported functions, classes, and interfaces appear near the top so readers can scan the module's surface without wading through implementation details.
+### Public API first
 
-**Stepdown rule:** Each function should be followed by the helpers it calls, at the next level of abstraction — caller first, then the helpers it depends on.
+Exported functions, classes, and interfaces appear near the top so readers can scan the module's surface without wading through implementation details.
+
+### Stepdown rule
+
+Each function should be followed by the helpers it calls, at the next level of abstraction — caller first, then the helpers it depends on.
 Related functions that collaborate on the same data should be grouped together.
 When extracting a helper during a refactor, place it _below_ the function that calls it, not above — function declarations hoist, so "define before use" is unnecessary and inverts the stepdown order.
 
-**Helpers stay in the file:** Private helper functions remain in the same file as the code that uses them.
+### Helpers stay in the file
+
+Private helper functions remain in the same file as the code that uses them.
 When private helpers accumulate to the point where they warrant their own tests, extract them into a new module with its own public API.
 
 ## SOLID Principles
@@ -92,6 +105,11 @@ When the same set of fields is reset to the same values in multiple places, extr
 When a new parameter must flow through a callback chain, check whether the intermediaries actually need it.
 If they only relay it, the parameter belongs on an object the endpoints share — not threaded through every layer.
 
+### Unbounded loops
+
+An ESLint `no-unnecessary-condition` flag on `while (true)` signals an unbounded loop with hand-rolled termination, not just a lint nuisance.
+Bound it over a known sequence (e.g. iterate the path components) rather than dodging the rule with `for (;;)` — `for (;;)` carries the same smell.
+
 ### Cross-extension composition
 
 When one extension needs to communicate with another, prefer event-driven composition over outbound bridge modules.
@@ -111,6 +129,11 @@ If the difference is incidental, extract.
 
 Sandi Metz: "duplication is far cheaper than the wrong abstraction."
 
+### Preparatory refactoring (tidy first)
+
+Before planning or landing a refactor as one atomic commit, ask whether a preparatory step would shrink it — a pure-addition interface, or migrating tests to a shared fixture — landed as separate commits first.
+Kent Beck: "make the change that makes the change easy, then make the easy change."
+
 ## TypeScript
 
 - Avoid `any` unless absolutely necessary.
@@ -121,6 +144,15 @@ Sandi Metz: "duplication is far cheaper than the wrong abstraction."
 - Business logic should be pure functions wherever possible — keep IO at the edges.
 - Do not read `process.env`, `process.cwd()`, or `process.platform` inside library/utility functions — accept the value as a parameter.
   Reading `process.*` inside a function hides a dependency on global state and forces tests to stub or reset modules.
+
+### Barrel exports
+
+When a rename or extraction adds exports to a barrel file (`types.ts`, `index.ts`), verify at least one consumer imports the symbol from that barrel — not from the source module directly.
+Do not add speculative re-exports; fallow will flag them as dead code.
+
+### Public API documentation
+
+When adding a public or cross-extension API (a service method, exported seam, or registration hook), document it for third-party authors — input/return contract, error/throw semantics, a minimal wiring example, and known limitations — not just the type signature.
 
 ### Pi SDK boundaries
 
@@ -145,8 +177,34 @@ When writing `promptGuidelines` for a tool registration, name the tool in every 
 
 - This project uses **pnpm** exclusively (`"packageManager"` in root `package.json`; `pnpm-lock.yaml`).
   Use `pnpm run`, `pnpm exec`, and `pnpm add` — never `npm` or `npx`.
+- When you change a `package.json` dependency, run `pnpm install` and commit the updated `pnpm-lock.yaml` in the same commit — CI installs with `--frozen-lockfile`.
+- pnpm settings (`catalog`, `allowBuilds`, `linkWorkspacePackages`) live in `pnpm-workspace.yaml`, not `.npmrc` — pnpm 11 reads them there.
 - The tsconfig target is ES2024 (`noEmit: true`).
   ES2023 APIs (`findLast`, `findLastIndex`, `toReversed`, `toSorted`, `toSpliced`, `with`) and ES2024 APIs (`Promise.withResolvers`, `Object.groupBy`, `Map.groupBy`, `Array.fromAsync`) are available and preferred.
   Do not use APIs introduced after ES2024.
 - When you lift the only `await` out of a `src/` function (e.g. moving a parse or IO call to the caller), drop `async` and return synchronously.
   `@typescript-eslint/require-await` is enabled for `src/` (disabled only for `test/`), so an `async` function with no `await` fails lint.
+
+## Biome / ESLint linter conflicts
+
+### Non-null assertion loop
+
+Biome's `noNonNullAssertion` bans `x!` and ESLint's `no-unnecessary-type-assertion` auto-fixes `x as T` back to `x!`.
+When both linters run on the same file, assertion-based workarounds create an unsolvable loop.
+Fix: restructure the code to eliminate the assertion entirely (explicit `if` guard with early return).
+
+### Unbound interface methods
+
+Passing an interface method as a bare value (`writeReviewLog: logger.review`) trips `@typescript-eslint/unbound-method`; the rule's suggested `this: void` fix is itself rejected by `@typescript-eslint/no-invalid-void-type`.
+Fix: wrap in an arrow (`(e, d) => logger.review(e, d)`).
+
+### prefer-const on forward-declared let
+
+ESLint `prefer-const` fires on a `let` assigned exactly once — even with no initializer (e.g. a forward declaration captured by a closure before assignment).
+`const` without an initializer is a syntax error, so the suggested fix is impossible, but the error still triggers (biome's `useConst` correctly skips it; a `let` reassigned 2+ times is also skipped).
+Fix: `// eslint-disable-next-line prefer-const -- forward-declared let; const requires an initializer`.
+
+### void on a promise-returning call
+
+Before adding `void` to silence `@typescript-eslint/no-floating-promises`, confirm the discarded promise carried no semantics (capture for later `await`, ordering, completion signal).
+If the promise was previously assigned or awaited, the `void` is a behavior change, not a formatting fix — give the value an owner (store it, or invert control so the owning object captures it) instead.

@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { PermissionManager } from "#src/permission-manager";
+import type { ScopedPermissionManager } from "#src/permission-manager";
 import { LocalPermissionsService } from "#src/permissions-service";
 import type { Ruleset } from "#src/rule";
 import type { SessionRules } from "#src/session-rules";
+import type { ToolAccessExtractorRegistrar } from "#src/tool-access-extractor-registry";
 import type {
   ToolInputFormatter,
-  ToolInputFormatterRegistry,
+  ToolInputFormatterRegistrar,
 } from "#src/tool-input-formatter-registry";
 
 import { makeCheckResult } from "#test/helpers/handler-fixtures";
+import { makeFakePermissionManager } from "#test/helpers/session-fixtures";
 
 // ── input-normalizer stub ──────────────────────────────────────────────────
 
@@ -22,47 +24,56 @@ vi.mock("#src/input-normalizer", () => ({
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
-function makePermissionManager(): PermissionManager {
-  return {
-    checkPermission: vi
-      .fn<PermissionManager["checkPermission"]>()
-      .mockReturnValue(makeCheckResult()),
-    getToolPermission: vi
-      .fn<PermissionManager["getToolPermission"]>()
-      .mockReturnValue("allow"),
-  } as unknown as PermissionManager;
-}
-
-function makeSessionRules(rules: Ruleset = []): SessionRules {
+function makeSessionRules(
+  rules: Ruleset = [],
+): Pick<SessionRules, "getRuleset"> {
   return {
     getRuleset: vi.fn<SessionRules["getRuleset"]>().mockReturnValue(rules),
-  } as unknown as SessionRules;
+  };
 }
 
-function makeFormatterRegistry(): ToolInputFormatterRegistry {
+function makeFormatterRegistry(): ToolInputFormatterRegistrar {
   return {
     register: vi
-      .fn<ToolInputFormatterRegistry["register"]>()
+      .fn<ToolInputFormatterRegistrar["register"]>()
       .mockReturnValue(vi.fn()),
-  } as unknown as ToolInputFormatterRegistry;
+  };
+}
+
+function makeAccessExtractorRegistry(): ToolAccessExtractorRegistrar {
+  return {
+    register: vi
+      .fn<ToolAccessExtractorRegistrar["register"]>()
+      .mockReturnValue(vi.fn()),
+  };
 }
 
 function makeService(overrides?: {
-  permissionManager?: PermissionManager;
-  sessionRules?: SessionRules;
-  formatterRegistry?: ToolInputFormatterRegistry;
+  permissionManager?: ScopedPermissionManager;
+  sessionRules?: Pick<SessionRules, "getRuleset">;
+  formatterRegistry?: ToolInputFormatterRegistrar;
+  accessExtractorRegistry?: ToolAccessExtractorRegistrar;
 }) {
   const permissionManager =
-    overrides?.permissionManager ?? makePermissionManager();
+    overrides?.permissionManager ?? makeFakePermissionManager();
   const sessionRules = overrides?.sessionRules ?? makeSessionRules();
   const formatterRegistry =
     overrides?.formatterRegistry ?? makeFormatterRegistry();
+  const accessExtractorRegistry =
+    overrides?.accessExtractorRegistry ?? makeAccessExtractorRegistry();
   const service = new LocalPermissionsService(
     permissionManager,
     sessionRules,
     formatterRegistry,
+    accessExtractorRegistry,
   );
-  return { service, permissionManager, sessionRules, formatterRegistry };
+  return {
+    service,
+    permissionManager,
+    sessionRules,
+    formatterRegistry,
+    accessExtractorRegistry,
+  };
 }
 
 // ── tests ──────────────────────────────────────────────────────────────────
@@ -145,6 +156,21 @@ describe("registerToolInputFormatter", () => {
     expect(formatterRegistry.register).toHaveBeenCalledWith(
       "my-tool",
       formatter,
+    );
+    expect(result).toBe(unsub);
+  });
+});
+
+describe("registerToolAccessExtractor", () => {
+  it("delegates to accessExtractorRegistry.register and returns the unsubscribe function", () => {
+    const unsub = vi.fn();
+    const { service, accessExtractorRegistry } = makeService();
+    vi.mocked(accessExtractorRegistry.register).mockReturnValue(unsub);
+    const extractor = vi.fn();
+    const result = service.registerToolAccessExtractor("ffgrep", extractor);
+    expect(accessExtractorRegistry.register).toHaveBeenCalledWith(
+      "ffgrep",
+      extractor,
     );
     expect(result).toBe(unsub);
   });

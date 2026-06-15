@@ -103,7 +103,7 @@ tools: <comma-separated built-in tools: read, bash, edit, write, grep, find, ls.
 model: <optional model as "provider/modelId", e.g. "anthropic/claude-haiku-4-5-20251001". Omit to inherit parent model>
 thinking: <optional thinking level: off, minimal, low, medium, high, xhigh. Omit to inherit>
 max_turns: <optional max agentic turns. 0 or omit for unlimited (default)>
-prompt_mode: <"replace" (body IS the full system prompt) or "append" (body is appended to default prompt). Default: replace>
+prompt_mode: <"replace" (body IS the full system prompt) or "append" (body is appended to default prompt). Default: append>
 inherit_context: <true to fork parent conversation into agent so it sees chat history. Default: false>
 run_in_background: <true to run in background by default. Default: false>
 ---

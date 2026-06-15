@@ -1,21 +1,9 @@
 /**
- * subagent.ts — Subagent class with encapsulated status-transition logic and per-subagent behavior.
+ * subagent.ts — Subagent class: identity, lifecycle status, and per-subagent behavior.
  *
- * Status transitions (status, result, error, startedAt, completedAt) are owned
- * by the class and exposed via transition methods. External code reads these
- * fields through public properties but cannot write them directly.
- *
- * Stats (toolUses, lifetimeUsage, compactionCount) are owned by the class and
- * accumulated via mutation methods (incrementToolUses, addUsage, incrementCompactions).
- *
- * Behavior (abort, steer buffering) lives on the subagent rather than on
- * SubagentManager — each subagent manages its own lifecycle concerns.
- *
- * The child's working directory is supplied by a registered WorkspaceProvider
- * (the workspace seam); with no provider the child runs in the parent cwd.
- *
- * Phase-specific collaborators (subagentSession, notification) are attached
- * after construction as lifecycle information becomes available.
+ * Status/stats are delegated to the SubagentState value object; listener
+ * lifecycle to RunListeners; workspace prepare/dispose to WorkspaceBracket.
+ * Behavior (abort, steer buffering) lives here rather than on SubagentManager.
  */
 
 import type { Model } from "@earendil-works/pi-ai";
@@ -23,10 +11,12 @@ import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { debugLog } from "#src/debug";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
+import { RunListeners } from "#src/lifecycle/run-listeners";
 import type { SubagentSession, TurnLoopResult } from "#src/lifecycle/subagent-session";
+import { SubagentState, type SubagentStatus } from "#src/lifecycle/subagent-state";
 import type { LifetimeUsage } from "#src/lifecycle/usage";
-import { addUsage } from "#src/lifecycle/usage";
-import type { Workspace, WorkspaceProvider } from "#src/lifecycle/workspace";
+import type { WorkspaceProvider } from "#src/lifecycle/workspace";
+import { WorkspaceBracket } from "#src/lifecycle/workspace-bracket";
 import { NotificationState } from "#src/observation/notification-state";
 import { subscribeSubagentObserver } from "#src/observation/record-observer";
 import type { RunConfig } from "#src/runtime";
@@ -44,14 +34,33 @@ export interface SubagentLifecycleObserver {
 	onCompacted?(agent: Subagent, info: CompactionInfo): void;
 }
 
-export type SubagentStatus =
-	| "queued"
-	| "running"
-	| "completed"
-	| "steered"
-	| "aborted"
-	| "stopped"
-	| "error";
+export type { SubagentStatus } from "#src/lifecycle/subagent-state";
+
+/**
+ * The execution machinery a Subagent needs to run. A single mandatory
+ * collaborator: production (SubagentManager.spawn) always supplies it, so run()
+ * needs no "not configured" guards. The genuinely-optional behavior knobs stay
+ * optional; the four inputs run() cannot proceed without are required.
+ */
+export interface SubagentExecution {
+	/** Assembly factory that produces a born-complete SubagentSession. */
+	createSubagentSession: (params: CreateSubagentSessionParams) => Promise<SubagentSession>;
+	/** Immutable spawn-time parent snapshot handed to the session factory. */
+	snapshot: ParentSnapshot;
+	/** Initial prompt for the turn loop. */
+	prompt: string;
+	/** Parent working directory handed to a workspace provider's prepare(). */
+	baseCwd: string;
+	observer?: SubagentLifecycleObserver;
+	getRunConfig?: () => RunConfig;
+	/** Resolves the registered workspace provider (if any) at run-start. */
+	getWorkspaceProvider?: () => WorkspaceProvider | undefined;
+	model?: Model<any>;
+	maxTurns?: number;
+	thinkingLevel?: ThinkingLevel;
+	parentSession?: ParentSessionInfo;
+	signal?: AbortSignal;
+}
 
 export interface SubagentInit {
 	// Identity
@@ -60,32 +69,11 @@ export interface SubagentInit {
 	description: string;
 	invocation?: AgentInvocation;
 
-	// Status (for tests and restore scenarios)
-	status?: SubagentStatus;
-	startedAt?: number;
-	completedAt?: number;
-	result?: string;
-	error?: string;
+	/** Execution machinery — always supplied; construct-complete, no test fallbacks. */
+	execution: SubagentExecution;
 
-	// Shared deps (required for run(), optional for tests)
-	/** Assembly factory that produces a born-complete SubagentSession. */
-	createSubagentSession?: (params: CreateSubagentSessionParams) => Promise<SubagentSession>;
-	observer?: SubagentLifecycleObserver;
-	getRunConfig?: () => RunConfig;
-	/** Resolves the registered workspace provider (if any) at run-start. */
-	getWorkspaceProvider?: () => WorkspaceProvider | undefined;
-	/** Parent working directory handed to a workspace provider's prepare(). */
-	baseCwd?: string;
-
-	// Run config (required for run(), optional for tests)
-	snapshot?: ParentSnapshot;
-	prompt?: string;
-	model?: Model<any>;
-	maxTurns?: number;
-	thinkingLevel?: ThinkingLevel;
-	parentSession?: ParentSessionInfo;
-	isBackground?: boolean;
-	signal?: AbortSignal;
+	/** Lifecycle status and metrics. Defaults to a fresh queued state. */
+	state?: SubagentState;
 }
 
 export class Subagent {
@@ -95,59 +83,29 @@ export class Subagent {
 	readonly description: string;
 	readonly invocation?: AgentInvocation;
 
-	// Transition state — encapsulated behind getters, mutated only via transition methods
-	private _status: SubagentStatus;
-	get status(): SubagentStatus { return this._status; }
+	// Lifecycle status and metrics — owned by a private value object; getters and
+	// mutation methods below delegate to it one line.
+	private readonly state: SubagentState;
+	get status(): SubagentStatus { return this.state.status; }
+	get result(): string | undefined { return this.state.result; }
+	get error(): string | undefined { return this.state.error; }
+	get startedAt(): number { return this.state.startedAt; }
+	get completedAt(): number | undefined { return this.state.completedAt; }
+	get toolUses(): number { return this.state.toolUses; }
+	get lifetimeUsage(): Readonly<LifetimeUsage> { return this.state.lifetimeUsage; }
+	get compactionCount(): number { return this.state.compactionCount; }
 
-	private _result?: string;
-	get result(): string | undefined { return this._result; }
-
-	private _error?: string;
-	get error(): string | undefined { return this._error; }
-
-	private _startedAt: number;
-	get startedAt(): number { return this._startedAt; }
-
-	private _completedAt?: number;
-	get completedAt(): number | undefined { return this._completedAt; }
-
-	// Stats — accumulated via mutation methods, readable via getters
-	private _toolUses: number;
-	get toolUses(): number { return this._toolUses; }
-
-	private _lifetimeUsage: LifetimeUsage;
-	get lifetimeUsage(): Readonly<LifetimeUsage> { return this._lifetimeUsage; }
-
-	private _compactionCount: number;
-	get compactionCount(): number { return this._compactionCount; }
-
-	/** AbortController for cancelling this agent. Created at construction. */
 	readonly abortController: AbortController;
-	/** Promise for the full agent run (including post-processing). Set by run(). */
-	promise?: Promise<void>;
+	private _promise?: Promise<void>;
+	get promise(): Promise<void> | undefined { return this._promise; }
 
-	// Shared deps — optional (required for run())
-	private readonly _createSubagentSession?: (params: CreateSubagentSessionParams) => Promise<SubagentSession>;
-	readonly observer?: SubagentLifecycleObserver;
-	private readonly _getRunConfig?: () => RunConfig;
-	private readonly _getWorkspaceProvider?: () => WorkspaceProvider | undefined;
-	private readonly _baseCwd: string;
-	/** Workspace prepared at run-start by a provider — undefined when none is registered. */
-	private _workspace?: Workspace;
+	private readonly execution: SubagentExecution;
+	private readonly listeners = new RunListeners();
+	private readonly workspaceBracket: WorkspaceBracket;
 
-	// Run config — optional (required for run())
-	private readonly _snapshot?: ParentSnapshot;
-	private readonly _prompt?: string;
-	private readonly _model?: Model<any>;
-	private readonly _maxTurns?: number;
-	private readonly _thinkingLevel?: ThinkingLevel;
-	private readonly _parentSession?: ParentSessionInfo;
-	private readonly _signal?: AbortSignal;
-
-	// Phase-specific collaborators — each born complete when their info becomes available
-	/** The born-complete child session — set when the factory returns inside run(). */
 	subagentSession?: SubagentSession;
-	notification?: NotificationState;
+	private _notification?: NotificationState;
+	get notification(): NotificationState | undefined { return this._notification; }
 
 	// Steer buffer — messages queued before the session is ready
 	private _pendingSteers: string[] = [];
@@ -207,40 +165,24 @@ export class Subagent {
 		this.description = init.description;
 		this.invocation = init.invocation;
 
-		// Status
-		this._status = init.status ?? "queued";
-		this._result = init.result;
-		this._error = init.error;
-		this._startedAt = init.startedAt ?? Date.now();
-		this._completedAt = init.completedAt;
-
-		// Stats
-		this._toolUses = 0;
-		this._lifetimeUsage = { input: 0, output: 0, cacheWrite: 0 };
-		this._compactionCount = 0;
+		// Lifecycle status and metrics — fresh queued state unless one is supplied
+		this.state = init.state ?? new SubagentState();
 
 		// Abort controller — always created, never injected
 		this.abortController = new AbortController();
 
-		// Shared deps
-		this._createSubagentSession = init.createSubagentSession;
-		this.observer = init.observer;
-		this._getRunConfig = init.getRunConfig;
-		this._getWorkspaceProvider = init.getWorkspaceProvider;
-		this._baseCwd = init.baseCwd ?? "";
+		// Execution machinery — a single mandatory collaborator
+		this.execution = init.execution;
 
-		// Run config
-		this._snapshot = init.snapshot;
-		this._prompt = init.prompt;
-		this._model = init.model;
-		this._maxTurns = init.maxTurns;
-		this._thinkingLevel = init.thinkingLevel;
-		this._parentSession = init.parentSession;
-		this._signal = init.signal;
+		// Per-run lifecycle collaborators
+		this.workspaceBracket = new WorkspaceBracket(
+			this.execution.getWorkspaceProvider ?? (() => undefined),
+		);
 
 		// Notification state — created from parentSession.toolCallId if present
-		if (init.parentSession?.toolCallId) {
-			this.notification = new NotificationState(init.parentSession.toolCallId);
+		const toolCallId = init.execution.parentSession?.toolCallId;
+		if (toolCallId) {
+			this._notification = new NotificationState(toolCallId);
 		}
 	}
 
@@ -249,50 +191,43 @@ export class Subagent {
 	 * via the factory, observer wiring, the turn loop, workspace disposal, and
 	 * status transitions.
 	 *
-	 * Requires the session factory and snapshot to be set at construction.
-	 * The returned promise always resolves (errors are captured internally).
+	 * Execution is supplied at construction (mandatory), so run() needs no
+	 * "not configured" guards. The returned promise always resolves (errors are
+	 * captured internally).
 	 */
 	async run(): Promise<void> {
-		if (!this._createSubagentSession) {
-			throw new Error("Subagent not configured for execution — missing session factory");
-		}
-		if (!this._snapshot || !this._prompt) {
-			throw new Error("Subagent not configured for execution — missing snapshot or prompt");
-		}
-
 		this.markRunning(Date.now());
-		this.observer?.onStarted?.(this);
-		this.wireSignal(this._signal, () => this.abort());
+		this.execution.observer?.onStarted?.(this);
+		this.listeners.wireSignal(this.execution.signal, () => this.abort());
 
+		// Guard the await so the no-provider path stays synchronous, preserving
+		// the original run() timing: the factory is called in the same turn as
+		// spawn() when no workspace provider is registered.
 		let cwd: string | undefined;
-		try {
-			// A registered workspace provider supplies the child's cwd and owns its
-			// teardown; with no provider the child runs in the parent cwd.
-			const provider = this._getWorkspaceProvider?.();
-			if (provider) {
-				this._workspace = await provider.prepare({
+		if (this.workspaceBracket.hasProvider()) {
+			try {
+				cwd = await this.workspaceBracket.prepare({
 					agentId: this.id,
 					agentType: this.type,
-					baseCwd: this._baseCwd,
+					baseCwd: this.execution.baseCwd,
 					invocation: this.invocation,
 				});
-				cwd = this._workspace?.cwd;
+			} catch (err) {
+				this.markError(err);
+				this.listeners.release();
+				this.execution.observer?.onRunFinished?.(this);
+				return;
 			}
-		} catch (err) {
-			this.markError(err);
-			this.releaseListeners();
-			this.observer?.onRunFinished?.(this);
-			return;
 		}
 
 		try {
-			this.subagentSession = await this._createSubagentSession({
-				snapshot: this._snapshot,
+			this.subagentSession = await this.execution.createSubagentSession({
+				snapshot: this.execution.snapshot,
 				type: this.type,
 				cwd,
-				parentSession: this._parentSession,
-				model: this._model,
-				thinkingLevel: this._thinkingLevel,
+				parentSession: this.execution.parentSession,
+				model: this.execution.model,
+				thinkingLevel: this.execution.thinkingLevel,
 			});
 		} catch (err) {
 			// The factory disposed its own session on a post-creation failure.
@@ -301,15 +236,15 @@ export class Subagent {
 		}
 
 		this.flushPendingSteers();
-		this.attachObserver(subscribeSubagentObserver(this.subagentSession, this, {
-			onCompact: (r, info) => this.observer?.onCompacted?.(r, info),
+		this.listeners.attachObserver(subscribeSubagentObserver(this.subagentSession, this.state, {
+			onCompact: (info) => this.execution.observer?.onCompacted?.(this, info),
 		}));
-		this.observer?.onSessionCreated?.(this);
+		this.execution.observer?.onSessionCreated?.(this);
 
-		const runConfig = this._getRunConfig?.();
+		const runConfig = this.execution.getRunConfig?.();
 		try {
-			const result = await this.subagentSession.runTurnLoop(this._prompt, {
-				maxTurns: this._maxTurns,
+			const result = await this.subagentSession.runTurnLoop(this.execution.prompt, {
+				maxTurns: this.execution.maxTurns,
 				defaultMaxTurns: runConfig?.defaultMaxTurns,
 				graceTurns: runConfig?.graceTurns,
 				signal: this.abortController.signal,
@@ -318,6 +253,35 @@ export class Subagent {
 		} catch (err) {
 			this.failRun(err);
 		}
+	}
+
+	/**
+	 * Start execution immediately (foreground / bypassQueue paths).
+	 * Stores the run promise so it is awaitable via the `promise` getter.
+	 */
+	start(): void {
+		this._promise = this.guardedRun();
+	}
+
+	/**
+	 * Schedule execution through an external concurrency scheduler (the limiter).
+	 * Captures the scheduler's promise eagerly, so a still-queued agent is
+	 * awaitable via the `promise` getter from spawn — not only once its slot opens.
+	 * The guard in guardedRun() makes an abort-while-queued run a no-op when the
+	 * slot finally frees.
+	 */
+	scheduleVia(schedule: (thunk: () => Promise<void>) => Promise<void>): void {
+		this._promise = schedule(() => this.guardedRun());
+	}
+
+	/**
+	 * Run unless the agent left the active set before its slot opened
+	 * (e.g. abort-while-queued): a non-queued, non-running status resolves
+	 * immediately without running.
+	 */
+	private guardedRun(): Promise<void> {
+		if (this.status !== "queued" && this.status !== "running") return Promise.resolve();
+		return this.run();
 	}
 
 	/**
@@ -336,8 +300,8 @@ export class Subagent {
 		}
 
 		this.resetForResume(Date.now());
-		this.attachObserver(subscribeSubagentObserver(subagentSession, this, {
-			onCompact: (r, info) => this.observer?.onCompacted?.(r, info),
+		this.listeners.attachObserver(subscribeSubagentObserver(subagentSession, this.state, {
+			onCompact: (info) => this.execution.observer?.onCompacted?.(this, info),
 		}));
 
 		try {
@@ -346,29 +310,28 @@ export class Subagent {
 		} catch (err) {
 			this.markError(err);
 		} finally {
-			this.releaseListeners();
+			this.listeners.release();
 		}
 	}
 
 	/** Increment tool use count. Called by record-observer on tool_execution_end. */
 	incrementToolUses(): void {
-		this._toolUses++;
+		this.state.incrementToolUses();
 	}
 
 	/** Accumulate a usage delta into lifetimeUsage. Called by record-observer on message_end. */
 	addUsage(delta: { input: number; output: number; cacheWrite: number }): void {
-		addUsage(this._lifetimeUsage, delta);
+		this.state.addUsage(delta);
 	}
 
 	/** Increment compaction count. Called by record-observer on compaction_end. */
 	incrementCompactions(): void {
-		this._compactionCount++;
+		this.state.incrementCompactions();
 	}
 
 	/** Transition to running state. Sets status and startedAt. */
 	markRunning(startedAt: number): void {
-		this._status = "running";
-		this._startedAt = startedAt;
+		this.state.markRunning(startedAt);
 	}
 
 	/**
@@ -376,11 +339,7 @@ export class Subagent {
 	 * Always sets result and completedAt (??=). Only changes status if not stopped.
 	 */
 	markCompleted(result: string, completedAt?: number): void {
-		this._result = result;
-		this._completedAt ??= completedAt ?? Date.now();
-		if (this._status !== "stopped") {
-			this._status = "completed";
-		}
+		this.state.markCompleted(result, completedAt);
 	}
 
 	/**
@@ -388,11 +347,7 @@ export class Subagent {
 	 * Always sets result and completedAt (??=). Only changes status if not stopped.
 	 */
 	markAborted(result: string, completedAt?: number): void {
-		this._result = result;
-		this._completedAt ??= completedAt ?? Date.now();
-		if (this._status !== "stopped") {
-			this._status = "aborted";
-		}
+		this.state.markAborted(result, completedAt);
 	}
 
 	/**
@@ -400,11 +355,7 @@ export class Subagent {
 	 * Always sets result and completedAt (??=). Only changes status if not stopped.
 	 */
 	markSteered(result: string, completedAt?: number): void {
-		this._result = result;
-		this._completedAt ??= completedAt ?? Date.now();
-		if (this._status !== "stopped") {
-			this._status = "steered";
-		}
+		this.state.markSteered(result, completedAt);
 	}
 
 	/**
@@ -412,26 +363,22 @@ export class Subagent {
 	 * Always sets error (formatted) and completedAt (??=). Only changes status if not stopped.
 	 */
 	markError(error: unknown, completedAt?: number): void {
-		this._error = error instanceof Error ? error.message : String(error);
-		this._completedAt ??= completedAt ?? Date.now();
-		if (this._status !== "stopped") {
-			this._status = "error";
-		}
+		this.state.markError(error, completedAt);
 	}
 
 	/** Transition to stopped state. Always valid — no guard. */
 	markStopped(completedAt?: number): void {
-		this._status = "stopped";
-		this._completedAt = completedAt ?? Date.now();
+		this.state.markStopped(completedAt);
 	}
 
 	/**
 	 * Abort a running agent: fire AbortController and transition to stopped.
 	 * Returns false if the agent is not running.
-	 * Queue removal is handled by SubagentManager via ConcurrencyQueue.dequeue().
+	 * A still-queued agent is stopped by SubagentManager; its scheduled thunk
+	 * then no-ops on the queued-status guard.
 	 */
 	abort(): boolean {
-		if (this._status !== "running") return false;
+		if (this.status !== "running") return false;
 		this.abortController.abort();
 		this.markStopped();
 		return true;
@@ -458,59 +405,28 @@ export class Subagent {
 
 	/** Reset for resume: running status, new startedAt, clear completedAt/result/error/listeners. */
 	resetForResume(startedAt: number): void {
-		this._status = "running";
-		this._startedAt = startedAt;
-		this._completedAt = undefined;
-		this._result = undefined;
-		this._error = undefined;
-		this.releaseListeners();
-	}
-
-	// --- Per-run listener state (released on completion or resume reset) ---
-	private _unsub?: () => void;
-	private _detachFn?: () => void;
-
-	/** Wire a parent AbortSignal so it stops this agent when fired. */
-	wireSignal(signal: AbortSignal | undefined, onAbort: () => void): void {
-		if (!signal) return;
-		const listener = () => onAbort();
-		signal.addEventListener("abort", listener, { once: true });
-		this._detachFn = () => signal.removeEventListener("abort", listener);
-	}
-
-	/** Store the record-observer unsubscribe handle. */
-	attachObserver(unsub: () => void): void {
-		this._unsub = unsub;
-	}
-
-	/** Release observer + signal listener handles. */
-	releaseListeners(): void {
-		this._unsub?.();
-		this._unsub = undefined;
-		this._detachFn?.();
-		this._detachFn = undefined;
+		this.state.resetForResume(startedAt);
+		this.listeners.release();
 	}
 
 	/** Complete a run: release listeners, dispose the workspace, status transition, notify observer. */
 	completeRun(result: TurnLoopResult): void {
-		this.releaseListeners();
+		this.listeners.release();
 
-		let finalResult = result.responseText;
-		if (this._workspace) {
-			const finalStatus: SubagentStatus = result.aborted
-				? "aborted"
-				: result.steered
-					? "steered"
-					: "completed";
-			const disposeResult = this._workspace.dispose({ status: finalStatus, description: this.description });
-			if (disposeResult?.resultAddendum) finalResult += disposeResult.resultAddendum;
-		}
+		const finalStatus: SubagentStatus = result.aborted
+			? "aborted"
+			: result.steered
+				? "steered"
+				: "completed";
+		const finalResult =
+			result.responseText +
+			this.workspaceBracket.dispose({ status: finalStatus, description: this.description });
 
 		if (result.aborted) this.markAborted(finalResult);
 		else if (result.steered) this.markSteered(finalResult);
 		else this.markCompleted(finalResult);
 
-		this.observer?.onRunFinished?.(this);
+		this.execution.observer?.onRunFinished?.(this);
 	}
 
 	/** Dispose the wrapped session, firing the `disposed` lifecycle event. */
@@ -521,12 +437,12 @@ export class Subagent {
 	/** Fail a run: mark error, release listeners, best-effort workspace dispose, notify observer. */
 	failRun(err: unknown): void {
 		this.markError(err);
-		this.releaseListeners();
+		this.listeners.release();
 
 		try {
-			if (this._workspace) this._workspace.dispose({ status: "error", description: this.description });
+			this.workspaceBracket.dispose({ status: "error", description: this.description });
 		} catch (cleanupErr) { debugLog("workspace dispose on agent error", cleanupErr); }
 
-		this.observer?.onRunFinished?.(this);
+		this.execution.observer?.onRunFinished?.(this);
 	}
 }

@@ -64,6 +64,9 @@ export type KeepThisType = string;
 // fallow-ignore-file
 ```
 
+The kind token must be the exact singular issue kind (`unused-class-member`, not `unused-class-members`) and the only text after the directive — fallow parses every space-separated token as a kind, so trailing prose (`-- because …`) produces "stale suppression" noise.
+Put rationale on the line above the directive.
+
 Use `/** @public */` or `/** @expected-unused */` JSDoc tags for library API exports.
 
 ## Auto-fix cycle
@@ -83,3 +86,6 @@ pnpm fallow dead-code        # verify
 3. `--changed-since` is additive — only new issues in changed files.
 4. Never run `fallow watch` — it is interactive and never exits.
 5. The human-readable `health --targets` output omits the "Refactoring targets" section entirely when there are zero targets — to confirm a file dropped off the list, use `--format json` and check the `targets` array is empty rather than grepping the text output.
+6. Class-member liveness is keyed off `implements` clauses: a member reached only through a structural type the class does not explicitly `implements` reads as dead once the last `implements` is removed.
+   Prefer re-declaring the genuine contract (`implements ThatInterface`) over a suppression.
+   If the consumer is wired via an object-literal property (which fallow cannot trace), prefer moving the read into a traced closure body at the composition root (e.g. `getX: () => owner.member`) over a suppression; suppress only when neither is practical.

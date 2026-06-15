@@ -27,6 +27,41 @@ Or add it to your Pi settings (`~/.pi/agent/settings.json`):
 }
 ```
 
+## Indexing
+
+The extension keeps a semantic index current for the agent:
+
+- On session start it builds the index in the **background** (`colgrep init`), so it never blocks Pi startup.
+- After each successful `write`/`edit` it schedules a debounced reindex — but only when an index already exists for the directory, so a directory you never search is never indexed proactively.
+- Run `/colgrep-reindex` to build or refresh the index on demand.
+  This also re-enables the write/edit auto-reindex for the rest of the session.
+
+If no index exists and startup indexing is disabled, the extension skips the auto-reindex and notifies you once.
+A real `colgrep` search still auto-indexes on demand regardless.
+
+## Configuration
+
+Optional configuration is read from a JSON file at two locations, with the project file overriding the global one:
+
+| Scope   | Path                                           |
+| ------- | ---------------------------------------------- |
+| Global  | `<agentDir>/extensions/pi-colgrep/config.json` |
+| Project | `<cwd>/.pi/extensions/pi-colgrep/config.json`  |
+
+| Key              | Type    | Default | Description                                                                                                                                                                               |
+| ---------------- | ------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `indexOnStartup` | boolean | `true`  | Build the index in the background on session start. Set to `false` to skip startup indexing entirely (the index is then built lazily on the first real search or via `/colgrep-reindex`). |
+
+Example — disable startup indexing for a large non-code directory:
+
+```json
+{
+  "indexOnStartup": false
+}
+```
+
+A missing config file is fine (defaults apply); a malformed file is ignored with a warning.
+
 ## License
 
 MIT

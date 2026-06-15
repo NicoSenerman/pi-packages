@@ -64,6 +64,17 @@ interface PermissionsService {
     toolName: string,
     formatter: (input: Record<string, unknown>) => string | undefined,
   ): () => void;
+
+  /**
+   * Register a custom access-intent extractor for a specific tool name.
+   * Declares the filesystem path a tool accesses so the `path` and
+   * `external_directory` gates can see it. Returns a disposer; throws if an
+   * extractor is already registered for that tool name.
+   */
+  registerToolAccessExtractor(
+    toolName: string,
+    extractor: (input: Record<string, unknown>) => string | undefined,
+  ): () => void;
 }
 ```
 
@@ -212,6 +223,36 @@ Re-register on every initialization (as above) rather than once globally; the di
 A built-in formatter is registered for the `"mcp"` tool at startup (through this same public API).
 It renders a compact `with key: value, …` summary of the call's `arguments` and returns `undefined` when there are no arguments, leaving the MCP target prompt unchanged.
 This is the reference implementation for the seam — see `src/builtin-tool-input-formatters.ts`.
+
+#### `registerToolAccessExtractor`
+
+Declare the filesystem path a tool will access so the cross-cutting `path` and `external_directory` gates can evaluate it.
+
+```typescript
+registerToolAccessExtractor(
+  toolName: string,
+  extractor: (input: Record<string, unknown>) => string | undefined,
+): () => void; // returns a disposer
+```
+
+You usually do **not** need this.
+Path gating is on by default for every tool whose input follows the convention:
+
+- Built-in file tools (`read`, `write`, `edit`, `find`, `grep`, `ls`) and any tool exposing `input.path` are extracted automatically.
+- MCP calls are extracted from `input.arguments.path`.
+- `bash` is never extracted here — it has its own token-based path gates.
+
+Register an extractor only when a tool carries its path under a **non-standard key** (e.g. `input.target` or `input.file`).
+Return the path string, or `undefined` to decline.
+
+```typescript
+const dispose = permissions.registerToolAccessExtractor("ffgrep", (input) =>
+  typeof input.target === "string" ? input.target : undefined,
+);
+```
+
+Registration rules mirror `registerToolInputFormatter`: one extractor per tool name (a second `register` for the same name throws), and the returned disposer is identity-guarded.
+The extractor must not throw — guard your parsing and return `undefined` on anything unexpected.
 
 #### Subagent session registration
 

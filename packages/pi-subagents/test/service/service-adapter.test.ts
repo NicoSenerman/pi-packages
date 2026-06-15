@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import type { WorkspaceProvider } from "#src/lifecycle/workspace";
-import { NotificationState } from "#src/observation/notification-state";
 import type { SubagentsService } from "#src/service/service";
 import type { ServiceRuntimeLike, SubagentManagerLike } from "#src/service/service-adapter";
 import { SubagentsServiceAdapter, toSubagentRecord } from "#src/service/service-adapter";
@@ -55,14 +54,12 @@ describe("toSubagentRecord", () => {
 
   it("strips promise from the record", () => {
     const record = createTestSubagent();
-    record.promise = Promise.resolve();
     const result = toSubagentRecord(record);
     expect(result).not.toHaveProperty("promise");
   });
 
   it("strips abortController, promise, and collaborator fields from the record", () => {
     const record = createTestSubagent();
-    record.promise = Promise.resolve();
     const result = toSubagentRecord(record);
     expect(result).not.toHaveProperty("abortController");
     expect(result).not.toHaveProperty("promise");
@@ -71,8 +68,7 @@ describe("toSubagentRecord", () => {
   });
 
   it("strips invocation and collaborator fields from the serialized output", () => {
-    const record = createTestSubagent({ invocation: { modelName: "haiku" } });
-    record.notification = new NotificationState("tc-1");
+    const record = createTestSubagent({ invocation: { modelName: "haiku" }, toolCallId: "tc-1" });
     const result = toSubagentRecord(record);
     expect(result).not.toHaveProperty("notification");
     expect(result).not.toHaveProperty("execution");

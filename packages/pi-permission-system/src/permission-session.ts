@@ -1,47 +1,24 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-
+import { CacheKeyGate } from "#src/cache-key-gate";
 import {
   getActiveAgentName,
   getActiveAgentNameFromSystemPrompt,
 } from "./active-agent";
-import type { AgentPrepSession } from "./agent-prep-session";
+
 import type { SessionConfigStore } from "./config-store";
 import type { PermissionSystemExtensionConfig } from "./extension-config";
 import type { ExtensionPaths } from "./extension-paths";
 import type { ForwardingController } from "./forwarding-manager";
-import type { GateHandlerSession } from "./gate-handler-session";
-import type { GatePrompter } from "./gate-prompter";
-import type { PermissionPromptDecision } from "./permission-dialog";
+import type { ToolCallGateInputs } from "./handlers/gates/tool-call-gate-pipeline";
 import type { ScopedPermissionManager } from "./permission-manager";
-import type { PromptPermissionDetails } from "./permission-prompter";
-import type { PermissionResolver } from "./permission-resolver";
-import type { Rule } from "./rule";
-import type { SessionApproval } from "./session-approval";
-import type { SessionApprovalRecorder } from "./session-approval-recorder";
-import type { SessionLifecycleSession } from "./session-lifecycle-session";
-import type { SessionLogger } from "./session-logger";
+import type { PromptingGatewayLifecycle } from "./prompting-gateway";
+
 import type { SessionRules } from "./session-rules";
 import type { SkillPromptEntry } from "./skill-prompt-sanitizer";
 import {
   resolveToolPreviewLimits,
   type ToolPreviewFormatterOptions,
 } from "./tool-preview-formatter";
-import type { PermissionCheckResult, PermissionState } from "./types";
-
-/**
- * Runtime operations that `PermissionSession` delegates to but does not own.
- *
- * Injected at construction time from the composition root (`index.ts`).
- */
-export interface PermissionSessionRuntimeDeps {
-  /** Whether the current context can show an interactive permission prompt. */
-  canRequestPermissionConfirmation(ctx: ExtensionContext): boolean;
-  /** Prompt the user for a permission decision, log the outcome, and return it. */
-  promptPermission(
-    ctx: ExtensionContext,
-    details: PromptPermissionDetails,
-  ): Promise<PermissionPromptDecision>;
-}
 
 /**
  * Encapsulates all mutable session state and exposes operations instead of
@@ -53,48 +30,40 @@ export interface PermissionSessionRuntimeDeps {
  *
  * Constructor deps:
  * - `ExtensionPaths` — immutable path constants
- * - `SessionLogger` — debug + review + warn
  * - `ForwardingController` — polling lifecycle
  * - `SessionConfigStore` — owns extension config; provides refresh, log, read
- * - `PermissionSessionRuntimeDeps` — prompting + permission-confirmation bridge
+ * - `PromptingGatewayLifecycle` — prompting lifecycle forwarded via activate/deactivate
  */
-export class PermissionSession
-  implements
-    PermissionResolver,
-    SessionApprovalRecorder,
-    GatePrompter,
-    GateHandlerSession,
-    AgentPrepSession,
-    SessionLifecycleSession
-{
+export class PermissionSession implements ToolCallGateInputs {
   private context: ExtensionContext | null = null;
   private skillEntries: SkillPromptEntry[] = [];
   private knownAgentName: string | null = null;
-  private toolsCacheKey: string | null = null;
-  private promptCacheKey: string | null = null;
+  readonly activeToolsGate = new CacheKeyGate();
+  readonly promptStateGate = new CacheKeyGate();
 
   constructor(
     private readonly paths: ExtensionPaths,
-    readonly logger: SessionLogger,
     private readonly forwarding: ForwardingController,
     private readonly permissionManager: ScopedPermissionManager,
     private readonly sessionRules: SessionRules,
     private readonly configStore: SessionConfigStore,
-    private readonly runtimeDeps: PermissionSessionRuntimeDeps,
+    private readonly gateway: PromptingGatewayLifecycle,
   ) {}
 
   // ── Context lifecycle ──────────────────────────────────────────────────
 
-  /** Store the current extension context and start forwarding. */
+  /** Store the current extension context, start forwarding, and activate the gateway. */
   activate(ctx: ExtensionContext): void {
     this.context = ctx;
     this.forwarding.start(ctx);
+    this.gateway.activate(ctx);
   }
 
-  /** Clear the context and stop forwarding. */
+  /** Clear the context, stop forwarding, and deactivate the gateway. */
   deactivate(): void {
     this.context = null;
     this.forwarding.stop();
+    this.gateway.deactivate();
   }
 
   /** Return the current runtime context, or null if not activated. */
@@ -102,60 +71,11 @@ export class PermissionSession
     return this.context;
   }
 
-  // ── Permission checking (delegates to PermissionManager) ───────────────
+  // ── UI notifications ────────────────────────────────────────────────────
 
-  checkPermission(
-    surface: string,
-    input: unknown,
-    agentName?: string,
-    sessionRules?: Rule[],
-  ): PermissionCheckResult {
-    return this.permissionManager.checkPermission(
-      surface,
-      input,
-      agentName,
-      sessionRules,
-    );
-  }
-
-  /**
-   * Resolve the effective permission for a surface/input, applying the current
-   * session rules. Composes `checkPermission` with `getSessionRuleset` so
-   * callers never thread the ruleset by hand.
-   */
-  resolve(
-    surface: string,
-    input: unknown,
-    agentName?: string,
-  ): PermissionCheckResult {
-    return this.checkPermission(
-      surface,
-      input,
-      agentName,
-      this.getSessionRuleset(),
-    );
-  }
-
-  getToolPermission(toolName: string, agentName?: string): PermissionState {
-    return this.permissionManager.getToolPermission(toolName, agentName);
-  }
-
-  getConfigIssues(agentName?: string): string[] {
-    return this.permissionManager.getConfigIssues(agentName);
-  }
-
-  getPolicyCacheStamp(agentName?: string): string {
-    return this.permissionManager.getPolicyCacheStamp(agentName);
-  }
-
-  // ── Session rules (delegates to SessionRules) ──────────────────────────
-
-  getSessionRuleset(): Rule[] {
-    return this.sessionRules.getRuleset();
-  }
-
-  recordSessionApproval(approval: SessionApproval): void {
-    this.sessionRules.record(approval);
+  /** Surface a warning message to the user via the active UI context, if any. */
+  notify(message: string): void {
+    this.context?.ui.notify(message, "warning");
   }
 
   // ── Session lifecycle ────────────────────────────────────────────────────
@@ -169,8 +89,8 @@ export class PermissionSession
   resetForNewSession(ctx: ExtensionContext): void {
     this.permissionManager.configureForCwd(ctx.cwd);
     this.skillEntries = [];
-    this.toolsCacheKey = null;
-    this.promptCacheKey = null;
+    this.activeToolsGate.reset();
+    this.promptStateGate.reset();
     this.activate(ctx);
   }
 
@@ -181,8 +101,8 @@ export class PermissionSession
   shutdown(): void {
     this.sessionRules.clear();
     this.skillEntries = [];
-    this.toolsCacheKey = null;
-    this.promptCacheKey = null;
+    this.activeToolsGate.reset();
+    this.promptStateGate.reset();
     this.deactivate();
   }
 
@@ -193,26 +113,8 @@ export class PermissionSession
   reload(): void {
     this.permissionManager.configureForCwd(this.context?.cwd);
     this.skillEntries = [];
-    this.toolsCacheKey = null;
-    this.promptCacheKey = null;
-  }
-
-  // ── Agent-start caching ────────────────────────────────────────────────
-
-  shouldUpdateActiveTools(cacheKey: string): boolean {
-    return this.toolsCacheKey !== cacheKey;
-  }
-
-  commitActiveToolsCacheKey(cacheKey: string): void {
-    this.toolsCacheKey = cacheKey;
-  }
-
-  shouldUpdatePromptState(cacheKey: string): boolean {
-    return this.promptCacheKey !== cacheKey;
-  }
-
-  commitPromptStateCacheKey(cacheKey: string): void {
-    this.promptCacheKey = cacheKey;
+    this.activeToolsGate.reset();
+    this.promptStateGate.reset();
   }
 
   // ── Skill entries ──────────────────────────────────────────────────────
@@ -248,6 +150,8 @@ export class PermissionSession
     return this.knownAgentName;
   }
 
+  // Read by the `index.ts` config-modal adapter closure:
+  // `permissionManager.getComposedConfigRules(session.lastKnownActiveAgentName ?? undefined)`.
   get lastKnownActiveAgentName(): string | null {
     return this.knownAgentName;
   }
@@ -290,45 +194,5 @@ export class PermissionSession
    */
   getToolPreviewLimits(): ToolPreviewFormatterOptions {
     return resolveToolPreviewLimits(this.config);
-  }
-
-  // ── Prompting ──────────────────────────────────────────────────────────
-
-  /** Whether the current context can show an interactive permission prompt. */
-  canPrompt(ctx: ExtensionContext): boolean {
-    return this.runtimeDeps.canRequestPermissionConfirmation(ctx);
-  }
-
-  /** Prompt the user for a permission decision, log the outcome, and return it. */
-  prompt(
-    ctx: ExtensionContext,
-    details: PromptPermissionDetails,
-  ): Promise<PermissionPromptDecision> {
-    return this.runtimeDeps.promptPermission(ctx, details);
-  }
-
-  /**
-   * Whether an interactive confirmation is possible using the stored context.
-   * Returns `false` when no context is active (before `activate` is called).
-   * Implements {@link GatePrompter}.
-   */
-  canConfirm(): boolean {
-    return this.context !== null && this.canPrompt(this.context);
-  }
-
-  /**
-   * Prompt the user for a permission decision using the stored context.
-   * Throws if no context is active — `canConfirm()` guards this in normal use.
-   * Implements {@link GatePrompter}.
-   */
-  promptPermission(
-    details: PromptPermissionDetails,
-  ): Promise<PermissionPromptDecision> {
-    if (this.context === null) {
-      return Promise.reject(
-        new Error("promptPermission called before the session was activated"),
-      );
-    }
-    return this.prompt(this.context, details);
   }
 }
