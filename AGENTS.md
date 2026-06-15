@@ -8,8 +8,16 @@ Always launch Pi from the repo root — the root `.pi/settings.json` and `.pi/pr
 The working directory is always the repo root, so for a package-scoped script run `pnpm --filter @gotgenes/<pkg> run <script>` (or `pnpm -C packages/<pkg> run <script>`) from the root instead of `cd packages/<pkg> && pnpm run <script>`.
 Before working on a specific package, load its `package-<name>` skill for architecture, priorities, and testing context.
 Load skills inline — never dispatch a subagent to load skills.
-When adding a new package or a new internal docs subdirectory (retro, plans, architecture, decisions, assets), add the path to `exclude-paths` in `release-please-config.json`.
+When adding a new package, wire it into all of:
+
+1. `release-please-config.json` — add to `packages` (component) and add `docs/plans` + `docs/retro` to `exclude-paths`.
+2. `.release-please-manifest.json` — add the package at `0.0.0`.
+3. `scripts/publish-released.sh` — add the `path:@scope/name` entry, or release-please will tag a version that never publishes to npm.
+4. `.pi/settings.json` — add the `../packages/<pkg>` load path, plus a `{ "source": "npm:@gotgenes/<pkg>", "extensions": [], "skills": [] }` disable entry once it is in global settings (prevents double-load).
+
+When adding a new internal docs subdirectory (retro, plans, architecture, decisions, assets), add its path to `exclude-paths` in `release-please-config.json`.
 Commits that only touch excluded paths do not trigger releases.
+Run `pnpm fallow dead-code` locally before pushing a new or dependency-changed package — CI gates on it, and `devDependencies` copied from a sibling package often include unused entries.
 
 ## Workflow
 
