@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [16.2.1](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v16.2.0...pi-subagents-v16.2.1) (2026-06-15)
+
+
+### Bug Fixes
+
+* restore at-spawn promise for queued subagents ([#374](https://github.com/gotgenes/pi-packages/issues/374)) ([4f08c6c](https://github.com/gotgenes/pi-packages/commit/4f08c6c37814b5386a23cd60479efc39c4b22612))
+
 ## [16.2.0](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v16.1.1...pi-subagents-v16.2.0) (2026-06-14)
 
 
