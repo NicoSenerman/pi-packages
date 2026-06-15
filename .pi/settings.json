@@ -27,6 +27,7 @@
       "extensions": [],
       "skills": []
     },
+    { "source": "npm:@gotgenes/pi-nocd", "extensions": [], "skills": [] },
 
     "npm:pi-prompt-template-model",
     "npm:pi-web-access",
