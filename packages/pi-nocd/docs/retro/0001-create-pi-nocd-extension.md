@@ -60,3 +60,5 @@ Three latent gaps surfaced during shipping — a wrong rationale, an unused copi
 3. Added a pre-push `pnpm fallow dead-code` rule to `AGENTS.md`.
 4. Rewrote `scripts/publish-released.sh` to derive the publish list from release-please's `paths_released` (reading each name from `package.json`), removing the hardcoded list; a missing `package.json` now fails loudly.
 5. Dropped the now-obsolete `scripts/publish-released.sh` step from the `AGENTS.md` new-package checklist (publishing is automatic).
+6. Added `pi-nocd` to the root `README.md` Packages table and the no-dedicated-skill note (an omission caught after the fact).
+7. Added a `README.md` step to the `AGENTS.md` new-package checklist so the Packages table is no longer forgotten.

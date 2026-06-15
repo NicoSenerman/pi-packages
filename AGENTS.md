@@ -13,6 +13,7 @@ When adding a new package, wire it into all of:
 1. `release-please-config.json` — add to `packages` (component) and add `docs/plans` + `docs/retro` to `exclude-paths`.
 2. `.release-please-manifest.json` — add the package at `0.0.0`.
 3. `.pi/settings.json` — add the `../packages/<pkg>` load path, plus a `{ "source": "npm:@gotgenes/<pkg>", "extensions": [], "skills": [] }` disable entry once it is in global settings (prevents double-load).
+4. `README.md` — add the package to the Packages table, and to the no-dedicated-skill note unless it ships a `package-<pkg>` skill.
 
 Publishing is automatic — `scripts/publish-released.sh` derives the package list from release-please's `paths_released`, so no publish-script edit is needed.
 
