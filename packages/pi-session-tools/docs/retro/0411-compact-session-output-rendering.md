@@ -24,3 +24,22 @@ The plan keeps the model-facing `content` unchanged and adds a pure, tested summ
 - Change is **non-breaking** — `content` is unchanged and `details` is not visible to the model, only to the TUI and session persistence.
 - New dependency `@earendil-works/pi-tui` (peer `>=0.75.0`, dev `0.79.1`) matches sibling packages; the plan folds it into the rendering step with the `pnpm-lock.yaml` update and flags `pnpm fallow dead-code` before pushing.
 - Next step is `/tdd-plan` (the plan has red→green test cycles for the pure summary layer and the `details` wiring).
+
+## Stage: Implementation — TDD (2026-06-15T21:22:00Z)
+
+### Session summary
+
+Completed all 4 TDD steps in one session: pure `entry-summary.ts` module (23 tests), `SessionToolDetails` wiring in `index.ts` with nested `describe("details")` assertions (+5 tests), `renderResult`/`renderCall` glue with `@earendil-works/pi-tui` dependency, and README note.
+Test count grew from 47 to 75 (+28).
+Pre-completion reviewer returned PASS.
+
+### Observations
+
+- `satisfies SessionToolDetails` had to be replaced with `as SessionToolDetails` on all `details` return values — `satisfies` keeps the narrowed branch type, which caused TypeScript to infer `TDetails` as only the first branch and reject the union.
+  The `as` cast is safe here because all construction sites are validated by the discriminated union definition.
+- Twice forgot to close newly opened `describe(...)` blocks (parse errors caught immediately by autoformat); fixed by reading the current file state before each subsequent edit.
+- `await import()` inside a sync `formatResultText` function was rejected by Biome; fixed by adding `formatSummaryText` to the existing static import from `entry-summary.js` — dynamic import was never needed.
+- New `describe("details", ...)` nested blocks prompted by user feedback mid-step, replacing flat `it` appends.
+  The restructuring required two edits per file (open brace, close brace) rather than one — an atomic edit would have been cleaner.
+- `renderResult`/`renderCall` glue is intentionally untested (global theme/keybinding state), matching the `pi-colgrep` precedent; manual TUI verification is the backstop per the plan.
+- Pre-completion reviewer: PASS — no findings.
