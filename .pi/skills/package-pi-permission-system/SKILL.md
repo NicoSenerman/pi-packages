@@ -29,6 +29,8 @@ When a roadmap step ships, mark it complete in `docs/architecture/architecture.m
 - Keep block/ask/allow decisions reviewable: write to the permission review log by default.
 - Preserve the `/permission-system` slash command name — renaming it is a breaking change.
 - In the flat permission format, `permission["*"]` is the universal fallback; pattern ordering is last-match-wins.
+- The four path layers (`path`, `external_directory`, per-tool, `bash`) compose with **most-restrictive-wins** across surfaces: a more-permissive rule on one surface cannot loosen a more-restrictive rule on another (`ask` > `allow`).
+  So a `path` allow cannot suppress an `external_directory: ask` prompt — allow outside-CWD directories on `external_directory`, not `path`.
 - Wildcard matching must be explicit and tested — silent over-matching is a permission bypass.
 - Prefer config patterns over new runtime mechanisms.
   Mechanism is forever; docs are reversible.
