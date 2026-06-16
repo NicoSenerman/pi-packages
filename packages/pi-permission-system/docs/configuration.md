@@ -346,6 +346,11 @@ Four orthogonal layers compose with most-restrictive-wins:
 | Per-tool patterns       | Is this path ok for this specific tool? | Individual tools |
 | `bash` command patterns | Is this command ok?                     | Bash only        |
 
+**Which surface for "allow this directory"?**
+Use `path` to **deny** sensitive files everywhere (`.env`, `~/.ssh/*`); use `external_directory` to **allow** a directory outside the working tree (a cache, a sibling project).
+Because the layers compose with most-restrictive-wins, a `path` allow cannot loosen an `external_directory: ask` boundary — `ask` is more restrictive than `allow`, so the prompt still fires.
+Adding `"~/.cargo/registry": "allow"` to the `path` surface therefore does **not** stop the outside-CWD prompt; put the rule on `external_directory` instead (see below).
+
 Configs without a `path` key behave identically to before — the gate does not fire.
 When no `path` key is present, the universal fallback (`permission["*"]`) applies: `"*": "allow"` keeps the gate transparent, while `"*": "deny"` would deny all file access via every surface including `path`.
 
@@ -409,6 +414,29 @@ Use a pattern map to allow specific directories without opening all external acc
 `external_directory` is evaluated before the normal tool permission check.
 For example, `read: "allow"` can permit ordinary reads while `external_directory: "ask"` still requires confirmation before reading `../outside.txt` or an absolute path outside `ctx.cwd`.
 Optional-path search tools (`find`, `grep`, `ls`) skip this check when no `path` is provided.
+
+#### Allow an outside-CWD cache directory
+
+When an agent keeps reading a local cache outside the working tree — `~/.cargo/registry`, `~/.npm`, `~/go/pkg/mod` — and you want to stop confirming it every time, allow that directory on the `external_directory` surface:
+
+```jsonc
+{
+  "permission": {
+    "external_directory": {
+      "*": "ask",
+      "~/.cargo/registry/*": "allow"
+    }
+  }
+}
+```
+
+The trailing `*` is required and it crosses subdirectory boundaries: `*` is a greedy match (not a single path segment), so `~/.cargo/registry/*` allows every file beneath the directory, however deep.
+Do not write `~/.cargo/registry/**` — `**` is not a distinct globstar, and a single `*` already recurses.
+A bare `~/.cargo/registry` (no `*`) matches only the directory entry itself, not the files inside it, which is the usual reason a hand-written allow rule appears to do nothing.
+The pattern is stored and displayed as written (`~/.cargo/registry/*`) in logs and approval dialogs.
+
+For caches you only ever **read**, `piInfrastructureReadPaths` is a lighter alternative — it auto-allows read-only tools (`read`, `find`, `grep`, `ls`) and bypasses the gate entirely, but it does not cover `write`/`edit` or bash.
+Use `external_directory` when the allowance must apply to every tool.
 
 Bash commands are also covered: the extension extracts path-like tokens from the command string and applies the same gate when any resolve outside `ctx.cwd`.
 Quoted strings are stripped first to reduce false positives.
