@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [16.4.0](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v16.3.1...pi-subagents-v16.4.0) (2026-06-16)
+
+
+### Features
+
+* **pi-subagents:** add loadLayeredSettings layered config loader ([2eeba78](https://github.com/gotgenes/pi-packages/commit/2eeba78230bd4537fa568641d4a77a6f1824271c))
+* **pi-subagents:** export loadLayeredSettings via ./settings subpath ([cefe7f6](https://github.com/gotgenes/pi-packages/commit/cefe7f6b7a9133cd0bbcc523ac8b34e48fce0a58))
+
 ## [16.3.1](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v16.3.0...pi-subagents-v16.3.1) (2026-06-16)
 
 
