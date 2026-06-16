@@ -88,6 +88,7 @@ Do not rewrite an entire large test file in one shot.
 
 If a step uncovers a problem the plan didn't anticipate (e.g. a downstream test breaks), fix it as part of the same commit and note the deviation in the commit body.
 If the deviation is large, stop and ask.
+If a plan's quantitative target (LOC, clone count, complexity) does not fall out as the plan predicted, treat that as a deviation: re-decide via `ask_user` rather than escalating the abstraction to force the number.
 
 ## After the last TDD step
 
