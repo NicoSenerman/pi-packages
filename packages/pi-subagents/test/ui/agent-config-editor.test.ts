@@ -11,6 +11,11 @@ import { createTestSubagentConfig, makeFileOps, makeMenuUI } from "#test/helpers
 const testDefaultConfig = createTestSubagentConfig();
 const testCustomConfig = createTestSubagentConfig({ isDefault: false, source: "project" });
 
+/** A config marked disabled (`enabled: false`), preserving the rest of `base`. */
+function disabledConfig(base: typeof testDefaultConfig) {
+  return { ...base, enabled: false };
+}
+
 const testRegistry = new AgentTypeRegistry(() => new Map());
 
 function makeEditor(overrides: {
@@ -115,10 +120,7 @@ describe("createAgentConfigEditor", () => {
     });
 
     it("shows Enable, Edit, Reset, Delete for a disabled default agent with file", async () => {
-      vi.spyOn(testRegistry, "resolveAgentConfig").mockReturnValue({
-        ...testDefaultConfig,
-        enabled: false,
-      });
+      vi.spyOn(testRegistry, "resolveAgentConfig").mockReturnValue(disabledConfig(testDefaultConfig));
       const { editor, ui } = setupDetail([undefined], { filePath: "/project/.pi/agents/test-agent.md" });
 
       await editor.showAgentDetail(ui, "test-agent");
@@ -128,10 +130,7 @@ describe("createAgentConfigEditor", () => {
     });
 
     it("shows Enable, Edit, Delete for a disabled custom agent with file", async () => {
-      vi.spyOn(testRegistry, "resolveAgentConfig").mockReturnValue({
-        ...testCustomConfig,
-        enabled: false,
-      });
+      vi.spyOn(testRegistry, "resolveAgentConfig").mockReturnValue(disabledConfig(testCustomConfig));
       const { editor, ui } = setupDetail([undefined], { filePath: "/project/.pi/agents/test-agent.md" });
 
       await editor.showAgentDetail(ui, "test-agent");
@@ -289,10 +288,7 @@ describe("createAgentConfigEditor", () => {
     // ---- Enable ----
 
     it("enables agent by removing enabled:false from file", async () => {
-      vi.spyOn(testRegistry, "resolveAgentConfig").mockReturnValue({
-        ...testCustomConfig,
-        enabled: false,
-      });
+      vi.spyOn(testRegistry, "resolveAgentConfig").mockReturnValue(disabledConfig(testCustomConfig));
       const filePath = "/project/.pi/agents/test-agent.md";
       const { fileOps, editor, ui } = setupDetail(["Enable"], {
         filePath,
@@ -309,10 +305,7 @@ describe("createAgentConfigEditor", () => {
     });
 
     it("removes empty override file when enabling", async () => {
-      vi.spyOn(testRegistry, "resolveAgentConfig").mockReturnValue({
-        ...testDefaultConfig,
-        enabled: false,
-      });
+      vi.spyOn(testRegistry, "resolveAgentConfig").mockReturnValue(disabledConfig(testDefaultConfig));
       const filePath = "/project/.pi/agents/test-agent.md";
       const { fileOps, editor, ui } = setupDetail(["Enable"], {
         filePath,
