@@ -1,7 +1,7 @@
 # Comparison with upstream
 
 `@gotgenes/pi-subagents` began as a fork of [`tintinweb/pi-subagents`](https://github.com/tintinweb/pi-subagents) by [@tintinweb](https://github.com/tintinweb).
-The original design — Claude Code-style subagent dispatch, the live widget, the conversation viewer, custom agent types — is the foundation everything here builds on.
+The original design — autonomous subagent dispatch, the live widget, the conversation viewer, custom agent types — is the foundation everything here builds on.
 
 It has since become an independently maintained hard fork.
 It follows its own architecture, does not track upstream as a merge target, and cherry-picks upstream fixes only when they fit its scope.
@@ -26,7 +26,7 @@ The peer-dep migration that prompted the original fork has since landed upstream
 
 Both extensions provide the same core experience:
 
-- Claude Code-style foreground/background subagents with a live above-editor widget and a conversation viewer.
+- Foreground/background subagents with a live above-editor widget and a conversation viewer.
 - Custom agent types defined in `.pi/agents/<name>.md` with YAML frontmatter (system prompt, model, thinking, tools).
 - Fuzzy model selection, context inheritance, mid-run steering, session resume, and graceful turn limits.
 - A `pi.events` lifecycle bus (`subagents:created`, `started`, `completed`, `failed`, `steered`, `compacted`).

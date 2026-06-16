@@ -236,7 +236,7 @@ Guidelines:
 				),
 			}),
 
-			// ---- Custom rendering: Claude Code style ----
+			// ---- Custom rendering: inline subagent results ----
 
 			renderCall(args: Record<string, unknown>, theme: any) {
 				const displayName = args.subagent_type

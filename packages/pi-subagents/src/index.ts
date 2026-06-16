@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument -- Pi SDK types are not fully exported; see upstream Pi SDK for type improvements */
 /**
- * pi-agents — A pi extension providing Claude Code-style autonomous sub-agents.
+ * pi-agents — A pi extension providing focused, in-process autonomous sub-agents.
  *
  * Tools:
  *   Agent             — LLM-callable: spawn a sub-agent

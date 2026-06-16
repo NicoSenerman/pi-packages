@@ -7,7 +7,7 @@ description: |
 
 # pi-subagents
 
-Pi extension that adds Claude Code-style autonomous subagent dispatch to the Pi coding agent.
+Pi extension that adds a focused, in-process autonomous subagent core to the Pi coding agent.
 
 This package is a **hard fork** of [`tintinweb/pi-subagents`](https://github.com/tintinweb/pi-subagents).
 The fork diverges intentionally from upstream with material scope reduction and a typed API boundary.

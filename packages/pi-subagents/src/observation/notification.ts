@@ -41,7 +41,7 @@ export function getStatusLabel(status: string, error?: string): string {
   }
 }
 
-/** Format a structured task notification matching Claude Code's <task-notification> XML. */
+/** Format a structured <task-notification> XML block for the parent agent to parse. */
 export function formatTaskNotification(record: Subagent, resultMaxLen: number): string {
   const status = getStatusLabel(record.status, record.error);
   const durationMs = record.completedAt ? record.completedAt - record.startedAt : 0;
