@@ -173,6 +173,9 @@ SDK interfaces lack index signatures; index-signature parameters force `as unkno
 
 When writing `promptGuidelines` for a tool registration, name the tool in every bullet — Pi flattens all tools' guidelines into one `Guidelines:` block without per-tool attribution ([earendil-works/pi#4879](https://github.com/earendil-works/pi/issues/4879)).
 
+When a tool's `execute` returns a discriminated-union `details` (e.g. `{ kind: "transcript" } | { kind: "status" }`), `defineTool` infers its `TDetails` generic from the first narrowed return and rejects the other branch.
+Cast each return's `details` `as <Union>` so the full union flows into the generic — `satisfies <Union>` keeps the narrowed branch type and does not fix the inference.
+
 ## Tooling
 
 - This project uses **pnpm** exclusively (`"packageManager"` in root `package.json`; `pnpm-lock.yaml`).

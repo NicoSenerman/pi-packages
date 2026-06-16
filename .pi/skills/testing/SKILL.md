@@ -62,6 +62,11 @@ Load this skill when writing, debugging, or planning tests.
 - Assert mock calls with `expect(fn).toHaveBeenCalledWith(...)`, not `fn.mock.calls[0]![0]`.
   A typed `vi.fn<(a: string) => void>()` makes the call tuple non-optional, so the `!` trips `@typescript-eslint/no-unnecessary-type-assertion`.
 
+## Test organization
+
+Group tests by the behavior or concern they exercise — open a nested `describe("<concern>", () => { ... })` per concern rather than appending `it` blocks to a flat list.
+When adding tests for a new concern (e.g. a `details` field alongside existing content assertions), start a new `describe` block instead of extending the existing one.
+
 ## Type checking
 
 Vitest uses esbuild and does not typecheck.

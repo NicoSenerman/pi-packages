@@ -43,3 +43,50 @@ Pre-completion reviewer returned PASS.
   The restructuring required two edits per file (open brace, close brace) rather than one — an atomic edit would have been cleaner.
 - `renderResult`/`renderCall` glue is intentionally untested (global theme/keybinding state), matching the `pi-colgrep` precedent; manual TUI verification is the backstop per the plan.
 - Pre-completion reviewer: PASS — no findings.
+
+## Stage: Final Retrospective (2026-06-16T01:44:43Z)
+
+### Session summary
+
+Shipped #411 end-to-end across four stages (issue creation, planning, TDD, ship) in a single conversation: `read_session`/`read_parent_session` now attach a `SessionToolDetails` summary and render a compact, `Ctrl-O`-expandable TUI row while leaving model-facing `content` unchanged.
+Released as `pi-session-tools` v1.1.0; test count grew 47 → 75.
+Execution was clean overall; friction was confined to a few edit-construction slips in the TDD stage and a slow start in the ship stage.
+
+### Observations
+
+#### What went well
+
+- Planning exploration paid off: finding the `pi-colgrep` `renderResult`/`details` precedent before writing the plan made the TDD stage mostly mechanical, and the pure/glue split (tested `entry-summary.ts` + untested theme glue) held exactly as planned.
+- Incremental `pnpm run check` after the shared-type step (TDD step 2) caught the `satisfies`-vs-`as` union-inference problem immediately, before it could compound into a commit reorder.
+- The user's mid-TDD nudge to group the new `details` tests into a nested `describe` block improved test organization at near-zero cost.
+
+#### What caused friction (agent side)
+
+- `missing-context` — `defineTool` inferred its `TDetails` generic from the first narrowed `satisfies SessionToolDetails` return, rejecting the other union branch (TDD step 2, turns 79–81).
+  Impact: one `pnpm run check` failure and one read+edit cycle; resolved by casting each `details` `as SessionToolDetails`.
+  This is a reusable Pi-SDK + TypeScript gotcha worth encoding.
+- `other` (edit construction) — wrapping existing `it` blocks in a new `describe("details", …)` added the opening `describe(... => {` without the matching `});`, twice across two files (turns 69–74).
+  Impact: two parse errors caught immediately by `pi-autoformat`/biome; two extra read+edit cycles; no broken commit.
+- `other` (incomplete edit) — the rendering-glue edit added `formatCallText`/`formatResultText` helpers but did not wire `renderCall`/`renderResult` into the tools, and wrote the summary helper with `await import()` inside a synchronous function (turns 92–96).
+  Impact: biome flagged three unused symbols + one parse error; fixed in one follow-up pass by wiring the hooks and switching to a static import.
+
+#### What caused friction (user side)
+
+- The nested-`describe` improvement (turn 66) surfaced only after the flat `it` blocks were already written; mentioning the grouping preference alongside the original TDD-plan review would have avoided the restructuring round.
+  Framed as opportunity, not criticism — the cost was tiny.
+
+### Diagnostic details
+
+- **Model-performance correlation** — Planning and Retro ran on `claude-opus-4-8` (judgment-heavy: design decisions, `ask_user`); TDD ran on `claude-sonnet-4-6` (handled the union-inference gotcha and recovered from the edit slips cleanly).
+  The Ship stage ran on `opencode-go/deepseek-v4-flash` and stalled: the ship prompt was re-sent three times (turns 119, 124, 129) with empty assistant turns before execution began at turn 130, though once started it completed every step correctly.
+  Procedural-but-consequential stages (push, issue close, release merge) are a poor fit for a model that stalls on cold start; this is an operator model-selection signal, not a prompt-actionable gap.
+- **Escalation-delay tracking** — no rabbit holes; every error (union inference, brace omissions, dynamic import) resolved within a single fix cycle.
+- **Feedback-loop gap analysis** — verification was incremental, not end-loaded: `pnpm run check` ran right after the shared-type step, and `pi-autoformat`/biome caught the parse errors at write time.
+  The feedback loops worked; the slips were edit-construction quality, not delayed verification.
+- **Unused-tool detection** — no missing-context or rabbit-hole point where an unused subagent or tool would have helped; planning exploration was sufficient.
+
+### Changes made
+
+1. `.pi/skills/code-design/SKILL.md` — added a Pi SDK boundaries note: a tool's discriminated-union `details` makes `defineTool` infer `TDetails` from the first narrowed return; cast each `details` `as <Union>` rather than `satisfies <Union>`.
+2. `AGENTS.md` — added an Edit-tool-batches bullet: when wrapping existing lines in a new enclosing block, emit the opening and closing braces as two `edits[]` entries in one call (or use `Write`).
+3. `.pi/skills/testing/SKILL.md` — added a Test organization section: group tests by concern in a nested `describe` block rather than appending flat `it` blocks.
