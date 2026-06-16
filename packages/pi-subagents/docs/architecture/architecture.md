@@ -989,12 +989,18 @@ Priority = Impact × (6 − Risk).
 - Outcome: `index.ts` < 170 lines; the observer's three concerns unit-tested directly without booting the extension.
 - Landed: `src/observation/subagent-events-observer.ts` (new, 97 LOC); `index.ts` 226 → 177 lines; 60 → 61 source files; 994 → 1009 tests (+15 covering all four observer methods).
 
-#### Step 6 — Split widget delegation out of SubagentRuntime ([#377])
+#### Step 6 — Split widget delegation out of SubagentRuntime ([#377]) ✅ Complete
 
-- Targets: `src/runtime.ts`, `src/tools/agent-tool.ts` (`AgentToolRuntime`), `src/tools/foreground-runner.ts`, `src/tools/background-spawner.ts`, `src/observation/notification.ts` (`NotificationManager` constructor), `src/index.ts`.
+- Targets: `src/runtime.ts`, `src/tools/agent-tool.ts` (`AgentToolRuntime`), `src/handlers/tool-start.ts` (`ToolStartRuntime`), `src/observation/notification.ts` (`NotificationManager` constructor), `src/ui/agent-widget.ts`, `src/index.ts`.
 - Smell: Category C — relay-only dependency (five delegation methods that only forward to `widget`) and a post-construction `runtime.widget =` write violating principle 8.
-- Change: pass the existing `WidgetLike` handle directly to the consumers that need it (tool deps, `NotificationManager`) and construct the widget before them; remove the `widget` field and the five relay methods from `SubagentRuntime`.
-- Outcome: `SubagentRuntime` has zero widget knowledge; no post-construction field writes in `index.ts`; tool fixtures stub a 5-method `WidgetLike` instead of widget methods on the runtime mock.
+- Constraint discovered in planning: "pass the handle directly to the consumers" is infeasible for `NotificationManager`, which is a _transitive dependency_ of the widget (`NotificationManager → widget → manager → observer → NotificationManager`).
+  The `runtime.widget` lazy field exists to break exactly this cycle; removing it forces the one late seam to move, and the operator's principles (no setters, instantiate ready-to-work) rule out relocating it to a setter or forward-ref `let`.
+- Change (tidy-first): first dissolve the cycle by giving `AgentWidget.update()` self-seeding of `finishedTurnAge` for finished agents it observes via `listAgents()`, then drop the `markFinished`/`updateWidget` callbacks from `NotificationManager` (it keeps `agentActivity.delete` + nudge scheduling).
+  With the cycle gone, the widget is constructed as a `const` after the manager and injected directly into `AgentTool` and `ToolStartHandler`; the `widget` field, the five relay methods, and the post-construction write delete cleanly, and `AgentToolRuntime` narrows to its context-query slice.
+- Outcome: `SubagentRuntime` has zero widget knowledge; no post-construction field writes in `index.ts`; the construction graph is a cycle-free DAG (`notifications → observer → manager → widget → {AgentTool, ToolStartHandler}`).
+- Landed: `AgentWidget.seedFinishedAgents` owns completion detection; `NotificationManager` has no widget dependency (2-arg constructor); `AgentToolWidget` (in `agent-tool.ts`) and `ToolStartWidget` (in `tool-start.ts`) are narrow per-consumer interfaces the real widget satisfies structurally; tool fixtures stub a `widget` separate from the narrowed `runtime` mock.
+  Behavior-preserving: the widget timer runs through every background completion, so self-seeding lands ≤80ms later within the same turn (linger is turn-based).
+  Test count: 1009 → 1005 (+3 widget self-seed tests, −7 removed relay/field tests).
 
 #### Step 7 — Consolidate lifecycle test fixtures ([#378])
 
