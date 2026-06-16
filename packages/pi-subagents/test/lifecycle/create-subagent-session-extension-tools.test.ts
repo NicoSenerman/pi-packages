@@ -14,7 +14,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createSubagentSession } from "#src/lifecycle/create-subagent-session";
 import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
-import { createSubagentSessionDeps, createSubagentSessionIO } from "#test/helpers/subagent-session-io";
+import { createFactorySession, createSubagentSessionDeps, createSubagentSessionIO } from "#test/helpers/subagent-session-io";
 
 const agentConfigMock = {
   current: {
@@ -40,34 +40,6 @@ const mockAgentLookup = {
 
 let io: ReturnType<typeof createSubagentSessionIO>;
 
-/**
- * Build a mock session where `getActiveToolNames` returns one set before
- * `bindExtensions` is called and another set after.
- *
- * @param beforeBind  Tools active before bindExtensions (built-in only).
- * @param afterBind   Tools active after bindExtensions (built-in + extension).
- */
-function createSessionWithExtensionToolRegistration(
-  beforeBind: string[],
-  afterBind: string[],
-) {
-  let bound = false;
-  const session = {
-    messages: [] as unknown[],
-    subscribe: vi.fn(() => () => {}),
-    prompt: vi.fn().mockResolvedValue(undefined),
-    abort: vi.fn(),
-    steer: vi.fn().mockResolvedValue(undefined),
-    dispose: vi.fn(),
-    getActiveToolNames: vi.fn(() => (bound ? afterBind : beforeBind)),
-    setActiveToolsByName: vi.fn(),
-    bindExtensions: vi.fn(async () => {
-      bound = true;
-    }),
-  };
-  return session;
-}
-
 const exec = vi.fn();
 
 beforeEach(() => {
@@ -86,7 +58,7 @@ beforeEach(() => {
 
 describe("post-bind recursion guard", () => {
   it("setActiveToolsByName is called once, after bindExtensions", async () => {
-    const session = createSessionWithExtensionToolRegistration(["read"], ["read", "extension_tool"]);
+    const session = createFactorySession({ toolsBeforeBind: ["read"], toolsAfterBind: ["read", "extension_tool"] });
     io.createSession.mockResolvedValue({ session });
 
     await createSubagentSession(
@@ -101,7 +73,7 @@ describe("post-bind recursion guard", () => {
   });
 
   it("post-bind filter includes extension-registered tools", async () => {
-    const session = createSessionWithExtensionToolRegistration(["read"], ["read", "extension_tool"]);
+    const session = createFactorySession({ toolsBeforeBind: ["read"], toolsAfterBind: ["read", "extension_tool"] });
     io.createSession.mockResolvedValue({ session });
 
     await createSubagentSession(
@@ -115,10 +87,10 @@ describe("post-bind recursion guard", () => {
   });
 
   it("post-bind filter excludes EXCLUDED_TOOL_NAMES", async () => {
-    const session = createSessionWithExtensionToolRegistration(
-      ["read"],
-      ["read", "subagent", "get_subagent_result", "steer_subagent", "external"],
-    );
+    const session = createFactorySession({
+      toolsBeforeBind: ["read"],
+      toolsAfterBind: ["read", "subagent", "get_subagent_result", "steer_subagent", "external"],
+    });
     io.createSession.mockResolvedValue({ session });
 
     await createSubagentSession(
@@ -135,7 +107,7 @@ describe("post-bind recursion guard", () => {
   });
 
   it("runs the guard unconditionally even when no extension tools are registered", async () => {
-    const session = createSessionWithExtensionToolRegistration(["read"], ["read"]);
+    const session = createFactorySession();
     io.createSession.mockResolvedValue({ session });
 
     await createSubagentSession(
