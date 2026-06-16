@@ -1,57 +1,32 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type ForegroundParams, runForeground } from "#src/tools/foreground-runner";
-import type { ResolvedSpawnConfig } from "#src/tools/spawn-config";
 import { createToolDeps } from "#test/helpers/make-deps";
+import { createResolvedSpawnConfig } from "#test/helpers/make-spawn-config";
 import { createTestSubagent } from "#test/helpers/make-subagent";
 import { createMockSession, createSubagentSessionStub, toSubagentSession } from "#test/helpers/mock-session";
 import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 
-function makeConfig(overrides: Partial<ResolvedSpawnConfig> = {}): ResolvedSpawnConfig {
-	return {
-		identity: {
-			subagentType: "general-purpose",
-			rawType: "general-purpose",
-			fellBack: false,
-			displayName: "Agent",
-		},
-		execution: {
-			prompt: "do the task",
-			description: "fg task",
-			model: undefined,
-			effectiveMaxTurns: undefined,
-			thinking: undefined,
-			inheritContext: false,
-			runInBackground: false,
-			agentInvocation: {
-				modelName: undefined,
-				thinking: undefined,
-				maxTurns: undefined,
-				inheritContext: false,
-				runInBackground: false,
-			},
-		},
-		presentation: {
-			modelName: undefined,
-			agentTags: [],
-			detailBase: {
-				displayName: "Agent",
-				description: "fg task",
-				subagentType: "general-purpose",
-				modelName: undefined,
-				tags: undefined,
-			},
-		},
-		...overrides,
-	};
-}
-
 function makeParams(overrides: Partial<ForegroundParams> = {}): ForegroundParams {
 	return {
-		config: makeConfig(),
+		config: createResolvedSpawnConfig({ description: "fg task" }),
 		snapshot: STUB_SNAPSHOT,
 		parentSession: { parentSessionFile: "/sessions/parent.jsonl", parentSessionId: "session-1" },
 		...overrides,
 	};
+}
+
+/**
+ * A `spawnAndWait` mock that registers the spawned record via
+ * `observer.onSessionCreated` — the activity-map registration path.
+ */
+function spawnAndWaitRegistering(record = createTestSubagent({ result: "done" })) {
+	record.subagentSession = toSubagentSession(createSubagentSessionStub(createMockSession()));
+	return vi.fn().mockImplementation(
+		async (_snapshot: any, _type: any, _prompt: any, opts: any) => {
+			opts.observer?.onSessionCreated?.(record);
+			return record;
+		},
+	);
 }
 
 describe("runForeground", () => {
@@ -103,9 +78,7 @@ describe("runForeground", () => {
 			widget,
 			runtime.agentActivity,
 			makeParams({
-				config: makeConfig({
-					identity: { subagentType: "general-purpose", rawType: "unknown-type", fellBack: true, displayName: "Agent" },
-				}),
+				config: createResolvedSpawnConfig({ rawType: "unknown-type", fellBack: true, description: "fg task" }),
 			}),
 			undefined,
 			undefined,
@@ -118,14 +91,7 @@ describe("runForeground", () => {
 		const deps = createToolDeps({
 			manager: {
 				...createToolDeps().manager,
-				spawnAndWait: vi.fn().mockImplementation(
-					async (_snapshot: any, _type: any, _prompt: any, opts: any) => {
-						const record = createTestSubagent({ result: "done" });
-						record.subagentSession = toSubagentSession(createSubagentSessionStub(createMockSession()));
-						opts.observer?.onSessionCreated?.(record);
-						return record;
-					},
-				),
+				spawnAndWait: spawnAndWaitRegistering(),
 			},
 		});
 		const signal = new AbortController().signal;
@@ -138,14 +104,7 @@ describe("runForeground", () => {
 		const deps = createToolDeps({
 			manager: {
 				...createToolDeps().manager,
-				spawnAndWait: vi.fn().mockImplementation(
-					async (_snapshot: any, _type: any, _prompt: any, opts: any) => {
-						const record = createTestSubagent({ result: "done" });
-						record.subagentSession = toSubagentSession(createSubagentSessionStub(createMockSession()));
-						opts.observer?.onSessionCreated?.(record);
-						return record;
-					},
-				),
+				spawnAndWait: spawnAndWaitRegistering(),
 			},
 		});
 		await runForeground(deps.manager, deps.widget, deps.runtime.agentActivity, makeParams(), undefined, undefined);
