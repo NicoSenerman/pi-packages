@@ -643,17 +643,17 @@ That method — testability friction as a boundary probe, with its limits — is
 
 ### Health metrics
 
-| Metric                     | Value                                   |
-| -------------------------- | --------------------------------------- |
-| Health score               | 78/100 (B)                              |
-| Total LOC                  | 8,356 (61 files, as of Phase 17 Step 5) |
-| Dead code                  | 0 files, 0 exports                      |
-| Maintainability index      | 90.8 (good)                             |
-| Avg cyclomatic complexity  | 1.4                                     |
-| P90 cyclomatic complexity  | 2                                       |
-| Production duplication     | 11 lines (1 internal clone group)       |
-| Test duplication           | 42 clone groups, 661 lines              |
-| Fallow refactoring targets | 0                                       |
+| Metric                     | Value                                        |
+| -------------------------- | -------------------------------------------- |
+| Health score               | 78/100 (B)                                   |
+| Total LOC                  | 8,356 (61 files, as of Phase 17 Step 5)      |
+| Dead code                  | 0 files, 0 exports                           |
+| Maintainability index      | 90.8 (good)                                  |
+| Avg cyclomatic complexity  | 1.4                                          |
+| P90 cyclomatic complexity  | 2                                            |
+| Production duplication     | 11 lines (1 internal clone group)            |
+| Test duplication           | 24 clone groups, 355 lines (Phase 17 Step 8) |
+| Fallow refactoring targets | 0                                            |
 
 ### Dependency bag inventory
 
@@ -1014,12 +1014,15 @@ Priority = Impact × (6 − Risk).
   Lesson: the original "families ≤ 1" target was a weak signal for _test_ code — an early act-wrapping helper that hit the metric was reverted in favour of the AAA structure above; the metric was relaxed deliberately.
   The three overlapping session-mock builders this surfaced are tracked separately ([#412]).
 
-#### Step 8 — Consolidate UI and tools test fixtures ([#379])
+#### Step 8 — Consolidate UI and tools test fixtures ([#379]) ✅ Complete
 
-- Targets: `test/ui/agent-creation-wizard.test.ts`, `test/ui/agent-config-editor.test.ts`, `test/ui/ui-observer.test.ts`, `test/tools/foreground-runner.test.ts`, `test/tools/background-spawner.test.ts`, `test/session/session-config.test.ts`.
+- Targets: `test/ui/agent-creation-wizard.test.ts`, `test/ui/agent-config-editor.test.ts`, `test/ui/ui-observer.test.ts`, `test/tools/foreground-runner.test.ts`, `test/tools/background-spawner.test.ts`, `test/session/session-config.test.ts`, and `test/service/service-adapter.test.ts` (a seventh non-lifecycle family fallow reports; added to scope in planning).
 - Smell: Category D — remaining clone families outside the lifecycle tree.
 - Change: extract per-file repeated arrangements into local helpers or `test/helpers/` where shared across files.
-- Outcome: package clone groups 44 → ≤ 25; overall duplication ≤ 0.6%.
+- Outcome: each named family's extractable arrange consolidated; resulting fallow figures reported (the roadmap's original "44 → ≤ 25 groups; ≤ 0.6%" target predated Steps 1–7 and used a different baseline, so acceptance was "consolidate and measure," not a binding number).
+- Landed: promoted the cross-file `ResolvedSpawnConfig` builder to `test/helpers/make-spawn-config.ts` (`createResolvedSpawnConfig`, flat options that derive the mirrored `agentInvocation`/`presentation.detailBase` regions) with a 5-test companion; consolidated the remaining six families with file-local, value-returning arrange builders and `beforeEach` setup (`spawnAndWaitRegistering`, `ui-observer` session/tracker `beforeEach` with `vi.fn()` onUpdate counters, `generateUI`/`manualUI`/`withInputs`, `disabledConfig`, `exploreConfig`, `createManagerStub`).
+  Package test duplication: 512 → 355 lines; clone groups 32 → 24; duplication 2.49% → 1.73%; test files 63 → 64; test count 1010 → 1015 (+5 `createResolvedSpawnConfig` self-tests).
+  Three multi-group families remain: the two lifecycle residuals from Step 7 (`create-subagent-session.test.ts`, `subagent-manager.test.ts`) and `agent-config-editor.test.ts`, whose residual clones are the repeated `await editor.showAgentDetail(...)` **act** plus its `setupDetail` arrange and `ui.select.mock.calls` menu assertion — left inline because wrapping the system-under-test is the wrong abstraction for test code (Step 7 lesson; Sandi Metz: "duplication is far cheaper than the wrong abstraction").
 
 #### Step 9 — Resolve the cross-package settings-loader duplication ([#380])
 
