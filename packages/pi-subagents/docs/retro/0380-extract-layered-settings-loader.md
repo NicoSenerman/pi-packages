@@ -27,3 +27,22 @@ The plan is a single-package TDD plan in `packages/pi-subagents/docs/plans/0380-
 - Followed the `0270-type-consumable-public-surface.md` plan as the template for the `.d.ts`-bundle + `verify:public-types` machinery; the new subpath extends that rather than introducing a new mechanism.
 - `loadSettings`'s `process.cwd()` default is dropped per the code-design "no `process.*` in library functions" rule; the sole caller (`SettingsManager.load`) already passes `this.cwd` (verified by grep).
 - The worktrees-migration follow-up issue should be created at ship time and back-referenced from the architecture Step 9 roadmap entry.
+
+## Stage: Implementation — TDD (2026-06-16T16:00:00Z)
+
+### Session summary
+
+Completed all 4 TDD steps from the plan: added `src/layered-settings.ts` with 15 unit tests, refactored `settings.ts` to delegate through the helper (removing `readSettingsFile` and `globalPath`), published the `@gotgenes/pi-subagents/settings` subpath export with a rolled `dist/settings.d.ts` and extended `verify:public-types` harness, and recorded the decision in the architecture doc.
+Test count grew from 1015 to 1030 (+15).
+Pre-completion reviewer returned **PASS**.
+Follow-up issue [#415] created for the worktrees migration.
+
+### Observations
+
+- The plan's "Outcome caveat" resolved favourably: `pnpm fallow:dupes --skip-local` no longer reports the `settings.ts` ↔ `config.ts` pair after the extraction.
+  The parametrised helper's token sequence diverged enough that the contiguous identical run dropped below the reporting threshold — a better outcome than the plan's hedged prediction.
+- ESLint's pre-commit hook removed `!` non-null assertions from `spy.mock.calls[0]![0]` in the test file (typed `vi.spyOn` mock calls are non-optional tuples; the assertions were redundant).
+  Staged the auto-fix into the same commit without issue.
+- The `rollup.dts.config.mjs` array-of-configs approach worked without incident: both bundles (`dist/public.d.ts` and `dist/settings.d.ts`) are self-contained and `verify:public-types` confirmed both probes type-check against the packaged tarball.
+- The `satisfies LayeredSettingsSource<SubagentsSettings>` annotation at the `loadSettings` call site serves double duty: validates the object literal and keeps `LayeredSettingsSource` referenced for fallow dead-code (fallow confirmed: 0 issues).
+- Follow-up issue [#415] created before the TDD stage notes were written (operator requested it during the session); architecture doc updated with the `[#415]` reference and link definition.
