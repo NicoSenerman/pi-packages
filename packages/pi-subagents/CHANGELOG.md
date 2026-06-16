@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [16.3.0](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v16.2.2...pi-subagents-v16.3.0) (2026-06-16)
+
+
+### Features
+
+* self-seed finished agents in AgentWidget.update ([#377](https://github.com/gotgenes/pi-packages/issues/377)) ([fd99a29](https://github.com/gotgenes/pi-packages/commit/fd99a297f70ce4c1c078fd486be042f691fe5a79))
+
+
+### Documentation
+
+* **pi-subagents:** drop removed memory, skills, isolation surfaces ([7cf20ee](https://github.com/gotgenes/pi-packages/commit/7cf20eebf109c979a864000cd8b9d84a13d0df90))
+
 ## [16.2.2](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v16.2.1...pi-subagents-v16.2.2) (2026-06-15)
 
 
