@@ -13,8 +13,15 @@ import {
   defineTool,
   type ExtensionAPI,
   type ExtensionContext,
+  keyHint,
+  type Theme,
 } from "@earendil-works/pi-coding-agent";
-import { type SessionSummary, summarizeEntries } from "./entry-summary.js";
+import { Text } from "@earendil-works/pi-tui";
+import {
+  formatSummaryText,
+  type SessionSummary,
+  summarizeEntries,
+} from "./entry-summary.js";
 import { formatTranscript } from "./format-transcript.js";
 import {
   deriveParentSessionFile,
@@ -25,6 +32,62 @@ import {
 type SessionToolDetails =
   | { kind: "transcript"; summary: SessionSummary }
   | { kind: "status"; message: string };
+
+// ---- rendering helpers ----
+
+/**
+ * Compact call label: `read session (types: [...], limit: N)` or `read parent session`.
+ * Extra params omitted when not supplied.
+ */
+function formatCallText(
+  label: string,
+  args: { types?: string[]; limit?: number },
+  theme: Theme,
+): string {
+  const hints: string[] = [];
+  if (args.types && args.types.length > 0)
+    hints.push(`types: [${args.types.join(", ")}]`);
+  if (args.limit != null) hints.push(`limit: ${args.limit}`);
+  const suffix = hints.length > 0 ? ` (${hints.join(", ")})` : "";
+  return `${theme.fg("toolTitle", theme.bold(label))}${theme.fg("muted", suffix)}`;
+}
+
+/**
+ * Collapsed or expanded result text for a session-read tool.
+ *
+ * Collapsed: one-line summary (or status message) + expand hint.
+ * Expanded: full transcript content lines coloured as tool output.
+ */
+function formatResultText(
+  result: {
+    content: Array<{ type: string; text?: string }>;
+    details?: unknown;
+  },
+  options: { expanded: boolean },
+  theme: Theme,
+): string {
+  const details = result.details as SessionToolDetails | undefined;
+  const outputText =
+    result.content[0]?.type === "text" ? (result.content[0].text ?? "") : "";
+
+  if (options.expanded) {
+    return outputText
+      .split("\n")
+      .map((l) => theme.fg("toolOutput", l))
+      .join("\n");
+  }
+
+  // Collapsed view.
+  const hint = keyHint("app.tools.expand", "to expand");
+  if (!details) {
+    return `${theme.fg("muted", outputText.split("\n")[0] ?? "")} ${hint}`;
+  }
+  if (details.kind === "status") {
+    return `${theme.fg("warning", "\u26a0")} ${theme.fg("muted", details.message)} ${hint}`;
+  }
+  // kind === "transcript"
+  return `${theme.fg("success", "\u2713")} ${theme.fg("muted", formatSummaryText(details.summary))} ${hint}`;
+}
 
 export default function sessionTools(pi: ExtensionAPI): void {
   pi.registerTool(
@@ -111,6 +174,18 @@ export default function sessionTools(pi: ExtensionAPI): void {
           }),
         ),
       }),
+      renderCall(args, theme, context) {
+        const text =
+          (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
+        text.setText(formatCallText("read session", args, theme));
+        return text;
+      },
+      renderResult(result, options, theme, context) {
+        const text =
+          (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
+        text.setText(formatResultText(result, options, theme));
+        return text;
+      },
       // eslint-disable-next-line @typescript-eslint/require-await -- satisfies async tool interface; no actual async work
       async execute(
         _toolCallId: string,
@@ -166,6 +241,18 @@ export default function sessionTools(pi: ExtensionAPI): void {
           }),
         ),
       }),
+      renderCall(args, theme, context) {
+        const text =
+          (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
+        text.setText(formatCallText("read parent session", args, theme));
+        return text;
+      },
+      renderResult(result, options, theme, context) {
+        const text =
+          (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
+        text.setText(formatResultText(result, options, theme));
+        return text;
+      },
       // eslint-disable-next-line @typescript-eslint/require-await -- satisfies async tool interface; no actual async work
       async execute(
         _toolCallId: string,
