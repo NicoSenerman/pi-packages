@@ -64,6 +64,24 @@ function spawnFg(mgr: SubagentManager, prompt = "test", desc = prompt) {
   });
 }
 
+/** Spawn a background agent carrying a parentSession.toolCallId (notification path). */
+function spawnBgWithToolCall(mgr: SubagentManager, toolCallId: string, prompt = "test", desc = prompt) {
+  return mgr.spawn(STUB_SNAPSHOT, "general-purpose", prompt, {
+    description: desc,
+    isBackground: true,
+    parentSession: { toolCallId },
+  });
+}
+
+/** Arrange a manager at limit 1 with two bg agents over a blocking factory: first runs, second queues. */
+function arrangeQueuedPair() {
+  const factory = createBlockingFactory();
+  const { manager: mgr } = createManager({ createSubagentSession: factory, getMaxConcurrent: () => 1 });
+  const running = spawnBg(mgr, "a");
+  const queued = spawnBg(mgr, "b");
+  return { manager: mgr, factory, running, queued };
+}
+
 describe("SubagentManager — Bug 1 race condition (notification.resultConsumed vs onComplete)", () => {
   let manager: SubagentManager;
 
@@ -77,11 +95,7 @@ describe("SubagentManager — Bug 1 race condition (notification.resultConsumed 
       seenConsumed = r.notification?.resultConsumed;
     } } }));
 
-    const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "test", {
-      description: "test",
-      isBackground: true,
-      parentSession: { toolCallId: "tc-1" },
-    });
+    const id = spawnBgWithToolCall(manager, "tc-1");
     const record = manager.getRecord(id)!;
 
     // Simulate the buggy get_subagent_result: await THEN mark consumed
@@ -98,11 +112,7 @@ describe("SubagentManager — Bug 1 race condition (notification.resultConsumed 
       seenConsumed = r.notification?.resultConsumed;
     } } }));
 
-    const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "test", {
-      description: "test",
-      isBackground: true,
-      parentSession: { toolCallId: "tc-1" },
-    });
+    const id = spawnBgWithToolCall(manager, "tc-1");
     const record = manager.getRecord(id)!;
 
     // The fix: pre-mark BEFORE awaiting
@@ -476,41 +486,33 @@ describe("SubagentManager — queueing and concurrency with injected stubs", () 
   });
 
   it("gives a queued agent an awaitable promise at spawn (before its slot opens)", () => {
-    const factory = createBlockingFactory();
-    ({ manager } = createManager({ createSubagentSession: factory, getMaxConcurrent: () => 1 }));
-
-    // First runs, second queues
-    const id1 = spawnBg(manager, "a");
-    const id2 = spawnBg(manager, "b");
+    const arranged = arrangeQueuedPair();
+    manager = arranged.manager;
 
     // A still-queued agent must already expose a settle-on-completion promise,
     // so waitForAll can await it without relying on a re-poll. (Regression
     // guard: #374 made the promise lazy; the limiter handle is captured eagerly.)
-    expect(manager.getRecord(id2)!.status).toBe("queued");
-    expect(manager.getRecord(id2)!.promise).toBeInstanceOf(Promise);
+    expect(manager.getRecord(arranged.queued)!.status).toBe("queued");
+    expect(manager.getRecord(arranged.queued)!.promise).toBeInstanceOf(Promise);
 
-    manager.abort(id1);
-    manager.abort(id2);
+    manager.abort(arranged.running);
+    manager.abort(arranged.queued);
   });
 
   it("abort removes a queued agent without ever running it", () => {
-    const factory = createBlockingFactory();
-    ({ manager } = createManager({ createSubagentSession: factory, getMaxConcurrent: () => 1 }));
+    const arranged = arrangeQueuedPair();
+    manager = arranged.manager;
 
-    // First runs, second queues
-    const id1 = spawnBg(manager, "a");
-    const id2 = spawnBg(manager, "b");
-
-    expect(manager.getRecord(id2)!.status).toBe("queued");
+    expect(manager.getRecord(arranged.queued)!.status).toBe("queued");
 
     // Abort the queued agent
-    expect(manager.abort(id2)).toBe(true);
-    expect(manager.getRecord(id2)!.status).toBe("stopped");
+    expect(manager.abort(arranged.queued)).toBe(true);
+    expect(manager.getRecord(arranged.queued)!.status).toBe("stopped");
 
     // factory was called once (for the first agent), never for the aborted one
-    expect(factory).toHaveBeenCalledOnce();
+    expect(arranged.factory).toHaveBeenCalledOnce();
 
-    manager.abort(id1);
+    manager.abort(arranged.running);
   });
 
   it("onStart fires when agent transitions from queued to running", async () => {
@@ -693,11 +695,7 @@ describe("SubagentManager — toolCallId notification wiring", () => {
   it("wires NotificationState on spawn when toolCallId is provided", () => {
     ({ manager } = createManager());
 
-    const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "test", {
-      description: "bg",
-      isBackground: true,
-      parentSession: { toolCallId: "tc-42" },
-    });
+    const id = spawnBgWithToolCall(manager, "tc-42", "test", "bg");
     const record = manager.getRecord(id)!;
 
     expect(record.notification).toBeInstanceOf(NotificationState);
