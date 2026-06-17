@@ -29,3 +29,5 @@ The plan corrects the path via a new `getProjectAgentsDir(cwd)` helper in `confi
   So my earlier "directly-activated via `/agents`" justification was wrong, and both initial Open Questions (upstream `getProjectAgentsDir` to the SDK; have the core parse agent frontmatter) were withdrawn — they would push a multi-agent concept into a core that rejects it.
 - Corrected long-term direction now in the plan: per-agent `permission:` frontmatter is an **extension bridge on pps's single-agent core**; a cleaner future keeps that bridge generic (the multi-agent extension supplies the active agent's overrides via an extension-agnostic channel, like the active-agent signal pps already consumes), so pps need not locate or parse agent files.
   Short-term fix is unchanged.
+- Recorded the settled part of this framing in `docs/architecture/architecture.md` at the operator's request: a new design principle 9 ("Single-agent core, multi-agent by extension") plus a framing note annotating the `Agent frontmatter` (`AF`) input in the architecture-overview diagram.
+  The forward-looking generic-channel evolution stays in the plan's Open Questions, not the architecture doc.

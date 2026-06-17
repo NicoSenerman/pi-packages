@@ -18,6 +18,9 @@ This document describes the internal design of the permission system, informed b
    The human is the oracle.
    Their decision is a rule.
    Persistence determines lifetime (once / session / config).
+9. **Single-agent core, multi-agent by extension** - Pi is single-agent by deliberate design; the notion of multiple named agents is introduced entirely by external extensions (pi-subagents, pi-agent-router, some MasuRii packages), not by Pi itself.
+   Per-agent `permission:` frontmatter is therefore an extension bridge layered on this single-agent core, not a core responsibility.
+   The package learns the active agent from a generic `<active_agent>` signal (a system-prompt tag or an `active_agent` session entry), never from a hard dependency on any one multi-agent extension, so the bridge works with any tool that emits the signal.
 
 ## Core data model
 
@@ -207,6 +210,10 @@ flowchart TD
     PathGate --> E
     PreProcess --> E
 ```
+
+The `Agent frontmatter` input (`AF`) is the per-agent override layer.
+It only carries data when an external multi-agent extension is active (see design principle 9): the package resolves the active agent's name from a generic `<active_agent>` signal, then reads the `permission:` sub-document of that agent's definition file at `<cwd>/.pi/agents/<name>.md` (project) or `<agentDir>/agents/<name>.md` (global).
+The package does not discover or enumerate agents — it reads one sub-document by name, on demand — and the `<cwd>/.pi/agents` location is a Pi platform convention this package encodes independently (no dependency on pi-subagents, ADR 0002).
 
 ## Config format
 
