@@ -89,6 +89,14 @@ The `permission` object uses deep-shallow merge; scalar fields use simple replac
 
 ## Cross-Extension Integration
 
+### Single-agent core
+
+Pi is single-agent by design; multiple named agents are an external-extension concept (pi-subagents, pi-agent-router), not Pi core.
+Per-agent `permission:` frontmatter is an extension bridge on this single-agent core — see `docs/architecture/architecture.md` design principle 9.
+Do not propose pushing agent-awareness (an agents directory, frontmatter parsing) into the SDK or core.
+
+### Jiti isolation
+
 Pi's extension loader creates a fresh jiti instance per extension with `moduleCache: false`.
 Module-scoped state is isolated — a variable set in this extension's module is invisible to other extensions.
 
