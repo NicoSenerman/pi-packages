@@ -139,4 +139,12 @@ describe("createFactorySession", () => {
 		session.setActiveToolsByName(["read"]);
 		expect(session.setActiveToolsByName.mock.calls[0][0]).toEqual(["read"]);
 	});
+
+	it("exposes the core's working event bus (subscribe/emit)", () => {
+		const session = createFactorySession();
+		const events: unknown[] = [];
+		session.subscribe((e) => events.push(e));
+		session.emit({ type: "factory-event" });
+		expect(events).toEqual([{ type: "factory-event" }]);
+	});
 });

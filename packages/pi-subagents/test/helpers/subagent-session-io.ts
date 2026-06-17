@@ -2,6 +2,7 @@ import { vi } from "vitest";
 import type { AgentConfigLookup } from "#src/config/agent-types";
 import type { ChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
 import type { AgentConfig, ShellExec } from "#src/types";
+import { createMockSession } from "#test/helpers/mock-session";
 
 /** Default AgentConfig returned by createAgentLookup. Matches the Explore stub used in factory tests. */
 const DEFAULT_AGENT_CONFIG: AgentConfig = {
@@ -119,7 +120,12 @@ export interface FactorySessionOptions {
 /**
  * Shared mock session for createSubagentSession tests.
  *
- * Builds the eight-method session stub that createSubagentSession's IO resolves
+ * Layers the createSubagentSession factory facet (`prompt`/`abort`/
+ * `bindExtensions`/`setActiveToolsByName`/`getActiveToolNames`) on top of the
+ * shared `createMockSession` core, which supplies the `messages`/`subscribe`/
+ * `emit`/`steer`/`dispose`/`sessionManager` base (a working event bus).
+ *
+ * Builds the session stub that createSubagentSession's IO resolves
  * (`io.createSession.mockResolvedValue({ session })`). `getActiveToolNames`
  * returns `toolsBeforeBind` until `bindExtensions()` is awaited, then
  * `toolsAfterBind` — modelling extension-registered tools joining the active
@@ -133,12 +139,9 @@ export function createFactorySession(options: FactorySessionOptions = {}) {
 	const after = options.toolsAfterBind ?? before;
 	let bound = false;
 	return {
-		messages: [] as unknown[],
-		subscribe: vi.fn(() => () => {}),
+		...createMockSession(),
 		prompt: vi.fn().mockResolvedValue(undefined),
 		abort: vi.fn(),
-		steer: vi.fn().mockResolvedValue(undefined),
-		dispose: vi.fn(),
 		getActiveToolNames: vi.fn(() => (bound ? after : before)),
 		setActiveToolsByName: vi.fn(),
 		bindExtensions: vi.fn(async () => {
