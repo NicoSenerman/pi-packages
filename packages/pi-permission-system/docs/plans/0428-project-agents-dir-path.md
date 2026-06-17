@@ -48,15 +48,16 @@ The derived `projectAgentsDir` feeds `FilePolicyLoader.loadProjectAgentConfig(ag
 
 Pi-convention paths in this package already live in `src/config-paths.ts` (`getGlobalConfigPath`, `getProjectConfigPath`, etc.) — the natural home for an agents-directory helper. pi-subagents encodes the same project convention independently in `config/custom-agents.ts` (`join(cwd, ".pi", "agents")`); the global convention (`join(getAgentDir(), "agents")`) is *also* duplicated between the two packages and has never been a coupling problem, because both are honoring the same platform contract rather than depending on each other.
 
-The SDK (`@earendil-works/pi-coding-agent`) exposes `getAgentDir()` but no `getProjectAgentsDir(cwd)`, so independent encoding plus a test is the pragmatic, decoupling-preserving answer (see Open Questions).
+The SDK (`@earendil-works/pi-coding-agent`) exposes `getAgentDir()` — the single Pi agent's home — but no agents-*directory* helper, because Pi is single-agent and has no concept of multiple named agents (see the next subsection and Open Questions).
+So independent encoding plus a test is the pragmatic, decoupling-preserving answer.
 
-### Why agent-file location is legitimately a pi-permission-system concern
+### Per-agent frontmatter is a multi-agent integration concern, not a core one
 
-pi-permission-system does not enumerate or discover agents — that is entirely pi-subagents' job.
-It reads only the `permission:` sub-document of an agent file, resolved by the active agent's name on demand.
-That sub-document is genuine permission policy; the `.md` file is merely where Pi co-locates it.
-Per-agent permissions also apply to agents activated directly in the main session (via `/agents`), not just pi-subagents children — so the path cannot be pushed in via pi-subagents' lifecycle events without missing the directly-activated case.
-Locating the file to read its own config key is therefore pi-permission-system's responsibility, as a platform-convention client.
+Pi is single-agent by deliberate design — it has no concept of multiple named agents.
+The notion of agent *types* is introduced entirely by external extensions (pi-subagents, pi-agent-router, some MasuRii packages); `/agents` is itself a pi-subagents command. pi-permission-system already reflects this: it learns the active agent's name from a generic `<active_agent name="...">` tag injected into the system prompt (by pi-agent-router) or an `active_agent` session entry — never from a hard dependency on any one multi-agent extension.
+It does not enumerate or discover agents (pi-subagents owns that); it reads only the `permission:` sub-document of an agent file, by the active agent's name, on demand.
+Because pps bridges to multi-agent tooling through generic, extension-agnostic signals rather than a pi-subagents dependency, it likewise reads the agent file itself rather than relying on any one extension to push the data — so encoding the `<cwd>/.pi/agents` convention is, for now, pps's own integration-layer responsibility.
+See Open Questions for the longer-term direction.
 
 ## Design Overview
 
@@ -146,10 +147,9 @@ Searched for other affected references:
 
 ## Open Questions
 
-- Should `getProjectAgentsDir(cwd)` ultimately live in the SDK (`@earendil-works/pi-coding-agent`) as a sibling to `getAgentDir()`?
-  That is the truly correct long-term owner; until it exists, each client encodes the convention.
-  A follow-up upstream request is reasonable but out of scope here.
-- Larger architecture: a small, coherent core could parse each agent file once and expose its frontmatter (including arbitrary extension keys such as `permission:`) to extensions, removing both the path knowledge and the re-parse from this package entirely.
-  Worth tracking as a future direction; out of scope for this bug.
+- Long-term, per-agent `permission:` frontmatter is best modeled as an **extension bridge on top of pps's single-agent core**, not a core responsibility.
+  Pi is single-agent by deliberate design, so neither the SDK nor a hypothetical "small core" should own an agents directory or parse agent frontmatter — doing so would push a multi-agent concept into a core that rejects it. (Earlier drafts of this plan suggested upstreaming `getProjectAgentsDir` to the SDK and having the core parse agent frontmatter; both are withdrawn for this reason.)
+- A cleaner evolution keeps the bridge generic, mirroring how pps already consumes the active-agent signal: the multi-agent extension that owns agent definitions (and already parses them) would supply the active agent's `permission:` overrides to pps through an extension-agnostic channel, so pps's core never locates or parses agent files.
+  Until such a channel exists, pps encodes the `<cwd>/.pi/agents` convention itself — which is what this fix does.
 - Optional symmetry: extract `getGlobalAgentsDir(agentDir)` and dedupe `join(agentDir, "agents")` across `derivePolicyLoaderOptions` and `defaultAgentsDir()`.
   Deferred — the global path is not buggy, and touching it widens the blast radius.

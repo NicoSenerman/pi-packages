@@ -24,4 +24,8 @@ The plan corrects the path via a new `getProjectAgentsDir(cwd)` helper in `confi
 - Per-agent permissions apply to directly-activated agents too (via `/agents`), not only pi-subagents children — so the path cannot be pushed via pi-subagents lifecycle events without missing cases.
   This confirmed the path belongs in pps.
 - Found a propagated documentation bug at `docs/configuration.md:532` repeating the same wrong path; folded its correction into the plan as a separate `docs:` step.
-- Recorded two architectural follow-ups as Open Questions: upstreaming `getProjectAgentsDir` to the SDK (sibling of `getAgentDir`), and a core/SDK that parses agent frontmatter once and exposes extension keys so pps need not locate or re-parse agent files at all.
+- Long-term framing corrected by the operator after the initial draft: Pi is **single-agent by deliberate design**; multiple named agents are an external concept (pi-subagents, pi-agent-router, MasuRii packages), not Pi core.
+  Verified in the wiring — pps learns the active agent from a generic `<active_agent>` tag injected by pi-agent-router / an `active_agent` session entry, and `/agents` is a pi-subagents command; there is no agent activation independent of external tooling.
+  So my earlier "directly-activated via `/agents`" justification was wrong, and both initial Open Questions (upstream `getProjectAgentsDir` to the SDK; have the core parse agent frontmatter) were withdrawn — they would push a multi-agent concept into a core that rejects it.
+- Corrected long-term direction now in the plan: per-agent `permission:` frontmatter is an **extension bridge on pps's single-agent core**; a cleaner future keeps that bridge generic (the multi-agent extension supplies the active agent's overrides via an extension-agnostic channel, like the active-agent signal pps already consumes), so pps need not locate or parse agent files.
+  Short-term fix is unchanged.
