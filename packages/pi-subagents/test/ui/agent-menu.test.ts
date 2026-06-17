@@ -49,7 +49,6 @@ function makeHandler(opts: {
   const handler = new AgentsMenuHandler(
     manager,
     testRegistry,
-    new Map(),
     settings,
     fileOps,
     personalAgentsDir,

@@ -2,7 +2,6 @@ import type { TUI } from "@earendil-works/pi-tui";
 import { visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
-import type { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
 import { ConversationViewer } from "#src/ui/conversation-viewer";
 import { createTestSubagent } from "./helpers/make-subagent";
 import { createMockSession, createSubagentSessionStub, toSubagentSession } from "./helpers/mock-session";
@@ -36,21 +35,23 @@ function assertAllLinesFit(lines: string[], width: number) {
 type TestViewerOptions = {
   width?: number;
   messages?: unknown[];
-  activity?: AgentActivityTracker;
+  /** Seed active tools on the record by name (passed to createTestSubagent). */
+  activeTools?: string[];
+  /** Seed responseText on the record (passed to createTestSubagent). */
+  responseText?: string;
   wrapText?: (text: string, width: number) => string[];
 };
 
 /** Factory for ConversationViewer with sensible defaults. Pass overrides as needed. */
 function createTestViewer(options: TestViewerOptions = {}): ConversationViewer {
-  const { width = 80, messages = [], activity, wrapText = wrapTextWithAnsi } = options;
+  const { width = 80, messages = [], activeTools, responseText, wrapText = wrapTextWithAnsi } = options;
   const mockSess = createMockSession();
   mockSess.messages.push(...messages);
-  const record = createTestSubagent({ status: "running" });
+  const record = createTestSubagent({ status: "running", activeTools, responseText });
   record.subagentSession = toSubagentSession(createSubagentSessionStub(mockSess));
   return new ConversationViewer({
     tui: mockTui(30, width),
     record,
-    activity,
     theme: ansiTheme(),
     done: vi.fn(),
     registry: testRegistry,
@@ -131,18 +132,13 @@ describe("ConversationViewer", () => {
     });
 
     it("no line exceeds width with running activity indicator", () => {
-      const activity = {
-        activeTools: new Map([["read", "file.ts"], ["grep", "pattern"]]),
-        toolUses: 5, tokens: "10k", responseText: "R".repeat(400),
-        session: { getSessionStats: () => ({ tokens: { total: 50000 } }) },
-      };
       assertRenderFitsWidths(
         [
           { role: "user", content: "do the thing" },
           { role: "assistant", content: [{ type: "text", text: "working on it" }] },
         ],
         [40, 80, 120, 216],
-        { activity: activity as unknown as AgentActivityTracker },
+        { activeTools: ["read", "grep"], responseText: "R".repeat(400) },
       );
     });
 

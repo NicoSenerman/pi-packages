@@ -5,7 +5,6 @@ import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { type ModelRegistry, resolveModel } from "#src/session/model-resolver";
 import { getModelLabelFromConfig } from "#src/tools/helpers";
 import type { AgentConfig, Subagent } from "#src/types";
-import type { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
 import { AgentConfigEditor } from "#src/ui/agent-config-editor";
 import { AgentCreationWizard } from "#src/ui/agent-creation-wizard";
 import type { AgentFileOps } from "#src/ui/agent-file-ops";
@@ -36,14 +35,6 @@ export interface AgentMenuSettings {
   applyGraceTurns(n: number): { message: string; level: "info" | "warning" };
 }
 
-/**
- * Read-only interface for the agent-menu's agentActivity access.
- * Only the conversation viewer needs to read a tracker by agent ID.
- */
-export interface AgentActivityReader {
-  get(id: string): AgentActivityTracker | undefined;
-}
-
 // ---- Narrow UI context types ----
 
 /** Narrow UI interface — only the ctx.ui methods menu handlers actually call. */
@@ -70,7 +61,6 @@ export class AgentsMenuHandler {
   constructor(
     private readonly manager: AgentMenuManager,
     private readonly registry: AgentTypeRegistry,
-    private readonly agentActivity: AgentActivityReader,
     private readonly settings: AgentMenuSettings,
     fileOps: AgentFileOps,
     personalAgentsDir: string,
@@ -263,14 +253,12 @@ export class AgentsMenuHandler {
     const { ConversationViewer, VIEWPORT_HEIGHT_PCT } = await import(
       "./conversation-viewer"
     );
-    const activity = this.agentActivity.get(record.id);
 
     await ui.custom<undefined>(
       (tui: any, theme: any, _keybindings: any, done: any) => {
         return new ConversationViewer({
           tui,
           record,
-          activity,
           theme,
           done,
           registry: this.registry,

@@ -9,7 +9,6 @@ import { type Component, matchesKey, type TUI, truncateToWidth, visibleWidth } f
 import type { AgentConfigLookup } from "#src/config/agent-types";
 import { getLifetimeTotal } from "#src/lifecycle/usage";
 import type { Subagent } from "#src/types";
-import type { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
 import { buildInvocationTags, formatDuration, formatSessionTokens, getDisplayName, getPromptModeLabel, type Theme } from "#src/ui/display";
 import { formatMessage, formatStreamingIndicator } from "#src/ui/message-formatters";
 
@@ -24,7 +23,6 @@ export const VIEWPORT_HEIGHT_PCT = 70;
 export interface ConversationViewerOptions {
   tui: TUI;
   record: Subagent;
-  activity: AgentActivityTracker | undefined;
   theme: Theme;
   done: (result: undefined) => void;
   registry: AgentConfigLookup;
@@ -40,7 +38,6 @@ export class ConversationViewer implements Component {
 
   private tui: TUI;
   private record: Subagent;
-  private activity: AgentActivityTracker | undefined;
   private theme: Theme;
   private done: (result: undefined) => void;
   private registry: AgentConfigLookup;
@@ -49,7 +46,6 @@ export class ConversationViewer implements Component {
   constructor({
     tui,
     record,
-    activity,
     theme,
     done,
     registry,
@@ -57,7 +53,6 @@ export class ConversationViewer implements Component {
   }: ConversationViewerOptions) {
     this.tui = tui;
     this.record = record;
-    this.activity = activity;
     this.theme = theme;
     this.done = done;
     this.registry = registry;
@@ -231,11 +226,11 @@ export class ConversationViewer implements Component {
       needsSeparator = true;
     }
 
-    // Streaming indicator for running agents
-    if (this.record.status === "running" && this.activity) {
+    // Streaming indicator for running agents — read activity off the record
+    if (this.record.status === "running") {
       lines.push(...formatStreamingIndicator(
-        this.activity.activeTools,
-        this.activity.responseText,
+        this.record.activeTools,
+        this.record.responseText,
         width,
         th,
       ));

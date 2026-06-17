@@ -157,7 +157,6 @@ export default function (pi: ExtensionAPI) {
   const agentsMenu = new AgentsMenuHandler(
     manager,
     registry,
-    runtime.agentActivity,
     settings,
     new FsAgentFileOps(),
     join(getAgentDir(), "agents"),
