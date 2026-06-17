@@ -964,6 +964,7 @@ Folding the live activity onto the record (the single owner of run state, consis
    Switch each reader from `AgentActivityTracker` to the record getters added in Step 1 (widget-renderer reads activity off `listAgents()`; viewer/menu drop the `activity` param; notification reads `turnCount`/`maxTurns` off the record).
    Smell: Category C (Law of Demeter).
    Outcome: no consumer references `AgentActivityTracker`.
+   Landed: `WidgetAgent` folds the live-activity fields and a `contextPercent` projection; `AgentWidget` projects records; `ConversationViewer`, `AgentsMenuHandler`, `buildDetails`, and `buildNotificationDetails` read off the record; `NotificationSystem.cleanupCompleted` removed; `SubagentEventsObserver` returns early on consumed results; +8 tests (1058 → 1066).
 3. **Delete `AgentActivityTracker` and `ui-observer`; drop the activity map from the runtime and spawn tools.**
    ([#422]) Target: `ui/agent-activity-tracker.ts` (delete), `ui/ui-observer.ts` (delete), `runtime.ts`, `tools/foreground-runner.ts`, `tools/background-spawner.ts`.
    The spawn tools stop constructing trackers, subscribing, and populating maps; `SubagentRuntime.agentActivity` is removed.
