@@ -43,3 +43,45 @@ Full suite green; type check and lint clean; zero dead code.
 - WARN finding: `package-pi-subagents` SKILL.md `Observation` domain row description ("Session-event stats") is now slightly incomplete for `record-observer` (it also accumulates live-activity fields).
   Intentionally deferred per the planning-stage decision — no symbol removed, and the description will be updated in Step 2 ([#421]) when the observer's role is fully defined after the reader migration.
 - Pre-completion reviewer verdict: **WARN** (one non-blocking finding, deferred per retro).
+
+## Stage: Final Retrospective (2026-06-17T17:40:39Z)
+
+### Session summary
+
+Shipped Phase 18 Step 1 across planning, TDD (3 red→green→commit cycles, +27 tests), and release (`pi-subagents` v16.5.0).
+The code work was clean and rework-free; all friction was in markdown-lint surfacing late — two separate doc-lint failures (one pre-existing, one introduced) escaped the baseline and post-TDD gates and were caught only by the pre-completion reviewer and the ship-stage lint, each requiring a fix commit.
+
+### Observations
+
+#### What went well
+
+- The `pre-completion-reviewer` safety net earned its keep: it caught the pre-existing `MD051` broken-fragment links in `phase-17-core-consolidation.md` (introduced earlier by `e4d92535`, unrelated to this issue) before the push, returning FAIL on the first run.
+  Without it the broken links would have shipped.
+- TDD execution was textbook: each of the 3 steps followed red→green→commit with no rework to production code, the `maxTurns`-via-`execution` delegation decision from planning held, and the "vacuously-passing" observer tests (verified in the retro) correctly converted to real assertions once the observer was implemented.
+
+#### What caused friction (agent side)
+
+- `instruction-violation` (gate-caught, at ship) — wrote a second `[#421]:` link-reference definition into the retro file when appending the TDD stage entry via `Write` full-content, tripping `MD053` (duplicate definition).
+  The `markdown-conventions` skill states this rule verbatim ("Link reference definitions are file-scoped … a duplicate trips MD053").
+  Impact: one fix commit at ship time (`80d4d050`), caught by the root `pnpm run lint` pre-push gate rather than during TDD (no lint runs after stage-notes writing).
+- `missing-context` (self-identified during ship investigation) — the TDD green-baseline lint was run package-scoped (`pnpm --filter @gotgenes/pi-subagents run lint`), which **silently passes** on `MD051` cross-file fragment failures.
+  Verified empirically: package `lint:md` (`rumdl check *.md docs/**/*.md`) returns "No issues" on the broken fragment, while root `rumdl check .` exits 1 on it — the cross-file fragment target (`../architecture.md`) is only resolved on a repo-root tree walk.
+  Impact: the pre-existing `MD051` failure slipped past the baseline gate (whose job is to catch exactly that) and surfaced mid-TDD via the reviewer, costing a fix commit (`86ed0c81`) and a reviewer FAIL/re-dispatch cycle.
+
+#### What caused friction (user side)
+
+- None.
+  The session ran end-to-end without user correction; the operator-authored, roadmap-aligned issue meant no clarification was needed.
+
+### Diagnostic details
+
+- **Model-performance correlation** — two `pre-completion-reviewer` subagent dispatches ran on the agent's configured reviewer model and performed judgment-heavy review work (acceptance criteria, design review, cross-step invariants); appropriate match.
+  No high-cost model was spent on mechanical work and no reasoning-weak model on judgment work.
+- **Feedback-loop gap analysis** — the lint feedback loop fired at the wrong scope and the wrong time: package-scoped at baseline (missed `MD051`), and absent after retro stage-notes writing (missed `MD053` until ship).
+  `pnpm run check` and `pnpm run test` were run incrementally per step and caught everything they should; only the markdown-lint loop was misconfigured.
+- **Escalation-delay / unused-tool** — no `rabbit-hole` friction; no lens-2 or lens-3 findings.
+
+### Changes made
+
+1. `.pi/prompts/tdd-plan.md` — "Verify green baseline" step 2 and "After the last TDD step" step 3 now specify `pnpm run lint` runs **from the repo root**, with a one-clause rationale that package-scoped lint silently passes on `MD051` cross-file fragments and cross-package issues (Proposal 1).
+2. Proposal 2 (an `MD053` duplicate-link-definition reminder in the retro-writing prompts) was declined — the rule already exists verbatim in the `markdown-conventions` skill, so a prompt clause would duplicate it.

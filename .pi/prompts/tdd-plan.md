@@ -55,7 +55,8 @@ Before executing the TDD cycle, load skills relevant to the change:
 Before writing any code, confirm the starting state is clean:
 
 1. `pnpm run check` — must pass.
-2. `pnpm run lint` — must pass.
+2. `pnpm run lint` **from the repo root** — must pass.
+   Package-scoped lint (`pnpm --filter …`) silently passes on `MD051` cross-file fragment links and cross-package issues that CI's root lint catches.
 3. `pnpm run test` — must pass.
 
 If a check fails on an issue your change will not touch (e.g. a pre-existing lint warning in an unrelated doc), fix it as a separate cleanup commit (`docs:`, `style:`, or `fix:` as appropriate) to establish a green baseline, then proceed.
@@ -96,7 +97,7 @@ If a plan's quantitative target (LOC, clone count, complexity) does not fall out
    Must be all green.
 2. Run the type check: `pnpm run check` (`tsc --noEmit`).
    Must succeed — Vitest does not typecheck.
-3. Run the linter: `pnpm run lint`.
+3. Run the linter **from the repo root**: `pnpm run lint`.
    If it fails, run `pnpm exec biome check --write .` to auto-fix, then re-check.
    Fix all failures — including pre-existing ones unrelated to the current change.
    Commit any fixup as part of the most recent feat commit (amend) only if you haven't pushed; otherwise as a `style:` commit.
