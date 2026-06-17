@@ -1,6 +1,10 @@
 import { join } from "node:path";
 import { isPermissionState } from "./common";
-import { getGlobalConfigPath, getProjectConfigPath } from "./config-paths";
+import {
+  getGlobalConfigPath,
+  getProjectAgentsDir,
+  getProjectConfigPath,
+} from "./config-paths";
 import { normalizeInput } from "./input-normalizer";
 import { normalizeFlatConfig } from "./normalize";
 import { PATH_SURFACES } from "./path-utils";
@@ -350,7 +354,7 @@ function derivePolicyLoaderOptions(
     globalConfigPath: getGlobalConfigPath(agentDir),
     agentsDir: join(agentDir, "agents"),
     projectGlobalConfigPath: cwd ? getProjectConfigPath(cwd) : undefined,
-    projectAgentsDir: cwd ? join(cwd, ".pi", "agent", "agents") : undefined,
+    projectAgentsDir: cwd ? getProjectAgentsDir(cwd) : undefined,
   };
 }
 
