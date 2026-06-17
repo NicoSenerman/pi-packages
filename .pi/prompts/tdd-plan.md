@@ -112,6 +112,7 @@ If a plan's quantitative target (LOC, clone count, complexity) does not fall out
 6. Cross-check the plan's "Module-Level Changes" table against actually-changed files.
    If a listed file was not touched, update it now or note the deviation.
 7. If `packages/<PKG>/docs/architecture/` exists, check whether the changes affect the module structure or data-flow descriptions and update them.
+   If the issue completes a numbered roadmap step, mark that step done (`✅`/`Landed:`) and update the phase status row.
 8. Commit doc updates as `docs: <summary>`.
 9. **Do not edit `CHANGELOG.md`** — release-please owns it and will generate entries from your Conventional Commit messages on the next release.
 

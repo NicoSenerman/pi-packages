@@ -95,7 +95,8 @@ If the deviation is large, stop and ask.
    Must succeed.
 3. Run the linter one final time: `pnpm run lint`.
    Commit any fixup as `style:` if you haven't pushed yet.
-4. **Do not edit `CHANGELOG.md`** — release-please owns it and will generate entries from your Conventional Commit messages on the next release.
+4. If `packages/<PKG>/docs/architecture/` exists and the issue completes a numbered roadmap step, mark that step done (`✅`/`Landed:`) and update the phase status row; commit as `docs:`.
+5. **Do not edit `CHANGELOG.md`** — release-please owns it and will generate entries from your Conventional Commit messages on the next release.
 
 ## Pre-completion review
 

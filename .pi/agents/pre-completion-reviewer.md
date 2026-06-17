@@ -95,6 +95,7 @@ Check in both directions:
 - Prompt templates (`.pi/prompts/`) — if agent infrastructure changed, are stale references updated?
 - READMEs — check the root `README.md` and any package `README.md` files that describe affected modules.
 - Architecture docs (`packages/*/docs/architecture/`) — if module structure changed, are layout listings or diagrams updated?
+- Roadmap status (`packages/*/docs/architecture/`) — if the issue completes a numbered step in a phased roadmap, is that step marked complete (e.g. `✅`/`Landed:`) and the phase's status row updated?
 
 #### Reverse — does existing content need condensing or removal?
 

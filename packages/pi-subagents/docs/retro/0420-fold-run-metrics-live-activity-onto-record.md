@@ -85,3 +85,6 @@ The code work was clean and rework-free; all friction was in markdown-lint surfa
 
 1. `.pi/prompts/tdd-plan.md` — "Verify green baseline" step 2 and "After the last TDD step" step 3 now specify `pnpm run lint` runs **from the repo root**, with a one-clause rationale that package-scoped lint silently passes on `MD051` cross-file fragments and cross-package issues (Proposal 1).
 2. Proposal 2 (an `MD053` duplicate-link-definition reminder in the retro-writing prompts) was declined — the rule already exists verbatim in the `markdown-conventions` skill, so a prompt clause would duplicate it.
+3. Follow-up (post-retro): `#420` completed Phase 18 Step 1 but the roadmap Steps section was not marked done until the operator noticed.
+   Added a roadmap-step-status check so this is caught going forward: a WARN bullet in `pre-completion-reviewer.md` §2c (backstop), and a proactive step in `.pi/prompts/tdd-plan.md` step 7 and `.pi/prompts/build-plan.md` "After the last step" — mark the completed roadmap step done (`✅`/`Landed:`) and update the phase status row.
+   Also marked Step 1 complete in `architecture.md` (Steps list, dependency diagram node, phase table row → "In progress").
