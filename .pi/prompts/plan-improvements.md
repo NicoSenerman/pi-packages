@@ -92,8 +92,11 @@ The section should include:
    - Target files/functions
    - Smell category addressed
    - Expected measurable outcome
+   - A `Release:` tag on its own line — `Release: independent` or `Release: batch "<batch-name>"` (see the `improvement-discovery` skill's Output format).
 3. Step dependency diagram (Mermaid flowchart).
 4. Named parallel tracks.
+5. A `Release batches` subsection (after the parallel tracks) naming each batch, its member steps in dependency order (last listed = tail), and the independently releasable steps.
+   This is the deterministic source `/plan-issue` reads to recommend a release decision — keep it grep-able, not prose.
 
 After writing the plan, present a summary to the user and ask whether to commit.
 If confirmed, commit with:
