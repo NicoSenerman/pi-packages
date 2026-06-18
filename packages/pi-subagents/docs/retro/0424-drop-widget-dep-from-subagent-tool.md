@@ -79,9 +79,9 @@ Net test count 1039 → 1037 (−2 obsolete tests); the pre-completion reviewer 
 
 ### Changes made
 
-1. Removed the hardcoded `vitest` suite test count from `.pi/skills/package-pi-subagents/SKILL.md` (`## Testing` section).
+1. Rewrote the opening sentence of the `## Testing` section in `.pi/skills/package-pi-subagents/SKILL.md` to drop both the hardcoded test count and the fork framing.
    The operator judged the precise count (`1037 tests across 64 files as of Phase 18 Step 5`) to provide no real value and to be structurally prone to per-step drift — it had gone stale across four issues ([#421]–[#424]) before the [#424] reviewer caught it.
-   The sentence now reads "The fork preserves and substantially extends upstream's `vitest` suite." with no count.
+   The fork is already introduced at the top of the skill, so the Testing section need not re-reference upstream; the sentence now reads "The package has an extensive `vitest` suite."
 
 [#421]: https://github.com/gotgenes/pi-packages/issues/421
 [#422]: https://github.com/gotgenes/pi-packages/issues/422
