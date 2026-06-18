@@ -137,8 +137,7 @@ export class AgentWidget implements SubagentManagerObserver {
   }
 
   /** Ensure the widget update timer is running. */
-  // fallow-ignore-next-line unused-class-member
-  ensureTimer() {
+  private ensureTimer() {
     this.widgetInterval ??= setInterval(() => this.update(), 80);
   }
 
@@ -147,14 +146,6 @@ export class AgentWidget implements SubagentManagerObserver {
     const age = this.finishedTurnAge.get(agentId) ?? 0;
     const maxAge = ERROR_STATUSES.has(status) ? AgentWidget.ERROR_LINGER_TURNS : 1;
     return age < maxAge;
-  }
-
-  /** Record an agent as finished (call when agent completes). */
-  // fallow-ignore-next-line unused-class-member
-  markFinished(agentId: string) {
-    if (!this.finishedTurnAge.has(agentId)) {
-      this.finishedTurnAge.set(agentId, 0);
-    }
   }
 
   /** Project a live Subagent record onto a pure-data WidgetAgent snapshot. */
@@ -232,8 +223,8 @@ export class AgentWidget implements SubagentManagerObserver {
 
   /**
    * Seed linger tracking for any newly-observed finished agent.
-   * Replaces the external `markFinished` call NotificationManager used to make:
-   * the widget owns detection of completions it sees via `listAgents()`.
+   * The widget owns detection of completions it observes via `listAgents()`,
+   * so no external bookkeeping call is needed.
    * Idempotent — only seeds when an entry is absent, so repeated updates within
    * a turn neither reset nor advance the age.
    */

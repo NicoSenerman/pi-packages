@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import type { BackgroundManagerDeps, BackgroundWidgetDeps } from "#src/tools/background-spawner";
-import type { ForegroundManagerDeps, ForegroundWidgetDeps } from "#src/tools/foreground-runner";
+import type { BackgroundManagerDeps } from "#src/tools/background-spawner";
+import type { ForegroundManagerDeps } from "#src/tools/foreground-runner";
 import { createToolDeps } from "./make-deps";
 import { STUB_SNAPSHOT } from "./stub-ctx";
 
@@ -31,16 +31,10 @@ describe("createToolDeps", () => {
 	});
 
 	describe("widget defaults", () => {
-		it("all widget methods are vi.fn stubs", () => {
+		it("setUICtx is a vi.fn stub", () => {
 			const { widget } = createToolDeps();
 			widget.setUICtx({} as any);
-			widget.ensureTimer();
-			widget.update();
-			widget.markFinished("id-1");
 			expect(widget.setUICtx).toHaveBeenCalledOnce();
-			expect(widget.ensureTimer).toHaveBeenCalledOnce();
-			expect(widget.update).toHaveBeenCalledOnce();
-			expect(widget.markFinished).toHaveBeenCalledWith("id-1");
 		});
 	});
 
@@ -93,25 +87,10 @@ describe("createToolDeps", () => {
 			expect(bgManager.getRecord).toBeTypeOf("function");
 		});
 
-		it("widget satisfies BackgroundWidgetDeps structurally", () => {
-			const { widget } = createToolDeps();
-			const bgWidget: BackgroundWidgetDeps = widget;
-			expect(bgWidget.ensureTimer).toBeTypeOf("function");
-			expect(bgWidget.update).toBeTypeOf("function");
-		});
-
 		it("manager satisfies ForegroundManagerDeps structurally", () => {
 			const { manager } = createToolDeps();
 			const fgManager: ForegroundManagerDeps = manager;
 			expect(fgManager.spawnAndWait).toBeTypeOf("function");
 		});
-
-		it("widget satisfies ForegroundWidgetDeps structurally", () => {
-			const { widget } = createToolDeps();
-			const fgWidget: ForegroundWidgetDeps = widget;
-			expect(fgWidget.ensureTimer).toBeTypeOf("function");
-			expect(fgWidget.markFinished).toBeTypeOf("function");
-		});
-
 	});
 });

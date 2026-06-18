@@ -10,12 +10,6 @@ export interface BackgroundManagerDeps {
   getRecord(id: string): Subagent | undefined;
 }
 
-/** Narrow widget interface for the background spawner. */
-export interface BackgroundWidgetDeps {
-  ensureTimer(): void;
-  update(): void;
-}
-
 /** All values the background spawner needs beyond the resolved config. */
 export interface BackgroundParams {
   config: ResolvedSpawnConfig;
@@ -26,11 +20,10 @@ export interface BackgroundParams {
 
 /**
  * Spawn a background agent and return the tool result immediately.
- * Owns: widget update and launch message formatting.
+ * Owns: launch message formatting.
  */
 export function spawnBackground(
   manager: BackgroundManagerDeps,
-  widget: BackgroundWidgetDeps,
   params: BackgroundParams,
 ) {
   const { identity, execution, presentation } = params.config;
@@ -52,9 +45,6 @@ export function spawnBackground(
   }
 
   const record = manager.getRecord(id);
-
-  widget.ensureTimer();
-  widget.update();
 
   const isQueued = record?.status === "queued";
   return textResult(

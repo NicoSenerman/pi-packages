@@ -22,11 +22,7 @@ export type AgentToolFixture = {
 	manager: AgentToolManager;
 	/** Mock runtime satisfying `AgentToolRuntime` (context queries). */
 	runtime: AgentToolRuntime;
-	/**
-	 * Mock widget satisfying `AgentToolWidget`.
-	 * Also satisfies `BackgroundWidgetDeps` and `ForegroundWidgetDeps` structurally
-	 * (both use a subset of these methods).
-	 */
+	/** Mock widget satisfying `AgentToolWidget` (UI-context capture only). */
 	widget: AgentToolWidget;
 	settings: AgentToolSettings;
 	registry: AgentTypeRegistry;
@@ -45,9 +41,6 @@ export type AgentToolFixture = {
 export function createToolDeps(overrides: Partial<AgentToolFixture> = {}): AgentToolFixture {
 	const widget: AgentToolWidget = {
 		setUICtx: vi.fn(),
-		ensureTimer: vi.fn(),
-		update: vi.fn(),
-		markFinished: vi.fn(),
 	};
 
 	const runtime: AgentToolRuntime = {

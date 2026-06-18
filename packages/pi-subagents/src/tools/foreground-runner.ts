@@ -26,12 +26,6 @@ export interface ForegroundManagerDeps {
   ): Promise<Subagent>;
 }
 
-/** Narrow widget interface for the foreground runner. */
-export interface ForegroundWidgetDeps {
-  ensureTimer(): void;
-  markFinished(id: string): void;
-}
-
 /** All values the foreground runner needs beyond the resolved config. */
 export interface ForegroundParams {
   config: ResolvedSpawnConfig;
@@ -45,7 +39,6 @@ export interface ForegroundParams {
  */
 export async function runForeground(
   manager: ForegroundManagerDeps,
-  widget: ForegroundWidgetDeps,
   params: ForegroundParams,
   signal: AbortSignal | undefined,
   onUpdate: ((update: AgentToolResult<any>) => void) | undefined,
@@ -53,7 +46,6 @@ export async function runForeground(
   const { identity, execution, presentation } = params.config;
   let spinnerFrame = 0;
   const startedAt = Date.now();
-  let fgId: string | undefined;
 
   let recordRef: Subagent | undefined;
 
@@ -107,8 +99,6 @@ export async function runForeground(
         observer: {
           onSessionCreated: (agent) => {
             recordRef = agent;
-            fgId = agent.id;
-            widget.ensureTimer();
           },
         },
       },
@@ -119,11 +109,6 @@ export async function runForeground(
   }
 
   clearInterval(spinnerInterval);
-
-  // Clean up foreground agent from widget
-  if (fgId) {
-    widget.markFinished(fgId);
-  }
 
   const tokenText = formatLifetimeTokens(record);
   const details = buildDetails(presentation.detailBase, record, { tokens: tokenText });

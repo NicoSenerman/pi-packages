@@ -33,15 +33,12 @@ export interface AgentToolRuntime {
 }
 
 /**
- * Narrow widget interface the Agent tool drives directly.
- * Superset of the runner/spawner widget deps plus `setUICtx`.
- * AgentWidget satisfies it structurally.
+ * Narrow widget interface the Agent tool uses.
+ * The tool only captures UI context; the widget self-drives its timer from
+ * lifecycle notifications. AgentWidget satisfies it structurally.
  */
 export interface AgentToolWidget {
 	setUICtx(ctx: UICtx): void;
-	ensureTimer(): void;
-	update(): void;
-	markFinished(id: string): void;
 }
 
 /** Narrow settings accessor — only the fields the Agent tool reads. */
@@ -126,7 +123,6 @@ export class AgentTool {
 		if (config.execution.runInBackground) {
 			return spawnBackground(
 				this.manager,
-				this.widget,
 				{ config, snapshot, parentSession, settings: this.settings },
 			);
 		}
@@ -134,7 +130,6 @@ export class AgentTool {
 		// ---- Foreground execution — stream progress via onUpdate ----
 		return runForeground(
 			this.manager,
-			this.widget,
 			{ config, snapshot, parentSession },
 			signal,
 			onUpdate,
