@@ -97,7 +97,10 @@ export interface SubagentsService {
 export const SUBAGENT_EVENTS = {
   STARTED: "subagents:started",
   COMPLETED: "subagents:completed",
-  ACTIVITY: "subagents:activity",
+  FAILED: "subagents:failed",
+  COMPACTED: "subagents:compacted",
+  CREATED: "subagents:created",
+  STEERED: "subagents:steered",
 } as const;
 
 // ---- Accessor functions ----

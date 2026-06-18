@@ -51,6 +51,13 @@ describe("SUBAGENT_EVENTS", () => {
   it("exports expected event channel constants", () => {
     expect(SUBAGENT_EVENTS.STARTED).toBe("subagents:started");
     expect(SUBAGENT_EVENTS.COMPLETED).toBe("subagents:completed");
-    expect(SUBAGENT_EVENTS.ACTIVITY).toBe("subagents:activity");
+    expect(SUBAGENT_EVENTS.FAILED).toBe("subagents:failed");
+    expect(SUBAGENT_EVENTS.COMPACTED).toBe("subagents:compacted");
+    expect(SUBAGENT_EVENTS.CREATED).toBe("subagents:created");
+    expect(SUBAGENT_EVENTS.STEERED).toBe("subagents:steered");
+  });
+
+  it("does not declare a vacant activity channel", () => {
+    expect("ACTIVITY" in SUBAGENT_EVENTS).toBe(false);
   });
 });
