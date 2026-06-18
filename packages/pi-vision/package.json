@@ -1,0 +1,70 @@
+{
+  "name": "pi-vision",
+  "version": "0.1.0",
+  "description": "Pi extension that gives non-vision models image understanding by routing images through a vision-capable model via Pi's complete() primitive.",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE",
+    "docs"
+  ],
+  "scripts": {
+    "check": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "validate:package": "npm pack --dry-run"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi",
+    "vision",
+    "image",
+    "multimodal",
+    "neuralwatt",
+    "kimi",
+    "complete",
+    "pi-ai"
+  ],
+  "author": {
+    "name": "Forked from eiei114/glm-vision (MIT)"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gotgenes/pi-packages.git",
+    "directory": "packages/pi-vision"
+  },
+  "homepage": "https://github.com/gotgenes/pi-packages/tree/main/packages/pi-vision#readme",
+  "bugs": {
+    "url": "https://github.com/gotgenes/pi-packages/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": ">=0.75.0",
+    "@earendil-works/pi-coding-agent": ">=0.75.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "0.79.1",
+    "@earendil-works/pi-coding-agent": "0.79.1",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
