@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { createSubagentRuntime, SubagentRuntime } from "#src/runtime";
 import type { SessionContext } from "#src/types";
-import { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
 import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 
 const mockBuildParentSnapshot = vi.hoisted(() =>
@@ -32,8 +31,6 @@ describe("createSubagentRuntime", () => {
   it("returns correct defaults", () => {
     const runtime = createSubagentRuntime();
     expect(runtime.currentCtx).toBeUndefined();
-    expect(runtime.agentActivity).toBeInstanceOf(Map);
-    expect(runtime.agentActivity.size).toBe(0);
   });
 
   it("currentCtx is the stored SessionContext after setSessionContext", () => {
@@ -41,23 +38,6 @@ describe("createSubagentRuntime", () => {
     const ctx = makeSessionCtx();
     runtime.setSessionContext(ctx);
     expect(runtime.currentCtx).toBe(ctx);
-  });
-
-  it("agentActivity map is independently mutable", () => {
-    const runtime = createSubagentRuntime();
-    const activity = new AgentActivityTracker();
-    runtime.agentActivity.set("agent-1", activity);
-    expect(runtime.agentActivity.size).toBe(1);
-    expect(runtime.agentActivity.get("agent-1")).toBe(activity);
-  });
-
-  it("multiple instances are isolated — mutations do not cross-contaminate", () => {
-    const a = createSubagentRuntime();
-    const b = createSubagentRuntime();
-
-    a.agentActivity.set("x", new AgentActivityTracker());
-
-    expect(b.agentActivity.size).toBe(0);
   });
 });
 

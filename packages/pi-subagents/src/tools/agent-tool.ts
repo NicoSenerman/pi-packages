@@ -12,21 +12,8 @@ import { buildDetails, buildTypeListText, textResult } from "#src/tools/helpers"
 import { renderAgentResult } from "#src/tools/result-renderer";
 import { type ModelInfo, resolveSpawnConfig } from "#src/tools/spawn-config";
 import type { ParentSessionInfo, Subagent } from "#src/types";
-import { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
 import { type UICtx } from "#src/ui/agent-widget";
 import { type AgentDetails, getDisplayName } from "#src/ui/display";
-
-// ---- Shared interfaces (also used by background-spawner and foreground-runner) ----
-
-/**
- * Narrow read/write interface for the agent-tool's agentActivity access.
- * The full Map satisfies this structurally — no wrapper needed.
- */
-export interface AgentActivityAccess {
-	get(id: string): AgentActivityTracker | undefined;
-	set(id: string, tracker: AgentActivityTracker): void;
-	delete(id: string): void;
-}
 
 // ---- Deps interfaces ----
 
@@ -40,7 +27,6 @@ export interface AgentToolManager {
 
 /** Narrow runtime interface — the Agent tool's slice of SubagentRuntime. */
 export interface AgentToolRuntime {
-	readonly agentActivity: AgentActivityAccess;
 	buildSnapshot(inheritContext: boolean): ParentSnapshot;
 	getModelInfo(): ModelInfo;
 	getSessionInfo(): { parentSessionFile: string; parentSessionId: string };

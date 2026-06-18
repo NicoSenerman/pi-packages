@@ -30,11 +30,6 @@ export class SubagentRuntime {
   // ── Session state (was closure-scoped in index.ts) ───────────────────────
   /** Active Pi session context — set on session_start, cleared on session_shutdown. */
   currentCtx: SessionContext | undefined = undefined;
-  /**
-   * Per-agent live activity state shared across the notification system,
-   * widget, and tool handlers. The Map itself is never replaced.
-   */
-  readonly agentActivity: Map<string, AgentActivityTracker> = new Map();
 
   // ── Session-context methods ──────────────────────────────────────────────
 

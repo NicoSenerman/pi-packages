@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { BackgroundManagerDeps, BackgroundWidgetDeps } from "#src/tools/background-spawner";
 import type { ForegroundManagerDeps, ForegroundWidgetDeps } from "#src/tools/foreground-runner";
-import { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
 import { createToolDeps } from "./make-deps";
 import { STUB_SNAPSHOT } from "./stub-ctx";
 
@@ -42,14 +41,6 @@ describe("createToolDeps", () => {
 			expect(widget.ensureTimer).toHaveBeenCalledOnce();
 			expect(widget.update).toHaveBeenCalledOnce();
 			expect(widget.markFinished).toHaveBeenCalledWith("id-1");
-		});
-	});
-
-	describe("runtime defaults", () => {
-		it("agentActivity is an empty Map on the runtime", () => {
-			const { runtime } = createToolDeps();
-			expect(runtime.agentActivity).toBeInstanceOf(Map);
-			expect(runtime.agentActivity.get("x")).toBeUndefined();
 		});
 	});
 
@@ -122,13 +113,5 @@ describe("createToolDeps", () => {
 			expect(fgWidget.markFinished).toBeTypeOf("function");
 		});
 
-		it("runtime.agentActivity satisfies AgentActivityAccess", () => {
-			const { runtime } = createToolDeps();
-			const tracker = new AgentActivityTracker();
-			runtime.agentActivity.set("id-1", tracker);
-			expect(runtime.agentActivity.get("id-1")).toBe(tracker);
-			runtime.agentActivity.delete("id-1");
-			expect(runtime.agentActivity.get("id-1")).toBeUndefined();
-		});
 	});
 });

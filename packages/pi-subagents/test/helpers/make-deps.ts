@@ -7,7 +7,6 @@ import {
 	type AgentToolSettings,
 	type AgentToolWidget,
 } from "#src/tools/agent-tool";
-import { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
 import { createTestSubagent } from "./make-subagent";
 import { STUB_SNAPSHOT } from "./stub-ctx";
 
@@ -21,10 +20,7 @@ const defaultRegistry = new AgentTypeRegistry(() => new Map());
  */
 export type AgentToolFixture = {
 	manager: AgentToolManager;
-	/**
-	 * Mock runtime satisfying `AgentToolRuntime` (context queries + agentActivity).
-	 * `runtime.agentActivity` replaces the old top-level `agentActivity` field.
-	 */
+	/** Mock runtime satisfying `AgentToolRuntime` (context queries). */
 	runtime: AgentToolRuntime;
 	/**
 	 * Mock widget satisfying `AgentToolWidget`.
@@ -47,8 +43,6 @@ export type AgentToolFixture = {
  * ```
  */
 export function createToolDeps(overrides: Partial<AgentToolFixture> = {}): AgentToolFixture {
-	const agentActivity = new Map<string, AgentActivityTracker>();
-
 	const widget: AgentToolWidget = {
 		setUICtx: vi.fn(),
 		ensureTimer: vi.fn(),
@@ -57,7 +51,6 @@ export function createToolDeps(overrides: Partial<AgentToolFixture> = {}): Agent
 	};
 
 	const runtime: AgentToolRuntime = {
-		agentActivity,
 		buildSnapshot: vi.fn((_inheritContext: boolean): ParentSnapshot => STUB_SNAPSHOT),
 		getModelInfo: vi.fn(() => ({
 			parentModel: { id: "claude-sonnet", name: "Claude Sonnet" },
