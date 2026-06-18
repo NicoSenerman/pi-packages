@@ -9,10 +9,7 @@ import {
 import { buildDirectUiPrompt } from "./permission-ui-prompt";
 import { requiresBachPrompt } from "./bach-gate";
 import type { ReviewLogger } from "./session-logger";
-import {
-  isBachMode,
-  shouldAutoApprovePermissionState,
-} from "./yolo-mode";
+import { isBachMode, shouldAutoApprovePermissionState } from "./yolo-mode";
 
 export type PermissionReviewSource = "tool_call" | "skill_input" | "skill_read";
 

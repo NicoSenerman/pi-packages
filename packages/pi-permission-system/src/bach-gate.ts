@@ -12,8 +12,8 @@
 const DESTRUCTIVE_PATTERNS: RegExp[] = [
   // rm with -r, -rf, -R, --recursive
   /\brm\s+(-[a-zA-Z]*[rR][a-zA-Z]*f?[a-zA-Z]*\s|--recursive\b)/,
-  // git push --force / -f (includes --force-with-lease)
-  /\bgit\s+push\s+.*(-f\b|--force\b)/,
+  // git push (any form — force pushes AND plain pushes to any remote)
+  /\bgit\s+push\b/,
   // wrangler deploy / delete / undeploy
   /\bwrangler\s+(deploy|delete|undeploy)\b/,
   // wrangler secret put

@@ -1,4 +1,0 @@
-[env]
-# Inject scripts/bin ahead of system PATH so project shims (e.g., npm → pnpm) take priority.
-# See scripts/bin/README.md for the full list of shims and their rationale.
-_.path = ["scripts/bin"]

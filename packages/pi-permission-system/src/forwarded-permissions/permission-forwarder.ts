@@ -500,8 +500,12 @@ export class PermissionForwarder implements ApprovalRequester, InboxProcessor {
     // Adapted: upstream now owns the auto-approve check here (config-based),
     // but we add BACH gate logic to force-prompt for destructive commands
     // even when auto-approve is active.
-    const autoApproveBase = shouldAutoApprovePermissionState("ask", this.config.current());
-    const bachBlocked = isBachMode() && requiresBachPrompt("bash", request.value ?? undefined);
+    const autoApproveBase = shouldAutoApprovePermissionState(
+      "ask",
+      this.config.current(),
+    );
+    const bachBlocked =
+      isBachMode() && requiresBachPrompt("bash", request.value ?? undefined);
     if (autoApproveBase && !bachBlocked) {
       this.logger.review(
         "forwarded_permission.auto_approved",
