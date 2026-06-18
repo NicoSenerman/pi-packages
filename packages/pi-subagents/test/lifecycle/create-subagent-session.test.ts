@@ -21,6 +21,18 @@ beforeEach(() => {
   io = createSubagentSessionIO();
 });
 
+/** Arrange: build a factory session and wire it as the created session. Returns it for assertions. */
+function arrangeFactory(opts?: Parameters<typeof createFactorySession>[0]) {
+  const session = createFactorySession(opts);
+  io.createSession.mockResolvedValue({ session });
+  return session;
+}
+
+/** The standard deps bag for the default `io`/`exec`/`registry` wiring. */
+function defaultDeps() {
+  return createSubagentSessionDeps({ io, exec, registry: mockAgentLookup });
+}
+
 describe("createSubagentSession — assembly", () => {
   let session: ReturnType<typeof createFactorySession>;
 
@@ -202,13 +214,9 @@ describe("createSubagentSession — post-bind recursion guard", () => {
   // from its before-bind set to its after-bind set once bindExtensions resolves.
 
   it("calls setActiveToolsByName once, after bindExtensions", async () => {
-    const session = createFactorySession({ toolsBeforeBind: ["read"], toolsAfterBind: ["read", "extension_tool"] });
-    io.createSession.mockResolvedValue({ session });
+    const session = arrangeFactory({ toolsBeforeBind: ["read"], toolsAfterBind: ["read", "extension_tool"] });
 
-    await createSubagentSession(
-      { snapshot: STUB_SNAPSHOT, type: "Explore" },
-      createSubagentSessionDeps({ io, exec, registry: mockAgentLookup }),
-    );
+    await createSubagentSession({ snapshot: STUB_SNAPSHOT, type: "Explore" }, defaultDeps());
 
     expect(session.setActiveToolsByName).toHaveBeenCalledTimes(1);
     const bindOrder = session.bindExtensions.mock.invocationCallOrder[0];
@@ -216,50 +224,28 @@ describe("createSubagentSession — post-bind recursion guard", () => {
     expect(setOrder).toBeGreaterThan(bindOrder);
   });
 
-  it("includes extension-registered tools in the post-bind set", async () => {
-    const session = createFactorySession({ toolsBeforeBind: ["read"], toolsAfterBind: ["read", "extension_tool"] });
-    io.createSession.mockResolvedValue({ session });
-
-    await createSubagentSession(
-      { snapshot: STUB_SNAPSHOT, type: "Explore" },
-      createSubagentSessionDeps({ io, exec, registry: mockAgentLookup }),
-    );
-
-    const postBindArgs = session.setActiveToolsByName.mock.calls[0][0];
-    expect(postBindArgs).toContain("read");
-    expect(postBindArgs).toContain("extension_tool");
-  });
-
-  it("excludes EXCLUDED_TOOL_NAMES from the post-bind set", async () => {
-    const session = createFactorySession({
-      toolsBeforeBind: ["read"],
+  it.each([
+    {
+      name: "includes extension-registered tools",
+      toolsAfterBind: ["read", "extension_tool"],
+      expected: ["read", "extension_tool"],
+    },
+    {
+      name: "excludes EXCLUDED_TOOL_NAMES while keeping other tools",
       toolsAfterBind: ["read", "subagent", "get_subagent_result", "steer_subagent", "external"],
-    });
-    io.createSession.mockResolvedValue({ session });
+      expected: ["read", "external"],
+    },
+    {
+      name: "runs the guard unconditionally when no extension tools register",
+      toolsAfterBind: ["read"],
+      expected: ["read"],
+    },
+  ])("post-bind set: $name", async ({ toolsAfterBind, expected }) => {
+    const session = arrangeFactory({ toolsBeforeBind: ["read"], toolsAfterBind });
 
-    await createSubagentSession(
-      { snapshot: STUB_SNAPSHOT, type: "Explore" },
-      createSubagentSessionDeps({ io, exec, registry: mockAgentLookup }),
-    );
-
-    const postBindArgs = session.setActiveToolsByName.mock.calls[0][0];
-    expect(postBindArgs).toContain("read");
-    expect(postBindArgs).toContain("external");
-    expect(postBindArgs).not.toContain("subagent");
-    expect(postBindArgs).not.toContain("get_subagent_result");
-    expect(postBindArgs).not.toContain("steer_subagent");
-  });
-
-  it("runs the guard unconditionally even when no extension tools are registered", async () => {
-    const session = createFactorySession();
-    io.createSession.mockResolvedValue({ session });
-
-    await createSubagentSession(
-      { snapshot: STUB_SNAPSHOT, type: "Explore" },
-      createSubagentSessionDeps({ io, exec, registry: mockAgentLookup }),
-    );
+    await createSubagentSession({ snapshot: STUB_SNAPSHOT, type: "Explore" }, defaultDeps());
 
     expect(session.setActiveToolsByName).toHaveBeenCalledTimes(1);
-    expect(session.setActiveToolsByName.mock.calls[0][0]).toEqual(["read"]);
+    expect(session.setActiveToolsByName.mock.calls[0][0]).toEqual(expected);
   });
 });
