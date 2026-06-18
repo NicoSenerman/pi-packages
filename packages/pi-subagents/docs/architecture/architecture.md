@@ -95,6 +95,7 @@ flowchart TB
     AgentTypeRegistry --> DefaultAgents & CustomAgents
     RecordObserver -.->|subscribes| SubagentSession
     Widget -.->|polls| SubagentManager
+    SubagentManager -.->|notifies| Widget
 ```
 
 ### Key domain types
@@ -320,6 +321,7 @@ src/
 │   ├── notification.ts             completion nudges
 │   ├── notification-state.ts       per-agent notification tracking
 │   ├── renderer.ts                 notification TUI component
+│   ├── composite-subagent-observer.ts fans manager notifications out to multiple observers
 │   └── subagent-events-observer.ts manager lifecycle observer (event emission + persistence + notification)
 │
 ├── service/                        cross-extension API boundary
@@ -360,7 +362,8 @@ src/
 Record statistics (tool uses, token usage, compaction counts) and live activity (active tools, response text, turn counts) are updated by `record-observer.ts`, which subscribes directly to session events.
 This is the single per-child session subscription — all run state lives on the `Subagent` record.
 
-The widget reads agent state by polling the records exposed via `SubagentManager.listAgents()` every 80 ms. The conversation viewer subscribes to session events via `Subagent.subscribeToUpdates()` and reads messages via `Subagent.messages` — no direct `AgentSession` reference (#277).
+The widget reads agent state by polling the records exposed via `SubagentManager.listAgents()` every 80 ms; that poll loop is now started by the manager's lifecycle notifications (the widget subscribes as a `SubagentManagerObserver` fanned out through `CompositeSubagentObserver`), not by inbound calls from the spawn tools.
+The conversation viewer subscribes to session events via `Subagent.subscribeToUpdates()` and reads messages via `Subagent.messages` — no direct `AgentSession` reference (#277).
 
 ## Cross-extension architecture
 
@@ -965,11 +968,12 @@ Folding the live activity onto the record (the single owner of run state, consis
    The spawn tools stop constructing trackers, subscribing, and populating maps; `SubagentRuntime.agentActivity` is removed.
    Smell: Category A + C. Outcome: −145 LOC, one session subscription per child, runtime holds zero UI state.
    Landed: deleted `agent-activity-tracker.ts` (84) + `ui-observer.ts` (61) and their unit suites; dropped the `agentActivity` parameter from `runForeground`/`spawnBackground`, the `AgentActivityAccess` interface, and the `AgentToolRuntime`/`SubagentRuntime` activity-map fields; the foreground `observer.onSessionCreated` keeps `recordRef`/`fgId` binding and `widget.ensureTimer`; −34 tests (1066 → 1032).
-4. **Make the widget self-drive from lifecycle events.**
-   ([#423]) Target: `ui/agent-widget.ts`, `lifecycle/subagent-manager.ts` (observer), `index.ts`.
+4. **✅ Make the widget self-drive from lifecycle events — complete.**
+   ([#423]) Target: `ui/agent-widget.ts`, `observation/composite-subagent-observer.ts` (new), `index.ts`.
    The widget starts/stops its timer in response to started/created/completed notifications instead of tool calls; spawn tools no longer call `ensureTimer`/`update`/`markFinished`.
    Smell: Category C (coupling direction).
    Outcome: the widget is a reactive consumer; no inbound calls from core spawn tools.
+   Landed: `AgentWidget implements SubagentManagerObserver` (starts the 80 ms loop on `onSubagentStarted`/`onSubagentCreated`, re-renders on `onSubagentCompleted`/`onSubagentCompacted`); a new `CompositeSubagentObserver` fans the manager's single observer slot out to `[eventsObserver, widget]` (wired in `index.ts`, keeping `SubagentManager` unchanged); dropped the `widget` parameter and `ForegroundWidgetDeps`/`BackgroundWidgetDeps` interfaces from both spawners, deleted `AgentWidget.markFinished` (redundant with `seedFinishedAgents`), made `ensureTimer` private, and narrowed `AgentToolWidget` to `setUICtx`; +11 tests (1032 → 1043, then −4 with the dropped spawner widget-driving tests → 1039).
 5. **Drop the widget and activity-map dependencies from the `subagent` tool.**
    ([#424]) Target: `tools/agent-tool.ts`, `test/helpers/make-deps.ts`.
    `AgentTool` loses its `widget` and `agentActivity` constructor params (UICtx capture stays in `ToolStartHandler`); `createToolDeps` sheds the widget and map stubs.
@@ -1007,7 +1011,7 @@ flowchart TB
     S1["1 — Fold metrics + activity onto record (#420) ✅"]
     S2["2 — Migrate readers to record getters (#421) ✅"]
     S3["3 — Delete tracker + ui-observer, drop activity map (#422) ✅"]
-    S4["4 — Widget self-drives on events (#423)"]
+    S4["4 — Widget self-drives on events (#423) ✅"]
     S5["5 — Drop widget dep from subagent tool (#424)"]
     S6["6 — Reconcile public event contract (#425)"]
     S7["7 — Consolidate test clone families (#426)"]
