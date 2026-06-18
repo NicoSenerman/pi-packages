@@ -12,7 +12,7 @@ export type { AgentSessionEvent, ThinkingLevel };
 
 /**
  * Narrow session interface for event subscription.
- * Used by record-observer and ui-observer — only the subscribe method is needed.
+ * Used by record-observer — only the subscribe method is needed.
  */
 export interface SubscribableSession {
   subscribe(fn: (event: AgentSessionEvent) => void): () => void;

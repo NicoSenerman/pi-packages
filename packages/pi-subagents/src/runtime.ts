@@ -9,7 +9,6 @@
 import { buildParentSnapshot, type ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import type { ModelInfo } from "#src/tools/spawn-config";
 import type { SessionContext } from "#src/types";
-import type { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
 
 /**
  * Narrow config subset read by Agent when driving the turn loop (defaultMaxTurns, graceTurns).
