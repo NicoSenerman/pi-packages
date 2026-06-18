@@ -49,6 +49,62 @@ Four commits (three `refactor:`, one `docs:`); test count `1032 → 1039` (+7 co
 - **Reviewer notes (non-blocking, both PASS):** a pre-existing "six domains" vs "seven domains" inconsistency in `architecture.md` (Phase 17, out of scope, left alone); and `observer.add(widget)` is a justified post-construction write documented as the only construction-cycle break (widget needs manager, manager needs observer).
 - **Pre-completion reviewer: PASS** — all deterministic checks, code-design, test-artifact, Mermaid (`mmdc` parsed all 6 blocks), dead-code, and cross-step-invariant lenses passed.
 
+## Stage: Final Retrospective (2026-06-17T18:30:00Z)
+
+### Session summary
+
+Shipped Phase 18 Step 4 across plan → TDD → ship in a single session: the `AgentWidget` became a `SubagentManagerObserver` that self-drives its 80 ms timer through a new `CompositeSubagentObserver` fan-out, and the spawn tools shed every widget call.
+Four implementation commits (three `refactor:`, one `docs:`), pre-completion reviewer PASS, CI green, issue closed; no release (all commits non-releasing).
+Execution was clean — two self-caught agent-side slips, no rework commits, and the only user input was one productive redirect plus a release-timing answer.
+
+### Observations
+
+#### What went well
+
+- **Two-round `ask_user` on the wiring decision (planning).**
+  The first round offered three mechanisms (composite / manager-list / `pi.events`); the operator picked B but flagged uncertainty.
+  Reframing around the decouple + overridable-UI north star and re-asking flipped the choice to A (`CompositeSubagentObserver`) with explicit buy-in.
+  The reframe surfaced the insight that flattened the decision: all three options keep the widget's `manager.listAgents()` reference, so they change only the *trigger*, not the data source.
+- **`vi.getTimerCount()` as a precise timer-start assertion.**
+  The widget observer tests assert `getTimerCount()` goes `0 → 1` on `onSubagentStarted`/`onSubagentCreated`, cleanly distinguishing `startLoop` (timer + render) from a bare `update()` (render only).
+- **"Double-drive" lift-and-shift ordering.**
+  Step 2 wired the new observer while the spawn tools still drove the widget (idempotent overlap), and Step 3 removed the old path — no commit left the widget without a timer-start signal, and the full suite was green at every commit.
+- **Incremental verification cadence.**
+  `pnpm run check` after each shared-type change, `vitest` per-file in red/green, `mmdc` on all 6 Mermaid blocks, and `fallow`/`lint`/full-suite at the end of Step 3 — no end-only verification.
+
+#### What caused friction (agent side)
+
+- `scope-drift` (self-identified) — in TDD Step 2 I deleted `markFinished` and privatized `ensureTimer` ahead of schedule; both belonged to the atomic Step 3 removal because `AgentToolWidget` still required them until then (deleting early breaks `index.ts` typing).
+  Caught by reasoning before committing and reverted to Step 3.
+  Impact: a few corrective edits, no extra commit, no rework.
+  Lesson: re-read the step's exact scope before editing, rather than editing from the overall design held in memory.
+- `missing-context` (self-identified) — naming the composite's private fan-out helper `forEach` tripped Biome's `useIterableCallbackReturn` (it treated the call as `Array.prototype.forEach` and rejected the value-returning arrow).
+  Renamed to `dispatch`.
+  Impact: one rename, caught immediately by the `pi-autoformat` hook; no rework.
+- `other` — the ship stage asked the batch-vs-release question for a multi-issue sequence, but every unreleased commit was `refactor:`/`docs:`, so release-please produced no PR regardless of the answer.
+  The operator's "release now" answer was therefore unactionable (the work auto-batches until a `feat`/`fix` lands).
+  Impact: one unactionable `ask_user` round; correct outcome reached, but the question implied a choice that did not exist.
+
+#### What caused friction (user side)
+
+- None blocking — the planning redirect ("I'm not confident in my choice… the goal is to decouple… an event system would make sense but isn't on the roadmap") was the ideal intervention: a redirecting question that handed over the north star instead of a post-hoc correction, and it directly produced the better design.
+
+### Diagnostic details
+
+- **Model-performance correlation** — Planning ran on `anthropic/claude-opus-4-8` (design + the two-round wiring `ask_user`; appropriate).
+  TDD ran on `anthropic/claude-sonnet-4-6` (implementation; handled the Step 2 self-correction and the Biome rename; adequate).
+  The `pre-completion-reviewer` subagent ran on `anthropic/claude-sonnet-4-6` (its frontmatter) and returned a thorough PASS.
+  Ship ran on `opencode-go/deepseek-v4-flash` — a reasoning-weak model carrying the batch-vs-release judgment and the "no release PR expected" inference.
+  It reached the correct outcome, but this is the same latent risk the #422 retro flagged: a weak model on the one ship-stage judgment call.
+  Proposal 1 mitigates it by making the release-trigger check deterministic so the stage needs no judgment.
+- **Escalation-delay tracking** — no `rabbit-hole`s; both agent-side slips resolved in one tool call each (one rename, one revert); no sequence exceeded 5 calls on one error.
+- **Unused-tool detection** — no `missing-context` gaps requiring a subagent; `grep` (not `colgrep`) was used in planning, correctly — every search was an exact symbol match (`ensureTimer`, `markFinished`, `observer`).
+- **Feedback-loop gap analysis** — no gap; verification was incremental, not end-only (see "What went well").
+
+### Changes made
+
+1. `.pi/prompts/ship-issue.md` — step 4b now opens with a release-trigger gate: check `git log --oneline <last-tag>..HEAD`, and when every commit is a non-releasing type (`refactor:`/`docs:`/`style:`/`chore:`/`test:`), state that release-please cuts nothing now and skip the batch-vs-release question.
+
 [#421]: https://github.com/gotgenes/pi-packages/issues/421
 [#422]: https://github.com/gotgenes/pi-packages/issues/422
 [#424]: https://github.com/gotgenes/pi-packages/issues/424
