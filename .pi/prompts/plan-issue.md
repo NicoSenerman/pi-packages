@@ -135,6 +135,7 @@ Then an H1 title (e.g., `# <short descriptive title>`) — required by markdownl
   When the change adds, removes, or moves a module, check `packages/<PKG>/docs/architecture/` for layout listings, complexity tables, health metrics, or domain diagrams that reference the affected files and list them as doc updates.
   When a step corrects a literal value that appears in prose (a path, default, or identifier in sample output, log snippets, or ADR code comments), grep the whole `packages/<PKG>/docs/` tree for the old value — not a hand-picked file subset; stale sample logs and decision-record comments do not surface in a `src/`/`test/` grep.
   When a file appears in Module-Level Changes, verify it is not also claimed as unchanged in Non-Goals — contradictions between these sections cause confusion during implementation.
+  When a plan step's verify criterion names a specific static-analysis finding as resolved (a clone fingerprint, a dead-code symbol, a complexity target), the step's design or Module-Level Changes must show which change clears it — do not list a finding as expected-gone without a change mapped to it.
 - **Test Impact Analysis** — for extraction and refactoring issues: (1) what new unit tests does the extraction enable that were previously impossible or impractical?
   (2) what existing tests become redundant with the new lower-level tests, and can they be simplified or removed?
   (3) which existing tests must stay as-is because they genuinely exercise the layer being extracted?

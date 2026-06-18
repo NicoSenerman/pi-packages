@@ -42,3 +42,59 @@ Dropped pi-subagents test clone groups from 24 to 14 (below the `<15` target); f
 - Used destructure-to-locals in `settings.test.ts`/`layered-settings.test.ts` (e.g. `({ globalDir: agentDir, projectDir: cwd, ... } = dirs)`) rather than the plan's `dirs.X` member-access sketch — keeps the existing terse test bodies unchanged and lowers edit risk.
 - Dropped one brittle `captureWarn` self-test ("suppresses real stderr") that was actually exercising `vi.spyOn`'s restore-to-original semantics with nested spies, not the helper's behavior.
 - The risk flagged at planning (orphaned `node:fs`/`node:os` imports after removing inline `writeGlobal`/`writeProject`) materialized only in `layered-settings.test.ts` (`mkdtempSync`/`rmSync`/`tmpdir`/`vi` became unused); removed them, and `fallow dead-code` confirmed clean.
+
+## Stage: Final Retrospective (2026-06-18T18:31:04Z)
+
+### Session summary
+
+Planned, built, and shipped #426 in one continuous session: extracted two shared test fixtures (`tmp-settings-dirs.ts`, `capture-warn.ts`) and table-drove four clone families into `it.each`, dropping pi-subagents test clone groups from 24 to 14.
+CI green, issue closed, no release cut (all `test:`/`docs:` commits batch until the next `feat`/`fix`).
+Execution was clean overall; the one recurring friction was the plan over-predicting which clone fingerprints each change would clear.
+
+### Observations
+
+#### What went well
+
+- **Metric-driven feedback loop.**
+  Each build step re-ran `pnpm fallow dupes` and checked the targeted fingerprints (`21d1fb01`, `4003c0e7`, `48ff1484`, …) disappeared before committing.
+  This caught the two prediction gaps (below) immediately rather than at pre-completion, and turned a fuzzy "reduce duplication" goal into a precise per-step pass/fail.
+- **`it.each` strengthened assertions while consolidating.**
+  Folding the `create-subagent-session` post-bind cases into a table let the merged test assert `toEqual(expected)` on the full post-bind set, replacing the prior weaker `toContain` checks — consolidation improved coverage rather than just moving lines.
+- **Pre-completion reviewer verified the real risk.**
+  For a test-refactor the central risk is silent coverage loss; the reviewer explicitly confirmed former-`it`-count equals row-count for every `it.each` and that each act stayed explicit.
+  PASS with nothing to fix.
+
+#### What caused friction (agent side)
+
+- `missing-context` (planning) — the plan's Step 1 *verify* listed clone group `4003c0e7` (the `console.warn` spy try/finally boilerplate) as expected-gone, but the Step 1 *design* only described the tmp-dir fixture, which does not touch that clone.
+  The build discovered the gap and added `capture-warn.ts` + migrated ~7 spy tests mid-step.
+  Impact: one unplanned helper (with self-test) folded into the same commit; no follow-up commit, but the plan-vs-build mismatch was real.
+- `wrong-abstraction` (build, self-corrected) — Step 2's first pass applied arrange helpers (`arrangeFactory`/`defaultDeps`) alone, which left a *new* transient clone (`62899223`) between the two adjacent post-bind tests.
+  Folding the three membership cases into one `it.each` cleared it.
+  Impact: one extra edit+verify iteration within the step; caught by the same-step `fallow dupes` run.
+- `other` (build, trivial) — wrote a brittle `captureWarn` self-test ("suppresses real stderr") that asserted `vi.spyOn` nested-restore semantics rather than the helper's behavior; the test failed immediately and was dropped.
+  Impact: ~2 tool calls, no rework downstream.
+- `other` (ship, trivial) — `git log | grep -P` failed on macOS BSD grep; retried with `grep -o`.
+  Impact: one retry.
+
+#### What caused friction (user side)
+
+- None.
+  The session ran end-to-end (plan → build → ship → retro) without a mid-course correction; the prompts carried enough structure that no strategic intervention was needed.
+
+### Diagnostic details
+
+- **Model-performance correlation** — the entire `/ship-issue` stage ran on `opencode-go/deepseek-v4-flash` (a reasoning-weak model), covering judgment-bearing steps: release-coordination decision, stacked-release detection, and close-comment synthesis.
+  It executed correctly because `/ship-issue` is heavily proceduralized (deterministic checks, explicit decision tree), so the weak model followed the rails without error.
+  Planning/build ran on stronger models (`opus-4-8`/`sonnet-4-6`); retro on `opus-4-8`.
+  No quality defect resulted, but ship-issue does carry real judgment — worth noting that its proceduralization is what absorbed the model mismatch.
+- **Escalation-delay tracking** — no `rabbit-hole`; the two prediction-gap fixes resolved in 1–2 tool calls each via the per-step `fallow dupes` check.
+  No sequence exceeded the 5-call flag.
+- **Unused-tool detection** — none needed; scope was small and fully understood from the planning-stage file reads. `fallow dupes` was the right and sufficient tool.
+- **Feedback-loop gap analysis** — verification ran *incrementally*: `pnpm run check` + `vitest run <file>` + `pnpm fallow dupes` after every step, full suite + `fallow dead-code` at the end.
+  No end-only verification gap.
+
+### Changes made
+
+1. `.pi/prompts/plan-issue.md` — added a cross-section consistency rule under **Module-Level Changes**: when a plan step's verify criterion names a static-analysis finding (clone fingerprint, dead-code symbol, complexity target) as resolved, the design or Module-Level Changes must map the change that clears it.
+   Motivated by the Step 1 `4003c0e7` prediction gap (the verify step listed it as expected-gone but the design did not address it, forcing the mid-build `capture-warn.ts` addition).
