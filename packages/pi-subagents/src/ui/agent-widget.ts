@@ -8,7 +8,8 @@
 
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { Subagent } from "#src/lifecycle/subagent";
-import type { SubagentManager } from "#src/lifecycle/subagent-manager";
+import type { SubagentManager, SubagentManagerObserver } from "#src/lifecycle/subagent-manager";
+import type { CompactionInfo } from "#src/types";
 import { ERROR_STATUSES, type Theme } from "#src/ui/display";
 import { renderWidgetLines, type WidgetAgent } from "#src/ui/widget-renderer";
 
@@ -61,7 +62,7 @@ export type UICtx = {
 
 // ---- Widget manager ----
 
-export class AgentWidget {
+export class AgentWidget implements SubagentManagerObserver {
   private uiCtx: UICtx | undefined;
   private widgetFrame = 0;
   private widgetInterval: ReturnType<typeof setInterval> | undefined;
@@ -104,6 +105,34 @@ export class AgentWidget {
       this.finishedTurnAge.set(id, age + 1);
     }
     // Trigger a widget refresh (will filter out expired agents)
+    this.update();
+  }
+
+  // ---- SubagentManagerObserver: react to lifecycle, self-drive the timer ----
+
+  /** A subagent started running — ensure the update loop is live and render. */
+  onSubagentStarted(_record: Subagent) {
+    this.startLoop();
+  }
+
+  /** A background subagent was created (queued) — ensure the loop is live and render. */
+  onSubagentCreated(_record: Subagent) {
+    this.startLoop();
+  }
+
+  /** A subagent completed — render so the finished state is seeded and shown. */
+  onSubagentCompleted(_record: Subagent) {
+    this.update();
+  }
+
+  /** A subagent's session compacted — render to refresh the compaction count. */
+  onSubagentCompacted(_record: Subagent, _info: CompactionInfo) {
+    this.update();
+  }
+
+  /** Start the update timer (if not already running) and render immediately. */
+  private startLoop() {
+    this.ensureTimer();
     this.update();
   }
 

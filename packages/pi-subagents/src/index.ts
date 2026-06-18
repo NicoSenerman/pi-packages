@@ -28,6 +28,7 @@ import { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
 import { createSubagentSession, type SubagentSessionDeps } from "#src/lifecycle/create-subagent-session";
 import { buildParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { SubagentManager } from "#src/lifecycle/subagent-manager";
+import { CompositeSubagentObserver } from "#src/observation/composite-subagent-observer";
 import { type NotificationDetails, NotificationManager } from "#src/observation/notification";
 import { createNotificationRenderer } from "#src/observation/renderer";
 import { SubagentEventsObserver } from "#src/observation/subagent-events-observer";
@@ -75,11 +76,17 @@ export default function (pi: ExtensionAPI) {
   settings.load();
 
   // Observer: receives agent lifecycle notifications and dispatches events/notifications.
-  const observer = new SubagentEventsObserver({
+  const eventsObserver = new SubagentEventsObserver({
     emit: (channel, data) => pi.events.emit(channel, data),
     appendEntry: (customType, data) => pi.appendEntry(customType, data),
     notifications,
   });
+
+  // Fan-out observer: lets the widget subscribe as a second lifecycle consumer
+  // while the manager keeps its single-observer contract. The widget is added
+  // after construction (it needs the manager); the manager consults the observer
+  // only at spawn time, so registering late is safe.
+  const observer = new CompositeSubagentObserver([eventsObserver]);
 
   const subagentSessionDeps: SubagentSessionDeps = {
     io: {
@@ -128,8 +135,9 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_shutdown", () => lifecycle.handleSessionShutdown());
 
   // Live widget: constructed after the manager (it polls listAgents()) and
-  // injected directly into its consumers — no post-construction field write.
+  // registered as a lifecycle observer so it self-drives its update timer.
   const widget = new AgentWidget(manager, registry);
+  observer.add(widget);
 
   // Grab UI context from first tool execution + clear lingering widget on new turn
   const toolStart = new ToolStartHandler(widget);

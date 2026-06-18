@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { SubagentManager } from "#src/lifecycle/subagent-manager";
+import type { CompactionInfo } from "#src/types";
 import { AgentWidget, assembleWidgetState, type UICtx } from "#src/ui/agent-widget";
 import { createTestSubagent } from "#test/helpers/make-subagent";
 
@@ -268,5 +269,69 @@ describe("AgentWidget.update self-seeds finished agents", () => {
 		expect(typeof lastContent()).toBe("function");
 		widget.onTurnStart();
 		expect(lastContent()).toBeUndefined();
+	});
+});
+
+describe("AgentWidget — self-drives from lifecycle notifications", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	function makeWidget(agents: Array<{ id: string; status: string; completedAt?: number }>) {
+		const manager = { listAgents: () => agents } as unknown as SubagentManager;
+		const registry = new AgentTypeRegistry(() => new Map());
+		const widget = new AgentWidget(manager, registry);
+		const setWidgetCalls: unknown[] = [];
+		const ui: UICtx = {
+			setStatus: () => {},
+			setWidget: (_key, content) => {
+				setWidgetCalls.push(content);
+			},
+		};
+		widget.setUICtx(ui);
+		const lastContent = () => setWidgetCalls.at(-1);
+		return { widget, lastContent };
+	}
+
+	const COMPACTION: CompactionInfo = { reason: "threshold", tokensBefore: 1000 };
+
+	it("starts the update timer and renders on onSubagentStarted", () => {
+		const { widget, lastContent } = makeWidget([{ id: "a1", status: "running" }]);
+		expect(vi.getTimerCount()).toBe(0);
+
+		widget.onSubagentStarted(createTestSubagent({ id: "a1", status: "running" }));
+
+		expect(vi.getTimerCount()).toBe(1);
+		expect(typeof lastContent()).toBe("function");
+	});
+
+	it("starts the update timer and renders on onSubagentCreated", () => {
+		const { widget, lastContent } = makeWidget([{ id: "a1", status: "queued" }]);
+		expect(vi.getTimerCount()).toBe(0);
+
+		widget.onSubagentCreated(createTestSubagent({ id: "a1", status: "queued" }));
+
+		expect(vi.getTimerCount()).toBe(1);
+		expect(typeof lastContent()).toBe("function");
+	});
+
+	it("renders the finished agent on onSubagentCompleted", () => {
+		const { widget, lastContent } = makeWidget([{ id: "a1", status: "completed", completedAt: 5000 }]);
+
+		widget.onSubagentCompleted(createTestSubagent({ id: "a1", status: "completed" }));
+
+		expect(typeof lastContent()).toBe("function");
+	});
+
+	it("renders on onSubagentCompacted", () => {
+		const { widget, lastContent } = makeWidget([{ id: "a1", status: "running" }]);
+
+		widget.onSubagentCompacted(createTestSubagent({ id: "a1", status: "running" }), COMPACTION);
+
+		expect(typeof lastContent()).toBe("function");
 	});
 });
