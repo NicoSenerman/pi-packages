@@ -25,3 +25,22 @@ Two TDD steps: a `feat!:` constant-map reconciliation pinned from both sides (de
 - Public-surface gate: the plan requires running `verify:public-types` in the code step before committing, since `SUBAGENT_EVENTS` is rolled into `dist/public.d.ts`.
 - Value-only reconciliation — no new collaborator, no dependency-wiring change — so the `design-review` checklist surfaces nothing actionable; noted in the plan rather than run as a separate gate.
 - Next step: `/tdd-plan` (the change has a red→green test cycle).
+
+## Stage: Implementation — TDD (2026-06-18T00:00:00Z)
+
+### Session summary
+
+Executed both planned TDD steps in two commits: a `feat!:` reconciling the `SUBAGENT_EVENTS` constant map (removed `ACTIVITY`, added `FAILED`/`COMPACTED`/`CREATED`/`STEERED`) pinned by an expanded `service.test.ts` assertion plus an explicit "no vacant `ACTIVITY`" check, then a `docs:` update to the lifecycle-events table and the Phase 18 Step 6 roadmap entry.
+Full suite green at 1038 tests (+1 from the planning baseline of 1037); `check`, root `lint`, `verify:public-types`, and `fallow dead-code` all pass.
+
+### Observations
+
+- No deviations from the plan's design.
+  The only mid-stream addition was the extra `"ACTIVITY" in SUBAGENT_EVENTS` falsity assertion, which strengthens the breaking-removal coverage beyond what the plan sketched.
+- The breaking change went smoothly: `SUBAGENT_EVENTS.ACTIVITY` had no live consumers, so removal broke only the one service test that asserted it — folded into the same `feat!:` step as planned.
+- Ran `verify:public-types` before committing Step 1 (public-surface gate); the rolled `dist/public.d.ts` regenerated cleanly with the narrowed `as const` literal types.
+- `git diff` since the last tag (`pi-subagents-v16.6.0`) lists files from prior unreleased issues #422/#423/#424; scoped the pre-completion reviewer to #425's two commits to avoid noise.
+- Pre-completion reviewer: WARN (1 non-blocking finding).
+  The Phase 18 Mermaid node `S6` was missing the `✅` mark carried by completed nodes S1–S5; fixed by appending `✅` to the node label and amended into the unpushed `docs:` commit.
+  All other checklist items PASS or SKIP (no acceptance-criteria section; `service.ts` was not a target of any prior Phase 18 step, so no cross-step invariant at risk).
+- Next step: `/ship-issue`.
