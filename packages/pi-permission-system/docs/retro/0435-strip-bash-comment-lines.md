@@ -47,3 +47,47 @@ Co-authored-by: Robert Navarro <crshman@gmail.com>
 ```
 
 The PR merge auto-closes #435; a close/thank-you comment credits `@rnavarro` by name and links the merge SHA.
+
+## Stage: Final Retrospective (2026-06-19T18:16:36Z)
+
+### Session summary
+
+This session reviewed third-party PR #435, merged it as-is per the operator's call, then cut and published the `pi-permission-system` 14.0.1 release.
+The review and verification were clean, but the release-please PR (#436) was merged with the wrong method — `gh pr merge --merge` instead of the project's established `--rebase` — landing it as merge bubble `57561321`, the first non-linear release since the rebase convention was adopted.
+
+### Observations
+
+#### What went well
+
+- The evaluation traced `deriveSuggestionValue` (`handlers/gates/tool.ts:21`) to confirm the second `stripBashCommentLines` call in `suggestBashPattern` was *necessary* (it receives the preserved original `check.command`), not redundant.
+  This prevented a wrong "collapse this duplication" recommendation and correctly judged the PR as right-sized.
+- Verification ran incrementally and at the right boundaries: `tsc` / `lint` / `test` / `fallow dead-code` on the branch *before* merging, then CI on the merge SHA, the release tag via `release_watch`, and finally the published npm version — no end-loaded verification gap.
+
+#### What caused friction (agent side)
+
+- `missing-context` — chose the release-please merge method by sampling two old `chore: release main` commits (`821403f9`, `3bca3468`) that happened to predate the rebase switch, instead of checking the authoritative sources: `defaultMergeMethod: rebase` (`.pi/extensions/pi-github-tools/config.json`), the most-recent releases (`2de8bf49`, `279f0410` — both linear `parents=1`), or the ship-prompt guidance (`ship-no-issue.md:48`, `ship-issue.md:111`).
+  The rebase convention was set deliberately in `cacc724f` ("chore: default release-please PR merges to rebase"); every release since is `parents=1`.
+  Impact: release #436 landed as merge bubble `57561321` (`parents=2`) — the first non-linear release since `cacc724f`, contradicting the documented convention.
+  Already pushed, tagged, and published, so not cleanly reversible; no functional harm (14.0.1 published correctly), but a permanent history-shape inconsistency.
+- `other` — `npm view` (to confirm the published version) was blocked by the repo's pnpm-only guard.
+  Impact: one wasted tool call; recovered immediately by reading the registry via `curl`.
+  No change warranted — the `never npm or npx` rule already exists and the guard enforced it correctly.
+
+#### What caused friction (user side)
+
+- The PR-review closing summary echoed the operator's own gate phrasing ("any future tweaks land as commits on top") without stating that adopt-as-is meant *done, nothing queued*.
+  The operator had to ask "what future tweaks?"
+  and "am I on to /ship-issue?"
+  to disambiguate.
+  Opportunity, not criticism: an adopt-as-is summary should state explicitly that no follow-up work is queued.
+
+### Root cause — release-method miss
+
+The authoritative merge-method guidance lives only inside the ship prompts (`ship-no-issue.md`, `ship-issue.md`), which were not loaded because this release was cut from an extended PR-review session, not a `/ship-issue` run.
+With no in-context rule, the agent inferred the method from a small, unrepresentative history sample.
+The `release_pr_merge` tool would have used rebase (per config) but refused on `merge_state: UNSTABLE` (release branches never get status checks), and the agent's fallback chose `--merge` rather than the prompts' prescribed `--rebase`.
+
+### Changes made
+
+1. `AGENTS.md` — added a release-please rebase-merge invariant after the "Release batching" paragraph in the Multi-session lifecycle section: prefer `release_pr_merge`, fall back to `gh pr merge --rebase` (never `--merge`) on the `UNSTABLE`-no-checks refusal, and do not infer the method from pre-`cacc724f` history.
+  Closes the gap for releases cut outside `/ship-issue`.
