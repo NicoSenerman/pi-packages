@@ -10,6 +10,7 @@
 
 import { readFileSync } from "node:fs";
 import {
+  type AgentSessionEvent,
   Theme as PiTheme,
   type ThemeColor,
 } from "@earendil-works/pi-coding-agent";
@@ -291,21 +292,34 @@ class AgentMonitor implements Component {
     this.spinnerTimer = setInterval(() => {
       if (this.closed) return;
       try {
-        // In conversation view, pause spinner and let event-driven updates handle rendering
+        // In conversation view, pause spinner and let event-driven updates handle rendering.
+        // The subscribe callback calls updateLivePartial(messages, event) on every
+        // AgentSessionEvent and requestRender()s immediately — this is the primary
+        // path. The block below is a SAFETY NET: if the event-driven path missed
+        // a state change (e.g. messages mutated without an event, or the view
+        // was just opened and an early event arrived before we subscribed), we
+        // catch up here using the heuristic (no-event) branch of updateLivePartial.
         if (this.view === "conversation") {
           if (
-            this.conversationDirty &&
+            this.conversationContainer &&
             this.selectedAgentForViewer &&
-            this.conversationContainer
+            this.conversationDirty
           ) {
-            mlog("spinner", "rebuilding dirty conversation");
-            this.conversationContainer.rebuildFromSnapshot(
-              this.selectedAgentForViewer.messages,
-            );
-            this.conversationDirty = false;
+            try {
+              mlog("spinner", "safety-net updateLivePartial");
+              this.conversationContainer.updateLivePartial(
+                this.selectedAgentForViewer.messages,
+              );
+              this.conversationDirty = false;
+            } catch (err) {
+              mlog("spinner", "safety-net error", {
+                message: err instanceof Error ? err.message : String(err),
+              });
+            }
           }
           // Don't animate spinner or poll subscriptions while in conversation.
-          // requestRender() below still fires so the overlay keeps refreshing.
+          // The `finally` below still requests a render so the overlay keeps
+          // refreshing while event-driven updates stream in.
           return;
         }
 
@@ -366,26 +380,14 @@ class AgentMonitor implements Component {
       const agent = this.selectedAgentForViewer;
       if (agent && this.conversationContainer && this.lastInnerW > 0) {
         const innerW = this.lastInnerW;
-        let contentLines = this.conversationContainer.render(innerW);
+        const contentLines = this.conversationContainer.render(innerW);
 
-        // Add streaming indicator
-        if (agent.status === "running") {
-          const activity = this.getActivity(agent);
-          if (activity) {
-            const act = describeActivity(
-              activity.activeTools,
-              activity.responseText,
-            );
-            contentLines = [
-              ...contentLines,
-              "",
-              truncateToWidth(
-                this.theme.fg("accent", "● ") + this.theme.fg("dim", act),
-                innerW,
-              ),
-            ];
-          }
-        }
+        // NOTE: the one-line `● <activity>` footer is intentionally NOT added
+        // here in the conversation view. With Fix 1 (persistent streaming
+        // component) the full streaming assistant body grows in the view
+        // itself, so the footer would be redundant and compete with the body
+        // for the bottom of the viewport. The list view still shows the
+        // activity line. Compute maxScroll against the body only.
 
         const viewportH = this.viewportHeight();
         const maxScroll = Math.max(0, contentLines.length - viewportH);
@@ -629,15 +631,42 @@ class AgentMonitor implements Component {
       id: agent.id,
       type: agent.type,
     });
-    const unsub = agent.subscribeToUpdates(() => {
+    const unsub = agent.subscribeToUpdates((event: AgentSessionEvent) => {
       if (this.closed) return;
-      mlog("subscribe-cb", "agent update", { id: agent.id, view: this.view });
+      mlog("subscribe-cb", "agent update", {
+        id: agent.id,
+        view: this.view,
+        eventType: event?.type,
+      });
       if (
         this.view === "conversation" &&
         this.selectedAgentForViewer?.id === agent.id
       ) {
-        this.conversationDirty = true;
+        // Primary streaming path: drive updates from events with the event
+        // payload so ConversationContainer can update the persistent streaming
+        // component in place instead of a full 80ms teardown+rebuild.
+        if (this.conversationContainer) {
+          try {
+            this.conversationContainer.updateLivePartial(
+              this.selectedAgentForViewer.messages,
+              event,
+            );
+            mlog("streaming-state", "updateLivePartial", {
+              eventType: event?.type,
+              streamingRef:
+                !!this.conversationContainer.getStreamingMessageRef(),
+            });
+          } catch (err) {
+            mlog("streaming-state", "updateLivePartial error", {
+              message: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+        this.conversationDirty = false;
         this.needsRender = true;
+        // Render immediately for smooth streaming instead of waiting for the
+        // 80ms spinner tick to quantize the update.
+        this.tui.requestRender();
       }
     });
     if (unsub) {
@@ -844,20 +873,12 @@ class AgentMonitor implements Component {
       contentLines = [th.fg("dim", "(waiting for first message...)")];
     }
 
-    // Streaming indicator for running agents
-    if (agent.status === "running") {
-      const activity = this.getActivity(agent);
-      if (activity) {
-        const act = describeActivity(
-          activity.activeTools,
-          activity.responseText,
-        );
-        contentLines.push("");
-        contentLines.push(
-          truncateToWidth(th.fg("accent", "● ") + th.fg("dim", act), innerW),
-        );
-      }
-    }
+    // NOTE: the `● <activity>` footer is intentionally omitted from the
+    // conversation view. With Fix 1 the full streaming assistant body is
+    // rendered live via the persistent streaming component, so a separate
+    // one-line status footer would be redundant and would compete with the
+    // body for the bottom of the viewport. (The list view still shows the
+    // activity line — see renderActivityLine.)
 
     const viewportH = this.viewportHeight();
     const maxScroll = Math.max(0, contentLines.length - viewportH);
