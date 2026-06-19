@@ -22,16 +22,33 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { loadCustomAgents } from "#src/config/custom-agents";
-import { InterruptHandler, SessionLifecycleHandler, ToolStartHandler } from "#src/handlers/index";
+import {
+  InterruptHandler,
+  SessionLifecycleHandler,
+  ToolStartHandler,
+} from "#src/handlers/index";
 import { createChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
 import { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
-import { createSubagentSession, type SubagentSessionDeps } from "#src/lifecycle/create-subagent-session";
+import {
+  createSubagentSession,
+  type SubagentSessionDeps,
+} from "#src/lifecycle/create-subagent-session";
 import { buildParentSnapshot } from "#src/lifecycle/parent-snapshot";
-import { SubagentManager, type SubagentManagerObserver } from "#src/lifecycle/subagent-manager";
-import { buildEventData, type NotificationDetails, NotificationManager } from "#src/observation/notification";
+import {
+  SubagentManager,
+  type SubagentManagerObserver,
+} from "#src/lifecycle/subagent-manager";
+import {
+  buildEventData,
+  type NotificationDetails,
+  NotificationManager,
+} from "#src/observation/notification";
 import { createNotificationRenderer } from "#src/observation/renderer";
 import { createSubagentRuntime } from "#src/runtime";
-import { publishSubagentsService, unpublishSubagentsService } from "#src/service/service";
+import {
+  publishSubagentsService,
+  unpublishSubagentsService,
+} from "#src/service/service";
 import { SubagentsServiceAdapter } from "#src/service/service-adapter";
 import { detectEnv } from "#src/session/env";
 
@@ -48,7 +65,10 @@ import { AgentWidget } from "#src/ui/agent-widget";
 
 export default function (pi: ExtensionAPI) {
   // ---- Register custom notification renderer ----
-  pi.registerMessageRenderer<NotificationDetails>("subagent-notification", createNotificationRenderer());
+  pi.registerMessageRenderer<NotificationDetails>(
+    "subagent-notification",
+    createNotificationRenderer(),
+  );
 
   const registry = new AgentTypeRegistry(() => loadCustomAgents(process.cwd()));
 
@@ -87,7 +107,10 @@ export default function (pi: ExtensionAPI) {
     },
     onSubagentCompleted(record) {
       // Emit lifecycle event based on terminal status.
-      const isError = record.status === "error" || record.status === "stopped" || record.status === "aborted";
+      const isError =
+        record.status === "error" ||
+        record.status === "stopped" ||
+        record.status === "aborted";
       const eventData = buildEventData(record);
       if (isError) {
         pi.events.emit("subagents:failed", eventData);
@@ -97,9 +120,14 @@ export default function (pi: ExtensionAPI) {
 
       // Persist final record for cross-extension history reconstruction.
       pi.appendEntry("subagents:record", {
-        id: record.id, type: record.type, description: record.description,
-        status: record.status, result: record.result, error: record.error,
-        startedAt: record.startedAt, completedAt: record.completedAt,
+        id: record.id,
+        type: record.type,
+        description: record.description,
+        status: record.status,
+        result: record.result,
+        error: record.error,
+        startedAt: record.startedAt,
+        completedAt: record.completedAt,
       });
 
       // Skip notification if result was already consumed via get_subagent_result.
@@ -147,7 +175,9 @@ export default function (pi: ExtensionAPI) {
     },
     exec: (cmd, args, opts) => pi.exec(cmd, args, opts),
     registry,
-    lifecycle: createChildLifecyclePublisher((channel, data) => pi.events.emit(channel, data)),
+    lifecycle: createChildLifecyclePublisher((channel, data) =>
+      pi.events.emit(channel, data),
+    ),
   };
 
   // ConcurrencyLimiter: schedules background run thunks FIFO against the limit.
@@ -155,7 +185,8 @@ export default function (pi: ExtensionAPI) {
   const limiter = new ConcurrencyLimiter(() => settings.maxConcurrent);
 
   const manager = new SubagentManager({
-    createSubagentSession: (params) => createSubagentSession(params, subagentSessionDeps),
+    createSubagentSession: (params) =>
+      createSubagentSession(params, subagentSessionDeps),
     baseCwd: process.cwd(),
     observer,
     limiter,
@@ -174,7 +205,9 @@ export default function (pi: ExtensionAPI) {
     unpublishSubagentsService,
   );
 
-  pi.on("session_start", (event, ctx) => lifecycle.handleSessionStart(event, ctx));
+  pi.on("session_start", (event, ctx) =>
+    lifecycle.handleSessionStart(event, ctx),
+  );
   pi.on("session_before_switch", () => lifecycle.handleSessionBeforeSwitch());
   pi.on("session_shutdown", () => lifecycle.handleSessionShutdown());
 
@@ -183,7 +216,9 @@ export default function (pi: ExtensionAPI) {
 
   // Grab UI context from first tool execution + clear lingering widget on new turn
   const toolStart = new ToolStartHandler(runtime);
-  pi.on("tool_execution_start", (event, ctx) => toolStart.handleToolExecutionStart(event, ctx));
+  pi.on("tool_execution_start", (event, ctx) =>
+    toolStart.handleToolExecutionStart(event, ctx),
+  );
 
   // Abort all subagents when the parent agent loop is interrupted (ESC).
   const interrupt = new InterruptHandler(manager);
@@ -191,11 +226,21 @@ export default function (pi: ExtensionAPI) {
 
   // ---- Agent tool ----
 
-  pi.registerTool(new AgentTool(manager, runtime, settings, registry, getAgentDir()).toToolDefinition());
+  pi.registerTool(
+    new AgentTool(
+      manager,
+      runtime,
+      settings,
+      registry,
+      getAgentDir(),
+    ).toToolDefinition(),
+  );
 
   // ---- get_subagent_result tool ----
 
-  pi.registerTool(new GetResultTool(manager, notifications, registry).toToolDefinition());
+  pi.registerTool(
+    new GetResultTool(manager, notifications, registry).toToolDefinition(),
+  );
 
   // ---- steer_subagent tool ----
 
@@ -229,8 +274,26 @@ export default function (pi: ExtensionAPI) {
   pi.registerShortcut("ctrl+alt+a", {
     description: "Open agent monitor",
     handler: async (ctx) => {
-      const { openAgentMonitor } = await import("./ui/agent-monitor");
-      await openAgentMonitor(ctx, manager, registry, runtime.agentActivity, settings, new FsAgentFileOps(), join(getAgentDir(), "agents"), join(process.cwd(), ".pi", "agents"));
+      try {
+        const { openAgentMonitor } = await import("./ui/agent-monitor");
+        await openAgentMonitor(
+          ctx,
+          manager,
+          registry,
+          runtime.agentActivity,
+          settings,
+          new FsAgentFileOps(),
+          join(getAgentDir(), "agents"),
+          join(process.cwd(), ".pi", "agents"),
+        );
+      } catch (err) {
+        // Defense in depth: if openAgentMonitor (or the dynamic import) throws,
+        // swallow it here so the error doesn't propagate unhandled and leave
+        // Pi in a broken state. The factory-level try/catch in agent-monitor.ts
+        // handles construction failures; this catches anything that escapes it.
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[pi-subagents] agent monitor open failed: ${msg}`);
+      }
     },
   });
 }

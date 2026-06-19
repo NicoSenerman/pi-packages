@@ -8,34 +8,43 @@
  * Self-contained: if this file has a bug, the `/agents` command is unaffected.
  */
 
+import { readFileSync } from "node:fs";
+import {
+  Theme as PiTheme,
+  type ThemeColor,
+} from "@earendil-works/pi-coding-agent";
 import {
   type Component,
-  type TUI,
   matchesKey,
+  type TUI,
   truncateToWidth,
   visibleWidth,
   wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
-import { Theme as PiTheme } from "@earendil-works/pi-coding-agent";
 import type { AgentTypeRegistry } from "#src/config/agent-types";
-import { getLifetimeTotal } from "#src/lifecycle/usage";
-import type { SubagentManager } from "#src/lifecycle/subagent-manager";
 import type { Subagent } from "#src/lifecycle/subagent";
+import type { SubagentManager } from "#src/lifecycle/subagent-manager";
+import { getLifetimeTotal } from "#src/lifecycle/usage";
 import type { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
-import { ConversationContainer, type MapperDeps } from "#src/ui/conversation-container";
-import { mlog, mlogClose } from "#src/ui/monitor-debug";
 import {
-  SPINNER,
-  type Theme,
+  ConversationContainer,
+  type MapperDeps,
+} from "#src/ui/conversation-container";
+import {
   buildInvocationTags,
   describeActivity,
+  formatContextBar,
   formatDuration,
   formatMs,
   formatSessionTokens,
+  formatTokensWithCompactions,
   formatTurns,
   getDisplayName,
   getPromptModeLabel,
+  SPINNER,
+  type Theme,
 } from "#src/ui/display";
+import { mlog, mlogClose } from "#src/ui/monitor-debug";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -63,7 +72,11 @@ const MAX_TASK_LINES = 2;
 // Status helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-function statusIcon(status: Subagent["status"], spinnerFrame: number, theme: Theme): string {
+function statusIcon(
+  status: Subagent["status"],
+  spinnerFrame: number,
+  theme: Theme,
+): string {
   switch (status) {
     case "running":
       return theme.fg("accent", SPINNER[spinnerFrame % SPINNER.length]);
@@ -76,12 +89,152 @@ function statusIcon(status: Subagent["status"], spinnerFrame: number, theme: The
       return theme.fg("error", "✗");
     case "queued":
       return theme.fg("dim", "◦");
+    default:
+      // Unexpected status (unreachable today, but defensively render a valid
+      // string instead of `undefined`, which would show the literal "undefined".
+      return theme.fg("dim", "•");
   }
 }
 
 function isTerminalStatus(status: Subagent["status"]): boolean {
-  return status === "completed" || status === "steered" || status === "error"
-    || status === "stopped" || status === "aborted";
+  return (
+    status === "completed" ||
+    status === "steered" ||
+    status === "error" ||
+    status === "stopped" ||
+    status === "aborted"
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Panel chrome — titled accent title-band border + filled surface bg.
+// Gives the overlay a distinct "floating modal" feel so it doesn't blend
+// into the background conversation. `toolPendingBg` is a neutral, slightly
+// raised surface (the only non-tinted bg token available via theme.bg).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Fall-back surface bg when a theme hex cannot be resolved (the
+ *  only neutral bg token exposed via `theme.bg()`). */
+const PANEL_BG_FALLBACK = "toolPendingBg" as const;
+
+/** Cache: theme sourcePath → resolved panel bg hex (or null). Avoids re-reading
+ *  the theme JSON on every 80ms spinner tick. A Map is fine — few themes. */
+const panelBgHexCache = new Map<string, string | null>();
+
+/**
+ * Resolve a recessed panel-surface bg hex (truecolor) from the active theme's
+ * `vars`. Prefers `bgDarkest` (deepest, most clearly a separate surface), then
+ * `bgDarker`, then `bg`. Returns null if the theme's source file is
+ * unavailable or the vars are missing — callers fall back to `theme.bg()`.
+ *
+ * This bypasses `theme.bg()` because Pi's loader hardcodes exactly 6 bg
+ * tokens (the `ThemeBg` union); a custom `panelBg` key would be misclassified
+ * as a foreground color. Emitting a raw truecolor escape lets us pick any
+ * var while staying theme-adaptive.
+ */
+function resolvePanelBgHex(theme: PiTheme): string | null {
+  const sourcePath = theme.sourcePath;
+  if (!sourcePath) return null;
+  const cached = panelBgHexCache.get(sourcePath);
+  if (cached !== undefined) return cached;
+  let hex: string | null = null;
+  try {
+    const json = JSON.parse(readFileSync(sourcePath, "utf8")) as {
+      vars?: Record<string, string>;
+    };
+    const vars = json.vars ?? {};
+    hex = vars.bgDarkest ?? vars.bgDarker ?? vars.bg ?? null;
+  } catch {
+    hex = null;
+  }
+  panelBgHexCache.set(sourcePath, hex);
+  return hex;
+}
+
+/** Parse a `#RRGGBB` (or `RRGGBB`) hex into [r, g, b]. Returns null on failure. */
+function hexToRgb(hex: string): [number, number, number] | null {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(hex.trim());
+  if (!m) return null;
+  const n = Number.parseInt(m[1], 16);
+  return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+}
+
+/** Wrap `text` in a truecolor background escape from a hex; no-op if invalid. */
+function bgFromHex(hex: string, text: string): string {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return text;
+  return `\x1b[48;2;${rgb[0]};${rgb[1]};${rgb[2]}m${text}\x1b[49m`;
+}
+
+/** Apply the panel surface bg to `text`: theme-hex truecolor if resolvable,
+ *  otherwise the neutral `toolPendingBg` token via `theme.bg()`. */
+function applyPanelBg(theme: PiTheme, text: string): string {
+  const hex = resolvePanelBgHex(theme);
+  if (hex) return bgFromHex(hex, text);
+  return theme.bg(PANEL_BG_FALLBACK, text);
+}
+
+/** Pad a string with trailing spaces to `len` visible width. */
+function padTo(s: string, len: number): string {
+  const vis = visibleWidth(s);
+  return s + " ".repeat(Math.max(0, len - vis));
+}
+
+/** A panel content row: bordered, padded, filled with the panel surface bg. */
+function panelRow(th: PiTheme, content: string, innerW: number): string {
+  const w = Math.max(0, innerW);
+  return applyPanelBg(
+    th,
+    th.fg("border", "│") +
+      " " +
+      truncateToWidth(padTo(content, w), w) +
+      " " +
+      th.fg("border", "│"),
+  );
+}
+
+/** Horizontal divider row (panel surface filled). */
+function panelDivider(
+  th: PiTheme,
+  innerW: number,
+  color: ThemeColor = "border",
+): string {
+  return panelRow(th, th.fg(color, "─".repeat(Math.max(0, innerW))), innerW);
+}
+
+/** Bottom border (panel surface filled). */
+function panelBottom(th: PiTheme, width: number): string {
+  return applyPanelBg(
+    th,
+    th.fg("border", `╰${"─".repeat(Math.max(0, width - 2))}╯`),
+  );
+}
+
+/**
+ * Top border with an accent-colored title band: "╭─ ◉ Title ──╮".
+ * The title text is rendered in the accent color and sits in a small gap
+ * between two dash runs, giving the panel a window-title-bar look.
+ */
+function panelTitledTop(th: PiTheme, titleText: string, width: number): string {
+  const w = Math.max(0, width);
+  const maxTitleW = Math.max(4, w - 8);
+  let core = `◉ ${titleText}`;
+  if (visibleWidth(core) > maxTitleW) {
+    // Truncate the title portion (keep the "◉ " prefix) until it fits + "…".
+    let t = titleText;
+    while (visibleWidth(`◉ ${t}…`) > maxTitleW && t.length > 1) {
+      t = t.slice(0, -1);
+    }
+    core = `◉ ${t}…`;
+  }
+  const coreW = visibleWidth(core);
+  const fill = "─".repeat(Math.max(0, w - 5 - coreW)); // ╭─ + " " + core + " " + ─*fill + ╮
+  return applyPanelBg(
+    th,
+    th.fg("border", "╭─ ") +
+      th.fg("accent", core) +
+      th.fg("border", ` ${fill}╮`),
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -137,23 +290,40 @@ class AgentMonitor implements Component {
     // by the subscribe-callback instead of polling.
     this.spinnerTimer = setInterval(() => {
       if (this.closed) return;
-
-      // In conversation view, pause spinner and let event-driven updates handle rendering
-      if (this.view === "conversation") {
-        if (this.conversationDirty && this.selectedAgentForViewer && this.conversationContainer) {
-          mlog("spinner", "rebuilding dirty conversation");
-          this.conversationContainer.rebuildFromSnapshot(this.selectedAgentForViewer.messages);
-          this.conversationDirty = false;
-          this.tui.requestRender();
+      try {
+        // In conversation view, pause spinner and let event-driven updates handle rendering
+        if (this.view === "conversation") {
+          if (
+            this.conversationDirty &&
+            this.selectedAgentForViewer &&
+            this.conversationContainer
+          ) {
+            mlog("spinner", "rebuilding dirty conversation");
+            this.conversationContainer.rebuildFromSnapshot(
+              this.selectedAgentForViewer.messages,
+            );
+            this.conversationDirty = false;
+          }
+          // Don't animate spinner or poll subscriptions while in conversation.
+          // requestRender() below still fires so the overlay keeps refreshing.
+          return;
         }
-        return; // Don't animate spinner or poll subscriptions while in conversation
+
+        this.spinnerFrame++;
+        this.subscribeToAgents(); // pick up newly spawned agents
+      } catch (err) {
+        // Swallow-and-continue: a thrown tick must NOT re-throw and freeze the
+        // overlay forever (the root cause of "overlay won't open until restart").
+        mlog("spinner", "error", {
+          message: err instanceof Error ? err.message : String(err),
+        });
+      } finally {
+        // Always request a render (even on error), unless already closed.
+        // This replaces a per-branch requestRender() so a thrown branch can't
+        // starve the overlay of refreshes.
+        this.tui.requestRender();
       }
-
-      this.spinnerFrame++;
-      this.subscribeToAgents(); // pick up newly spawned agents
-      this.tui.requestRender();
     }, SPINNER_INTERVAL_MS);
-
   }
 
   // ── Component interface ─────────────────────────────────────────────────
@@ -162,7 +332,11 @@ class AgentMonitor implements Component {
     // ── Conversation view input ─────────────────────────────────────────
 
     if (this.view === "conversation") {
-      if (matchesKey(data, "escape") || matchesKey(data, "backspace") || matchesKey(data, "q")) {
+      if (
+        matchesKey(data, "escape") ||
+        matchesKey(data, "backspace") ||
+        matchesKey(data, "q")
+      ) {
         mlog("handleInput", "conversation → list (Esc/Backspace/Q)");
         this.view = "list";
         this.scrollOffset = 0;
@@ -175,7 +349,11 @@ class AgentMonitor implements Component {
       // E to expand/collapse focused component
       if (matchesKey(data, "e")) {
         if (this.conversationContainer && this.lastInnerW > 0) {
-          const focusedChildIdx = this.conversationContainer.getFocusedChildIndex(this.scrollOffset, this.lastInnerW);
+          const focusedChildIdx =
+            this.conversationContainer.getFocusedChildIndex(
+              this.scrollOffset,
+              this.lastInnerW,
+            );
           if (focusedChildIdx >= 0) {
             this.conversationContainer.toggleExpanded(focusedChildIdx);
             this.tui.requestRender();
@@ -194,8 +372,18 @@ class AgentMonitor implements Component {
         if (agent.status === "running") {
           const activity = this.getActivity(agent);
           if (activity) {
-            const act = describeActivity(activity.activeTools, activity.responseText);
-            contentLines = [...contentLines, "", truncateToWidth(this.theme.fg("accent", "● ") + this.theme.fg("dim", act), innerW)];
+            const act = describeActivity(
+              activity.activeTools,
+              activity.responseText,
+            );
+            contentLines = [
+              ...contentLines,
+              "",
+              truncateToWidth(
+                this.theme.fg("accent", "● ") + this.theme.fg("dim", act),
+                innerW,
+              ),
+            ];
           }
         }
 
@@ -217,8 +405,14 @@ class AgentMonitor implements Component {
           this.autoScroll = false;
           this.tui.requestRender();
           return;
-        } else if (matchesKey(data, "pageDown") || matchesKey(data, "shift+down")) {
-          this.scrollOffset = Math.min(maxScroll, this.scrollOffset + viewportH);
+        } else if (
+          matchesKey(data, "pageDown") ||
+          matchesKey(data, "shift+down")
+        ) {
+          this.scrollOffset = Math.min(
+            maxScroll,
+            this.scrollOffset + viewportH,
+          );
           this.autoScroll = this.scrollOffset >= maxScroll;
           this.tui.requestRender();
           return;
@@ -316,7 +510,11 @@ class AgentMonitor implements Component {
       // Skip re-render if nothing changed — the AgentWidget's requestRender()
       // fires every 80ms but there's no point re-rendering identical content.
       // We also need to re-render when scrollOffset or content changes.
-      if (!this.needsRender && this.lastConversationLines.length > 0 && this._lastScrollOffset === this.scrollOffset) {
+      if (
+        !this.needsRender &&
+        this.lastConversationLines.length > 0 &&
+        this._lastScrollOffset === this.scrollOffset
+      ) {
         return this.lastConversationLines;
       }
       this.needsRender = false;
@@ -342,12 +540,23 @@ class AgentMonitor implements Component {
       this.spinnerTimer = undefined;
     }
 
-    // Dispose conversation container if active
-    this.disposeConversationView();
+    // Dispose conversation container if active. Wrapped in try/catch so a
+    // throw here can't leak the agent-update subscriptions cleaned up below.
+    try {
+      this.disposeConversationView();
+    } catch (err) {
+      mlog("dispose", "error", {
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
 
     // Unsubscribe from all agent updates
     for (const unsub of this.unsubscribes) {
-      try { unsub(); } catch { /* best effort */ }
+      try {
+        unsub();
+      } catch {
+        /* best effort */
+      }
     }
     this.unsubscribes = [];
     mlog("dispose", "spinner cleared, closing log");
@@ -359,10 +568,13 @@ class AgentMonitor implements Component {
   private getAgents(): Subagent[] {
     const agents = this.manager.listAgents();
     const priority: Record<Subagent["status"], number> = {
-      error: 0, stopped: 0, aborted: 0,
+      error: 0,
+      stopped: 0,
+      aborted: 0,
       running: 1,
       queued: 2,
-      completed: 3, steered: 3,
+      completed: 3,
+      steered: 3,
     };
     return agents.sort((a, b) => {
       const pa = priority[a.status] ?? 9;
@@ -384,8 +596,15 @@ class AgentMonitor implements Component {
   private subscribeToAgents(): void {
     const agents = this.getAgents();
     for (const agent of agents) {
-      if (!this.subscribedIds.has(agent.id)) {
+      if (this.subscribedIds.has(agent.id)) continue;
+      try {
         this.subscribeToAgent(agent);
+      } catch (err) {
+        // One bad agent must not abort subscription of the rest.
+        mlog("subscribe", "error", {
+          id: agent.id,
+          message: err instanceof Error ? err.message : String(err),
+        });
       }
     }
   }
@@ -406,11 +625,17 @@ class AgentMonitor implements Component {
     // If subscribeToUpdates returns undefined (no session yet), we'll miss early
     // events but won't accumulate duplicate subscriptions from spinner retries.
     this.subscribedIds.add(agent.id);
-    mlog("subscribe", "subscribing to agent", { id: agent.id, type: agent.type });
+    mlog("subscribe", "subscribing to agent", {
+      id: agent.id,
+      type: agent.type,
+    });
     const unsub = agent.subscribeToUpdates(() => {
       if (this.closed) return;
       mlog("subscribe-cb", "agent update", { id: agent.id, view: this.view });
-      if (this.view === "conversation" && this.selectedAgentForViewer?.id === agent.id) {
+      if (
+        this.view === "conversation" &&
+        this.selectedAgentForViewer?.id === agent.id
+      ) {
         this.conversationDirty = true;
         this.needsRender = true;
       }
@@ -427,28 +652,22 @@ class AgentMonitor implements Component {
 
   private renderListView(width: number): string[] {
     const th = this.theme;
-    const innerW = width - 4; // │ + space + content + space + │
+    const innerW = Math.max(1, width - 4); // │ + space + content + space + │
     const lines: string[] = [];
 
-    const pad = (s: string, len: number) => {
-      const vis = visibleWidth(s);
-      return s + " ".repeat(Math.max(0, len - vis));
-    };
-    const row = (content: string) =>
-      th.fg("border", "│") + " " + truncateToWidth(pad(content, innerW), innerW) + " " + th.fg("border", "│");
-    const hrTop = th.fg("border", `╭${"─".repeat(width - 2)}╮`);
-    const hrBot = th.fg("border", `╰${"─".repeat(width - 2)}╯`);
-    const hrMid = row(th.fg("border", "─".repeat(innerW)));
+    const hrTop = panelTitledTop(th, "Agents", width);
+    const hrBot = panelBottom(th, width);
+    const hrMid = panelDivider(th, innerW);
 
     // Header
     lines.push(hrTop);
-    lines.push(row(`${th.bold("Agents")}`));
+    lines.push(panelRow(th, `${th.bold("Agents")}`, innerW));
     lines.push(hrMid);
 
     // Agent list — render all agents, then truncate to viewport
     const agents = this.getAgents();
     if (agents.length === 0) {
-      lines.push(row(th.fg("dim", "No agents running.")));
+      lines.push(panelRow(th, th.fg("dim", "No agents running."), innerW));
     } else {
       const contentLines: string[] = [];
       let selectedStart = 0;
@@ -489,21 +708,27 @@ class AgentMonitor implements Component {
       }
       this.scrollOffset = Math.min(this.scrollOffset, maxScroll);
 
-      const visible = contentLines.slice(this.scrollOffset, this.scrollOffset + viewportH);
+      const visible = contentLines.slice(
+        this.scrollOffset,
+        this.scrollOffset + viewportH,
+      );
       for (const line of visible) {
-        lines.push(row(line));
+        lines.push(panelRow(th, line, innerW));
       }
       // Pad remaining viewport lines
       const remaining = viewportH - visible.length;
       for (let i = 0; i < remaining; i++) {
-        lines.push(row(""));
+        lines.push(panelRow(th, "", innerW));
       }
     }
 
     // Footer separator + keybinding bar
     lines.push(hrMid);
-    const footerLeft = th.fg("dim", " ↑↓/PgUp/Dn navigate  Enter open  i interrupt  a abort  Esc close");
-    lines.push(row(footerLeft));
+    const footerLeft = th.fg(
+      "dim",
+      " ↑↓/PgUp/Dn navigate  Enter open  i interrupt  a abort  Esc close",
+    );
+    lines.push(panelRow(th, footerLeft, innerW));
     lines.push(hrBot);
 
     return lines;
@@ -513,19 +738,14 @@ class AgentMonitor implements Component {
 
   private renderConversationView(width: number): string[] {
     const th = this.theme;
-    const innerW = width - 4; // │ + space + content + space + │
+    const innerW = Math.max(1, width - 4); // │ + space + content + space + │
     this.lastInnerW = innerW; // cache for handleInput scroll calculations
     const lines: string[] = [];
 
-    const pad = (s: string, len: number) => {
-      const vis = visibleWidth(s);
-      return s + " ".repeat(Math.max(0, len - vis));
-    };
-    const row = (content: string) =>
-      th.fg("border", "│") + " " + truncateToWidth(pad(content, innerW), innerW) + " " + th.fg("border", "│");
-    const hrTop = th.fg("border", `╭${"─".repeat(width - 2)}╮`);
-    const hrBot = th.fg("border", `╰${"─".repeat(width - 2)}╯`);
-    const hrMid = row(th.fg("dim", "─".repeat(innerW)));
+    const row = (content: string) => panelRow(th, content, innerW);
+    const hrTop = panelTitledTop(th, "Conversation", width);
+    const hrBot = panelBottom(th, width);
+    const hrMid = panelDivider(th, innerW, "dim");
 
     const agent = this.selectedAgentForViewer;
     if (!agent) {
@@ -537,25 +757,33 @@ class AgentMonitor implements Component {
     const name = getDisplayName(agent.type, this.registry);
     const modeLabel = getPromptModeLabel(agent.type, this.registry);
     const modeTag = modeLabel ? ` ${th.fg("dim", `(${modeLabel})`)}` : "";
-    const icon = agent.status === "running"
-      ? th.fg("accent", SPINNER[this.spinnerFrame % SPINNER.length])
-      : agent.status === "completed"
-        ? th.fg("success", "✓")
-        : agent.status === "error"
-          ? th.fg("error", "✗")
-          : th.fg("dim", "○");
-    const headerParts: string[] = [formatDuration(agent.startedAt, agent.completedAt)];
+    const icon =
+      agent.status === "running"
+        ? th.fg("accent", SPINNER[this.spinnerFrame % SPINNER.length])
+        : agent.status === "completed"
+          ? th.fg("success", "✓")
+          : agent.status === "error"
+            ? th.fg("error", "✗")
+            : th.fg("dim", "○");
+    const headerParts: string[] = [
+      formatDuration(agent.startedAt, agent.completedAt),
+    ];
     const toolUses = agent.toolUses;
-    if (toolUses > 0) headerParts.unshift(`${toolUses} tool${toolUses === 1 ? "" : "s"}`);
+    if (toolUses > 0)
+      headerParts.unshift(`${toolUses} tool${toolUses === 1 ? "" : "s"}`);
     const tokens = getLifetimeTotal(agent.lifetimeUsage);
     if (tokens > 0) {
       const percent = agent.getContextPercent();
-      headerParts.push(formatSessionTokens(tokens, percent, th, agent.compactionCount));
+      headerParts.push(
+        formatSessionTokens(tokens, percent, th, agent.compactionCount),
+      );
     }
 
-    lines.push(row(
-      `${icon} ${th.bold(name)}${modeTag}  ${th.fg("muted", agent.description)} ${th.fg("dim", "·")} ${th.fg("dim", headerParts.join(" · "))}`,
-    ));
+    lines.push(
+      row(
+        `${icon} ${th.bold(name)}${modeTag}  ${th.fg("muted", agent.description)} ${th.fg("dim", "·")} ${th.fg("dim", headerParts.join(" · "))}`,
+      ),
+    );
     const { modelName, tags } = buildInvocationTags(agent.invocation);
     const invParts = modelName ? [th.fg("accent", modelName), ...tags] : tags;
     if (invParts.length > 0) {
@@ -571,7 +799,7 @@ class AgentMonitor implements Component {
       // that break the overlay layout. These are fine in Pi's main chat but
       // corrupt terminal state inside our custom overlay.
       const oscRe = /\x1b\][^\x07\x1b]*[\x07\x1b]/g;
-      contentLines = contentLines.map(l => l.replace(oscRe, ""));
+      contentLines = contentLines.map((l) => l.replace(oscRe, ""));
     }
 
     // One-shot comprehensive dump for debugging UI breakage
@@ -584,7 +812,9 @@ class AgentMonitor implements Component {
         // Strip ANSI for preview
         const stripped = c.replace(/\x1b\[[0-9;]*m/g, "");
         mlog("content-dump", `line ${i}/${contentLines.length}`, {
-          vw, rawLen: c.length, hasNewline: hasNL,
+          vw,
+          rawLen: c.length,
+          hasNewline: hasNL,
           stripped: stripped.slice(0, 80),
           // Check if after row() wrapping the line would be too wide
           rowVW: visibleWidth(row(c)),
@@ -592,14 +822,21 @@ class AgentMonitor implements Component {
         });
         // Flag lines with embedded newlines (they split the row)
         if (hasNL) {
-          mlog("BUG-EMBEDDED-NEWLINE", `line ${i}`, { raw: c.length, sample: JSON.stringify(c.slice(0, 100)) });
+          mlog("BUG-EMBEDDED-NEWLINE", `line ${i}`, {
+            raw: c.length,
+            sample: JSON.stringify(c.slice(0, 100)),
+          });
         }
       }
       // Also dump a few row-wrapped lines to check final width
       for (let i = 0; i < Math.min(5, contentLines.length); i++) {
         const rowLine = row(contentLines[i]);
         const rvw = visibleWidth(rowLine);
-        mlog("row-dump", `line ${i}`, { rowVW: rvw, expectedWidth: width, overflow: rvw > width });
+        mlog("row-dump", `line ${i}`, {
+          rowVW: rvw,
+          expectedWidth: width,
+          overflow: rvw > width,
+        });
       }
     }
 
@@ -611,9 +848,14 @@ class AgentMonitor implements Component {
     if (agent.status === "running") {
       const activity = this.getActivity(agent);
       if (activity) {
-        const act = describeActivity(activity.activeTools, activity.responseText);
+        const act = describeActivity(
+          activity.activeTools,
+          activity.responseText,
+        );
         contentLines.push("");
-        contentLines.push(truncateToWidth(th.fg("accent", "● ") + th.fg("dim", act), innerW));
+        contentLines.push(
+          truncateToWidth(th.fg("accent", "● ") + th.fg("dim", act), innerW),
+        );
       }
     }
 
@@ -625,14 +867,22 @@ class AgentMonitor implements Component {
     }
     this.scrollOffset = Math.min(this.scrollOffset, maxScroll);
 
-    const visible = contentLines.slice(this.scrollOffset, this.scrollOffset + viewportH);
+    const visible = contentLines.slice(
+      this.scrollOffset,
+      this.scrollOffset + viewportH,
+    );
     for (let i = 0; i < visible.length; i++) {
       const raw = visible[i];
       const vw = visibleWidth(raw);
       const rl = raw.length;
       // Log any line where visible width is way off from expected innerW
       if (vw > innerW + 5 || (vw < innerW - 5 && rl > 20)) {
-        mlog("width-mismatch", `line ${i}`, { vis: vw, raw: rl, innerW, sample: raw.slice(0, 80) });
+        mlog("width-mismatch", `line ${i}`, {
+          vis: vw,
+          raw: rl,
+          innerW,
+          sample: raw.slice(0, 80),
+        });
       }
       lines.push(row(raw));
     }
@@ -644,27 +894,61 @@ class AgentMonitor implements Component {
 
     // Footer with keybinding bar and scroll position
     lines.push(hrMid);
-    const focusedChildIdx = this.conversationContainer?.getFocusedChildIndex(this.scrollOffset, innerW) ?? -1;
-    const scrollPct = contentLines.length <= viewportH
-      ? "100%"
-      : `${Math.round(((this.scrollOffset + viewportH) / contentLines.length) * 100)}%`;
-    const footerLeft = th.fg("dim", `${contentLines.length} lines · ${scrollPct}`);
-    const expandHint = focusedChildIdx >= 0 ? th.fg("accent", "E expand") + th.fg("dim", " · ") : "";
-    const footerRight = th.fg("dim", "Esc/Backspace back  PgUp/PgDn page  Home/End jump");
-    const footerGap = Math.max(1, innerW - visibleWidth(footerLeft) - visibleWidth(expandHint) - visibleWidth(footerRight));
-    lines.push(row(footerLeft + " ".repeat(footerGap) + expandHint + footerRight));
+    const focusedChildIdx =
+      this.conversationContainer?.getFocusedChildIndex(
+        this.scrollOffset,
+        innerW,
+      ) ?? -1;
+    const scrollPct =
+      contentLines.length <= viewportH
+        ? "100%"
+        : `${Math.round(((this.scrollOffset + viewportH) / contentLines.length) * 100)}%`;
+    const footerLeft = th.fg(
+      "dim",
+      `${contentLines.length} lines · ${scrollPct}`,
+    );
+    const expandHint =
+      focusedChildIdx >= 0
+        ? th.fg("accent", "E expand") + th.fg("dim", " · ")
+        : "";
+    const footerRight = th.fg(
+      "dim",
+      "Esc/Backspace back  PgUp/PgDn page  Home/End jump",
+    );
+    const footerGap = Math.max(
+      1,
+      innerW -
+        visibleWidth(footerLeft) -
+        visibleWidth(expandHint) -
+        visibleWidth(footerRight),
+    );
+    lines.push(
+      row(footerLeft + " ".repeat(footerGap) + expandHint + footerRight),
+    );
     lines.push(hrBot);
 
-    mlog("render", "conversation view", { totalLines: lines.length, scrollOffset: this.scrollOffset, contentLines: contentLines.length, viewportH, closed: this.closed });
+    mlog("render", "conversation view", {
+      totalLines: lines.length,
+      scrollOffset: this.scrollOffset,
+      contentLines: contentLines.length,
+      viewportH,
+      closed: this.closed,
+    });
 
     // Final sanity: check every output line for embedded newlines or width overflow
     for (let i = 0; i < lines.length; i++) {
       if (lines[i].includes("\n") || lines[i].includes("\r")) {
-        mlog("BUG-OUTPUT-NEWLINE", `output line ${i}`, { sample: JSON.stringify(lines[i].slice(0, 120)) });
+        mlog("BUG-OUTPUT-NEWLINE", `output line ${i}`, {
+          sample: JSON.stringify(lines[i].slice(0, 120)),
+        });
       }
       const lvw = visibleWidth(lines[i]);
       if (lvw > width) {
-        mlog("BUG-OUTPUT-OVERFLOW", `output line ${i}`, { vw: lvw, maxWidth: width, sample: lines[i].replace(/\x1b\[[0-9;]*m/g, "").slice(0, 80) });
+        mlog("BUG-OUTPUT-OVERFLOW", `output line ${i}`, {
+          vw: lvw,
+          maxWidth: width,
+          sample: lines[i].replace(/\x1b\[[0-9;]*m/g, "").slice(0, 80),
+        });
       }
     }
 
@@ -673,7 +957,11 @@ class AgentMonitor implements Component {
 
   // ── Private: agent rendering (list view only) ─────────────────────────────
 
-  private renderAgent(agent: Subagent, width: number, isSelected: boolean): string[] {
+  private renderAgent(
+    agent: Subagent,
+    width: number,
+    isSelected: boolean,
+  ): string[] {
     const th = this.theme;
     const lines: string[] = [];
 
@@ -715,22 +1003,37 @@ class AgentMonitor implements Component {
       const parts: string[] = [];
 
       if (agent.error) {
-        parts.push(th.fg("error", agent.error.length > 50 ? agent.error.slice(0, 50) + "…" : agent.error));
+        parts.push(
+          th.fg(
+            "error",
+            agent.error.length > 50
+              ? agent.error.slice(0, 50) + "…"
+              : agent.error,
+          ),
+        );
         return parts.join(" · ");
       }
 
       // Tool count + duration for completed
       const toolCount = agent.toolUses;
-      if (toolCount > 0) parts.push(`${toolCount} tool${toolCount === 1 ? "" : "s"}`);
+      if (toolCount > 0)
+        parts.push(`${toolCount} tool${toolCount === 1 ? "" : "s"}`);
 
-      const duration = this.formatDurationCompact(agent.startedAt, agent.completedAt);
+      const duration = this.formatDurationCompact(
+        agent.startedAt,
+        agent.completedAt,
+      );
       if (duration) parts.push(duration);
 
       // Tokens
       const tokens = getLifetimeTotal(agent.lifetimeUsage);
       if (tokens > 0) {
         const percent = agent.getContextPercent();
-        parts.push(formatSessionTokens(tokens, percent, th, agent.compactionCount));
+        parts.push(
+          formatTokensWithCompactions(tokens, th, agent.compactionCount),
+        );
+        const ctxBar = formatContextBar(percent, th);
+        if (ctxBar) parts.push(ctxBar);
       }
 
       return parts.length > 0 ? parts.join(" · ") : "";
@@ -742,12 +1045,20 @@ class AgentMonitor implements Component {
     if (agent.status === "running" && activity) {
       // Current tool activity
       if (activity.activeTools.size > 0) {
-        const act = describeActivity(activity.activeTools, activity.responseText);
+        const act = describeActivity(
+          activity.activeTools,
+          activity.responseText,
+        );
         parts.push(act);
       } else if (activity.responseText && activity.responseText.trim()) {
         // Streaming text — show truncated first line
-        const firstLine = activity.responseText.split("\n").find(l => l.trim())?.trim() ?? "";
-        const truncated = firstLine.length > 40 ? firstLine.slice(0, 40) + "…" : firstLine;
+        const firstLine =
+          activity.responseText
+            .split("\n")
+            .find((l) => l.trim())
+            ?.trim() ?? "";
+        const truncated =
+          firstLine.length > 40 ? firstLine.slice(0, 40) + "…" : firstLine;
         parts.push(truncated);
       } else {
         parts.push("thinking…");
@@ -764,7 +1075,11 @@ class AgentMonitor implements Component {
       const tokens = getLifetimeTotal(agent.lifetimeUsage);
       if (tokens > 0) {
         const percent = agent.getContextPercent();
-        parts.push(formatSessionTokens(tokens, percent, th, agent.compactionCount));
+        parts.push(
+          formatTokensWithCompactions(tokens, th, agent.compactionCount),
+        );
+        const ctxBar = formatContextBar(percent, th);
+        if (ctxBar) parts.push(ctxBar);
       }
     } else if (agent.status === "queued") {
       parts.push("queued");
@@ -774,7 +1089,10 @@ class AgentMonitor implements Component {
   }
 
   /** Format duration compactly (no "running" suffix — caller adds context). */
-  private formatDurationCompact(startedAt: number, completedAt?: number): string {
+  private formatDurationCompact(
+    startedAt: number,
+    completedAt?: number,
+  ): string {
     if (completedAt) {
       const ms = completedAt - startedAt;
       if (ms >= 60_000) {
@@ -792,7 +1110,9 @@ class AgentMonitor implements Component {
   private viewportHeight(): number {
     // Chrome lines: top border + header + header sep + footer sep + footer + bottom border = 6
     const chromeLines = 6;
-    const maxRows = Math.floor((this.tui.terminal.rows * MONITOR_HEIGHT_PCT) / 100);
+    const maxRows = Math.floor(
+      (this.tui.terminal.rows * MONITOR_HEIGHT_PCT) / 100,
+    );
     return Math.max(3, maxRows - chromeLines);
   }
 
@@ -844,7 +1164,10 @@ class AgentMonitor implements Component {
       return;
     }
 
-    mlog("open-view", "opening conversation view", { id: agent.id, type: agent.type });
+    mlog("open-view", "opening conversation view", {
+      id: agent.id,
+      type: agent.type,
+    });
 
     // Switch to embedded conversation view
     this.selectedAgentForViewer = agent;
@@ -876,7 +1199,9 @@ class AgentMonitor implements Component {
 
   /** Dispose the conversation container and its subscription. */
   private disposeConversationView(): void {
-    mlog("dispose-view", "disposing conversation view", { hadContainer: !!this.conversationContainer });
+    mlog("dispose-view", "disposing conversation view", {
+      hadContainer: !!this.conversationContainer,
+    });
     if (this.conversationContainer) {
       this.conversationContainer.dispose();
     }
@@ -910,18 +1235,38 @@ export async function openAgentMonitor(
   _personalAgentsDir: string,
   _projectAgentsDir: string,
 ): Promise<void> {
-
   mlog("open", "openAgentMonitor called — creating overlay");
   await ctx.ui.custom<undefined>(
-    (tui: TUI, theme: PiTheme, _keybindings: unknown, done: (result: undefined) => void) => {
-      const monitor = new AgentMonitor({
-        tui,
-        manager,
-        activityMap: agentActivity,
-        registry,
-        theme,
-        done,
-      });
+    (
+      tui: TUI,
+      theme: PiTheme,
+      _keybindings: unknown,
+      done: (result: undefined) => void,
+    ) => {
+      let monitor: AgentMonitor;
+      try {
+        monitor = new AgentMonitor({
+          tui,
+          manager,
+          activityMap: agentActivity,
+          registry,
+          theme,
+          done,
+        });
+      } catch (err) {
+        // If construction throws, the factory would otherwise throw too —
+        // leaving `done()` uncalled and Pi's overlay slot permanently "open",
+        // blocking future opens until restart. Release the slot and return a
+        // minimal fallback component so the factory stays type-safe.
+        mlog("open", "error", {
+          message: err instanceof Error ? err.message : String(err),
+        });
+        done(undefined);
+        return {
+          render: () => [""],
+          invalidate: () => {},
+        } satisfies Component;
+      }
       return monitor;
     },
     {

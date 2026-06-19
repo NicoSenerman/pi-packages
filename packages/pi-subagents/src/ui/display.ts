@@ -23,7 +23,15 @@ export interface AgentDetails {
   toolUses: number;
   tokens: string;
   durationMs: number;
-  status: "queued" | "running" | "completed" | "steered" | "aborted" | "stopped" | "error" | "background";
+  status:
+    | "queued"
+    | "running"
+    | "completed"
+    | "steered"
+    | "aborted"
+    | "stopped"
+    | "error"
+    | "background";
   /** Human-readable description of what the agent is currently doing. */
   activity?: string;
   /** Current spinner frame index (for animated running indicator). */
@@ -46,7 +54,12 @@ export interface AgentDetails {
 export const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 /** Statuses that indicate an error/non-success outcome (used for linger behavior and icon rendering). */
-export const ERROR_STATUSES = new Set(["error", "aborted", "steered", "stopped"]);
+export const ERROR_STATUSES = new Set([
+  "error",
+  "aborted",
+  "steered",
+  "stopped",
+]);
 
 /** Tool name → human-readable action for activity descriptions. */
 const TOOL_DISPLAY: Record<string, string> = {
@@ -99,8 +112,64 @@ export function formatSessionTokens(
 }
 
 /** Format turn count with optional max limit: "⟳5≤30" or "⟳5". */
-export function formatTurns(turnCount: number, maxTurns?: number | null): string {
+export function formatTurns(
+  turnCount: number,
+  maxTurns?: number | null,
+): string {
   return maxTurns != null ? `⟳${turnCount}≤${maxTurns}` : `⟳${turnCount}`;
+}
+
+/**
+ * Token count with optional compaction annotation, but NO context percent.
+ * Use when the context percent is rendered as a separate `formatContextBar`.
+ *   "12.3k token"            — no compactions
+ *   "12.3k token (↻2)"      — with compactions
+ */
+export function formatTokensWithCompactions(
+  tokens: number,
+  theme: Theme,
+  compactions = 0,
+): string {
+  const tokenStr = formatTokens(tokens);
+  if (compactions > 0)
+    return `${tokenStr} ${theme.fg("dim", `(↻${compactions})`)}`;
+  return tokenStr;
+}
+
+/**
+ * Context-window utilization as a mini progress bar: "ctx [█████░░░░░] 45%".
+ * Color thresholds (earlier than `formatSessionTokens` since subagent
+ * budgets are short-lived): <50% dim, 50–75% accent, 75–90% warning,
+ * ≥90% error. Returns "" when percent is null (provider has no
+ * contextWindow, or post-compaction before the next response).
+ *
+ * NaN/non-finite `percent` also returns "" — the upstream percent (computed
+ * in agent-session.js as `tokens/contextWindow * 100`) can be `NaN` on
+ * aborted/error messages and post-compaction. Rendering nothing is preferable
+ * to crashing `render()` (a `NaN` would propagate through `Math.max/min` into
+ * `"█".repeat(NaN)`, which throws `RangeError`).
+ */
+export function formatContextBar(
+  percent: number | null,
+  theme: Theme,
+  cells = 10,
+): string {
+  // Guard null AND non-finite (NaN/±Infinity). Without this, Math.max/min keep
+  // NaN and "█".repeat(NaN) throws RangeError, crashing the overlay render.
+  if (percent === null || typeof percent !== "number" || !isFinite(percent))
+    return "";
+  const clamped = Math.max(0, Math.min(100, percent));
+  const filled = Math.round((clamped / 100) * cells);
+  const bar = "█".repeat(filled) + "░".repeat(cells - filled);
+  const color =
+    clamped >= 90
+      ? "error"
+      : clamped >= 75
+        ? "warning"
+        : clamped >= 50
+          ? "accent"
+          : "dim";
+  return theme.fg(color, `ctx [${bar}] ${Math.round(clamped)}%`);
 }
 
 /** Format milliseconds as human-readable duration. */
@@ -109,7 +178,10 @@ export function formatMs(ms: number): string {
 }
 
 /** Format duration from start/completed timestamps. */
-export function formatDuration(startedAt: number, completedAt?: number): string {
+export function formatDuration(
+  startedAt: number,
+  completedAt?: number,
+): string {
   if (completedAt) return formatMs(completedAt - startedAt);
   return `${formatMs(Date.now() - startedAt)} (running)`;
 }
@@ -117,39 +189,54 @@ export function formatDuration(startedAt: number, completedAt?: number): string 
 // ---- Display helpers ----
 
 /** Get display name for any agent type (built-in or custom). */
-export function getDisplayName(type: SubagentType, registry: AgentConfigLookup): string {
+export function getDisplayName(
+  type: SubagentType,
+  registry: AgentConfigLookup,
+): string {
   const config = registry.resolveAgentConfig(type);
   return config.displayName ?? config.name;
 }
 
 /** Short label for prompt mode: "twin" for append, nothing for replace (the default). */
-export function getPromptModeLabel(type: SubagentType, registry: AgentConfigLookup): string | undefined {
+export function getPromptModeLabel(
+  type: SubagentType,
+  registry: AgentConfigLookup,
+): string | undefined {
   const config = registry.resolveAgentConfig(type);
   return config.promptMode === "append" ? "twin" : undefined;
 }
 
 /** Mode label is not included — callers add it where they want it. */
-export function buildInvocationTags(
-  invocation: AgentInvocation | undefined,
-): { modelName?: string; tags: string[] } {
+export function buildInvocationTags(invocation: AgentInvocation | undefined): {
+  modelName?: string;
+  tags: string[];
+} {
   const tags: string[] = [];
   if (!invocation) return { tags };
   if (invocation.thinking) tags.push(`thinking: ${invocation.thinking}`);
   if (invocation.inheritContext) tags.push("inherit context");
   if (invocation.runInBackground) tags.push("background");
-  if (invocation.maxTurns != null) tags.push(`max turns: ${invocation.maxTurns}`);
+  if (invocation.maxTurns != null)
+    tags.push(`max turns: ${invocation.maxTurns}`);
   return { modelName: invocation.modelName, tags };
 }
 
 /** Truncate text to a single line, max `len` chars. */
 function truncateLine(text: string, len = 60): string {
-  const line = text.split("\n").find(l => l.trim())?.trim() ?? "";
+  const line =
+    text
+      .split("\n")
+      .find((l) => l.trim())
+      ?.trim() ?? "";
   if (line.length <= len) return line;
   return line.slice(0, len) + "…";
 }
 
 /** Build a human-readable activity string from currently-running tools or response text. */
-export function describeActivity(activeTools: ReadonlyMap<string, string>, responseText?: string): string {
+export function describeActivity(
+  activeTools: ReadonlyMap<string, string>,
+  responseText?: string,
+): string {
   if (activeTools.size > 0) {
     const groups = new Map<string, number>();
     for (const toolName of activeTools.values()) {
@@ -160,7 +247,9 @@ export function describeActivity(activeTools: ReadonlyMap<string, string>, respo
     const parts: string[] = [];
     for (const [action, count] of groups) {
       if (count > 1) {
-        parts.push(`${action} ${count} ${action === "searching" ? "patterns" : "files"}`);
+        parts.push(
+          `${action} ${count} ${action === "searching" ? "patterns" : "files"}`,
+        );
       } else {
         parts.push(action);
       }
