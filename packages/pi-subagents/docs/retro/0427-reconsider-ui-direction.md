@@ -30,3 +30,20 @@ The plan writes `docs/decisions/0004-reconsider-ui-direction.md` plus an archite
 - **Operator-raised open questions (now Phase 19 entry criteria):** root-continuity during a session switch, view-only vs interactive, parallel-agent navigation gesture, settings command namespace, and confirming the creation-wizard's value is covered by "generate via a Pi agent" before deleting it.
 - **Release:** ship independently — Phase 18 carries no `Release:` batch tag; this issue completes the phase.
 - **Numbering:** plan `0427`, ADR `0004` (next free in `docs/decisions/`).
+
+## Stage: Implementation — Build (2026-06-18T20:05:00Z)
+
+### Session summary
+
+Executed the decision-only ADR plan in two docs steps: wrote `docs/decisions/0004-reconsider-ui-direction.md` (per-component decisions A–D plus Phase 19 entry criteria) and updated `docs/architecture/architecture.md` (Step 8 + phase row marked `✅` complete, `S8` Mermaid node `✅`, ADR-0004 Landed line gateway-ing Phase 19).
+No `src/`/`test/`/`.ts` files were touched, so the type-check and suite were correctly skipped; `pnpm run lint` is green.
+
+### Observations
+
+- **Decision-only ADR held to scope:** four docs files total (ADR, arch doc, plan, retro); zero runtime change, matching the plan's Non-Goals.
+- **Pre-completion reviewer: PASS.**
+  One non-blocking WARN — architecture design-principle #5 still read "UI extraction is deferred … first candidate for extraction," which ADR-0004's Decision D now contradicts.
+- **Reviewer warning addressed in-session:** rewrote principle #5 to "UI is an in-core, substitutable consumer" pointing at ADR-0004 (commit `1c445ed4`), rather than deferring it to Phase 19 — it lived in the same doc and directly conflicted with the just-landed ADR.
+- **Lint gotcha:** the relative ADR link from `docs/architecture/` needs `../decisions/…` (the Step 8 Landed line already had it); an initial `decisions/…` tripped `MD057` and was fixed by amend.
+  Also note `pnpm … lint | tail -N` masks the pipeline exit status — check `PIPESTATUS`/run lint unpiped to gate `&&` chains.
+- **Commit count:** 4 build/doc commits for this stage (`17b0546a`, `7b1d9316`, `1c445ed4` for the ADR + arch doc; planning commits `12e7814a`/`e4895548`/`f1e65a14` predate this stage).
