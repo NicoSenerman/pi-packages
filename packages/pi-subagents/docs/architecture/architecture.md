@@ -1061,13 +1061,13 @@ Outcome: test clone groups ≤ 10 (from 16); `subagent-manager.test.ts` uses sha
 
 ```mermaid
 flowchart LR
-    S1[✅ Step 1 - Spike (#446)]
-    S2[Step 2 - Settings command (#447)]
-    S3[Step 3 - Background widget (#444)]
-    S4[Step 4 - Native session nav (#445)]
-    S5[Step 5 - Dissolve /agents + viewer (#442)]
-    S6[Step 6 - Remove definition mgmt (#441)]
-    S7[Step 7 - Test clones (#443)]
+    S1["✅ Step 1 - Spike (#446)"]
+    S2["Step 2 - Settings command (#447)"]
+    S3["Step 3 - Background widget (#444)"]
+    S4["Step 4 - Native session nav (#445)"]
+    S5["Step 5 - Dissolve /agents + viewer (#442)"]
+    S6["Step 6 - Remove definition mgmt (#441)"]
+    S7["Step 7 - Test clones (#443)"]
 
     S1 --> S4
     S2 --> S5
