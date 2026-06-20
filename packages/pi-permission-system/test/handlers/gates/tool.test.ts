@@ -146,6 +146,40 @@ describe("describeToolGate", () => {
     expect(desc.sessionApproval?.representativePattern).toBeDefined();
   });
 
+  it("binds a current-directory file's session approval to the cwd subtree", () => {
+    const check = makeCheckResult("ask", { toolName: "edit" });
+    const desc = describeToolGate(
+      makeTcc({
+        toolName: "edit",
+        input: { path: "index.html" },
+        cwd: "/test/project",
+      }),
+      check,
+      makeFormatter(),
+    );
+    expect(desc.sessionApproval?.surface).toBe("edit");
+    expect(desc.sessionApproval?.representativePattern).toBe("/test/project/*");
+  });
+
+  it("resolves a sub-directory file's session approval to an absolute pattern", () => {
+    // Resolve-at-gate canonicalizes every path (not just the cwd-root case),
+    // so sub-directory approvals are absolute too — the deliberate tradeoff
+    // that keeps the pattern aligned with the policy values it is matched against.
+    const check = makeCheckResult("ask", { toolName: "edit" });
+    const desc = describeToolGate(
+      makeTcc({
+        toolName: "edit",
+        input: { path: "src/foo.ts" },
+        cwd: "/test/project",
+      }),
+      check,
+      makeFormatter(),
+    );
+    expect(desc.sessionApproval?.representativePattern).toBe(
+      "/test/project/src/*",
+    );
+  });
+
   it("populates promptDetails with correct fields", () => {
     const check = makeCheckResult("ask");
     const desc = describeToolGate(

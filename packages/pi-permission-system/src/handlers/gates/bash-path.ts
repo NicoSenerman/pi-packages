@@ -40,9 +40,14 @@ export function describeBashPathGate(
   if (candidates.length === 0) return null;
   const tokens = candidates.map(({ token }) => token);
 
-  // Tokens whose resolved state needs a check (deny/ask), paired with the
-  // token that produced them so the descriptor can derive its pattern.
-  const uncovered: Array<{ token: string; check: PermissionCheckResult }> = [];
+  // Tokens whose resolved state needs a check (deny/ask), paired with the raw
+  // token (prompt/decision display) and its policy values (the first of which
+  // is the canonical absolute path the approval pattern is derived from).
+  const uncovered: Array<{
+    token: string;
+    policyValues: readonly string[];
+    check: PermissionCheckResult;
+  }> = [];
   let allSessionCovered = true;
 
   for (const { token, policyValues } of candidates) {
@@ -64,11 +69,11 @@ export function describeBashPathGate(
     }
 
     if (check.state === "deny") {
-      uncovered.push({ token, check });
+      uncovered.push({ token, policyValues, check });
       break; // Short-circuit on deny.
     }
     if (check.state === "ask") {
-      uncovered.push({ token, check });
+      uncovered.push({ token, policyValues, check });
     }
   }
 
@@ -93,14 +98,19 @@ export function describeBashPathGate(
 
   // Pick the most restrictive (deny > ask > allow, first-wins) uncovered token.
   const worstCheck = pickMostRestrictive(uncovered.map(({ check }) => check));
-  const worstToken = worstCheck
-    ? (uncovered.find(({ check }) => check === worstCheck)?.token ?? null)
-    : null;
+  const worstEntry = worstCheck
+    ? uncovered.find(({ check }) => check === worstCheck)
+    : undefined;
+  const worstToken = worstEntry?.token ?? null;
 
   // All tokens evaluate to allow — no restriction.
-  if (!worstCheck || !worstToken) return null;
+  if (!worstCheck || !worstToken || !worstEntry) return null;
 
-  const pattern = deriveApprovalPattern(worstToken);
+  // Derive the pattern from the canonical absolute policy value (the cd-aware
+  // resolved path), so it matches the values a later call produces. Falls back
+  // to the raw token only when no base was resolvable (no cwd / unknown cd).
+  const approvalBase = worstEntry.policyValues[0] ?? worstToken;
+  const pattern = deriveApprovalPattern(approvalBase);
   const askMessage = formatPathAskPrompt(
     tcc.toolName,
     worstToken,

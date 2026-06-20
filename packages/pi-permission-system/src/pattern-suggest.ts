@@ -90,6 +90,10 @@ function buildLabel(pattern: string, surface: string): string {
  *
  * Returns a `SessionApprovalSuggestion` with the surface, the wildcard pattern
  * to store in `SessionRules`, and a human-readable dialog label.
+ *
+ * `value` is expected to be the canonical (cwd-resolved, absolute) path for
+ * path surfaces — callers resolve it before suggesting, so the derived pattern
+ * matches the policy values a later tool call produces.
  */
 export function suggestSessionPattern(
   surface: string,

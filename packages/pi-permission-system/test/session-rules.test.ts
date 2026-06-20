@@ -286,4 +286,19 @@ describe("deriveApprovalPattern", () => {
       ).action,
     ).toBe("ask");
   });
+
+  it("binds a current-directory file to the cwd subtree once resolved", () => {
+    // Callers resolve the path to its canonical absolute form before deriving;
+    // a current-directory file then yields the cwd glob and excludes siblings.
+    const pattern = deriveApprovalPattern("/test/project/index.html");
+    expect(pattern).toBe("/test/project/*");
+    const session = new SessionRules();
+    session.approve("edit", pattern);
+    expect(
+      evaluate("edit", "/test/project/index.html", session.getRuleset()).action,
+    ).toBe("allow");
+    expect(evaluate("edit", "/etc/passwd", session.getRuleset()).action).toBe(
+      "ask",
+    );
+  });
 });
