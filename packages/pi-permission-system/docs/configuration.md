@@ -256,6 +256,19 @@ The reason is appended to the block message shown to the agent, so it learns why
 The object form is only valid at the pattern-value level (inside a pattern map) and only for `deny` — `action` must be `"deny"`, and `reason` must be a string (a non-string reason is ignored).
 A bare `"deny"` string is unchanged and carries no reason.
 
+#### Fail-closed behavior
+
+The bash gate fails closed: when in doubt it blocks or prompts, never silently allows.
+
+- If the permission gate throws an internal error (for example a transient tree-sitter parser-init failure), the tool call is **blocked** rather than passed ungated, and a `gate_error` entry is written to the review log naming the failure.
+- A non-empty command that cannot be parsed into command units resolves to **`ask`** (the synthetic `<unparseable-bash-command>` pattern in the review log) instead of falling through to a permissive top-level `*`.
+  An empty, whitespace-only, or comment-only command has nothing to gate and is resolved normally.
+
+Because of this, set an explicit `bash` policy rather than relying on a permissive top-level `*`.
+A config whose top-level `*` is `"allow"` with no `bash` `*` policy lets every bash command silently inherit `allow`; the extension emits a startup warning in that case.
+To gate bash commands, add `"bash": { "*": "ask" }` (or `"deny"`).
+To deliberately opt into permissive bash, set `"bash": { "*": "allow" }` explicitly — that suppresses the warning.
+
 ### `mcp` Surface
 
 MCP permissions match against derived targets from tool input:

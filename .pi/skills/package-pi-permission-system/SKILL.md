@@ -160,6 +160,12 @@ When investigating a reported bug:
 4. When the bug involves path, filesystem, or platform semantics, check how `@earendil-works/pi-coding-agent` solves it first (local checkout or published source).
    Prefer Node `path` builtins (`path.relative`, `path.win32`/`path.posix`) over hand-rolled comparison; pi's containment idiom is `relative()` + a `..`/absolute-prefix check (case-insensitive on Windows).
 
+The gate fails closed (#452).
+Every `tool_call` goes through `createFailClosedToolCall` (`src/handlers/tool-call-boundary.ts`), the only `pi.on("tool_call")` target and the sole place an internal `GateOutcome` is translated to the SDK result shape.
+A thrown gate is blocked (not allowed) and recorded as a `permission_request.blocked` review entry with `resolution: "gate_error"` — the SDK's `emitToolCall` does not catch a throwing handler, so this boundary must absorb it.
+An unparseable bash command (a non-empty command that parses to zero command units) resolves to `ask` with the `<unparseable-bash-command>` sentinel `matchedPattern`, instead of falling through to a permissive top-level `*`.
+With `debugLog` on, the boundary writes one `permission.decision` trace per call and a `permission.session_summary` line on shutdown (via `DecisionAudit`); a `toolCalls != allowed + blocked + errors` mismatch logs a warning — a re-opened silent path.
+
 ## Notes for Agents
 
 Before implementing, understand:

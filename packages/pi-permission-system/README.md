@@ -19,6 +19,7 @@ Permission enforcement extension for the [Pi](https://pi.mariozechner.at/) codin
 - **Gates MCP and skill access** at server, tool, and skill-name granularity
 - **Protects sensitive file patterns** — cross-cutting `path` rules deny `.env`, `~/.ssh/*`, etc. across all tools and bash at once
 - **Guards external paths** — prompts before file tools or bash commands reach outside `cwd`
+- **Fails closed** — an internal gate error blocks the tool (with a `gate_error` review-log entry), and an unparseable bash command prompts (`ask`) rather than passing silently
 - **Forwards prompts from subagents** — `ask` policies work even in non-UI execution contexts
 - **Broadcasts UI prompt events** — `permissions:ui_prompt` fires only when the permission system is about to invoke the active user-facing permission UI
 - **Native [`@gotgenes/pi-subagents`](https://github.com/gotgenes/pi-subagents) integration** — in-process child sessions register with the permission system automatically, enabling per-agent policy enforcement and `ask`-state forwarding to the parent UI without configuration
@@ -44,6 +45,7 @@ pi install npm:@gotgenes/pi-permission-system
           "*.env.example": "allow"
         },
         "bash": {
+          "*": "ask",
           "rm -rf *": "deny",
           "sudo *": "ask"
         },
