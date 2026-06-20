@@ -85,25 +85,40 @@ Key properties:
 - The initial slash command is passed as Pi's first positional message, which interactive mode runs through `session.prompt()` — the same path as typed input — so the prompt template expands and runs on startup.
 - Tear down with `scripts/worktree-rm.sh <issue> [--delete-branch]`.
 
+Convergence (the two-session ship flow):
+
+The trunk `/ship-issue` assumes linear `main` and breaks for a worktree branch, so the convergence is split across the peer and root sessions:
+
+1. Peer session — `/ship-worktree <N>`: run pre-push checks, run `/retro <N>` (committed on the branch so it rides the land), then `git fetch origin` + `git rebase origin/main`.
+   The peer never touches `main`, never pushes the branch, never force-pushes — worktrees share the same `.git`, so the root sees the branch ref directly.
+2. Root session — `/land-worktree <N>`: `git merge --ff-only <branch>` into `main`, push, verify CI, `issue_close`, then release.
+   If the ff-merge is not a fast-forward (another peer landed first), the peer re-runs `/ship-worktree <N>` to rebase onto the new `origin/main`.
+3. Release is the root's serialized responsibility — only the root merges the single release-please PR (by rebase), so peers never race on it.
+   It honors the plan's `**Release:**` marker: `mid-batch — defer` leaves the PR open.
+4. `/land-worktree` ends by running `scripts/worktree-rm.sh <N> --delete-branch`.
+
 Guardrails:
 
 - Partition work by package — one package per peer.
   Two peers touching `pnpm-lock.yaml`, `release-please-config.json`, or the same package's source is the main parallel-work hazard.
-- `ship-issue` and the release-please PR still assume linear `main`; whoever ships second must rebase their branch onto `main` first (a non-fast-forward push is rejected by design).
+- `/ship-issue` is trunk-only; ship a worktree branch with `/ship-worktree` (peer) + `/land-worktree` (root), never `/ship-issue`.
+- Whoever lands second rebases first: if `/land-worktree`'s ff-merge fails, the peer re-runs `/ship-worktree` to rebase onto the new `origin/main` (a non-linear merge into `main` is rejected by design).
 - A first launch in each worktree reinstalls `.pi/npm/` (gitignored, so it does not carry over) — a one-time cost Pi handles automatically.
 
 ### Session naming convention
 
 Each prompt template calls `set_session_name` (from `pi-session-tools`) to label the session automatically:
 
-| Stage                | Session name format          |
-| -------------------- | ---------------------------- |
-| PR review            | `#N PR Review — <title>`     |
-| Planning             | `#N Planning — <title>`      |
-| TDD implementation   | `#N TDD — <title>`           |
-| Build implementation | `#N Build — <title>`         |
-| Shipping             | `#N Ship — <title>`          |
-| Retrospective        | `#N Retrospective — <title>` |
+| Stage                | Session name format            |
+| -------------------- | ------------------------------ |
+| PR review            | `#N PR Review — <title>`       |
+| Planning             | `#N Planning — <title>`        |
+| TDD implementation   | `#N TDD — <title>`             |
+| Build implementation | `#N Build — <title>`           |
+| Shipping             | `#N Ship — <title>`            |
+| Worktree ship (peer) | `#N Ship (worktree) — <title>` |
+| Worktree land (root) | `#N Land — <title>`            |
+| Retrospective        | `#N Retrospective — <title>`   |
 
 Each prompt template sets the appropriate name automatically via `set_session_name`.
 
