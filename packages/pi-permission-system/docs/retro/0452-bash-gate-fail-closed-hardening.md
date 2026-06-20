@@ -41,3 +41,29 @@ After a follow-up design discussion, folded structural recommendations into the 
 - Plan grew from 5 to 6 TDD steps; A5 flagged as separable, but the A1 boundary is the structural keystone and stays in #452.
 - Behavior-changing pieces (A1 boundary block-on-error, A3 ask-on-unparseable) are breaking (`fix!:` + `BREAKING CHANGE:` footer) with a verified opt-out (`"bash": { "*": "allow" }`).
 - Next: `/tdd-plan` — six red→green→commit steps.
+
+## Stage: Implementation — TDD (2026-06-20T19:45:00Z)
+
+### Session summary
+
+Executed all six TDD steps (A2 parser resilience, A4 config footgun warning, A1 fail-closed boundary, A3 unparseable-bash fallback, A5 decision trace + summary, docs) as seven commits (the sixth split a follow-up architecture-doc cleanup off the docs commit).
+The gate now fails closed everywhere: a thrown gate blocks with a `gate_error` review entry, an unparseable bash command resolves to `ask` (`<unparseable-bash-command>` sentinel) instead of riding a permissive top-level `*`, and a startup warning fires when `*: allow` leaves bash ungated.
+Test count went 2034 → 2064 (+30 across five new test files); `pnpm run check`, root `pnpm run lint`, and `pnpm fallow dead-code` all green.
+
+### Observations
+
+- Deviation (step sequencing): the plan put `DecisionAudit.writeSummary` + `decision-audit.test.ts` in step 5, but biome's `noUnusedPrivateClassMembers` rejects write-only counters, so `writeSummary` and its test were implemented in step 3 (the `fix!` commit).
+  Step 5 then only wired `audit` into `SessionLifecycleHandler.handleSessionShutdown` and added the `debugLog`-gated boundary trace.
+  Lesson: a counters-only class is not lint-clean in isolation — its reader (`writeSummary`) must land with it.
+- Deviation (trace fields): the per-call `permission.decision` trace logs `toolName` + `action` (+ `reason` for block) but not `matchedPattern`, because `GateOutcome` carries only `action`/`reason`.
+  Widening `GateOutcome` was a deferred open question in the plan, so the trace intentionally drops the pattern; the decision-event channel still carries `matchedPattern` separately.
+- A4 lint friction: the bash-surface lookup needed a runtime-undefined guard that the `FlatPermissionConfig` index signature hides from `tsc`, so eslint's `no-unnecessary-condition` flagged it as always-truthy.
+  An explicit `| undefined` annotation did not help (flow narrows to the non-undefined initializer); reading through a `Partial<FlatPermissionConfig>` view made the optional access type-honest and lint-clean.
+- A1 ripple: changing `handleToolCall` from the SDK shape to `GateOutcome` broke return-shape assertions in `tool-call.test.ts`, `external-directory-integration.test.ts`, and `external-directory-session-dedup.test.ts` (not just the two files the plan named).
+  All updated in the A1 commit; `.reason` reads needed a `(result as { reason?: string })` cast since the union does not expose it without narrowing.
+  Sed-based bulk edits bypassed pi-autoformat and left a biome format error that only surfaced at commit time — ran `biome check --write` on the touched files to fix.
+- The metamorphic totality tests passed immediately (real tree-sitter parse splits `cd /repo && <cmd>` into chain units, so the empty-parse path is never hit for a `cd` prefix); they pin that the A3 weakening cannot recur, rather than driving new code.
+- Pre-completion reviewer: PASS.
+  Reviewer warnings: one WARN on `docs/architecture/architecture.md` staleness (three new modules missing from the file tree, stale `lifecycle.ts`/`bash-command.ts` entries) — resolved in commit `50786e89` before finishing.
+- Process note: a `cd ..`-chained verification command walked outside the repo root and tripped the `external_directory` gate (correctly).
+  Reaffirmed the AGENTS.md rule — never `cd`; use `pnpm --filter` for package-scoped runs.
