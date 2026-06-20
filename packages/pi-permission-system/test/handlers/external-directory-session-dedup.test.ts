@@ -161,7 +161,7 @@ describe("external-directory session dedup", () => {
         input: { path: externalPath },
       };
       const result1 = await handler.handleToolCall(event1, ctx);
-      expect(result1).toEqual({});
+      expect(result1).toEqual({ action: "allow" });
       expect(prompter.prompt).toHaveBeenCalledTimes(1);
 
       // Second call — same path, should hit session rule, no prompt
@@ -172,7 +172,7 @@ describe("external-directory session dedup", () => {
         input: { path: externalPath },
       };
       const result2 = await handler.handleToolCall(event2, ctx);
-      expect(result2).toEqual({});
+      expect(result2).toEqual({ action: "allow" });
       expect(prompter.prompt).toHaveBeenCalledTimes(1);
     });
 
@@ -272,7 +272,7 @@ describe("external-directory session dedup", () => {
         input: { command: "echo hello > /tmp/out.txt" },
       };
       const result1 = await handler.handleToolCall(event1, ctx);
-      expect(result1).toEqual({});
+      expect(result1).toEqual({ action: "allow" });
       expect(prompter.prompt).toHaveBeenCalledTimes(1);
 
       // Second call — different bash command, same external path
@@ -283,7 +283,7 @@ describe("external-directory session dedup", () => {
         input: { command: "cat /tmp/out.txt" },
       };
       const result2 = await handler.handleToolCall(event2, ctx);
-      expect(result2).toEqual({});
+      expect(result2).toEqual({ action: "allow" });
       expect(prompter.prompt).toHaveBeenCalledTimes(1);
     });
 

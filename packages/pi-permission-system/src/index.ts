@@ -4,6 +4,7 @@ import { registerBuiltinToolInputFormatters } from "./builtin-tool-input-formatt
 import { registerPermissionSystemCommand } from "./config-modal";
 import { getGlobalConfigPath } from "./config-paths";
 import { ConfigStore } from "./config-store";
+import { DecisionAudit } from "./decision-audit";
 import { GateDecisionReporter } from "./decision-reporter";
 import { computeExtensionPaths } from "./extension-paths";
 import {
@@ -19,6 +20,7 @@ import {
 import { GateRunner } from "./handlers/gates/runner";
 import { SkillInputGatePipeline } from "./handlers/gates/skill-input-gate-pipeline";
 import { ToolCallGatePipeline } from "./handlers/gates/tool-call-gate-pipeline";
+import { createFailClosedToolCall } from "./handlers/tool-call-boundary";
 import { requestPermissionDecisionFromUi } from "./permission-dialog";
 import { registerPermissionRpcHandlers } from "./permission-event-rpc";
 import { PermissionManager } from "./permission-manager";
@@ -172,6 +174,7 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
   const agentPrep = new AgentPrepHandler(session, resolver, toolRegistry);
 
   const reporter = new GateDecisionReporter(logger, pi.events);
+  const audit = new DecisionAudit();
   const gateRunner = new GateRunner(resolver, sessionRules, gateway, reporter);
   const toolCallGatePipeline = new ToolCallGatePipeline(
     resolver,
@@ -197,5 +200,12 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
   pi.on("session_shutdown", () => lifecycle.handleSessionShutdown());
   pi.on("before_agent_start", (event, ctx) => agentPrep.handle(event, ctx));
   pi.on("input", (event, ctx) => gates.handleInput(event, ctx));
-  pi.on("tool_call", (event, ctx) => gates.handleToolCall(event, ctx));
+  pi.on(
+    "tool_call",
+    createFailClosedToolCall(
+      (event, ctx) => gates.handleToolCall(event, ctx),
+      reporter,
+      audit,
+    ),
+  );
 }
