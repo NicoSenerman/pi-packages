@@ -26,3 +26,30 @@ Wrote `packages/pi-permission-system/docs/plans/0438-bound-session-approval-cwd-
 - Verified no import cycle: `session-rules.ts` will import `normalizePathForComparison` from `path-utils.ts`, and `path-utils` imports neither `session-rules` nor `pattern-suggest`.
 - The `cwd`-absent edge keeps its safe-but-re-prompting `"./*"` output (no absolute policy value exists to bind to); flagged as a Non-Goal rather than over-approving with `"*"`.
 - Release: ship independently — not part of any roadmap phase or release batch.
+
+## Stage: Implementation — TDD (2026-06-20T01:48:25Z)
+
+### Session summary
+
+Fixed the dead session-approval rule for current-directory files by making every path gate derive the approval pattern from the canonical (cwd-resolved, absolute) path, so the pattern matches the policy values a later call produces.
+`deriveApprovalPattern` and `suggestSessionPattern` stay single-arg pure functions; the per-tool gate (`tool.ts`), cross-cutting `path` gate (`path.ts`), and bash `path` gate (`bash-path.ts`) resolve to the canonical path before deriving — the tool/path gates via `normalizePathForComparison(path, tcc.cwd)` (mirroring the existing `external-directory.ts`), and the bash gate from its already-captured `policyValues[0]`.
+Test count `pi-permission-system` 2029 → 2033 (+4); full suite, `check`, root `lint`, and `fallow dead-code` all green.
+
+### Observations
+
+- **Design pivot mid-session.**
+  The first implementation threaded an optional `{ cwd }` parameter down into `deriveApprovalPattern` (and `suggestSessionPattern`).
+  On review this was judged a design degradation — optionality on a core leaf function where none existed — so it was reworked into resolve-at-gate before shipping.
+  The unpushed commits were collapsed (`git reset --mixed` to the planning-retro commit) into one clean `fix:` so the abandoned approach does not pollute history or the changelog.
+- **Root structural cause.**
+  The bug was drift between two representations of the same path — the approval *pattern* (derived without cwd → `./*`) and the policy *values* (derived with cwd → `[<abs>/index.html, index.html]`).
+  Binding both to the canonical absolute form removes the drift class, not just the root-file symptom.
+  `external-directory.ts` already did this; `path.ts`/`bash-path.ts` were the inconsistent gates.
+- **Tradeoff accepted (operator-confirmed via `ask_user`).**
+  Canonicalizing for matching also makes the "for this session" dialog label absolute (`edit "src/*"` → `edit "/…/project/*"`).
+  Judged acceptable/clearer for a permission grant; the alternative (a `PathApprovalTarget` value object separating match-pattern from display-label) was offered and declined as more surface area than warranted.
+- **Bash token nuance.**
+  A bare `index.html` (no leading `.`, no `/`) is rejected by `classifyTokenAsRuleCandidate`, so the realistic bash root-relative case is a dotfile (`cat .env`); the test uses that.
+  Deriving from `policyValues[0]` also tightens cd-offset cases (`cd sub && cat .env` → `/…/project/sub/*`) for free.
+- The pure functions `deriveApprovalPattern` / `suggestSessionPattern` reverted to their original signatures (only a doc-comment contract added); no architecture-doc update needed (bug fix, not a roadmap step).
+- A fresh pre-completion review should run against the final design before `/ship-issue` (the earlier PASS was for the superseded optional-param implementation).
