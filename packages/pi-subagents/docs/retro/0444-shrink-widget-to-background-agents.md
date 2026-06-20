@@ -41,3 +41,41 @@ Test count went from 24 to 26 in `agent-widget.test.ts` (two new background-only
   One non-blocking naming WARN — `clearWidget`'s `allAgents` parameter and JSDoc were stale after the refactor (it now receives only background agents); fixed in a follow-up `refactor:` commit (`backgroundAgents`).
   Landed as a separate commit rather than amending the feat commit because HEAD was already the `docs:` commit and the fix must not land in a `docs:` commit.
 - All gates green: `pnpm run check`, root `pnpm run lint`, full vitest (1064), `pnpm fallow dead-code`.
+
+## Stage: Final Retrospective (2026-06-20T22:41:58Z)
+
+### Session summary
+
+Shipped Phase 19 Step 3 end-to-end across three stages (plan → TDD → ship) in one continuous session, releasing `@gotgenes/pi-subagents` v17.2.0.
+The change funnels both `manager.listAgents()` call sites through a single `listBackgroundAgents()` accessor so the above-editor widget shows only background agents.
+Execution was unusually clean: no rabbit holes, no user corrections, one reviewer-caught naming miss resolved in a single follow-up commit.
+
+### Observations
+
+#### What went well
+
+- Tidy-first preparatory step paid off as designed.
+  TDD step 1 (`test:` migrate fixtures to background invocation) was inert until the filter landed, turning the behavior change in step 2 into a pure addition with zero fixture churn mid-cycle.
+  This is the `code-design` skill's "make the change easy, then make the easy change" applied to a test suite — worth reusing whenever a new predicate will retroactively exclude existing fixtures.
+- The pre-completion reviewer caught semantic drift that all four deterministic gates missed.
+  `tsc`, `pnpm run lint`, vitest (1064), and `pnpm fallow dead-code` all passed the stale `clearWidget(allAgents)` parameter — a name whose meaning narrowed to background-only but which no tool flags, because a misleading-but-valid identifier is neither a type nor a lint error.
+  This is the reviewer's distinct value: naming/comment staleness after a rename.
+
+#### What caused friction (agent side)
+
+- `other` (incomplete rename) — during the `feat:` step I renamed the local `allAgents` → `backgroundAgents` in `update()` but left the `clearWidget` parameter (a separate scope receiving the same value) named `allAgents`, along with its JSDoc.
+  Impact: one extra `refactor:` commit (`319e7df3`); ~2 minutes.
+  No rework to logic.
+  Reviewer-caught, not self-caught.
+
+#### What caused friction (user side)
+
+- None.
+  The operator delegated the full plan/TDD/ship/retro workflow and it ran without correction or mid-course steering.
+  No earlier-context opportunity identified.
+
+### Changes made
+
+1. Added this Final Retrospective stage entry to `packages/pi-subagents/docs/retro/0444-shrink-widget-to-background-agents.md`.
+
+No `AGENTS.md` or prompt changes: the one friction point (an incomplete rename) was reviewer-caught with trivial cost, and the wins (tidy-first fixture migration, pre-completion reviewer value) are already covered by the `code-design` and `testing` skills — nothing actionable to encode.
