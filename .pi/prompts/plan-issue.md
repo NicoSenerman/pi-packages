@@ -31,6 +31,7 @@ Before investigating the issue, load skills relevant to the change:
 - Load the `testing` skill if the plan involves test changes or TDD steps.
 - Load the `markdown-conventions` skill — it contains project-specific rules (one-sentence-per-line, frontmatter schema) that differ from standard markdown conventions.
 - Load the `design-review` skill and run its checklist before finalizing the design for any refactor, extraction, or change to shared interfaces or layer wiring — judge this from the issue, not from a plan that already shows wiring changes.
+  - A new parameter that multiple callers must relay counts as layer wiring here, even when the change reads as a localized bug fix.
 
 ## Gather context
 
