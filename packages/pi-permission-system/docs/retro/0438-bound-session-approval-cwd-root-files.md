@@ -102,4 +102,5 @@ The defining event was a user-caught design degradation that triggered a full re
 
 ### Changes made
 
-1. `.pi/prompts/plan-issue.md` — added a sub-bullet under the `design-review` load instruction so a new parameter that multiple callers must relay counts as layer wiring (firing the `design-review` / `code-design` "Parameter relay" check even when the change reads as a localized bug fix).
+1. `.pi/skills/design-review/SKILL.md` — added a "When to invoke" bullet so a change that reads as a localized bug fix but adds or relays a parameter across functions triggers the review (a bug fix can be a wiring change).
+   First placed in `.pi/prompts/plan-issue.md` and relocated here on review: the skill owns its own applicability criteria, its existing triggers were all framed around refactors/plans (the gap this closes), and `plan-issue` already loads it for "change to shared interfaces or layer wiring."
