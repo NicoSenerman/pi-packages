@@ -190,6 +190,7 @@ describe("AgentWidget — projection reads activity off Subagent records", () =>
 			startedAt: Date.now() - 100,
 			turnCount: 3,
 			activeTools: ["read"],
+			invocation: { runInBackground: true },
 		});
 		const manager = { listAgents: () => [record] } as unknown as SubagentManager;
 		const registry = new AgentTypeRegistry(() => new Map());
@@ -222,8 +223,14 @@ describe("AgentWidget.update self-seeds finished agents", () => {
 	// plus a recording UICtx. setWidgetCalls captures the `content` arg of each
 	// setWidget call: a function means the widget is registered/visible; undefined
 	// means it was cleared (the finished agent has aged out).
-	function makeWidget(agents: Array<{ id: string; status: string; completedAt?: number }>) {
-		const manager = { listAgents: () => agents } as unknown as SubagentManager;
+	// Fixtures default to a background invocation so they survive the widget's
+	// background-only filter; per-agent `invocation` overrides the default.
+	function makeWidget(
+		agents: Array<{ id: string; status: string; completedAt?: number; invocation?: { runInBackground: boolean } }>,
+	) {
+		const manager = {
+			listAgents: () => agents.map(a => ({ invocation: { runInBackground: true }, ...a })),
+		} as unknown as SubagentManager;
 		const registry = new AgentTypeRegistry(() => new Map());
 		const widget = new AgentWidget(manager, registry);
 		const setWidgetCalls: unknown[] = [];
@@ -281,8 +288,12 @@ describe("AgentWidget — self-drives from lifecycle notifications", () => {
 		vi.useRealTimers();
 	});
 
-	function makeWidget(agents: Array<{ id: string; status: string; completedAt?: number }>) {
-		const manager = { listAgents: () => agents } as unknown as SubagentManager;
+	function makeWidget(
+		agents: Array<{ id: string; status: string; completedAt?: number; invocation?: { runInBackground: boolean } }>,
+	) {
+		const manager = {
+			listAgents: () => agents.map(a => ({ invocation: { runInBackground: true }, ...a })),
+		} as unknown as SubagentManager;
 		const registry = new AgentTypeRegistry(() => new Map());
 		const widget = new AgentWidget(manager, registry);
 		const setWidgetCalls: unknown[] = [];
