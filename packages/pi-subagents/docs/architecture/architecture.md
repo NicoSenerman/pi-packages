@@ -906,6 +906,194 @@ Source LOC decreased from 7,751 (62 files) to 7,650 (61 files); tests grew from 
 All eight steps are closed: [#420], [#421], [#422], [#423], [#424], [#425], [#426], [#427].
 See [phase-18-reconsider-ui.md](history/phase-18-reconsider-ui.md) for the full findings, step outcomes, dependency diagram, and tracks.
 
+## Phase 19 (proposed)
+
+Phase 19 implements the per-component UI decisions recorded in [ADR-0004]: shrink the widget to background-only, replace the bespoke conversation viewer with native session navigation, dissolve the monolithic `/agents` menu, and keep the surviving UI in-core.
+
+The sequencing follows Kent Beck's "make the change easy, then make the easy change."
+The end state deletes `agent-menu.ts` — the god-command that bundles four unrelated jobs — and everything reachable only from it.
+Rather than surgically mutate that doomed module (and the #1 churn hotspot `index.ts`) once per option, Phase 19 first stands up the replacement surfaces additively, then removes the now-orphaned subtree in a single terminal cut.
+This keeps every responsibility's old surface live until its replacement exists (ADR-0004's no-interim-regression invariant), turns the three replacement steps into genuinely parallel work (none touch `agent-menu.ts`), and reduces `index.ts` edits from four surgical removals to one deregistration.
+
+Seven steps in three phases:
+
+- **Phase A — stand up replacements (additive):** spike, settings command, background widget, native session navigation (Steps 1–4).
+- **Phase B — dissolve `/agents` (terminal cut):** delete the orphaned subtree in two deletion commits, one per subtree (Steps 5–6).
+- **Phase C — test health:** consolidate the test clones that survive the cut (Step 7).
+
+### Health metrics (Phase 18 → Phase 19 target)
+
+| Metric                 | Phase 18 (current)       | Phase 19 target      |
+| ---------------------- | ------------------------ | -------------------- |
+| Health score           | 78/100 (B)               | 83/100 (B+)          |
+| Source LOC             | 7,650 (61 files)         | ~6,780 (~55 files)   |
+| Production duplication | 11 lines (1 group)       | 0 lines              |
+| Test clone groups      | 16                       | ≤ 10                 |
+| Top churn hotspot      | `index.ts` (103 commits) | `index.ts` (cooling) |
+
+### Step 1 — Spike: resolve ADR-0004 entry criteria
+
+Smell: Category C (coupling boundary) — four open decisions block the session-navigation implementation.
+Target: `docs/decisions/0004-reconsider-ui-direction.md` addendum.
+
+The four entry criteria from ADR-0004:
+
+1. **Root-continuity:** Does the root's in-flight turn survive `ctx.switchSession()` and a return gesture?
+2. **View-only vs interactive:** `switchSession` (full interactive takeover) or `loadEntriesFromFile` (read-only transcript built from JSONL)?
+3. **Parallel-agent navigation:** Operator gesture to select which of N background agents to view (from the widget, a command, or both).
+4. **Settings command name:** `/subagents-settings`, `/agents-settings`, or another form consistent with sibling packages?
+
+Produce a minimal spike (observed test or PoC against a real session) that answers each question, then record the answers as an addendum to ADR-0004.
+No production source files change; the spike closes when the ADR addendum is merged.
+
+Outcome: ADR-0004 updated with all four entry-criteria answers; Step 4 unblocked.
+
+`Release: independent`
+
+### Step 2 — Extract settings to a focused `/subagents-settings` command
+
+Smell: Category E (naming/organization) — settings are buried inside the monolithic `/agents` command per ADR-0004 Decision C. This step is purely additive: it stands up the new surface without touching `agent-menu.ts`.
+Target files:
+
+- New `src/ui/subagents-settings.ts` — `SubagentsSettingsHandler` lifted from `AgentsMenuHandler.showSettings`, carrying its own narrow `SubagentsSettingsManager` interface (the three `apply*` methods and three readonly accessors only).
+- `src/index.ts` — register the new command (name confirmed by Step 1); pass `settings` directly.
+- New `test/ui/subagents-settings.test.ts` — unit tests for the extracted handler.
+
+`showSettings` depends only on `this.settings` (the self-contained `AgentMenuSettings` shape), so the extraction copies that logic into a new file with zero coupling to the wizard, editor, or viewer.
+The old in-menu Settings option keeps working until the terminal cut deletes `agent-menu.ts` wholesale — there is no surgical removal of `showSettings` or `AgentMenuSettings` from the doomed file.
+
+Outcome: new `subagents-settings.ts` (~80 LOC) and focused command registered; `agent-menu.ts` untouched.
+
+`Release: independent`
+
+### Step 3 — Shrink widget to background agents only
+
+Smell: Category C (coupling) — the widget shows all agents including foreground ones, duplicating the `subagent` tool's inline `onUpdate` stream for foreground runs.
+Target files:
+
+- `src/ui/agent-widget.ts` — funnel both `manager.listAgents()` call sites (`update()` and `renderWidget()`) through a single private accessor, then flip that accessor to background-only via `record.invocation?.runInBackground === true`.
+- `src/ui/widget-renderer.ts` — verify no foreground-specific rendering path survives.
+- `test/ui/agent-widget.test.ts` — add background-only filtering tests; update assertions.
+
+The widget calls `listAgents()` at two sites today — `update()` (feeding `seedFinishedAgents`, `assembleWidgetState`, and `clearWidget`) and `renderWidget()` (the tree map).
+Filtering at only one site leaves the other rendering foreground agents, so the enabling move is to route both through one accessor and apply the predicate once at the source.
+`Subagent.invocation.runInBackground` is the reliable signal: set by `spawn-config.ts` → `AgentInvocation.runInBackground` → stored on `Subagent.invocation`.
+ADR-0004 Decision A: foreground runs suppress the widget; the inline `onUpdate` stream is authoritative there.
+
+Outcome: widget shows only background agents; foreground/widget duplication eliminated; the background predicate lives at a single funnel.
+
+`Release: independent`
+
+### Step 4 — Implement native session navigation
+
+Smell: Category C (coupling) — the bespoke `ConversationViewer` re-implements session-transcript rendering when Pi's own machinery targets the already-persisted child session JSONL.
+This step adds the new surface alongside the existing viewer; it does not touch `agent-menu.ts`.
+Target files:
+
+- New `src/ui/session-navigator.ts` (or a widget gesture, per Step 1's answer to parallel-agent navigation) — operator picks one of N background agents and views its persisted session via the spike-chosen mechanism, keyed on `record.outputFile`.
+- `src/index.ts` — register the new navigation surface (command and/or widget gesture, per the spike).
+
+ADR-0004 Decision B: "Tell-Don't-Ask — hand Pi the session path; Pi owns the viewer."
+Mechanism (confirmed by Step 1): `ctx.switchSession(child.outputFile)` round-trips, or a `loadEntriesFromFile`-based read-only transcript rendered without leaving the root session.
+`Subagent.outputFile` already exposes the persisted child session JSONL path via `subagentSession?.outputFile` — no new SDK dependency.
+The new surface stands up while the old `viewAgentConversation`/`ConversationViewer` path still works; the bespoke viewer is removed only by the terminal cut (Step 5).
+
+Outcome: operator views a child agent's persisted session through Pi's native machinery; the new surface coexists with the old viewer until Step 5.
+
+`Release: independent` (spike-gated)
+
+### Step 5 — Dissolve `/agents` and remove the conversation-viewer subtree
+
+Smell: Category A (dead subsystem) plus Category B (oversized) — once Steps 2–4 re-home all four menu responsibilities, the `/agents` command and everything reachable only from `agent-menu.ts` is an unreferenced subtree.
+This is the first of two deletion commits (split by subtree).
+The hub `agent-menu.ts` is deleted here, not surgically narrowed, and deleting it is what orphans the leaf subtrees — so it must precede the definition-management deletion (Step 6), because `agent-menu.ts` statically imports the wizard, editor, and file-ops, and dynamically imports the viewer.
+Target files:
+
+- `src/index.ts` — remove the `registerCommand("agents", …)` block, the `AgentsMenuHandler` construction and import, and the `FsAgentFileOps` import/construction (its only use is wiring the menu).
+- Delete `src/ui/agent-menu.ts` (331 LOC) and `test/ui/agent-menu.test.ts` (185 LOC).
+- Delete `src/ui/conversation-viewer.ts` (241 LOC) and `test/conversation-viewer.test.ts` (239 LOC) — its only consumer is `agent-menu.ts`'s dynamic import, gone with the hub.
+- Delete `src/ui/message-formatters.ts` (195 LOC) and `test/message-formatters.test.ts` (388 LOC, the largest test function by LOC) — its only consumer is `ConversationViewer`.
+
+Running-agent visibility is now owned by the background widget (Step 3); session navigation replaces the bespoke overlay (Step 4); settings live in `/subagents-settings` (Step 2).
+Deleting the hub in one move avoids any surgical edit to the doomed file and leaves the definition-management leaves orphaned for Step 6.
+
+Outcome: `/agents` dissolved; −767 LOC source (menu hub + viewer + formatters); −812 LOC test; largest test function eliminated; `index.ts` edited once (deregistration), never surgically narrowed.
+
+`Release: batch "dissolve-agents"`
+
+### Step 6 — Remove the orphaned agent-definition management subtree
+
+Smell: Category A (dead subsystem) — the creation wizard and config editor are removed per ADR-0004 Decision C; after Step 5 deletes their only importer (`agent-menu.ts`), they and their file-ops helpers are pure orphans.
+This is the second deletion commit (split by subtree).
+Target files:
+
+- Delete `src/ui/agent-creation-wizard.ts` (233 LOC) and `test/ui/agent-creation-wizard.test.ts` (296 LOC).
+- Delete `src/ui/agent-config-editor.ts` (199 LOC) and `test/ui/agent-config-editor.test.ts` (392 LOC) — eliminates the 11-line internal production clone in `disableAgent`/`ejectAgent`, the package's only remaining production duplication.
+- Delete `src/ui/agent-file-ops.ts` (59 LOC) and `test/ui/agent-file-ops.test.ts` (112 LOC) — only consumers were wizard + editor.
+- Delete `src/ui/agent-file-writer.ts` (55 LOC) and `test/ui/agent-file-writer.test.ts` (148 LOC) — only consumers were wizard + editor.
+- `test/helpers/ui-stubs.ts` — delete `makeFileOps`, `createTestSubagentConfig`, and `spawnAndWait` from `makeMenuManager` if no surviving consumer remains; delete the file outright once all consumers are gone.
+
+An operator generates a new agent `.md` by asking a Pi session directly (more capable than a fixed wizard) or by writing the file in an editor; viewing and editing definitions is served by opening the `.md` files in an editor or IDE.
+These files are orphaned by Step 5, so this is a pure `git rm` with no surviving references and no edit to any doomed file.
+
+Outcome: −546 LOC source (wizard + editor + file-ops + file-writer); −948 LOC test; production duplication → 0 lines; 1 production and 1 test clone group eliminated.
+
+`Release: batch "dissolve-agents"`
+
+### Step 7 — Consolidate remaining test clone families
+
+Smell: Category D (testability) — 16 clone groups at Phase 18 end; the terminal cut (Steps 5–6) removes ~4 groups; remaining groups are extraction targets.
+Run after the cut so no helper is extracted into a file the cut then deletes.
+Target files:
+
+- `test/lifecycle/subagent-manager.test.ts` — extract a shared assertion helper for 3 clone families (23 lines across groups at :92/:109, :282/:330, and :323 shared with `subagent.test.ts`).
+- `test/ui/agent-widget.test.ts` — merge the duplicate `makeWidget` helper defined twice across two `describe` blocks (14-line clone at :225/:284).
+- `test/session/session-config.test.ts` — extract a shared fixture for the 16-line internal clone (lines 131–146 / 151–166).
+- `test/lifecycle/concurrency-limiter.test.ts` — extract shared setup for the 10-line clone (lines 21–30 / 148–155).
+- `test/tools/spawn-config.test.ts` — extract a shared fixture for the 9-line clone (lines 22–30 / 35–43).
+
+Outcome: test clone groups ≤ 10 (from 16); `subagent-manager.test.ts` uses shared factory helpers.
+
+`Release: independent`
+
+### Step dependency diagram
+
+```mermaid
+flowchart LR
+    S1[Step 1 - Spike]
+    S2[Step 2 - Settings command]
+    S3[Step 3 - Background widget]
+    S4[Step 4 - Native session nav]
+    S5[Step 5 - Dissolve /agents + viewer]
+    S6[Step 6 - Remove definition mgmt]
+    S7[Step 7 - Test clones]
+
+    S1 --> S4
+    S2 --> S5
+    S3 --> S5
+    S4 --> S5
+    S5 --> S6
+    S6 --> S7
+```
+
+The terminal cut (Step 5) depends on all three replacements — settings (Step 2), widget (Step 3), and session navigation (Step 4) — because each of the four `/agents` options must have its responsibility re-homed before its branch can die.
+The old `S1 → S6 → S7` chain hid the widget dependency; this diagram makes it explicit.
+
+### Parallel tracks
+
+- **Track A — Replacements (Steps 1–4):** the spike gates session navigation (Step 1 → Step 4); settings (Step 2) and the background widget (Step 3) are independent of the spike and of each other.
+  None of these steps edits `agent-menu.ts`, so they carry no shared-file collision on the menu — genuinely parallelizable, unlike the prior plan's Steps 2/3/5, which all collided on `agent-menu.ts` and `index.ts`.
+  Steps 2 and 4 each append a command registration to `index.ts` (additive, low-conflict).
+- **Track B — Dissolution (Steps 5 → 6):** the terminal cut, gated on all of Track A landing.
+  Hub-first ordering is forced: Step 5 deletes `agent-menu.ts` (orphaning the leaves), then Step 6 `git rm`s the now-orphaned definition-management subtree.
+- **Track C — Test health (Step 7):** clone consolidation, run after the cut so no surviving helper is extracted into a doomed file.
+
+### Release batches
+
+- **Batch "dissolve-agents":** Steps 5, 6 (ship together; tail = Step 6).
+  Depends on Steps 2, 3, 4 already merged.
+- Independently releasable: Steps 1, 2, 3, 4, 7.
+
 ## Refactoring history
 
 Phases 1–5, 7–18 are complete.
