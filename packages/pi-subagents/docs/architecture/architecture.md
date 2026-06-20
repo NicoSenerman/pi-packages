@@ -901,7 +901,7 @@ Phase 18 disentangled the activity tier from the core and recorded a first-princ
 Steps 1–5 (the spine) consolidated all run state onto `SubagentState`, deleted `AgentActivityTracker` and `ui-observer` (−145 LOC), and made the widget a pure reactive consumer of lifecycle events with no inbound calls from core spawn tools.
 Step 6 reconciled the public event contract (breaking: removed the vacant `SUBAGENT_EVENTS.ACTIVITY` channel; added `FAILED`, `COMPACTED`, `CREATED`, `STEERED`).
 Step 7 consolidated residual test clone families, dropping from 24 to 14 clone groups (below the <15 target).
-Step 8 captured the per-component UI decisions in [ADR-0004]: the widget shrinks to background agents only; the bespoke `ConversationViewer` is replaced by native session navigation (`switchSession`/`loadEntriesFromFile`); the `/agents` command is dissolved (remove the create wizard and agent-types editor, extract settings to a focused command); the surviving UI stays in-core as a substitutable reactive consumer.
+Step 8 captured the per-component UI decisions in [ADR-0004]: the widget shrinks to background agents only; the bespoke `ConversationViewer` is replaced by native session navigation (a read-only transcript via `parseSessionEntries`, per the Step 1 spike — see [ADR-0004]'s addendum); the `/agents` command is dissolved (remove the create wizard and agent-types editor, extract settings to a focused command); the surviving UI stays in-core as a substitutable reactive consumer.
 Source LOC decreased from 7,751 (62 files) to 7,650 (61 files); tests grew from 1,031 to 1,047.
 All eight steps are closed: [#420], [#421], [#422], [#423], [#424], [#425], [#426], [#427].
 See [phase-18-reconsider-ui.md](history/phase-18-reconsider-ui.md) for the full findings, step outcomes, dependency diagram, and tracks.
@@ -931,7 +931,7 @@ Seven steps in three phases:
 | Test clone groups      | 16                       | ≤ 10                 |
 | Top churn hotspot      | `index.ts` (103 commits) | `index.ts` (cooling) |
 
-### Step 1 — Spike: resolve ADR-0004 entry criteria ([#446])
+### ✅ Step 1 — Spike: resolve ADR-0004 entry criteria ([#446])
 
 Smell: Category C (coupling boundary) — four open decisions block the session-navigation implementation.
 Target: `docs/decisions/0004-reconsider-ui-direction.md` addendum.
@@ -994,7 +994,7 @@ Target files:
 - `src/index.ts` — register the new navigation surface (command and/or widget gesture, per the spike).
 
 ADR-0004 Decision B: "Tell-Don't-Ask — hand Pi the session path; Pi owns the viewer."
-Mechanism (confirmed by Step 1): `ctx.switchSession(child.outputFile)` round-trips, or a `loadEntriesFromFile`-based read-only transcript rendered without leaving the root session.
+Mechanism (confirmed by the Step 1 spike, [ADR-0004] addendum): a **read-only** transcript rendered from `parseSessionEntries(readFileSync(record.outputFile, "utf8"))`, surfaced through a flat command — **not** `switchSession` (a full takeover that invalidates the root's in-flight turn) and **not** `loadEntriesFromFile` (declared in the SDK `.d.ts` but absent from its runtime exports in both `0.79.1` and `0.79.8`).
 `Subagent.outputFile` already exposes the persisted child session JSONL path via `subagentSession?.outputFile` — no new SDK dependency.
 The new surface stands up while the old `viewAgentConversation`/`ConversationViewer` path still works; the bespoke viewer is removed only by the terminal cut (Step 5).
 
@@ -1060,7 +1060,7 @@ Outcome: test clone groups ≤ 10 (from 16); `subagent-manager.test.ts` uses sha
 
 ```mermaid
 flowchart LR
-    S1[Step 1 - Spike (#446)]
+    S1[✅ Step 1 - Spike (#446)]
     S2[Step 2 - Settings command (#447)]
     S3[Step 3 - Background widget (#444)]
     S4[Step 4 - Native session nav (#445)]
