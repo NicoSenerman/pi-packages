@@ -149,6 +149,29 @@ Upstream references:
 - Barrel that omits it: [`packages/coding-agent/src/index.ts`](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/index.ts).
 - Test-annotated definition: [`packages/coding-agent/src/core/session-manager.ts`](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/session-manager.ts).
 
+### Finding 1 — the read-only transcript renders entirely on public Pi APIs (no bespoke renderer)
+
+The read-only path returns raw `FileEntry[]`, so _something_ must render them.
+The spike found that every piece needed to turn those entries into a Pi-standard transcript is already re-exported through the public root barrel — so Step 4 wires Pi's own machinery rather than re-implementing the formatting the bespoke `ConversationViewer`/`message-formatters.ts` carried.
+This matters because ADR-0004 Decision B's `switchSession` sketch implied "Pi owns the viewer"; the read-only path keeps that property at the _component_ level (Pi renders each entry) without the active-session takeover.
+
+The verified public pipeline (all symbols confirmed present in `dist/index.d.ts`, the root barrel):
+
+1. **Load** — `parseSessionEntries(readFileSync(record.outputFile, "utf8")): FileEntry[]` (Finding 0).
+2. **Bridge** — `buildSessionContext(entries, leafId?, byId?): SessionContext` turns the entries into `{ messages: AgentMessage[], thinkingLevel, model }`, handling tree traversal, compaction, and branch summaries along the path.
+   Note `buildSessionContext` takes `SessionEntry[]`, so drop the leading `SessionHeader` (`type: "session"`) that `parseSessionEntries` includes.
+3. **Render** — one of:
+   - **Text:** `serializeConversation(messages: Message[]): string` (from `core/compaction`) for a plain-text dump.
+   - **TUI:** the per-entry components `AssistantMessageComponent`, `UserMessageComponent`, `ToolExecutionComponent`, `BashExecutionComponent`, `CompactionSummaryMessageComponent`, `BranchSummaryMessageComponent`, `CustomMessageComponent`, `SkillInvocationMessageComponent` (from `modes/interactive/components`), plus `renderDiff`, for a scrollable native transcript.
+
+Unlike `loadEntriesFromFile`, all of these _are_ public (both types and runtime).
+So the read-only viewer is buildable end-to-end on supported APIs, and ADR-0004 Decision B's "keep the core free of transcript-rendering code" holds — the rendering is Pi's, imported, not hand-rolled.
+
+Upstream references:
+
+- Component barrel: [`packages/coding-agent/src/modes/interactive/components/index.ts`](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/modes/interactive/components/index.ts).
+- `serializeConversation`: [`packages/coding-agent/src/core/compaction/utils.ts`](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/compaction/utils.ts).
+
 ### Criterion 1 — Root-continuity during a session switch: avoid the switch
 
 `switchSession` is a full active-session takeover: it fires `session_before_switch` (cancellable) and then tears the current runtime down via `session_shutdown` (whose `targetSessionFile` field marks a replacement-driven shutdown).
@@ -164,7 +187,7 @@ The read-only transcript path (Criterion 2) sidesteps root-continuity entirely �
 But operator visibility (concern 3) is framed as "switch in, scroll/read, switch between, exit back to root" — a navigation interaction, not a live steering overlay — and steering already has a home (`steer_subagent` tool / the widget).
 Adding in-session steering would create a second, redundant steering surface.
 
-**Answer:** the viewer is strictly **read-only**, rendered from `parseSessionEntries(readFileSync(record.outputFile))` (Finding 0) without leaving the root session.
+**Answer:** the viewer is strictly **read-only**, loaded via `parseSessionEntries(readFileSync(record.outputFile))` (Finding 0) and rendered through Pi's public entry components (Finding 1) without leaving the root session.
 This also resolves Criterion 1 by construction.
 
 ### Criterion 3 — Parallel-agent navigation: command-first
@@ -185,10 +208,11 @@ Reject the tentative `/subagents:settings` and the `/agents-settings` alternativ
 
 ### Net mechanism for Phase 19
 
-- Session navigation (Step 4, [#445]): a read-only transcript rendered from `parseSessionEntries(readFileSync(record.outputFile, "utf8"))`, surfaced through a flat command; no `switchSession`, no `loadEntriesFromFile`.
+- Session navigation (Step 4, [#445]): a read-only transcript, surfaced through a flat command; no `switchSession`, no `loadEntriesFromFile`.
+  The pipeline is `parseSessionEntries(readFileSync(record.outputFile, "utf8"))` → drop the `SessionHeader` → `buildSessionContext(...).messages` → render via Pi's public entry components (`AssistantMessageComponent` / `ToolExecutionComponent` / … ) or `serializeConversation` (Findings 0 and 1).
 - Settings command (Step 2, [#447]): `/subagents-settings`.
 
-This keeps transcript rendering out of the core, adds no inbound call from the UI to the core, and preserves the Phase 18 spine invariants (#422–#425).
+This keeps bespoke transcript rendering out of the package (rendering is Pi's own public components), adds no inbound call from the UI to the core, and preserves the Phase 18 spine invariants (#422–#425).
 
 [#444]: https://github.com/gotgenes/pi-packages/issues/444
 [#445]: https://github.com/gotgenes/pi-packages/issues/445
