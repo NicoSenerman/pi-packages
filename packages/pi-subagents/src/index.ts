@@ -47,6 +47,7 @@ import { SteerTool } from "#src/tools/steer-tool";
 import { FsAgentFileOps } from "#src/ui/agent-file-ops";
 import { AgentsMenuHandler } from "#src/ui/agent-menu";
 import { AgentWidget } from "#src/ui/agent-widget";
+import { SubagentsSettingsHandler } from "#src/ui/subagents-settings";
 
 export default function (pi: ExtensionAPI) {
   // ---- Register custom notification renderer ----
@@ -178,6 +179,17 @@ export default function (pi: ExtensionAPI) {
         modelRegistry: ctx.modelRegistry,
         parentSnapshot: buildParentSnapshot(ctx),
       });
+    },
+  });
+
+  // ---- /subagents-settings command ----
+
+  const subagentsSettings = new SubagentsSettingsHandler(settings);
+
+  pi.registerCommand("subagents-settings", {
+    description: "Configure subagent settings (concurrency, turn limits)",
+    handler: async (_args, ctx) => {
+      await subagentsSettings.handle({ ui: ctx.ui });
     },
   });
 }
