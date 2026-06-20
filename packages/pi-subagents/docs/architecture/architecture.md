@@ -931,7 +931,7 @@ Seven steps in three phases:
 | Test clone groups      | 16                       | ≤ 10                 |
 | Top churn hotspot      | `index.ts` (103 commits) | `index.ts` (cooling) |
 
-### Step 1 — Spike: resolve ADR-0004 entry criteria
+### Step 1 — Spike: resolve ADR-0004 entry criteria ([#446])
 
 Smell: Category C (coupling boundary) — four open decisions block the session-navigation implementation.
 Target: `docs/decisions/0004-reconsider-ui-direction.md` addendum.
@@ -950,7 +950,7 @@ Outcome: ADR-0004 updated with all four entry-criteria answers; Step 4 unblocked
 
 `Release: independent`
 
-### Step 2 — Extract settings to a focused `/subagents-settings` command
+### Step 2 — Extract settings to a focused `/subagents-settings` command ([#447])
 
 Smell: Category E (naming/organization) — settings are buried inside the monolithic `/agents` command per ADR-0004 Decision C. This step is purely additive: it stands up the new surface without touching `agent-menu.ts`.
 Target files:
@@ -966,7 +966,7 @@ Outcome: new `subagents-settings.ts` (~80 LOC) and focused command registered; `
 
 `Release: independent`
 
-### Step 3 — Shrink widget to background agents only
+### Step 3 — Shrink widget to background agents only ([#444])
 
 Smell: Category C (coupling) — the widget shows all agents including foreground ones, duplicating the `subagent` tool's inline `onUpdate` stream for foreground runs.
 Target files:
@@ -984,7 +984,7 @@ Outcome: widget shows only background agents; foreground/widget duplication elim
 
 `Release: independent`
 
-### Step 4 — Implement native session navigation
+### Step 4 — Implement native session navigation ([#445])
 
 Smell: Category C (coupling) — the bespoke `ConversationViewer` re-implements session-transcript rendering when Pi's own machinery targets the already-persisted child session JSONL.
 This step adds the new surface alongside the existing viewer; it does not touch `agent-menu.ts`.
@@ -1002,7 +1002,7 @@ Outcome: operator views a child agent's persisted session through Pi's native ma
 
 `Release: independent` (spike-gated)
 
-### Step 5 — Dissolve `/agents` and remove the conversation-viewer subtree
+### Step 5 — Dissolve `/agents` and remove the conversation-viewer subtree ([#442])
 
 Smell: Category A (dead subsystem) plus Category B (oversized) — once Steps 2–4 re-home all four menu responsibilities, the `/agents` command and everything reachable only from `agent-menu.ts` is an unreferenced subtree.
 This is the first of two deletion commits (split by subtree).
@@ -1021,7 +1021,7 @@ Outcome: `/agents` dissolved; −767 LOC source (menu hub + viewer + formatters)
 
 `Release: batch "dissolve-agents"`
 
-### Step 6 — Remove the orphaned agent-definition management subtree
+### Step 6 — Remove the orphaned agent-definition management subtree ([#441])
 
 Smell: Category A (dead subsystem) — the creation wizard and config editor are removed per ADR-0004 Decision C; after Step 5 deletes their only importer (`agent-menu.ts`), they and their file-ops helpers are pure orphans.
 This is the second deletion commit (split by subtree).
@@ -1040,7 +1040,7 @@ Outcome: −546 LOC source (wizard + editor + file-ops + file-writer); −948 LO
 
 `Release: batch "dissolve-agents"`
 
-### Step 7 — Consolidate remaining test clone families
+### Step 7 — Consolidate remaining test clone families ([#443])
 
 Smell: Category D (testability) — 16 clone groups at Phase 18 end; the terminal cut (Steps 5–6) removes ~4 groups; remaining groups are extraction targets.
 Run after the cut so no helper is extracted into a file the cut then deletes.
@@ -1060,13 +1060,13 @@ Outcome: test clone groups ≤ 10 (from 16); `subagent-manager.test.ts` uses sha
 
 ```mermaid
 flowchart LR
-    S1[Step 1 - Spike]
-    S2[Step 2 - Settings command]
-    S3[Step 3 - Background widget]
-    S4[Step 4 - Native session nav]
-    S5[Step 5 - Dissolve /agents + viewer]
-    S6[Step 6 - Remove definition mgmt]
-    S7[Step 7 - Test clones]
+    S1[Step 1 - Spike (#446)]
+    S2[Step 2 - Settings command (#447)]
+    S3[Step 3 - Background widget (#444)]
+    S4[Step 4 - Native session nav (#445)]
+    S5[Step 5 - Dissolve /agents + viewer (#442)]
+    S6[Step 6 - Remove definition mgmt (#441)]
+    S7[Step 7 - Test clones (#443)]
 
     S1 --> S4
     S2 --> S5
@@ -1207,5 +1207,12 @@ The upstream test suite is run periodically as a regression canary for the sessi
 [#425]: https://github.com/gotgenes/pi-packages/issues/425
 [#426]: https://github.com/gotgenes/pi-packages/issues/426
 [#427]: https://github.com/gotgenes/pi-packages/issues/427
+[#441]: https://github.com/gotgenes/pi-packages/issues/441
+[#442]: https://github.com/gotgenes/pi-packages/issues/442
+[#443]: https://github.com/gotgenes/pi-packages/issues/443
+[#444]: https://github.com/gotgenes/pi-packages/issues/444
+[#445]: https://github.com/gotgenes/pi-packages/issues/445
+[#446]: https://github.com/gotgenes/pi-packages/issues/446
+[#447]: https://github.com/gotgenes/pi-packages/issues/447
 [ADR-0002]: ../decisions/0002-extensions-on-a-minimal-core.md
 [ADR-0004]: ../decisions/0004-reconsider-ui-direction.md
