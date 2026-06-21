@@ -23,3 +23,19 @@ The plan adds a `pipeline` case to `walkForCandidates` that folds the first stag
 - The change is internal to `bash-program.ts`: `externalPaths(cwd): string[]` is unchanged, so no consumer, test import, or `SKILL.md` reference moves.
   The design-review checklist found no structural smell (no shared-interface widening, no new threaded parameter); the three new helpers each return an `EffectiveBase` (real behavior, not procedure-splitting).
 - The #452 A3 never-weaker invariant pins the bash *command* gate (`commands()`), a different slice than `externalPaths`, so the metamorphic test is untouched; the #307/#418 fail-closed projection invariant is the one at risk and is guarded by the new terminal-`cd` test.
+
+## Stage: Implementation — TDD (2026-06-21T00:00:00Z)
+
+### Session summary
+
+Implemented the redirect-then-pipe cd-fold recovery in two TDD cycles: a `fix:` cycle adding four `externalPaths` projection tests plus `walkPipeline` / `foldPipelineFirstStage` / `foldListExceptTerminal` and a `pipeline` case in `walkForCandidates`, then a `docs:` cycle updating the `bash-program.ts` line in `docs/architecture/architecture.md`.
+Test count rose 2065 → 2069 (+4); full suite, `tsc`, root lint, and `pnpm fallow dead-code` all green.
+
+### Observations
+
+- Deviated from the plan on test 4: used `cat ../foo` (escaping under the pre-cd base, inside under the folded base) instead of `cat foo`, so the downstream-stage test is a genuine red test rather than green pre-fix; documented in the commit body.
+- Pre-fix failure values matched the traced `path.resolve` predictions exactly (test 1 `/projects/b`, test 3 `/x` → `/projects/x`, test 4 `/projects/foo`), confirming the base-reset diagnosis.
+- The fail-closed terminal-`cd` test (`cd a && cd b 2>&1 | tail ; cat ../../x` ⇒ `/projects/x`) is the load-bearing guard: without it, a naive "fold the whole first stage" fix would silently fold the pipe-stage `cd b` and under-flag a later escape (fail-open).
+- ESLint's pre-commit auto-fix removed a non-null assertion (`namedChildren[i]!` → `namedChildren[i]`); `tsc` stayed clean, so the assertion was unnecessary — array indexing returns `TSNode` here.
+- The architecture tree-listing line uses bare `#N` (parenthesized) for inline issue refs, not `[#N]` reference links; rumdl MD053 does not recognize `[#454]` inside that line, so the doc update uses bare `#454` to match the local convention and avoid the unused-definition error.
+- Pre-completion reviewer: PASS — all deterministic checks green, the three at-risk invariants (#452 A3 never-weaker, #307/#418 fail-closed subshell + terminal-pipe-stage) verified, and the test-4 deviation accepted as a quality improvement.
