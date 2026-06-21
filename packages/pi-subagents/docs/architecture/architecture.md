@@ -990,16 +990,22 @@ Smell: Category C (coupling) — the bespoke `ConversationViewer` re-implements 
 This step adds the new surface alongside the existing viewer; it does not touch `agent-menu.ts`.
 Target files:
 
-- New `src/ui/session-navigator.ts` (or a widget gesture, per Step 1's answer to parallel-agent navigation) — operator picks one of N background agents and views its persisted session via the spike-chosen mechanism, keyed on `record.outputFile`.
-- `src/index.ts` — register the new navigation surface (command and/or widget gesture, per the spike).
+- New `src/ui/session-navigator.ts` — a flat command that lists any subagent with a live record or a persisted session file (foreground included, never background-filtered), lets the operator pick one, and renders that child's transcript read-only.
+- New typed accessor on `Subagent`/`SubagentSession` returning `record.messages` as `AgentMessage[]` (the boundary currently widens it to `readonly unknown[]`).
+- `src/index.ts` — register the new command; the background widget ([#444]) is an optional secondary selection gesture, not a dependency.
 
 ADR-0004 Decision B: "Tell-Don't-Ask — hand Pi the session path; Pi owns the viewer."
-Mechanism (confirmed by the Step 1 spike, [ADR-0004] addendum): a **read-only** transcript rendered from `parseSessionEntries(readFileSync(record.outputFile, "utf8"))`, surfaced through a flat command — **not** `switchSession` (a full takeover that invalidates the root's in-flight turn) and **not** `loadEntriesFromFile` (a test-only export of the SDK's `core/session-manager` module that the package's public barrel does not re-export, in both `0.79.1` and `0.79.8`).
+Mechanism (confirmed by the Step 1 spike and revised by [ADR-0004] Addendum 2): a **read-only** (non-interactive) transcript **dual-sourced by liveness**, rendered through Pi's own public entry components (no bespoke renderer).
+
+- **Tracked agent** (still in `manager.listAgents()`) — render live from the in-memory record: `record.messages` for history, `record.subscribeToUpdates()` to re-render on streaming updates, and `record.activeTools` / `record.responseText` for the running-agent streaming indicator.
+- **Evicted / untracked agent** — render from the file snapshot: `parseSessionEntries(readFileSync(record.outputFile, "utf8"))` → drop the `SessionHeader` → `buildSessionContext(...).messages`.
+
+Both sources yield `AgentMessage[]`, so one Pi-component renderer serves both: Pi's public entry components (`AssistantMessageComponent` / `ToolExecutionComponent` / …) or `serializeConversation` (see the [ADR-0004] addendum, Findings 0 and 1).
+Neither `switchSession` (a full takeover that invalidates the root's in-flight turn) nor `loadEntriesFromFile` (a test-only export the package's public barrel does not re-export, in both `0.79.1` and `0.79.8`) is used.
 `Subagent.outputFile` already exposes the persisted child session JSONL path via `subagentSession?.outputFile` — no new SDK dependency.
-Rendering uses Pi's own public APIs (no bespoke renderer): `parseSessionEntries` → drop the `SessionHeader` → `buildSessionContext(...).messages` → Pi's public entry components (`AssistantMessageComponent` / `ToolExecutionComponent` / …) or `serializeConversation` (see the [ADR-0004] addendum, Findings 0 and 1).
 The new surface stands up while the old `viewAgentConversation`/`ConversationViewer` path still works; the bespoke viewer is removed only by the terminal cut (Step 5).
 
-Outcome: operator views a child agent's persisted session through Pi's native machinery; the new surface coexists with the old viewer until Step 5.
+Outcome: operator views any subagent's session through Pi's native machinery — live for a running agent, a file snapshot for an evicted one; the new surface coexists with the old viewer until Step 5.
 
 `Release: independent` (spike-gated)
 

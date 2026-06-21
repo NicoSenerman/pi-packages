@@ -214,6 +214,40 @@ Reject the tentative `/subagents:settings` and the `/agents-settings` alternativ
 
 This keeps bespoke transcript rendering out of the package (rendering is Pi's own public components), adds no inbound call from the UI to the core, and preserves the Phase 18 spine invariants (#422–#425).
 
+## Addendum 2 (2026-06-20): Step 4 sourcing — live record plus file snapshot ([#445])
+
+This addendum revises the first addendum's Criterion 2 answer for Step 4 ([#445]).
+The "strictly read-only, file-only" sourcing and the "not a live overlay" framing are superseded by the dual-source decision below; everything else from the spike stands.
+
+**Why revise.**
+The spike's mechanism — `parseSessionEntries(readFileSync(record.outputFile))` read once — serves a _completed_ subagent well but is a frozen snapshot for a _running_ one: it shows only what was flushed to disk at open time and does not stream.
+The clarified desired behavior is to see the **live** activity of any subagent _and_ the activity of a completed subagent.
+The bespoke `ConversationViewer` being removed in Step 5 already delivers both — it subscribes to the live in-memory record (`record.subscribeToUpdates()`) and renders `record.messages` plus a streaming indicator built from `record.activeTools` / `record.responseText`.
+That liveness comes from the in-memory record, not the persisted file, so a file-only viewer drops it.
+
+**Decision — dual-source, one renderer.**
+Step 4 sources the transcript by liveness and renders both sources through the same Pi public entry components (Finding 1 holds — no bespoke renderer):
+
+- **Tracked agent (still in `manager.listAgents()`)** — render from the live in-memory record: `record.messages` for history, `record.subscribeToUpdates()` to re-render on streaming updates, and `record.activeTools` / `record.responseText` for the running-agent streaming indicator.
+  This is live.
+- **Evicted / untracked agent** — render from the file snapshot: `parseSessionEntries(readFileSync(record.outputFile, "utf8"))` → drop the `SessionHeader` → `buildSessionContext(...).messages` (Findings 0 and 1).
+
+Both sources yield `AgentMessage[]`, so a single Pi-component renderer serves both.
+
+**Type-boundary note.**
+`SubagentSession.messages` is deliberately widened to `readonly unknown[]` at the core boundary (`src/lifecycle/subagent-session.ts`), even though the underlying `_session.messages` is the SDK's `AgentMessage[]`.
+Step 4 should add a typed accessor that returns `AgentMessage[]` (or narrow at the boundary) rather than feeding `unknown[]` into Pi's components.
+This is a read accessor on the existing record — it adds no inbound call from the UI to the core and does not regress the Phase 18 spine invariants.
+
+**Still read-only (non-interactive).**
+The viewer remains strictly non-interactive: Criterion 2's anti-redundant-steering rationale stands (steering lives in the `steer_subagent` tool and the widget), and Criterion 1's rejection of `switchSession` is unchanged — "live" here means the in-memory subscription, not an active-session takeover.
+
+**Candidate set (revises Criterion 3).**
+The selection command lists **any subagent with a live record or a persisted session file** — foreground agents included, not only running background agents.
+This matches the bespoke viewer's current reach (gated on `record.isSessionReady()`, never background-filtered) and avoids an interim regression.
+A foreground agent is navigable only _after_ it completes — while it runs, the root turn is blocked on it — whereas a background agent is navigable live.
+The background widget ([#444]) remains the optional secondary selection gesture for background agents; the command is the primary, unit-testable surface.
+
 [#444]: https://github.com/gotgenes/pi-packages/issues/444
 [#445]: https://github.com/gotgenes/pi-packages/issues/445
 [#446]: https://github.com/gotgenes/pi-packages/issues/446
