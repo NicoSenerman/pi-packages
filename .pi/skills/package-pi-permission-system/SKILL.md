@@ -97,8 +97,16 @@ Do not propose pushing agent-awareness (an agents directory, frontmatter parsing
 
 ### Jiti isolation
 
-Pi's extension loader creates a fresh jiti instance per extension with `moduleCache: false`.
-Module-scoped state is isolated — a variable set in this extension's module is invisible to other extensions.
+Pi's extension loader keeps each extension's module isolated — a variable set in this extension's module is invisible to other extensions.
+
+**Module-scoped state no longer resets per session.**
+Since [earendil-works/pi#5905] (shipped in pi-coding-agent — "cache extension imports for session switches"), the loader caches the imported factory function per `(extensionPath, cwd)`.
+The factory is still **re-invoked** on every `/new` / `/resume` / `/fork` / `/import` switch (with a fresh `pi`/`ExtensionContext`), so everything constructed *inside* the factory body — `PermissionSession`, `SessionRules`, subscriptions, `pi.on(...)` registrations — is rebuilt fresh each session, and `session_shutdown` still fires.
+But the module itself is imported only once per cwd; the cache clears only on `/reload` or a cwd change (`clearExtensionCache`).
+So module-scoped mutable state (top-level `let`, module-level caches, memoized values like `getParser = memoizeAsyncWithRetry(...)` in `bash-program.ts`) now persists across same-cwd session switches instead of being reborn each session.
+This is safe today (the package's module-scoped state is read-only lookup tables plus the stateless tree-sitter parser — persisting the parser is a win), but **do not park session-scoped or permission-relevant state at module level assuming a per-session reset** — it will leak between sessions in the same cwd.
+Keep per-session state inside the factory closure (where it is rebuilt) or in the `session_start`/`session_shutdown`-driven lifecycle.
+A regression guard lives in `test/composition-root.test.ts` ("session approvals do not leak across same-cwd session switches").
 
 Shared communication channels:
 
@@ -110,7 +118,9 @@ The in-process implementation of `PermissionsService` is `LocalPermissionsServic
 The `session_start`-gated publication, #302 subagent-child guard, ready-event emit, and session teardown ordering are all owned by `PermissionServiceLifecycle` (`src/service-lifecycle.ts`), which is injected into `SessionLifecycleHandler`.
 Changes to publication timing or teardown order should go through `PermissionServiceLifecycle`, not `index.ts`.
 
-Do not propose module-scoped singletons or Node.js module-cache sharing as a cross-extension communication mechanism — they do not work under jiti.
+Do not propose module-scoped singletons or Node.js module-cache sharing as a cross-extension communication mechanism — module isolation keeps them invisible to other extensions.
+
+[earendil-works/pi#5905]: https://github.com/earendil-works/pi/issues/5905
 
 The `path` and `external_directory` gates are path-aware for **all** tools, not just the six built-ins (#352).
 `getToolInputPath` (`src/path-utils.ts`) extracts a path for built-ins (`input.path`), MCP (`input.arguments.path`), and extension tools (default `input.path`, or a custom key via a registered extractor); `getPathBearingToolPath` stays built-in-only for the per-tool gate's cosmetic suggestion/log values.
