@@ -59,6 +59,9 @@ pi remove npm:@gotgenes/<package-name>
 pnpm install
 ```
 
+This installs dependencies and wires the `prek` git hooks automatically via the `prepare` script.
+The hooks include a `pre-commit` stage (Biome, ESLint, rumdl) and a `commit-msg` stage that validates Conventional Commit headers via [commitlint](https://commitlint.js.org/).
+
 ### Commands
 
 ```bash

@@ -203,6 +203,7 @@ Before writing or debugging tests, load the `testing` skill for Vitest mock patt
 
 Use Conventional Commits.
 For a breaking change, place the `!` **after** the scope: `fix(pkg)!:` / `feat(pkg)!:` — never `fix!(pkg):`, which the grammar rejects so release-please drops the commit and skips the major bump (Refs #452).
+A `commit-msg` commitlint hook (wired via `prek`, installed by `pnpm install`) now enforces this deterministically: a malformed header fails locally before it can mis-version a release (Refs #457).
 Commit at meaningful checkpoints without waiting for an explicit reminder.
 Prefer small, reviewable commits that leave the repository in a valid state.
 Do not gate a commit (or any `&&` step) on a check piped through `tail`/`head` — a pipeline's exit status is the filter's, so a failed `pnpm run lint`/`check` is masked and the commit still runs.
