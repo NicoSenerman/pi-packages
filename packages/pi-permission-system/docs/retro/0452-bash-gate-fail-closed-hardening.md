@@ -67,3 +67,48 @@ Test count went 2034 → 2064 (+30 across five new test files); `pnpm run check`
   Reviewer warnings: one WARN on `docs/architecture/architecture.md` staleness (three new modules missing from the file tree, stale `lifecycle.ts`/`bash-command.ts` entries) — resolved in commit `50786e89` before finishing.
 - Process note: a `cd ..`-chained verification command walked outside the repo root and tripped the `external_directory` gate (correctly).
   Reaffirmed the AGENTS.md rule — never `cd`; use `pnpm --filter` for package-scoped runs.
+
+## Stage: Final Retrospective (2026-06-21T01:30:00Z)
+
+### Session summary
+
+Shipped #452 via `/ship-issue` (CI green, issue closed, release-please PR #455 merged → `pi-permission-system@15.1.0`), then discovered the breaking change had shipped as a **minor** bump instead of a **major**.
+Root-caused it to a malformed commit header — `fix!(pi-permission-system):` puts the `!` before the scope, which the Conventional Commits grammar rejects, so release-please silently dropped the commit (no changelog entry, no major bump).
+Rolled forward to `16.0.0` with a correctly-formatted `fix(pi-permission-system)!:` commit, added a preventive `AGENTS.md` rule, and deprecated `15.1.0` on npm with a pointer to `16.0.0`.
+
+### Observations
+
+#### What went well
+
+- The roll-forward recovery was clean and correctly reasoned: cut a new `16.0.0` rather than force-pushing `main` (npm immutability plus the already-published `15.1.0` made a history rewrite both unsafe and ineffective), verified the new release-please PR body showed `16.0.0` with a `⚠ BREAKING CHANGES` section **before** merging, then deprecated `15.1.0`.
+- Diagnosed the root cause at the grammar level: traced the conventional-commits header regex `^(\w*)(?:\((.*)\))?!?:` and showed why `fix!(scope):` fails to match, rather than guessing.
+- `web_search` confirmed release-please's documented `fix!:` → major semantics, separating "release-please is buggy" from "our commit was malformed."
+
+#### What caused friction (agent side)
+
+- `missing-context` — used the plan's verbatim `fix!(pi-permission-system):` commit header without validating it against the Conventional Commits grammar.
+  The `!`-before-scope form is malformed; release-please dropped the commit, shipping the breaking change as `15.1.0` instead of `16.0.0`.
+  Impact: a mis-versioned release published to npm (immutable), a roll-forward to `16.0.0`, and a manual `15.1.0` deprecation.
+  User-caught (the user questioned why a `fix!` produced a minor bump).
+- `other` (premature rationalization) — when the release came out `15.1.0`, fabricated a confident but self-contradictory explanation ("the `BREAKING CHANGE:` footer doesn't trigger a major in v0.x … the current version is 15.x so it does bump minor") instead of flagging the anomaly.
+  A `fix!` yielding a minor bump is a contradiction that should have triggered investigation, not an explanation.
+  Impact: no rework (the user's pushback corrected course immediately), but it briefly asserted a falsehood and delayed detection.
+
+#### What caused friction (user side)
+
+- Opportunity, not criticism: the user's redirect — "A `fix!` should bump the major version IMO.
+  What am I missing?"
+  — was the ideal intervention, reframing the wrong explanation as a question to investigate rather than just flagging it as wrong.
+  Nothing the user could have done earlier: the malformed header originated in the plan from a prior session.
+
+### Diagnostic details
+
+- **Unused-tool / feedback-loop gap** — no commit-message validation runs at commit time (the pre-commit hooks cover formatting and lint, not conventional-commit grammar), so the malformed header passed every local gate.
+  Both backstops that *should* have caught it failed: the pre-completion-reviewer's conventional-commits check explicitly validated `fix!(pi-permission-system):` as "valid breaking-change form," and `/ship-issue` step 6 reads the release-please PR's version bump but never checks it against the commit types.
+- **Escalation-delay** — none; the post-pushback investigation was a tight, converging ~6-call sequence (config read → commit-body read → `web_search` → registry query), not a rabbit-hole.
+
+### Changes made
+
+1. `AGENTS.md` — tightened the breaking-commit rule to rule + example + `Refs #452` (rationale moved here); the `!` goes after the scope (`fix(pkg)!:`), never `fix!(pkg):`.
+2. Filed issue #457 — add a `commit-msg` hook (`@commitlint/cli` + `config-conventional`) to reject malformed Conventional Commit headers at commit time.
+   The user chose this deterministic commit-time gate over the two prompt-level detection proposals (a `/ship-issue` semver-consistency check and a `pre-completion-reviewer` `!`-position check), which it supersedes; both are recorded here but were not implemented.
