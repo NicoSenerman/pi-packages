@@ -55,3 +55,9 @@ Pre-completion reviewer returned PASS.
 - **Reviewer verdict: PASS.**
   Two WARN notes, both intentional and plan-sanctioned: Step 4 heading unchecked (correct for a partial slice) and the deferred `SKILL.md` count.
 - **Open at ship time:** confirm command name `subagent-sessions`; file the two follow-up issues (component renderer; evicted-agent file source).
+
+## Stage: User Note (2026-06-22T18:26:37Z)
+
+When new issues are identified during planning, file them before leaving the planning stage rather than deferring to ship time.
+Two motivations: the planning session uses a very capable model, and it already has all the context needed to write the issues well.
+Applied here: the two follow-up issues (#462 renderer upgrade, #463 file-snapshot source) were identified during planning but filed only at ship time — they should have been created at the end of the planning commit instead.
