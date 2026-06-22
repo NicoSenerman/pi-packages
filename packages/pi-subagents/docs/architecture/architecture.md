@@ -987,7 +987,7 @@ Outcome: widget shows only background agents; foreground/widget duplication elim
 
 `Release: independent`
 
-### Step 4 — Implement native session navigation ([#445])
+### ✅ Step 4 — Implement native session navigation ([#445])
 
 Smell: Category C (coupling) — the bespoke `ConversationViewer` re-implements session-transcript rendering when Pi's own machinery targets the already-persisted child session JSONL.
 This step adds the new surface alongside the existing viewer; it does not touch `agent-menu.ts`.
@@ -1013,8 +1013,7 @@ Outcome: operator views any subagent's session through Pi's native machinery —
 Landed ([#445], sliced): #445 shipped the first releasable vertical slice — the `/subagent-sessions` command (`src/ui/session-navigator.ts`), the pure selection/sourcing/text-render core (`src/ui/session-navigation.ts`), and the typed `agentMessages` accessor (`SessionMessage` on `SubagentSession`/`Subagent`).
 It is **live-source only** behind a renderer-agnostic `TranscriptSource` seam, rendered via Pi's `serializeConversation` text.
 With the `manager.listAgents()`-only candidate set, no listed record is ever session-disposed (dispose-and-delete are atomic), so the file-snapshot branch has no reachable caller and was deferred to keep `fallow dead-code` clean.
-Two follow-ups complete the step behind the same seam: Step 4a ([#462]) upgrades the renderer from `serializeConversation` text to Pi's per-entry TUI components (gates Step 5 for rendering parity); Step 4b ([#463]) broadens the candidate set to evicted agents and adds the file-snapshot source (`parseSessionEntries` → `buildSessionContext`, independent).
-The step heading stays unchecked until both land.
+Step 4 (#445, the slice) is complete and released (`pi-subagents` v17.3.0); the remaining work is now tracked as two follow-up steps behind the same seam: Step 4a ([#462]) upgrades the renderer from `serializeConversation` text to Pi's per-entry TUI components (gates Step 5 for rendering parity); Step 4b ([#463]) broadens the candidate set to evicted agents and adds the file-snapshot source (`parseSessionEntries` → `buildSessionContext`, independent).
 
 `Release: independent` (spike-gated)
 
@@ -1103,7 +1102,7 @@ flowchart LR
     S1["✅ Step 1 - Spike (#446)"]
     S2["✅ Step 2 - Settings command (#447)"]
     S3["✅ Step 3 - Background widget (#444)"]
-    S4["Step 4 - Native session nav slice (#445)"]
+    S4["✅ Step 4 - Native session nav slice (#445)"]
     S4a["Step 4a - Renderer to TUI components (#462)"]
     S4b["Step 4b - File-snapshot source (#463)"]
     S5["Step 5 - Dissolve /agents + viewer (#442)"]
