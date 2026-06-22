@@ -61,3 +61,62 @@ Pre-completion reviewer returned PASS.
 When new issues are identified during planning, file them before leaving the planning stage rather than deferring to ship time.
 Two motivations: the planning session uses a very capable model, and it already has all the context needed to write the issues well.
 Applied here: the two follow-up issues (#462 renderer upgrade, #463 file-snapshot source) were identified during planning but filed only at ship time — they should have been created at the end of the planning commit instead.
+
+## Stage: Final Retrospective (2026-06-22T18:28:31Z)
+
+### Session summary
+
+One continuous session carried #445 from planning through TDD, ship, and a mid-session retro note.
+It delivered the sliced Phase 19 Step 4 — the `/subagent-sessions` command, the live `TranscriptSource`, and the typed `agentMessages` accessor — across three `feat:` commits plus docs, released as `pi-subagents` v17.3.0, with two follow-ups (#462, #463) filed at ship.
+Execution was notably clean: the plan anticipated both hard risks, and every implementation slip was absorbed by the feedback loops within its active TDD cycle.
+
+### Observations
+
+#### What went well
+
+1. **The plan pre-empted the two hardest risks.**
+   `AgentMessage`→`Message` non-assignability and the unreachable file-snapshot branch were both called out in planning and both materialized exactly as predicted; the planned mitigations (the `toMessages` adapter; shipping the live source only) applied with zero rework.
+2. **The `TranscriptSource` seam earned its keep.**
+   The pure `session-navigation.ts` was unit-tested with light stubs (no full `Subagent`/`TUI`/`AgentSession`), and the seam cleanly hosts both deferred follow-ups — testability justified it independent of the follow-ups.
+3. **Tight, incremental feedback loops.**
+   Per-cycle affected-file test runs, `pnpm run check` after every type-touching step, and full suite + lint + `fallow dead-code` after the last step caught every slip within seconds.
+4. **Two `ask_user` rounds during planning converted a large issue into a releasable slice** (the operator's Kent Beck nudge) — the central design win of the issue.
+
+#### What caused friction (agent side)
+
+1. `missing-context` — wrote test assertions before checking helper behavior: `formatMs` yields `3.0s` not `3s`, `getDisplayName` falls back to `Agent`, `TOOL_DISPLAY` keys are lowercase, and `AgentTypeRegistry` takes `() => new Map()` not `() => []`.
+   Impact: ~4 assertion fixes within one Green iteration; no rework beyond the cycle.
+2. `missing-context` — `SessionContext` name collision: imported the SDK type into `types.ts` without noticing a local `SessionContext` interface already existed.
+   Impact: one aliasing edit (`SdkSessionContext`), caught immediately by biome `noRedeclare`.
+3. `other` (mechanical) — a stray `}` when wrapping a new `describe` block (AGENTS.md already warns about brace-pair edits), and `SessionMessage` imported from the wrong module in the navigator test.
+   Impact: one fix each, caught by autoformat and `tsc`.
+4. `instruction-violation` (self-identified, hook-caught) — two lint nits the `testing` skill already documents: an unnecessary optional chain and an unnecessary `!` on `mock.calls[0][0]`.
+   Impact: two inline fixes; no rework.
+
+None of the agent-side slips caused rework beyond their active TDD cycle — the autoformat/biome/`tsc`/vitest/pre-commit loops absorbed all of them.
+
+#### What caused friction (user side)
+
+1. The dominant cross-session finding (recorded separately as the User Note stage): follow-up issues identified during planning (#462, #463) were filed only at ship time.
+   The workflow itself encodes the deferral — the plan said "file at ship time" and `/ship-issue` step 4c creates them.
+   The operator wants them filed during planning, while the capable planning model still holds full context.
+   Opportunity: move follow-up creation into `/plan-issue`.
+
+### Diagnostic details
+
+- **Model-performance correlation** — the only subagent dispatch was the `pre-completion-reviewer` on `anthropic/claude-sonnet-4-6`, a judgment-heavy review task; appropriate match.
+  Planning ran on a capable model, which the operator explicitly values.
+  No mismatch.
+- **Escalation-delay tracking** — no rabbit-holes; the longest same-area sequence was 4 assertion fixes inside one Green iteration (under the 5-call flag).
+- **Unused-tool detection** — the `missing-context` slips were caught trivially by running tests; reading `display.ts` helpers first would have pre-empted them, but the cost was negligible and no Explore/`colgrep` dispatch was warranted.
+- **Feedback-loop gap analysis** — verification ran incrementally and completely (per-cycle tests, `check` after type changes, full gate after the last step); no gap.
+  This is a win, not a gap.
+
+### Changes made
+
+Moved follow-up issue creation from ship time to planning time, with the backstop relocated to pre-completion (operator-directed):
+
+1. `.pi/prompts/plan-issue.md` — added a `## File follow-up issues` section before `## Commit`: file plan-named follow-ups during planning with `gh issue create` and record each number in the plan; nothing speculative.
+2. `.pi/agents/pre-completion-reviewer.md` — added checklist section `2i. Planned follow-up issues` and its report stanza: WARN when the plan names a follow-up but records no issue number; also added the case to the severity model's WARN list.
+3. `.pi/prompts/ship-issue.md` — removed step `4c. Create planned follow-up issues` (follow-ups are now filed during planning; the close comment in step 5 references the recorded numbers).
+4. `AGENTS.md` — extended the pre-completion-reviewer coverage enumeration to include planned follow-up filing.

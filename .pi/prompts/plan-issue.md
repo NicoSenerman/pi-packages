@@ -153,6 +153,12 @@ Then an H1 title (e.g., `# <short descriptive title>`) — required by markdownl
 
 If the change is breaking, say so explicitly in Goals and use `feat!:` in the suggested commit messages.
 
+## File follow-up issues
+
+If planning identified work to defer to a separate issue (a follow-up named in Design Overview, Non-Goals, or Open Questions), create it now with `gh issue create` — before the plan commit, while this session holds full context.
+Record each new issue number in the plan's Non-Goals / Open Questions.
+File nothing speculative — only follow-ups the plan concretely names.
+
 ## Commit
 
 ```bash

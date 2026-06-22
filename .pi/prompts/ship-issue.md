@@ -70,11 +70,6 @@ If that decision was to defer/batch: stop here — the push and CI are done; lea
 Note the deferral in the final report.
 Otherwise continue.
 
-## 4c. Create planned follow-up issues
-
-If the plan or its retro defers work to a follow-up issue ("created at ship time", "deferred to a follow-up"), create it now with `gh issue create` before closing — the shipped issue's close comment should reference its number.
-Skip if the plan names no deferred follow-up.
-
 ## 5. Close the issue
 
 Build the close comment from the commits since the shipped package's previous release.
