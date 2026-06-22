@@ -61,7 +61,8 @@ If either fails, fix the issues and commit before pushing.
 ## 4b. Check for a stacked release
 
 First check the unreleased range for a releasing commit: `git log --oneline <last-tag>..HEAD`.
-If every commit is a non-releasing type (`refactor:`/`docs:`/`style:`/`chore:`/`test:` — no `feat`/`fix`/`!`/`BREAKING CHANGE`), release-please will cut nothing now; the work auto-batches until a `feat`/`fix` lands.
+If every commit is a non-releasing type — the `hidden: true` changelog sections in `release-please-config.json` (`refactor:`/`style:`/`test:`/`build:`/`ci:`) — release-please will cut nothing now; the work auto-batches until a releasing commit lands.
+A `docs:` commit on a non-excluded path **does** cut a patch (it is a visible changelog section); only `exclude-paths` commits (`docs/plans`, `docs/retro`) are inert.
 Say so in the final report and skip the batch-vs-release question.
 
 Then apply the decision recorded in the early "Release coordination" section.
@@ -86,7 +87,8 @@ git log --oneline <pkg-tag>..HEAD
 The comment should include:
 
 - The commit hash that lands the change ("Implemented in <sha> …").
-  Write the SHA as plain text — no backticks — so GitHub auto-links it to the commit.
+  Get the full 40-char SHA from `git rev-parse <commit>` and paste it exactly — never hand-type or extend a short SHA from memory; a fabricated SHA does not auto-link.
+  Write it as plain text — no backticks — so GitHub auto-links it to the commit.
 - A short bullet list of feature/breaking commits.
 - One sentence on user-visible behavior change.
 - A note flagging any breaking change (matches `feat!:` commits).
