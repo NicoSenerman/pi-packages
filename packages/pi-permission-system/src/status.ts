@@ -20,23 +20,22 @@ export function getPermissionSystemStatus(
   config: PermissionSystemExtensionConfig,
   ctx?: PermissionStatusContext,
 ): string | undefined {
-  // When the user has explicitly picked a mode via /mode or the shortcut,
-  // surface that mode label. Otherwise fall back to upstream's contract:
-  // "yolo" only when config.yoloMode is on, else undefined (status hidden).
-  // This keeps factory tests (which pass yoloMode: undefined) green.
-  if (!isExplicitMode()) {
-    return isYoloModeEnabled(config)
-      ? PERMISSION_SYSTEM_YOLO_STATUS_VALUE
-      : undefined;
-  }
-  const mode = getCurrentMode();
-  if (mode === "bach") {
+  // Effective mode to display. When the user has explicitly picked a mode via
+  // /mode or the shortcut, show that. Otherwise: if config.yoloMode is on
+  // (upstream's enable flag) show "yolo"; else default to BACH so a fresh
+  // session shows the BACH label + prompt + gate out of the box.
+  const effectiveMode = isExplicitMode()
+    ? getCurrentMode()
+    : isYoloModeEnabled(config)
+      ? "yolo"
+      : "bach";
+  if (effectiveMode === "bach") {
     if (ctx?.ui?.theme) {
       return ctx.ui.theme.fg("syntaxType", "BACH");
     }
     return "BACH";
   }
-  if (mode === "yolo") {
+  if (effectiveMode === "yolo") {
     if (ctx?.ui?.theme) {
       return ctx.ui.theme.fg("success", "YOLO");
     }
