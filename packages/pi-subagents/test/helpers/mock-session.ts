@@ -11,6 +11,7 @@ export interface MockSession {
 	dispose: Mock<() => void>;
 	steer: Mock<(...args: unknown[]) => Promise<unknown>>;
 	sessionManager: { getSessionFile: Mock<() => unknown> };
+	getToolDefinition: Mock<(name: string) => unknown>;
 }
 
 /**
@@ -53,6 +54,7 @@ export function createSubagentSessionStub(
 		})),
 		get messages(): readonly unknown[] { return session.messages; },
 		get agentMessages(): readonly unknown[] { return session.messages; },
+		getToolDefinition: vi.fn((name: string): unknown => session.getToolDefinition(name)),
 	};
 }
 
@@ -96,6 +98,7 @@ export function createMockSession(overrides: Record<string, unknown> = {}): Mock
 		dispose: vi.fn(),
 		steer: vi.fn().mockResolvedValue(undefined),
 		sessionManager: { getSessionFile: vi.fn() },
+		getToolDefinition: vi.fn((_name: string): unknown => undefined),
 	};
 
 	return { ...base, ...overrides };

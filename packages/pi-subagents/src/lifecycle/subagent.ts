@@ -7,7 +7,7 @@
  */
 
 import type { Model } from "@earendil-works/pi-ai";
-import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import type { AgentSessionEvent, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { debugLog } from "#src/debug";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
@@ -165,6 +165,11 @@ export class Subagent {
 	/** The session's message history typed for Pi's session-rendering machinery, or empty if no session. */
 	get agentMessages(): readonly SessionMessage[] {
 		return this.subagentSession?.agentMessages ?? [];
+	}
+
+	/** Resolve a registered tool definition by name, or undefined if no session. */
+	getToolDefinition(name: string): ToolDefinition | undefined {
+		return this.subagentSession?.getToolDefinition(name);
 	}
 
 	constructor(init: SubagentInit) {

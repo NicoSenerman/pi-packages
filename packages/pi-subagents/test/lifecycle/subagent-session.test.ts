@@ -30,6 +30,7 @@ function createSession(finalText: string) {
       tokens: { input: 100, output: 50, cacheWrite: 10 },
       contextUsage: { percent: 42 },
     })),
+    getToolDefinition: vi.fn((_name: string): unknown => undefined),
   };
   return { session, listeners };
 }
@@ -325,6 +326,15 @@ describe("SubagentSession — delegate methods", () => {
     session.messages.push({ role: "user", content: "hi" });
     const { sub } = makeSubagentSession(session);
     expect(sub.agentMessages).toBe(session.messages);
+  });
+
+  it("getToolDefinition delegates to the underlying session", () => {
+    const { session } = createSession("X");
+    const def = { name: "read" };
+    session.getToolDefinition = vi.fn(() => def);
+    const { sub } = makeSubagentSession(session);
+    expect(sub.getToolDefinition("read")).toBe(def);
+    expect(session.getToolDefinition).toHaveBeenCalledWith("read");
   });
 });
 

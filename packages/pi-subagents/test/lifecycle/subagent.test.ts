@@ -279,6 +279,22 @@ describe("Subagent — session-encapsulation methods", () => {
 			expect(agent.agentMessages).toEqual([{ role: "user", content: "hi" }]);
 		});
 	});
+
+	describe("getToolDefinition", () => {
+		it("returns undefined when no session", () => {
+			const agent = makeSubagent();
+			expect(agent.getToolDefinition("read")).toBeUndefined();
+		});
+
+		it("delegates to SubagentSession.getToolDefinition when session is ready", () => {
+			const agent = makeSubagent();
+			const def = { name: "read" };
+			const session = createMockSession({ getToolDefinition: vi.fn(() => def) });
+			const stub = createSubagentSessionStub(session);
+			agent.subagentSession = toSubagentSession(stub);
+			expect(agent.getToolDefinition("read")).toBe(def);
+		});
+	});
 });
 
 describe("Subagent — steer buffer", () => {
