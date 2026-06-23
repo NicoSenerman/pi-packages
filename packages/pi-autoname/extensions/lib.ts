@@ -20,12 +20,21 @@ export const MIN_COOLDOWN_MINUTES = 1;
 export const MAX_COOLDOWN_MINUTES = 24 * 60;
 
 export const SENSITIVE_PATTERNS: Array<{ re: RegExp; replacement: string }> = [
-  { re: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, replacement: "[REDACTED_PRIVATE_KEY]" },
+  {
+    re: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
+    replacement: "[REDACTED_PRIVATE_KEY]",
+  },
   { re: /\bAKIA[0-9A-Z]{16}\b/g, replacement: "[REDACTED_AWS_KEY]" },
   { re: /\bsk-[A-Za-z0-9_-]{20,}\b/g, replacement: "[REDACTED_API_KEY]" },
   { re: /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{20,}/gi, replacement: "$1[REDACTED]" },
-  { re: /\b([A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD))\s*=\s*["']?[^"'\s]+/g, replacement: "$1=[REDACTED]" },
-  { re: /\b(api[_-]?key|token|secret|password)\b\s*[:=]\s*["']?[^"'\s,;]+/gi, replacement: "$1=[REDACTED]" },
+  {
+    re: /\b([A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD))\s*=\s*["']?[^"'\s]+/g,
+    replacement: "$1=[REDACTED]",
+  },
+  {
+    re: /\b(api[_-]?key|token|secret|password)\b\s*[:=]\s*["']?[^"'\s,;]+/gi,
+    replacement: "$1=[REDACTED]",
+  },
 ];
 
 export interface AutonameConfig {
@@ -63,13 +72,19 @@ export function normalizeConfig(input: unknown): AutonameConfig {
 
   const raw = input as Record<string, unknown>;
   const cooldown =
-    typeof raw.cooldownMinutes === "number" && Number.isFinite(raw.cooldownMinutes)
-      ? Math.min(MAX_COOLDOWN_MINUTES, Math.max(MIN_COOLDOWN_MINUTES, raw.cooldownMinutes))
+    typeof raw.cooldownMinutes === "number" &&
+    Number.isFinite(raw.cooldownMinutes)
+      ? Math.min(
+          MAX_COOLDOWN_MINUTES,
+          Math.max(MIN_COOLDOWN_MINUTES, raw.cooldownMinutes),
+        )
       : DEFAULT_CONFIG.cooldownMinutes;
 
   return {
-    enabled: typeof raw.enabled === "boolean" ? raw.enabled : DEFAULT_CONFIG.enabled,
-    model: typeof raw.model === "string" ? raw.model.trim() : DEFAULT_CONFIG.model,
+    enabled:
+      typeof raw.enabled === "boolean" ? raw.enabled : DEFAULT_CONFIG.enabled,
+    model:
+      typeof raw.model === "string" ? raw.model.trim() : DEFAULT_CONFIG.model,
     fallbackModels: Array.isArray(raw.fallbackModels)
       ? raw.fallbackModels
           .filter((item): item is string => typeof item === "string")
@@ -79,18 +94,25 @@ export function normalizeConfig(input: unknown): AutonameConfig {
     cooldownMinutes: cooldown,
     debug: typeof raw.debug === "boolean" ? raw.debug : DEFAULT_CONFIG.debug,
     respectManualName:
-      typeof raw.respectManualName === "boolean" ? raw.respectManualName : DEFAULT_CONFIG.respectManualName,
+      typeof raw.respectManualName === "boolean"
+        ? raw.respectManualName
+        : DEFAULT_CONFIG.respectManualName,
   };
 }
 
-export function redactSensitiveText(text: string): { text: string; redacted: boolean } {
+export function redactSensitiveText(text: string): {
+  text: string;
+  redacted: boolean;
+} {
   let redacted = false;
   let output = text;
 
   for (const { re, replacement } of SENSITIVE_PATTERNS) {
     output = output.replace(re, (...args) => {
       redacted = true;
-      return replacement.replace(/\$(\d+)/g, (_, index) => String(args[Number(index)] ?? ""));
+      return replacement.replace(/\$(\d+)/g, (_, index) =>
+        String(args[Number(index)] ?? ""),
+      );
     });
   }
 
@@ -98,11 +120,14 @@ export function redactSensitiveText(text: string): { text: string; redacted: boo
 }
 
 export function isHighQualityName(name: string): boolean {
-  if (name.length < MIN_NAME_LENGTH || name.length > MAX_NAME_LENGTH) return false;
+  if (name.length < MIN_NAME_LENGTH || name.length > MAX_NAME_LENGTH)
+    return false;
   if (RAW_SLICE_RE.test(name)) return false;
   if (SENTENCE_END_RE.test(name)) return false;
   if ((name.match(/[，,。！？!?]/g) || []).length > 1) return false;
-  const hasContent = /[\u4e00-\u9fff]/.test(name) || /^[A-Za-z][A-Za-z0-9_\-\s]{2,30}$/.test(name);
+  const hasContent =
+    /[\u4e00-\u9fff]/.test(name) ||
+    /^[A-Za-z][A-Za-z0-9_\-\s]{2,30}$/.test(name);
   return hasContent;
 }
 
@@ -136,6 +161,20 @@ export function smartFallbackName(text: string): string {
 
   s = s.replace(/(?:吗|呢|吧|啊|呀|哦|嘛|的|了|着|过)[\s,，.。]*$/, "").trim();
   s = s.replace(/[。！？!?.…]+\s*$/, "").trim();
+
+  // Final guard: clamp to MAX_NAME_LENGTH so the result always passes
+  // isHighQualityName's length check. Without this, a fallback of 31-45
+  // chars passes the 45-char cut above but is rejected by the 30-char
+  // quality gate — leaving the user with no name at all.
+  if (s.length > MAX_NAME_LENGTH) {
+    // For Latin text, cut at the last word boundary ≤ MAX_NAME_LENGTH
+    // so we don't split a word in half. For CJK (no spaces), hard-cut.
+    const slice = s.slice(0, MAX_NAME_LENGTH);
+    const lastSpace = slice.lastIndexOf(" ");
+    s = lastSpace > MIN_NAME_LENGTH ? slice.slice(0, lastSpace) : slice;
+    // Re-strip any trailing punctuation the cut may have exposed.
+    s = s.replace(/[。！？!?.…,，\s]+$/, "").trim();
+  }
 
   return s || text.slice(0, 40).replace(/\n/g, " ").trim();
 }
