@@ -28,7 +28,7 @@ This makes it easy to verify which files the extension actually loaded:
   "projectConfigExists": false,
   "agentsDir": "/…/.pi/agent/agents",
   "agentsDirExists": true,
-  "projectAgentsDir": "/…/my-project/.pi/agent/agents",
+  "projectAgentsDir": "/…/my-project/.pi/agents",
   "projectAgentsDirExists": false,
   "legacyGlobalPolicyDetected": false,
   "legacyProjectPolicyDetected": false,

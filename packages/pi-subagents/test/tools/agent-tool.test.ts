@@ -62,16 +62,6 @@ describe("AgentTool", () => {
 		reloadSpy.mockRestore();
 	});
 
-	it("sets UI context on runtime at start of execute", async () => {
-		const deps = createToolDeps();
-		const ctx = makeCtx();
-		await execute(deps, {
-			prompt: "test",
-			description: "test",
-			subagent_type: "general-purpose",
-		}, ctx);
-		expect(deps.runtime.setUICtx).toHaveBeenCalledWith(ctx.ui);
-	});
 });
 
 describe("AgentTool — resume path", () => {
@@ -164,18 +154,6 @@ describe("AgentTool — background execution", () => {
 		});
 		// Background spawn succeeds — no emitEvent dep required
 		expect(result.content[0].text).toContain("background");
-	});
-
-	it("registers activity in agentActivity map", async () => {
-		const deps = createToolDeps();
-		deps.manager.getRecord = vi.fn().mockReturnValue(createTestSubagent({ status: "running" }));
-		await execute(deps, {
-			prompt: "do something",
-			description: "bg task",
-			subagent_type: "general-purpose",
-			run_in_background: true,
-		});
-		expect(deps.runtime.agentActivity.get("agent-1")).toBeDefined();
 	});
 
 	it("passes parentSession.toolCallId to manager.spawn so the manager wires NotificationState", async () => {

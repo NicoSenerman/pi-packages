@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument -- Pi SDK types are not fully exported; see upstream Pi SDK for type improvements */
 /**
- * pi-agents — A pi extension providing Claude Code-style autonomous sub-agents.
+ * pi-agents — A pi extension providing focused, in-process autonomous sub-agents.
  *
  * Tools:
  *   Agent             — LLM-callable: spawn a sub-agent
@@ -8,9 +8,9 @@
  *   steer_subagent       — LLM-callable: send a steering message to a running agent
  *
  * Commands:
- *   /agents                 — Interactive agent management menu
  */
 
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   createAgentSession,
@@ -22,6 +22,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { loadCustomAgents } from "#src/config/custom-agents";
+import { FsAgentFileOps } from "#src/ui/agent-file-ops";
 import {
   InterruptHandler,
   SessionLifecycleHandler,
@@ -33,17 +34,14 @@ import {
   createSubagentSession,
   type SubagentSessionDeps,
 } from "#src/lifecycle/create-subagent-session";
-import { buildParentSnapshot } from "#src/lifecycle/parent-snapshot";
+import { SubagentManager } from "#src/lifecycle/subagent-manager";
+import { CompositeSubagentObserver } from "#src/observation/composite-subagent-observer";
 import {
-  SubagentManager,
-  type SubagentManagerObserver,
-} from "#src/lifecycle/subagent-manager";
-import {
-  buildEventData,
   type NotificationDetails,
   NotificationManager,
 } from "#src/observation/notification";
 import { createNotificationRenderer } from "#src/observation/renderer";
+import { SubagentEventsObserver } from "#src/observation/subagent-events-observer";
 import { createSubagentRuntime } from "#src/runtime";
 import {
   publishSubagentsService,
@@ -59,9 +57,9 @@ import { SettingsManager } from "#src/settings";
 import { AgentTool } from "#src/tools/agent-tool";
 import { GetResultTool } from "#src/tools/get-result-tool";
 import { SteerTool } from "#src/tools/steer-tool";
-import { FsAgentFileOps } from "#src/ui/agent-file-ops";
-import { AgentsMenuHandler } from "#src/ui/agent-menu";
 import { AgentWidget } from "#src/ui/agent-widget";
+import { SessionNavigatorHandler } from "#src/ui/session-navigator";
+import { SubagentsSettingsHandler } from "#src/ui/subagents-settings";
 
 export default function (pi: ExtensionAPI) {
   // ---- Register custom notification renderer ----
@@ -76,13 +74,11 @@ export default function (pi: ExtensionAPI) {
   const runtime = createSubagentRuntime();
 
   // ---- Notification system ----
-  // runtime.widget is assigned after SubagentManager construction; arrow closures
-  // capture `runtime` by reference so they always read the current value.
-  const notifications = new NotificationManager(
-    (msg, opts) => pi.sendMessage(msg, opts),
-    runtime.agentActivity,
-    (id) => runtime.markFinished(id),
-    () => runtime.update(),
+  // Owns completion nudges and live-activity cleanup. The widget detects finished
+  // agents itself (AgentWidget.update self-seeds), so NotificationManager has no
+  // widget dependency — keeping the construction graph a cycle-free DAG.
+  const notifications = new NotificationManager((msg, opts) =>
+    pi.sendMessage(msg, opts),
   );
 
   // Settings: owns all three in-memory values and handles load/save/emit.
@@ -96,69 +92,17 @@ export default function (pi: ExtensionAPI) {
   settings.load();
 
   // Observer: receives agent lifecycle notifications and dispatches events/notifications.
-  const observer: SubagentManagerObserver = {
-    onSubagentStarted(record) {
-      // Emit started event when agent transitions to running (including from queue).
-      pi.events.emit("subagents:started", {
-        id: record.id,
-        type: record.type,
-        description: record.description,
-      });
-    },
-    onSubagentCompleted(record) {
-      // Emit lifecycle event based on terminal status.
-      const isError =
-        record.status === "error" ||
-        record.status === "stopped" ||
-        record.status === "aborted";
-      const eventData = buildEventData(record);
-      if (isError) {
-        pi.events.emit("subagents:failed", eventData);
-      } else {
-        pi.events.emit("subagents:completed", eventData);
-      }
+  const eventsObserver = new SubagentEventsObserver({
+    emit: (channel, data) => pi.events.emit(channel, data),
+    appendEntry: (customType, data) => pi.appendEntry(customType, data),
+    notifications,
+  });
 
-      // Persist final record for cross-extension history reconstruction.
-      pi.appendEntry("subagents:record", {
-        id: record.id,
-        type: record.type,
-        description: record.description,
-        status: record.status,
-        result: record.result,
-        error: record.error,
-        startedAt: record.startedAt,
-        completedAt: record.completedAt,
-      });
-
-      // Skip notification if result was already consumed via get_subagent_result.
-      if (record.notification?.resultConsumed) {
-        notifications.cleanupCompleted(record.id);
-        return;
-      }
-
-      notifications.sendCompletion(record);
-    },
-    onSubagentCompacted(record, info) {
-      // Emit compacted event when agent's session compacts (preserves count on record).
-      pi.events.emit("subagents:compacted", {
-        id: record.id,
-        type: record.type,
-        description: record.description,
-        reason: info.reason,
-        tokensBefore: info.tokensBefore,
-        compactionCount: record.compactionCount,
-      });
-    },
-    onSubagentCreated(record) {
-      // Emit created event for background agents (before limiter admission).
-      pi.events.emit("subagents:created", {
-        id: record.id,
-        type: record.type,
-        description: record.description,
-        isBackground: true,
-      });
-    },
-  };
+  // Fan-out observer: lets the widget subscribe as a second lifecycle consumer
+  // while the manager keeps its single-observer contract. The widget is added
+  // after construction (it needs the manager); the manager consults the observer
+  // only at spawn time, so registering late is safe.
+  const observer = new CompositeSubagentObserver([eventsObserver]);
 
   const subagentSessionDeps: SubagentSessionDeps = {
     io: {
@@ -211,11 +155,13 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_before_switch", () => lifecycle.handleSessionBeforeSwitch());
   pi.on("session_shutdown", () => lifecycle.handleSessionShutdown());
 
-  // Live widget: show running agents above editor
-  runtime.widget = new AgentWidget(manager, runtime.agentActivity, registry);
+  // Live widget: constructed after the manager (it polls listAgents()) and
+  // registered as a lifecycle observer so it self-drives its update timer.
+  const widget = new AgentWidget(manager, registry);
+  observer.add(widget);
 
   // Grab UI context from first tool execution + clear lingering widget on new turn
-  const toolStart = new ToolStartHandler(runtime);
+  const toolStart = new ToolStartHandler(widget);
   pi.on("tool_execution_start", (event, ctx) =>
     toolStart.handleToolExecutionStart(event, ctx),
   );
@@ -246,54 +192,71 @@ export default function (pi: ExtensionAPI) {
 
   pi.registerTool(new SteerTool(manager, pi.events).toToolDefinition());
 
-  // ---- /agents interactive menu ----
+  // ---- /subagents:settings command ----
 
-  const agentsMenu = new AgentsMenuHandler(
-    manager,
-    registry,
-    runtime.agentActivity,
-    settings,
-    new FsAgentFileOps(),
-    join(getAgentDir(), "agents"),
-    join(process.cwd(), ".pi", "agents"),
-  );
+  const subagentsSettings = new SubagentsSettingsHandler(settings);
 
-  pi.registerCommand("agents", {
-    description: "Manage agents",
+  pi.registerCommand("subagents:settings", {
+    description: "Configure subagent settings (concurrency, turn limits)",
     handler: async (_args, ctx) => {
-      await agentsMenu.handle({
+      await subagentsSettings.handle({ ui: ctx.ui });
+    },
+  });
+
+  // ---- /subagents:sessions command ----
+
+  const sessionNavigator = new SessionNavigatorHandler();
+
+  pi.registerCommand("subagents:sessions", {
+    description: "View a subagent's session transcript (read-only)",
+    handler: async (_args, ctx) => {
+      await sessionNavigator.handle({
         ui: ctx.ui,
-        modelRegistry: ctx.modelRegistry,
-        parentSnapshot: buildParentSnapshot(ctx),
+        agents: manager.listAgents(),
+        evicted: manager.listEvicted(),
+        registry,
+        cwd: ctx.cwd,
+        readFile: (path) => readFileSync(path, "utf8"),
       });
     },
   });
 
   // ---- ctrl+alt+a agent monitor ----
 
-  pi.registerShortcut("ctrl+alt+a", {
-    description: "Open agent monitor",
-    handler: async (ctx) => {
-      try {
-        const { openAgentMonitor } = await import("./ui/agent-monitor");
-        await openAgentMonitor(
-          ctx,
-          manager,
-          registry,
-          runtime.agentActivity,
-          settings,
-          new FsAgentFileOps(),
-          join(getAgentDir(), "agents"),
-          join(process.cwd(), ".pi", "agents"),
-        );
-      } catch (err) {
-        // Defense in depth: if openAgentMonitor (or the dynamic import) throws,
-        // swallow it here so the error doesn't propagate unhandled and leave
-        // Pi in a broken state. The factory-level try/catch in agent-monitor.ts
-        // handles construction failures; this catches anything that escapes it.
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[pi-subagents] agent monitor open failed: ${msg}`);
-      }
-    },
-  });
+  // Shared activity-tracker map. Upstream deleted the ui-observer (#422) that
+  // used to populate this, so trackers aren't currently populated externally —
+  // `getActivity` returns undefined and activity lines degrade gracefully
+  // (omitted) instead of crashing. Re-wire population later if we want the
+  // live `● <activity>` footers back.
+  const agentActivity = new Map();
+
+  // registerShortcut is a real Pi API but isn't stubbed in the upstream test
+  // harness. Guard so absence doesn't crash factory wiring tests.
+  if (typeof pi.registerShortcut === "function") {
+    pi.registerShortcut("ctrl+alt+a", {
+      description: "Open agent monitor",
+      handler: async (ctx) => {
+        try {
+          const { openAgentMonitor } = await import("./ui/agent-monitor");
+          await openAgentMonitor(
+            ctx,
+            manager,
+            registry,
+            agentActivity,
+            settings,
+            new FsAgentFileOps(),
+            join(getAgentDir(), "agents"),
+            join(process.cwd(), ".pi", "agents"),
+          );
+        } catch (err) {
+          // Defense in depth: if openAgentMonitor (or the dynamic import) throws,
+          // swallow it here so the error doesn't propagate unhandled and leave
+          // Pi in a broken state. The factory-level try/catch in agent-monitor.ts
+          // handles construction failures; this catches anything that escapes it.
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(`[pi-subagents] agent monitor open failed: ${msg}`);
+        }
+      },
+    });
+  }
 }

@@ -18,8 +18,12 @@ export interface SubagentObserverOptions {
  * Subscribe to session events and accumulate stats on the subagent state.
  *
  * Handles:
- * - `tool_execution_end` → `state.incrementToolUses()`
+ * - `tool_execution_start` → `state.addActiveTool(name)`
+ * - `tool_execution_end` → `state.removeActiveTool(name)`, `state.incrementToolUses()`
+ * - `message_start` → `state.resetResponseText()`
+ * - `message_update` (text_delta) → `state.appendResponseText(delta)`
  * - `message_end` (assistant, with usage) → `state.addUsage(…)`
+ * - `turn_end` → `state.incrementTurnCount()`
  * - `compaction_end` (not aborted) → `state.incrementCompactions()`, call `onCompact`
  *
  * @returns An unsubscribe function.
@@ -30,8 +34,28 @@ export function subscribeSubagentObserver(
   options?: SubagentObserverOptions,
 ): () => void {
   return session.subscribe((event) => {
+    if (event.type === "tool_execution_start") {
+      state.addActiveTool(event.toolName);
+    }
+
     if (event.type === "tool_execution_end") {
+      state.removeActiveTool(event.toolName);
       state.incrementToolUses();
+    }
+
+    if (event.type === "message_start") {
+      state.resetResponseText();
+    }
+
+    if (
+      event.type === "message_update" &&
+      event.assistantMessageEvent.type === "text_delta"
+    ) {
+      state.appendResponseText(event.assistantMessageEvent.delta);
+    }
+
+    if (event.type === "turn_end") {
+      state.incrementTurnCount();
     }
 
     if (event.type === "message_end" && event.message.role === "assistant") {

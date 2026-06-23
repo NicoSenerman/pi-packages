@@ -29,6 +29,8 @@ When a roadmap step ships, mark it complete in `docs/architecture/architecture.m
 - Keep block/ask/allow decisions reviewable: write to the permission review log by default.
 - Preserve the `/permission-system` slash command name — renaming it is a breaking change.
 - In the flat permission format, `permission["*"]` is the universal fallback; pattern ordering is last-match-wins.
+- The four path layers (`path`, `external_directory`, per-tool, `bash`) compose with **most-restrictive-wins** across surfaces: a more-permissive rule on one surface cannot loosen a more-restrictive rule on another (`ask` > `allow`).
+  So a `path` allow cannot suppress an `external_directory: ask` prompt — allow outside-CWD directories on `external_directory`, not `path`.
 - Wildcard matching must be explicit and tested — silent over-matching is a permission bypass.
 - Prefer config patterns over new runtime mechanisms.
   Mechanism is forever; docs are reversible.
@@ -87,8 +89,24 @@ The `permission` object uses deep-shallow merge; scalar fields use simple replac
 
 ## Cross-Extension Integration
 
-Pi's extension loader creates a fresh jiti instance per extension with `moduleCache: false`.
-Module-scoped state is isolated — a variable set in this extension's module is invisible to other extensions.
+### Single-agent core
+
+Pi is single-agent by design; multiple named agents are an external-extension concept (pi-subagents, pi-agent-router), not Pi core.
+Per-agent `permission:` frontmatter is an extension bridge on this single-agent core — see `docs/architecture/architecture.md` design principle 9.
+Do not propose pushing agent-awareness (an agents directory, frontmatter parsing) into the SDK or core.
+
+### Jiti isolation
+
+Pi's extension loader keeps each extension's module isolated — a variable set in this extension's module is invisible to other extensions.
+
+**Module-scoped state no longer resets per session.**
+Since [earendil-works/pi#5905] (shipped in pi-coding-agent — "cache extension imports for session switches"), the loader caches the imported factory function per `(extensionPath, cwd)`.
+The factory is still **re-invoked** on every `/new` / `/resume` / `/fork` / `/import` switch (with a fresh `pi`/`ExtensionContext`), so everything constructed *inside* the factory body — `PermissionSession`, `SessionRules`, subscriptions, `pi.on(...)` registrations — is rebuilt fresh each session, and `session_shutdown` still fires.
+But the module itself is imported only once per cwd; the cache clears only on `/reload` or a cwd change (`clearExtensionCache`).
+So module-scoped mutable state (top-level `let`, module-level caches, memoized values like `getParser = memoizeAsyncWithRetry(...)` in `bash-program.ts`) now persists across same-cwd session switches instead of being reborn each session.
+This is safe today (the package's module-scoped state is read-only lookup tables plus the stateless tree-sitter parser — persisting the parser is a win), but **do not park session-scoped or permission-relevant state at module level assuming a per-session reset** — it will leak between sessions in the same cwd.
+Keep per-session state inside the factory closure (where it is rebuilt) or in the `session_start`/`session_shutdown`-driven lifecycle.
+A regression guard lives in `test/composition-root.test.ts` ("session approvals do not leak across same-cwd session switches").
 
 Shared communication channels:
 
@@ -100,7 +118,9 @@ The in-process implementation of `PermissionsService` is `LocalPermissionsServic
 The `session_start`-gated publication, #302 subagent-child guard, ready-event emit, and session teardown ordering are all owned by `PermissionServiceLifecycle` (`src/service-lifecycle.ts`), which is injected into `SessionLifecycleHandler`.
 Changes to publication timing or teardown order should go through `PermissionServiceLifecycle`, not `index.ts`.
 
-Do not propose module-scoped singletons or Node.js module-cache sharing as a cross-extension communication mechanism — they do not work under jiti.
+Do not propose module-scoped singletons or Node.js module-cache sharing as a cross-extension communication mechanism — module isolation keeps them invisible to other extensions.
+
+[earendil-works/pi#5905]: https://github.com/earendil-works/pi/issues/5905
 
 The `path` and `external_directory` gates are path-aware for **all** tools, not just the six built-ins (#352).
 `getToolInputPath` (`src/path-utils.ts`) extracts a path for built-ins (`input.path`), MCP (`input.arguments.path`), and extension tools (default `input.path`, or a custom key via a registered extractor); `getPathBearingToolPath` stays built-in-only for the per-tool gate's cosmetic suggestion/log values.
@@ -127,11 +147,13 @@ When a call site needs different defaults from `makeCheckResult`, pass explicit 
 
 When a gate resolves through a new manager/resolver method beyond `checkPermission`/`resolve` (e.g. `checkPathPolicy`/`resolvePathPolicy`), wire it through the same surface dispatcher in `makeHandler` (`handler-fixtures.ts`).
 Otherwise `makeSurfaceCheck` stubs only `checkPermission`, the new method returns its default, and the gate silently passes `allow` — a false green caught only by the full suite, not the edited test file (#393).
+`checkPathPolicy`/`resolvePathPolicy` take an optional trailing `surface` (default `"path"`): the bash path gate passes `"path"`, and both external-directory gates pass `"external_directory"` to match a path's typed and symlink-resolved aliases (#418).
+`makeHandler` threads that `surface` arg into the dispatcher, so `external_directory` overrides apply to tool paths and bash tokens; an inline handler that mocks `permissionManager.checkPermission` directly (not via the session bag) must also mock `checkPathPolicy` to delegate to it, or external-directory checks false-green to `allow`.
 
 - Test permission resolution (allow/deny/ask decisions across tools, bash, MCP, skills, special).
 - Test wildcard matching (bash patterns, skill globs) including over-match and under-match cases.
 - Test policy merge precedence: global → project → per-agent frontmatter.
-- Test system-prompt sanitization (denied tools removed, allowed tools preserved).
+- Test system-prompt sanitization (denied tool lines narrowed out of the `Available tools:` listing, allowed tools preserved).
 - Test the external-directory guard for path-bearing file tools, including extension and MCP tools (default-on path gating, #352).
 - Test config loading, validation issues, and tolerance of deprecated keys.
 - To test the file-based permission-forwarding round-trip (a subagent's `ask` reaching the parent), do not `await` the child's `pi.fire("tool_call", …)` directly — `PermissionForwarder.requestApproval` polls for a response with a 10-minute timeout when forwarding to the parent.
@@ -147,6 +169,12 @@ When investigating a reported bug:
 3. Instrument only after confirming the bug reproduces in isolation.
 4. When the bug involves path, filesystem, or platform semantics, check how `@earendil-works/pi-coding-agent` solves it first (local checkout or published source).
    Prefer Node `path` builtins (`path.relative`, `path.win32`/`path.posix`) over hand-rolled comparison; pi's containment idiom is `relative()` + a `..`/absolute-prefix check (case-insensitive on Windows).
+
+The gate fails closed (#452).
+Every `tool_call` goes through `createFailClosedToolCall` (`src/handlers/tool-call-boundary.ts`), the only `pi.on("tool_call")` target and the sole place an internal `GateOutcome` is translated to the SDK result shape.
+A thrown gate is blocked (not allowed) and recorded as a `permission_request.blocked` review entry with `resolution: "gate_error"` — the SDK's `emitToolCall` does not catch a throwing handler, so this boundary must absorb it.
+An unparseable bash command (a non-empty command that parses to zero command units) resolves to `ask` with the `<unparseable-bash-command>` sentinel `matchedPattern`, instead of falling through to a permissive top-level `*`.
+With `debugLog` on, the boundary writes one `permission.decision` trace per call and a `permission.session_summary` line on shutdown (via `DecisionAudit`); a `toolCalls != allowed + blocked + errors` mismatch logs a warning — a re-opened silent path.
 
 ## Notes for Agents
 

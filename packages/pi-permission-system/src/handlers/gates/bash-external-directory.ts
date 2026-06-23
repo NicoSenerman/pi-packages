@@ -1,4 +1,5 @@
 import { getNonEmptyString, toRecord } from "#src/common";
+import { getExternalDirectoryPolicyValues } from "#src/path-utils";
 import type { ScopedPermissionResolver } from "#src/permission-resolver";
 import { SessionApproval } from "#src/session-approval";
 import { deriveApprovalPattern } from "#src/session-rules";
@@ -41,10 +42,13 @@ export function describeBashExternalDirectoryGate(
     check: PermissionCheckResult;
   }> = [];
   for (const p of externalPaths) {
-    const check = resolver.resolve(
-      "external_directory",
-      { path: p },
+    // Match each path against both its typed and symlink-resolved aliases on
+    // the external_directory surface, so a config pattern on either form
+    // applies (#418).
+    const check = resolver.resolvePathPolicy(
+      getExternalDirectoryPolicyValues(p, tcc.cwd),
       tcc.agentName ?? undefined,
+      "external_directory",
     );
     if (check.state !== "allow") {
       uncoveredEntries.push({ path: p, check });

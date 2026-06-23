@@ -1,21 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ToolStartRuntime } from "#src/handlers/tool-start";
+import type { ToolStartWidget } from "#src/handlers/tool-start";
 import { ToolStartHandler } from "#src/handlers/tool-start";
 
 describe("ToolStartHandler", () => {
-  let runtime: ToolStartRuntime;
-  let mockSetUICtx: ReturnType<typeof vi.fn<ToolStartRuntime["setUICtx"]>>;
-  let mockOnTurnStart: ReturnType<typeof vi.fn<ToolStartRuntime["onTurnStart"]>>;
+  let widget: ToolStartWidget;
+  let mockSetUICtx: ReturnType<typeof vi.fn<ToolStartWidget["setUICtx"]>>;
+  let mockOnTurnStart: ReturnType<typeof vi.fn<ToolStartWidget["onTurnStart"]>>;
   let handler: ToolStartHandler;
 
   beforeEach(() => {
     mockSetUICtx = vi.fn();
     mockOnTurnStart = vi.fn();
-    runtime = {
+    widget = {
       setUICtx: mockSetUICtx,
       onTurnStart: mockOnTurnStart,
     };
-    handler = new ToolStartHandler(runtime);
+    handler = new ToolStartHandler(widget);
   });
 
   describe("handleToolExecutionStart", () => {
@@ -24,7 +24,7 @@ describe("ToolStartHandler", () => {
 
       handler.handleToolExecutionStart({}, { ui });
 
-      expect(runtime.setUICtx).toHaveBeenCalledWith(ui);
+      expect(widget.setUICtx).toHaveBeenCalledWith(ui);
     });
 
     it("calls onTurnStart", () => {
@@ -32,7 +32,7 @@ describe("ToolStartHandler", () => {
 
       handler.handleToolExecutionStart({}, { ui });
 
-      expect(runtime.onTurnStart).toHaveBeenCalled();
+      expect(widget.onTurnStart).toHaveBeenCalled();
     });
 
     it("calls setUICtx before onTurnStart", () => {

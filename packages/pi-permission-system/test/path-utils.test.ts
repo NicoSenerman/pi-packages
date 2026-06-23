@@ -22,6 +22,7 @@ vi.mock("node:fs", () => ({
 
 import {
   canonicalNormalizePathForComparison,
+  getExternalDirectoryPolicyValues,
   getPathBearingToolPath,
   getPathPolicyValues,
   getToolInputPath,
@@ -612,5 +613,38 @@ describe("getPathPolicyValues", () => {
 
   test("returns empty for blank input", () => {
     expect(getPathPolicyValues("   ", { cwd })).toEqual([]);
+  });
+});
+
+describe("getExternalDirectoryPolicyValues", () => {
+  const cwd = "/projects/my-app";
+
+  beforeEach(() => {
+    realpathSync.mockReset();
+    realpathSync.mockImplementation((p: string) => p);
+  });
+
+  test("adds the symlink-resolved alias alongside the typed path", () => {
+    // /tmp -> /private/tmp (the macOS symlink from the bug report).
+    realpathSync.mockImplementation((p: string) =>
+      p.startsWith("/tmp") ? `/private${p}` : p,
+    );
+    expect(getExternalDirectoryPolicyValues("/tmp/x", cwd)).toEqual([
+      "/tmp/x",
+      "/private/tmp/x",
+    ]);
+  });
+
+  test("dedups when the canonical form equals the lexical form", () => {
+    expect(getExternalDirectoryPolicyValues("/etc/hosts", cwd)).toEqual([
+      "/etc/hosts",
+    ]);
+  });
+
+  test("keeps the relative aliases for an in-cwd token without duplicating", () => {
+    expect(getExternalDirectoryPolicyValues("src/foo.ts", cwd)).toEqual([
+      "/projects/my-app/src/foo.ts",
+      "src/foo.ts",
+    ]);
   });
 });

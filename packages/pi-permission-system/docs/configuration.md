@@ -256,6 +256,19 @@ The reason is appended to the block message shown to the agent, so it learns why
 The object form is only valid at the pattern-value level (inside a pattern map) and only for `deny` — `action` must be `"deny"`, and `reason` must be a string (a non-string reason is ignored).
 A bare `"deny"` string is unchanged and carries no reason.
 
+#### Fail-closed behavior
+
+The bash gate fails closed: when in doubt it blocks or prompts, never silently allows.
+
+- If the permission gate throws an internal error (for example a transient tree-sitter parser-init failure), the tool call is **blocked** rather than passed ungated, and a `gate_error` entry is written to the review log naming the failure.
+- A non-empty command that cannot be parsed into command units resolves to **`ask`** (the synthetic `<unparseable-bash-command>` pattern in the review log) instead of falling through to a permissive top-level `*`.
+  An empty, whitespace-only, or comment-only command has nothing to gate and is resolved normally.
+
+Because of this, set an explicit `bash` policy rather than relying on a permissive top-level `*`.
+A config whose top-level `*` is `"allow"` with no `bash` `*` policy lets every bash command silently inherit `allow`; the extension emits a startup warning in that case.
+To gate bash commands, add `"bash": { "*": "ask" }` (or `"deny"`).
+To deliberately opt into permissive bash, set `"bash": { "*": "allow" }` explicitly — that suppresses the warning.
+
 ### `mcp` Surface
 
 MCP permissions match against derived targets from tool input:
@@ -346,6 +359,11 @@ Four orthogonal layers compose with most-restrictive-wins:
 | Per-tool patterns       | Is this path ok for this specific tool? | Individual tools |
 | `bash` command patterns | Is this command ok?                     | Bash only        |
 
+**Which surface for "allow this directory"?**
+Use `path` to **deny** sensitive files everywhere (`.env`, `~/.ssh/*`); use `external_directory` to **allow** a directory outside the working tree (a cache, a sibling project).
+Because the layers compose with most-restrictive-wins, a `path` allow cannot loosen an `external_directory: ask` boundary — `ask` is more restrictive than `allow`, so the prompt still fires.
+Adding `"~/.cargo/registry": "allow"` to the `path` surface therefore does **not** stop the outside-CWD prompt; put the rule on `external_directory` instead (see below).
+
 Configs without a `path` key behave identically to before — the gate does not fire.
 When no `path` key is present, the universal fallback (`permission["*"]`) applies: `"*": "allow"` keeps the gate transparent, while `"*": "deny"` would deny all file access via every surface including `path`.
 
@@ -410,9 +428,50 @@ Use a pattern map to allow specific directories without opening all external acc
 For example, `read: "allow"` can permit ordinary reads while `external_directory: "ask"` still requires confirmation before reading `../outside.txt` or an absolute path outside `ctx.cwd`.
 Optional-path search tools (`find`, `grep`, `ls`) skip this check when no `path` is provided.
 
+#### Allow an outside-CWD cache directory
+
+When an agent keeps reading a local cache outside the working tree — `~/.cargo/registry`, `~/.npm`, `~/go/pkg/mod` — and you want to stop confirming it every time, allow that directory on the `external_directory` surface:
+
+```jsonc
+{
+  "permission": {
+    "external_directory": {
+      "*": "ask",
+      "~/.cargo/registry/*": "allow"
+    }
+  }
+}
+```
+
+The trailing `*` is required and it crosses subdirectory boundaries: `*` is a greedy match (not a single path segment), so `~/.cargo/registry/*` allows every file beneath the directory, however deep.
+Do not write `~/.cargo/registry/**` — `**` is not a distinct globstar, and a single `*` already recurses.
+A bare `~/.cargo/registry` (no `*`) matches only the directory entry itself, not the files inside it, which is the usual reason a hand-written allow rule appears to do nothing.
+The pattern is stored and displayed as written (`~/.cargo/registry/*`) in logs and approval dialogs.
+
+For caches you only ever **read**, `piInfrastructureReadPaths` is a lighter alternative — it auto-allows read-only tools (`read`, `find`, `grep`, `ls`) and bypasses the gate entirely, but it does not cover `write`/`edit` or bash.
+Use `external_directory` when the allowance must apply to every tool.
+
 Bash commands are also covered: the extension extracts path-like tokens from the command string and applies the same gate when any resolve outside `ctx.cwd`.
 Quoted strings are stripped first to reduce false positives.
 This is a best-effort heuristic — variable expansion and escaped quotes are not parsed, and relative paths inside subshells are not yet resolved against a per-subshell working directory. (The separate `bash` command-pattern surface does evaluate commands nested inside substitutions and subshells; see that section.) OS device paths (`/dev/null`, `/dev/stdin`, `/dev/stdout`, `/dev/stderr`) are always excluded.
+
+#### Symlinked paths
+
+An `external_directory` pattern matches the path **as the agent references it** and the OS-resolved (symlink-followed) path.
+This matters on macOS, where `/tmp` is a symlink to `/private/tmp`: a rule keyed on `/tmp/*` allows access via `/tmp` even though the access resolves to `/private/tmp`, and a rule keyed on `/private/tmp/*` works too.
+
+```jsonc
+{
+  "permission": {
+    "external_directory": {
+      "*": "ask",
+      "/tmp/*": "allow"
+    }
+  }
+}
+```
+
+The decision of whether a path is outside the working directory always uses the resolved form, so the gate still fires for every outside-CWD access; only which allow/deny/ask pattern matches considers both forms.
 
 #### Pi Infrastructure Read Auto-Allow
 
@@ -483,7 +542,7 @@ permission:
 
 ### Project Agent Override
 
-Path: `<cwd>/.pi/agent/agents/<agent>.md`
+Path: `<cwd>/.pi/agents/<agent>.md`
 
 Project agent files are resolved from Pi's current session `cwd`, so they are workspace-specific and do **not** move under `PI_CODING_AGENT_DIR`.
 
@@ -585,17 +644,18 @@ permission:
 
 The extension integrates via Pi's lifecycle hooks:
 
-| Hook                 | Behavior                                                                                                                 |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `before_agent_start` | Filters the active tool set (restrict-only), removes denied tool entries from the system prompt, and hides denied skills |
-| `tool_call`          | Enforces permissions for every tool invocation                                                                           |
-| `input`              | Intercepts `/skill:<name>` requests and enforces skill policy                                                            |
+| Hook                 | Behavior                                                                                                                            |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `before_agent_start` | Filters the active tool set (restrict-only), narrows the `Available tools:` system-prompt listing to match, and hides denied skills |
+| `tool_call`          | Enforces permissions for every tool invocation                                                                                      |
+| `input`              | Intercepts `/skill:<name>` requests and enforces skill policy                                                                       |
 
 Additional behaviors:
 
 - Unknown/unregistered tools are blocked before permission checks (prevents bypass attempts)
 - Tool filtering is restrict-only: the active set starts from pi's already-active tools (`pi.getActiveTools()`) and only ever has denied tools removed — the permission system never activates a tool pi left off by default (e.g. `find`, `grep`, `ls`)
-- The `Available tools:` system prompt section is rewritten to match the filtered active tool set
+- The `Available tools:` system prompt section is narrowed to match the filtered active tool set: denied tools' lines are dropped, the rest are kept, and the section is removed entirely only when no tool is allowed
+- The narrowed prompt is recomputed and returned on every turn but is byte-stable for a stable policy/agent, so the provider's prompt cache (tools + system prefix) is preserved rather than rewritten each turn
 - Extension-provided tools like `task`, `mcp`, and third-party tools are handled by exact registered name
 - Generic extension-tool approval prompts include a bounded input preview; built-in file tools use concise human-readable summaries
 - Permission review logs include bounded `toolInputPreview` values for non-bash/non-MCP tool calls

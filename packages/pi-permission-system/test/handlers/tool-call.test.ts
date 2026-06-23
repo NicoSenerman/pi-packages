@@ -62,7 +62,7 @@ describe("handleToolCall", () => {
       makeCtx(),
     );
     expect(result).toEqual({
-      block: true,
+      action: "block",
       reason: expect.stringContaining("tool"),
     });
   });
@@ -73,7 +73,7 @@ describe("handleToolCall", () => {
       makeToolCallEvent("unknown-tool"),
       makeCtx(),
     );
-    expect(result).toMatchObject({ block: true });
+    expect(result).toMatchObject({ action: "block" });
   });
 
   it("returns empty object when tool is allowed", async () => {
@@ -82,7 +82,7 @@ describe("handleToolCall", () => {
       makeToolCallEvent("read"),
       makeCtx(),
     );
-    expect(result).toEqual({});
+    expect(result).toEqual({ action: "allow" });
   });
 
   it("blocks when tool is denied by policy", async () => {
@@ -97,7 +97,7 @@ describe("handleToolCall", () => {
       makeToolCallEvent("read"),
       makeCtx(),
     );
-    expect(result).toMatchObject({ block: true });
+    expect(result).toMatchObject({ action: "block" });
   });
 });
 
@@ -128,7 +128,7 @@ describe("handleToolCall — skill-read gate", () => {
       input: { path: "/skills/librarian/SKILL.md" },
     };
     const result = await handler.handleToolCall(event, makeCtx());
-    expect(result).toMatchObject({ block: true });
+    expect(result).toMatchObject({ action: "block" });
   });
 
   it("allows a read of a non-skill path even when skill entries are present", async () => {
@@ -155,7 +155,7 @@ describe("handleToolCall — skill-read gate", () => {
       input: { path: "/test/project/src/index.ts" },
     };
     const result = await handler.handleToolCall(event, makeCtx());
-    expect(result).toEqual({});
+    expect(result).toEqual({ action: "allow" });
   });
 });
 
@@ -175,7 +175,7 @@ describe("handleToolCall — external-directory gate", () => {
       input: { path: "/outside/project/file.ts" },
     });
     const result = await handler.handleToolCall(event, makeCtx());
-    expect(result).toMatchObject({ block: true });
+    expect(result).toMatchObject({ action: "block" });
   });
 });
 
@@ -195,7 +195,7 @@ describe("handleToolCall — bash external-directory gate", () => {
       input: { command: "cat /outside/project/file.ts" },
     });
     const result = await handler.handleToolCall(event, makeCtx());
-    expect(result).toMatchObject({ block: true });
+    expect(result).toMatchObject({ action: "block" });
   });
 });
 
@@ -213,7 +213,7 @@ describe("handleToolCall — path gate (tools)", () => {
     });
     const event = makeToolCallEvent("read", { input: { path: ".env" } });
     const result = await handler.handleToolCall(event, makeCtx());
-    expect(result).toMatchObject({ block: true });
+    expect(result).toMatchObject({ action: "block" });
   });
 
   it("allows a read when path surface allows", async () => {
@@ -222,7 +222,7 @@ describe("handleToolCall — path gate (tools)", () => {
       input: { path: "src/index.ts" },
     });
     const result = await handler.handleToolCall(event, makeCtx());
-    expect(result).toEqual({});
+    expect(result).toEqual({ action: "allow" });
   });
 });
 
@@ -240,7 +240,7 @@ describe("handleToolCall — bash path gate", () => {
     });
     const event = makeToolCallEvent("bash", { input: { command: "cat .env" } });
     const result = await handler.handleToolCall(event, makeCtx());
-    expect(result).toMatchObject({ block: true });
+    expect(result).toMatchObject({ action: "block" });
   });
 });
 
@@ -262,7 +262,7 @@ describe("handleToolCall — bash command chain gate", () => {
       input: { command: "echo start && npm install compromised-package" },
     });
     const result = await handler.handleToolCall(event, makeCtx());
-    expect(result).toMatchObject({ block: true });
+    expect(result).toMatchObject({ action: "block" });
   });
 
   it("blocks a command nested inside command substitution (#306)", async () => {
@@ -280,14 +280,14 @@ describe("handleToolCall — bash command chain gate", () => {
       input: { command: "echo $(rm -rf foo)" },
     });
     const result = await handler.handleToolCall(event, makeCtx());
-    expect(result).toMatchObject({ block: true });
+    expect(result).toMatchObject({ action: "block" });
   });
 
   it("allows a single non-chained bash command", async () => {
     const { handler } = makeHandler({ tools: ["bash"] });
     const event = makeToolCallEvent("bash", { input: { command: "echo hi" } });
     const result = await handler.handleToolCall(event, makeCtx());
-    expect(result).toEqual({});
+    expect(result).toEqual({ action: "allow" });
   });
 });
 
@@ -302,7 +302,7 @@ describe("handleToolCall — bash external-directory policy states", () => {
       input: { command: "cat src/index.ts" },
     });
     const result = await handler.handleToolCall(event, makeCtx());
-    expect(result).toEqual({});
+    expect(result).toEqual({ action: "allow" });
   });
 
   it("blocks bash command with external path when external_directory is ask and no UI", async () => {
@@ -325,7 +325,7 @@ describe("handleToolCall — bash external-directory policy states", () => {
       event,
       makeCtx({ hasUI: false }),
     );
-    expect(result).toMatchObject({ block: true });
+    expect(result).toMatchObject({ action: "block" });
     expect(String((result as { reason?: unknown }).reason)).toMatch(
       /no interactive UI/i,
     );
@@ -344,7 +344,7 @@ describe("handleToolCall — bash external-directory policy states", () => {
       input: { command: "cat /etc/hosts" },
     });
     const result = await handler.handleToolCall(event, makeCtx());
-    expect(result).toEqual({});
+    expect(result).toEqual({ action: "allow" });
   });
 
   it("applies bash pattern deny after external_directory allow", async () => {
@@ -364,7 +364,7 @@ describe("handleToolCall — bash external-directory policy states", () => {
       input: { command: "cat /etc/hosts" },
     });
     const result = await handler.handleToolCall(event, makeCtx());
-    expect(result).toMatchObject({ block: true });
+    expect(result).toMatchObject({ action: "block" });
   });
 });
 

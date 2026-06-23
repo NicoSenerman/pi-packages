@@ -1,11 +1,15 @@
 {
   "name": "@gotgenes/pi-subagents",
-  "version": "16.2.1",
+  "version": "17.5.0",
   "type": "module",
   "exports": {
     ".": {
       "types": "./dist/public.d.ts",
       "default": "./src/service/service.ts"
+    },
+    "./settings": {
+      "types": "./dist/settings.d.ts",
+      "default": "./src/layered-settings.ts"
     }
   },
   "files": [
@@ -21,7 +25,7 @@
     "#src/*": "./src/*",
     "#test/*": "./test/*"
   },
-  "description": "A pi extension that brings Claude Code-style autonomous sub-agents to pi. Friendly fork of @tintinweb/pi-subagents.",
+  "description": "A focused, in-process sub-agent core for pi — autonomous agents plus a typed API and lifecycle events other extensions build on. Friendly fork of @tintinweb/pi-subagents.",
   "author": {
     "name": "Chris Lasher"
   },

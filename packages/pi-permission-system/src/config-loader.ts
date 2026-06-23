@@ -365,12 +365,47 @@ export function loadAndMergeConfigs(
   const projectConfig = projectResult.config;
   merged = mergeUnifiedConfigs(merged, projectConfig);
 
+  const bashFallbackIssue = detectPermissiveBashFallback(merged.permission);
+  if (bashFallbackIssue) allIssues.push(bashFallbackIssue);
+
   return {
     global: globalConfig,
     project: projectConfig,
     merged,
     issues: allIssues,
   };
+}
+
+/**
+ * Detect the config footgun where a permissive top-level `*: allow` leaves the
+ * bash surface ungated, so every bash command silently inherits `allow`.
+ *
+ * Returns one warning string when `permission["*"] === "allow"` and the `bash`
+ * surface neither is a bare string (shorthand for `{ "*": … }`) nor an object
+ * map with an explicit `"*"` key. Returns `undefined` otherwise. The detector
+ * is pure: it takes the merged permission map and returns a message; the caller
+ * owns pushing it onto the issue list.
+ */
+export function detectPermissiveBashFallback(
+  permission: FlatPermissionConfig | undefined,
+): string | undefined {
+  if (permission?.["*"] !== "allow") return undefined;
+
+  // The Record index signature reports an absent surface as the value type, not
+  // `undefined`; read through a Partial view so the absent-bash guard is honest
+  // (an unguarded Object.hasOwn(undefined, …) would throw at runtime).
+  const surfaces: Partial<FlatPermissionConfig> = permission;
+  const bash = surfaces.bash;
+  // A bare string surface is shorthand for `{ "*": action }` — explicitly gated.
+  if (typeof bash === "string") return undefined;
+  // An object map with an explicit `"*"` key is explicitly gated.
+  if (bash && Object.hasOwn(bash, "*")) return undefined;
+
+  return (
+    "Permission config sets a permissive top-level '*': 'allow' with no 'bash' '*' policy, " +
+    "so bash commands silently inherit 'allow'. Set an explicit 'bash' policy " +
+    '(e.g. "bash": { "*": "ask" }) to gate bash commands.'
+  );
 }
 
 /**

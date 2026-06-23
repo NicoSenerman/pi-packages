@@ -5,6 +5,116 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [16.0.1](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v16.0.0...pi-permission-system-v16.0.1) (2026-06-21)
+
+
+### Bug Fixes
+
+* **pi-permission-system:** fold cd across redirect-then-pipe in external-directory projection ([293c0b7](https://github.com/gotgenes/pi-packages/commit/293c0b797a17e3c713520419565e632d45632d11)), closes [#454](https://github.com/gotgenes/pi-packages/issues/454)
+
+## [16.0.0](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v15.1.0...pi-permission-system-v16.0.0) (2026-06-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* **pi-permission-system:** the bash permission gate fails closed. An internal gate error blocks the tool (with a gate_error review-log entry) instead of running it ungated, and a non-empty unparseable bash command resolves to ask instead of riding a permissive top-level "*". To opt back into permissive bash behavior, set an explicit "bash": { "*": "allow" } policy.
+
+### Bug Fixes
+
+* **pi-permission-system:** cut a major release for the fail-closed gate change ([#452](https://github.com/gotgenes/pi-packages/issues/452)) ([c7451cd](https://github.com/gotgenes/pi-packages/commit/c7451cd5fdcbc262a65863e26d5d56e24dda715e))
+
+## [15.1.0](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v15.0.1...pi-permission-system-v15.1.0) (2026-06-20)
+
+
+### Features
+
+* **pi-permission-system:** trace tool-call decisions and emit a session summary ([#452](https://github.com/gotgenes/pi-packages/issues/452)) ([528e340](https://github.com/gotgenes/pi-packages/commit/528e340ae38a6b2f431dac1ab92642c1af72c0ac))
+* **pi-permission-system:** warn when a permissive top-level "*" leaves bash ungated ([#452](https://github.com/gotgenes/pi-packages/issues/452)) ([8ef8d0f](https://github.com/gotgenes/pi-packages/commit/8ef8d0fdf39297817c57968f0e345d79c6369d3a))
+
+
+### Bug Fixes
+
+* **pi-permission-system:** prompt instead of allowing an unparseable bash command ([#452](https://github.com/gotgenes/pi-packages/issues/452)) ([538bac1](https://github.com/gotgenes/pi-packages/commit/538bac12e343d613f2e980dabb516a880b90f3fe))
+* **pi-permission-system:** retry tree-sitter parser init instead of caching a rejected promise ([#452](https://github.com/gotgenes/pi-packages/issues/452)) ([468facd](https://github.com/gotgenes/pi-packages/commit/468facd50e9f9ee986121f76546c368851b14edb))
+
+
+### Documentation
+
+* **pi-permission-system:** document fail-closed gate behavior and bash fallback warning ([#452](https://github.com/gotgenes/pi-packages/issues/452)) ([fbb2844](https://github.com/gotgenes/pi-packages/commit/fbb28449afe9d92934769499d874c1cb93241c1b))
+
+## [15.0.1](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v15.0.0...pi-permission-system-v15.0.1) (2026-06-20)
+
+
+### Bug Fixes
+
+* **permission-system:** bind session approval for current-directory files ([#438](https://github.com/gotgenes/pi-packages/issues/438)) ([083a8e8](https://github.com/gotgenes/pi-packages/commit/083a8e8d9c2a4f6c49af158677d8669b4f099d9f))
+
+## [15.0.0](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v14.0.1...pi-permission-system-v15.0.0) (2026-06-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* the wire system prompt now lists the active tools (narrowed to the permission-allowed set) in the `Available tools:` section. Previously the permission system removed that section entirely, so the model saw no tool listing. Sessions that relied on the empty-listing behavior will now see the narrowed listing.
+
+### Bug Fixes
+
+* narrow the Available tools section to the active set instead of stripping it ([#437](https://github.com/gotgenes/pi-packages/issues/437)) ([dc0b97d](https://github.com/gotgenes/pi-packages/commit/dc0b97d7571d6f3a5cf0b0e15172f0d2d92b050a))
+
+
+### Documentation
+
+* describe Available-tools narrowing and drop the prompt-cache module ([#437](https://github.com/gotgenes/pi-packages/issues/437)) ([4112057](https://github.com/gotgenes/pi-packages/commit/411205711c5574aebb7add9edf9e035d21614946))
+
+## [14.0.1](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v14.0.0...pi-permission-system-v14.0.1) (2026-06-19)
+
+
+### Bug Fixes
+
+* **pi-permission-system:** strip shell comment lines from bash commands before matching ([d045591](https://github.com/gotgenes/pi-packages/commit/d0455915d6d4ce50534884639e516a9e1ef38976))
+
+## [14.0.0](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v13.2.0...pi-permission-system-v14.0.0) (2026-06-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* project agents' `permission:` frontmatter at `<cwd>/.pi/agents/<name>.md` is now read and enforced. Previously the wrong directory (`<cwd>/.pi/agent/agents`) was checked and the frontmatter was silently ignored, so a session may become more restrictive on upgrade.
+
+### Bug Fixes
+
+* correct project agents directory path to &lt;cwd&gt;/.pi/agents ([#428](https://github.com/gotgenes/pi-packages/issues/428)) ([eb5af78](https://github.com/gotgenes/pi-packages/commit/eb5af78193fa3cc574da6b8d80efd643ebce0ef9))
+
+
+### Documentation
+
+* correct project agent override path to &lt;cwd&gt;/.pi/agents ([#428](https://github.com/gotgenes/pi-packages/issues/428)) ([d193d6a](https://github.com/gotgenes/pi-packages/commit/d193d6a61155fb4e4a064800509cdbbd84b0ceb9))
+* fix stale project agents path in troubleshooting and ADR-0001 ([#428](https://github.com/gotgenes/pi-packages/issues/428)) ([95effeb](https://github.com/gotgenes/pi-packages/commit/95effebfd0b2e87db4512c91adc134b2470f26a3))
+
+## [13.2.0](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v13.1.2...pi-permission-system-v13.2.0) (2026-06-17)
+
+
+### Features
+
+* **pi-permission-system:** add external-directory typed+resolved policy aliases ([#418](https://github.com/gotgenes/pi-packages/issues/418)) ([ae653d1](https://github.com/gotgenes/pi-packages/commit/ae653d11fa52403cc5a78cd0148bc102de923d3c))
+
+
+### Bug Fixes
+
+* **pi-permission-system:** match external_directory patterns against typed and resolved paths ([#418](https://github.com/gotgenes/pi-packages/issues/418)) ([d08e645](https://github.com/gotgenes/pi-packages/commit/d08e64509d980c818708ecd2b7152ba6fc05946d))
+
+
+### Documentation
+
+* **pi-permission-system:** document external_directory symlink alias matching ([#418](https://github.com/gotgenes/pi-packages/issues/418)) ([8760273](https://github.com/gotgenes/pi-packages/commit/876027313457591ab5f175c689aa3074143db388))
+
+## [13.1.2](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v13.1.1...pi-permission-system-v13.1.2) (2026-06-16)
+
+
+### Documentation
+
+* **pi-permission-system:** clarify external_directory surface in README ([#413](https://github.com/gotgenes/pi-packages/issues/413)) ([c09929b](https://github.com/gotgenes/pi-packages/commit/c09929be209050c1f85e9e01dbb231f99e940f82))
+* **pi-permission-system:** document external_directory allow-list for outside-CWD caches ([#413](https://github.com/gotgenes/pi-packages/issues/413)) ([86b1d87](https://github.com/gotgenes/pi-packages/commit/86b1d87ff92e63c26d3f81ddb41aad7aab085074))
+* **pi-permission-system:** show external_directory allow-list in example config and schema ([#413](https://github.com/gotgenes/pi-packages/issues/413)) ([8178a7e](https://github.com/gotgenes/pi-packages/commit/8178a7ebc3237e188b8e492d5c3a8bfca9b197aa))
+
 ## [13.1.1](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v13.1.0...pi-permission-system-v13.1.1) (2026-06-13)
 
 

@@ -116,6 +116,20 @@ describe("describePathGate", () => {
     expect(result.sessionApproval?.representativePattern).toBeDefined();
   });
 
+  it("binds a current-directory file's session approval to the cwd subtree", () => {
+    const resolver = makeResolver(
+      makeCheckResult({ state: "ask", matchedPattern: "*" }),
+    );
+    const result = describePathGate(
+      makeTcc({ input: { path: "index.html" }, cwd: "/test/project" }),
+      resolver,
+    ) as GateDescriptor;
+    expect(result.sessionApproval?.surface).toBe("path");
+    expect(result.sessionApproval?.representativePattern).toBe(
+      "/test/project/*",
+    );
+  });
+
   it("descriptor denialContext references the file path and tool name", () => {
     const resolver = makeResolver(
       makeCheckResult({ state: "deny", matchedPattern: "*.env" }),

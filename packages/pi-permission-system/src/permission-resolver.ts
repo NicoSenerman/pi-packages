@@ -18,13 +18,16 @@ export interface ScopedPermissionResolver {
     agentName?: string,
   ): PermissionCheckResult;
   /**
-   * Resolve the cross-cutting `path` surface against a caller-supplied set of
-   * equivalent policy values, applying the current session rules. Used by the
-   * bash path gate, which computes cd-aware policy values per token.
+   * Resolve a path-shaped surface against a caller-supplied set of equivalent
+   * policy values, applying the current session rules. Used by the bash path
+   * gate (`path`) and the external-directory gates (`external_directory`),
+   * which compute equivalent path aliases per token. `surface` defaults to
+   * `path`.
    */
   resolvePathPolicy(
     values: readonly string[],
     agentName?: string,
+    surface?: string,
   ): PermissionCheckResult;
 }
 
@@ -63,17 +66,22 @@ export class PermissionResolver implements ScopedPermissionResolver {
   }
 
   /**
-   * Resolve the `path` surface for precomputed policy values, composing the
-   * current session ruleset so callers never thread it by hand.
+   * Resolve a path-shaped surface (`path` or `external_directory`) for
+   * precomputed policy values, composing the current session ruleset so callers
+   * never thread it by hand. `surface` defaults to `path`; the external-directory
+   * gates pass `external_directory` so a path's typed and symlink-resolved
+   * aliases match against the `external_directory` rules.
    */
   resolvePathPolicy(
     values: readonly string[],
     agentName?: string,
+    surface = "path",
   ): PermissionCheckResult {
     return this.permissionManager.checkPathPolicy(
       values,
       agentName,
       this.sessionRules.getRuleset(),
+      surface,
     );
   }
 
@@ -97,9 +105,5 @@ export class PermissionResolver implements ScopedPermissionResolver {
 
   getConfigIssues(agentName?: string): string[] {
     return this.permissionManager.getConfigIssues(agentName);
-  }
-
-  getPolicyCacheStamp(agentName?: string): string {
-    return this.permissionManager.getPolicyCacheStamp(agentName);
   }
 }

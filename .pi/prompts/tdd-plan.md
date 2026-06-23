@@ -55,7 +55,8 @@ Before executing the TDD cycle, load skills relevant to the change:
 Before writing any code, confirm the starting state is clean:
 
 1. `pnpm run check` — must pass.
-2. `pnpm run lint` — must pass.
+2. `pnpm run lint` **from the repo root** — must pass.
+   Package-scoped lint (`pnpm --filter …`) silently passes on `MD051` cross-file fragment links and cross-package issues that CI's root lint catches.
 3. `pnpm run test` — must pass.
 
 If a check fails on an issue your change will not touch (e.g. a pre-existing lint warning in an unrelated doc), fix it as a separate cleanup commit (`docs:`, `style:`, or `fix:` as appropriate) to establish a green baseline, then proceed.
@@ -88,6 +89,7 @@ Do not rewrite an entire large test file in one shot.
 
 If a step uncovers a problem the plan didn't anticipate (e.g. a downstream test breaks), fix it as part of the same commit and note the deviation in the commit body.
 If the deviation is large, stop and ask.
+If a plan's quantitative target (LOC, clone count, complexity) does not fall out as the plan predicted, treat that as a deviation: re-decide via `ask_user` rather than escalating the abstraction to force the number.
 
 ## After the last TDD step
 
@@ -95,7 +97,7 @@ If the deviation is large, stop and ask.
    Must be all green.
 2. Run the type check: `pnpm run check` (`tsc --noEmit`).
    Must succeed — Vitest does not typecheck.
-3. Run the linter: `pnpm run lint`.
+3. Run the linter **from the repo root**: `pnpm run lint`.
    If it fails, run `pnpm exec biome check --write .` to auto-fix, then re-check.
    Fix all failures — including pre-existing ones unrelated to the current change.
    Commit any fixup as part of the most recent feat commit (amend) only if you haven't pushed; otherwise as a `style:` commit.
@@ -104,11 +106,14 @@ If the deviation is large, stop and ask.
    Running from a package subdirectory detects fewer entry points than CI, producing false positives that become stale suppressions in CI.
    If it exits non-zero, load the `fallow` skill and fix the findings — prefer declaring a real contract (`implements`) or removing dead exports over suppressing; suppress only verified false positives.
    Commit fixes as part of the most recent feat commit (amend) if not yet pushed; otherwise as a `fix:` commit.
-5. Check for unstaged lockfile changes: `git diff --name-only pnpm-lock.yaml`.
+5. Check for unstaged lockfile changes: `git diff --name-only pnpm-lock.yaml pnpm-workspace.yaml`.
+   `pnpm install` can touch `pnpm-workspace.yaml` too (a `minimumReleaseAgeExclude` entry when a dependency is bumped to a freshly-published version).
    If modified, stage and commit it as part of the most recent feat commit (amend if not yet pushed) or as a separate `fix:` commit.
 6. Cross-check the plan's "Module-Level Changes" table against actually-changed files.
    If a listed file was not touched, update it now or note the deviation.
 7. If `packages/<PKG>/docs/architecture/` exists, check whether the changes affect the module structure or data-flow descriptions and update them.
+   If the issue completes a numbered roadmap step, prefix `✅` on both the step heading and its Mermaid diagram node — a `Landed:` detail line is not a substitute for the `✅`.
+   Flip the phase status row only when every step in the phase is done.
 8. Commit doc updates as `docs: <summary>`.
 9. **Do not edit `CHANGELOG.md`** — release-please owns it and will generate entries from your Conventional Commit messages on the next release.
 

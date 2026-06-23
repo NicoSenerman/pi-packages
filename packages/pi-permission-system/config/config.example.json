@@ -32,7 +32,8 @@
     "skill": { "*": "ask" },
     "external_directory": {
       "*": "ask",
-      "~/development/*": "allow"
+      "~/development/*": "allow",
+      "~/.cargo/registry/*": "allow"
     }
   }
 }

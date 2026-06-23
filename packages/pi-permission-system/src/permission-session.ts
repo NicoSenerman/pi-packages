@@ -1,5 +1,4 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { CacheKeyGate } from "#src/cache-key-gate";
 import {
   getActiveAgentName,
   getActiveAgentNameFromSystemPrompt,
@@ -38,8 +37,6 @@ export class PermissionSession implements ToolCallGateInputs {
   private context: ExtensionContext | null = null;
   private skillEntries: SkillPromptEntry[] = [];
   private knownAgentName: string | null = null;
-  readonly activeToolsGate = new CacheKeyGate();
-  readonly promptStateGate = new CacheKeyGate();
 
   constructor(
     private readonly paths: ExtensionPaths,
@@ -83,38 +80,32 @@ export class PermissionSession implements ToolCallGateInputs {
   /**
    * Reset all mutable state for a new session.
    *
-   * Configures the injected PermissionManager for `ctx.cwd`, clears caches,
-   * skill entries, and activates the new context.
+   * Configures the injected PermissionManager for `ctx.cwd`, clears skill
+   * entries, and activates the new context.
    */
   resetForNewSession(ctx: ExtensionContext): void {
     this.permissionManager.configureForCwd(ctx.cwd);
     this.skillEntries = [];
-    this.activeToolsGate.reset();
-    this.promptStateGate.reset();
     this.activate(ctx);
   }
 
   /**
-   * Shut down the session: clear rules, caches, skill entries, and
-   * deactivate context + forwarding.
+   * Shut down the session: clear rules, skill entries, and deactivate
+   * context + forwarding.
    */
   shutdown(): void {
     this.sessionRules.clear();
     this.skillEntries = [];
-    this.activeToolsGate.reset();
-    this.promptStateGate.reset();
     this.deactivate();
   }
 
   /**
-   * Reload permission manager and clear caches for the current context.
+   * Reload permission manager and clear skill entries for the current context.
    * Used on config reload (e.g. `resources_discover` with reason "reload").
    */
   reload(): void {
     this.permissionManager.configureForCwd(this.context?.cwd);
     this.skillEntries = [];
-    this.activeToolsGate.reset();
-    this.promptStateGate.reset();
   }
 
   // ── Skill entries ──────────────────────────────────────────────────────

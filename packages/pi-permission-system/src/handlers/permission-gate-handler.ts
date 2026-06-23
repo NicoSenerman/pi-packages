@@ -20,7 +20,7 @@ import type {
   SkillInputGatePipeline,
 } from "./gates/skill-input-gate-pipeline";
 import type { ToolCallGatePipeline } from "./gates/tool-call-gate-pipeline";
-import type { ToolCallContext } from "./gates/types";
+import type { GateOutcome, ToolCallContext } from "./gates/types";
 
 /** Minimal subset of InputEvent used by handleInput. */
 interface InputPayload {
@@ -49,12 +49,12 @@ export class PermissionGateHandler {
   async handleToolCall(
     event: unknown,
     ctx: ExtensionContext,
-  ): Promise<{ block?: true; reason?: string }> {
+  ): Promise<GateOutcome> {
     this.session.activate(ctx);
 
     const validation = validateRequestedTool(event, this.toolRegistry.getAll());
     if (validation.status === "block") {
-      return { block: true, reason: validation.reason };
+      return { action: "block", reason: validation.reason };
     }
     const toolName = validation.toolName;
 
@@ -74,10 +74,7 @@ export class PermissionGateHandler {
       cwd: ctx.cwd,
     };
 
-    const outcome = await this.pipeline.evaluate(tcc, this.runner);
-    return outcome.action === "block"
-      ? { block: true, reason: outcome.reason }
-      : {};
+    return await this.pipeline.evaluate(tcc, this.runner);
   }
 
   async handleInput(

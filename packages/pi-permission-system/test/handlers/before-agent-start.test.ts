@@ -171,7 +171,7 @@ describe("AgentPrepHandler.handle", () => {
     ]);
   });
 
-  it("calls setActive once across repeated calls with the same allowed tools", async () => {
+  it("calls setActive on every turn (no dedup gate)", async () => {
     const { handler, toolRegistry } = makeSetup({
       toolRegistry: {
         getActive: vi.fn().mockReturnValue(["read"]),
@@ -179,7 +179,40 @@ describe("AgentPrepHandler.handle", () => {
     });
     await handler.handle(makeEvent(), makeCtx());
     await handler.handle(makeEvent(), makeCtx());
-    expect(toolRegistry.setActive).toHaveBeenCalledOnce();
+    expect(toolRegistry.setActive).toHaveBeenCalledTimes(2);
+  });
+
+  it("filters a denied skill from the systemPrompt on every turn, not just the first", async () => {
+    const systemPrompt = [
+      "You are an assistant.",
+      "",
+      "<available_skills>",
+      "  <skill>",
+      "    <name>secret</name>",
+      "    <description>A denied skill</description>",
+      "    <location>/skills/secret/SKILL.md</location>",
+      "  </skill>",
+      "</available_skills>",
+    ].join("\n");
+    const { handler, permissionManager } = makeSetup();
+    vi.mocked(permissionManager.checkPermission).mockImplementation(
+      (surface) =>
+        surface === "skill"
+          ? makeCheckResult({ state: "deny" })
+          : makeCheckResult(),
+    );
+
+    const first = await handler.handle(makeEvent(systemPrompt), makeCtx());
+    const second = await handler.handle(makeEvent(systemPrompt), makeCtx());
+
+    expect(first).toHaveProperty("systemPrompt");
+    expect((first as { systemPrompt: string }).systemPrompt).not.toContain(
+      "secret",
+    );
+    expect(second).toHaveProperty("systemPrompt");
+    expect((second as { systemPrompt: string }).systemPrompt).not.toContain(
+      "secret",
+    );
   });
 
   it("returns empty object on repeated calls with unchanged inputs", async () => {
@@ -208,5 +241,77 @@ describe("AgentPrepHandler.handle", () => {
     const { handler } = makeSetup();
     const result = await handler.handle(makeEvent(prompt), makeCtx());
     expect(result).toEqual({});
+  });
+
+  it("narrows a denied tool out of the Available tools listing without removing the section", async () => {
+    const systemPrompt = [
+      "Available tools:",
+      "- read: Read file contents",
+      "- bash: Run shell commands",
+    ].join("\n");
+    const { handler, permissionManager } = makeSetup({
+      toolRegistry: {
+        getActive: vi.fn().mockReturnValue(["read", "bash"]),
+      },
+    });
+    vi.mocked(permissionManager.getToolPermission).mockImplementation((tool) =>
+      tool === "bash" ? "deny" : "allow",
+    );
+
+    const result = await handler.handle(makeEvent(systemPrompt), makeCtx());
+
+    expect(result.systemPrompt).toBeDefined();
+    const out = result.systemPrompt ?? "";
+    expect(out).toContain("Available tools:");
+    expect(out).toContain("- read: Read file contents");
+    expect(out).not.toContain("- bash");
+  });
+
+  it("keeps the wire system prompt byte-stable across the tool-listing drift between turns", async () => {
+    const fullProse = [
+      "You are an assistant.",
+      "",
+      "Available tools:",
+      "- bash: Run shell commands",
+      "- read: Read file contents",
+      "- edit: Edit a file",
+      "- write: Write a file",
+      "",
+      "Guidelines:",
+      "- use bash for file operations like ls, rg, find",
+      "- use read to examine files instead of cat or sed.",
+      "- Be concise in your responses",
+    ].join("\n");
+    const narrowedProse = [
+      "You are an assistant.",
+      "",
+      "Available tools:",
+      "- read: Read file contents",
+      "- edit: Edit a file",
+      "- write: Write a file",
+      "",
+      "Guidelines:",
+      "- use read to examine files instead of cat or sed.",
+      "- Be concise in your responses",
+    ].join("\n");
+    const { handler, permissionManager } = makeSetup({
+      toolRegistry: {
+        getActive: vi.fn().mockReturnValue(["bash", "read", "edit", "write"]),
+      },
+    });
+    vi.mocked(permissionManager.getToolPermission).mockImplementation((tool) =>
+      tool === "bash" ? "deny" : "allow",
+    );
+
+    // Turn 1: Pi feeds the full default listing.
+    const first = await handler.handle(makeEvent(fullProse), makeCtx());
+    // Turn 2: Pi's setActive rebuild means the event now carries the narrowed
+    // listing, so the override the handler returns must still match turn 1.
+    const second = await handler.handle(makeEvent(narrowedProse), makeCtx());
+
+    const wire1 = first.systemPrompt ?? fullProse;
+    const wire2 = second.systemPrompt ?? narrowedProse;
+    expect(wire1).toBe(narrowedProse);
+    expect(wire2).toBe(narrowedProse);
   });
 });

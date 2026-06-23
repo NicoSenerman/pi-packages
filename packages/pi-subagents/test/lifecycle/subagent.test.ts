@@ -99,6 +99,55 @@ describe("Subagent — constructor", () => {
 });
 
 describe("convenience getters", () => {
+	describe("live-activity getters", () => {
+		it("turnCount defaults to 1 (delegates to SubagentState)", () => {
+			const record = makeSubagent();
+			expect(record.turnCount).toBe(1);
+		});
+
+		it("activeTools defaults to an empty map (delegates to SubagentState)", () => {
+			const record = makeSubagent();
+			expect(record.activeTools.size).toBe(0);
+		});
+
+		it("responseText defaults to empty string (delegates to SubagentState)", () => {
+			const record = makeSubagent();
+			expect(record.responseText).toBe("");
+		});
+
+		it("maxTurns returns execution.maxTurns", () => {
+			const record = makeSubagent({ execution: makeStubExecution({ maxTurns: 10 }) });
+			expect(record.maxTurns).toBe(10);
+		});
+
+		it("maxTurns returns undefined when execution.maxTurns is not set", () => {
+			const record = makeSubagent();
+			expect(record.maxTurns).toBeUndefined();
+		});
+
+		it("turnCount reflects state mutations via incrementTurnCount", () => {
+			const state = new SubagentState();
+			const record = new Subagent({ id: "1", type: "general-purpose", description: "test", execution: makeStubExecution(), state });
+			state.incrementTurnCount();
+			expect(record.turnCount).toBe(2);
+		});
+
+		it("activeTools reflects state mutations via addActiveTool", () => {
+			const state = new SubagentState();
+			const record = new Subagent({ id: "1", type: "general-purpose", description: "test", execution: makeStubExecution(), state });
+			state.addActiveTool("Read");
+			expect(record.activeTools.size).toBe(1);
+			expect([...record.activeTools.values()]).toContain("Read");
+		});
+
+		it("responseText reflects state mutations via appendResponseText", () => {
+			const state = new SubagentState();
+			const record = new Subagent({ id: "1", type: "general-purpose", description: "test", execution: makeStubExecution(), state });
+			state.appendResponseText("Hello");
+			expect(record.responseText).toBe("Hello");
+		});
+	});
+
 	describe("outputFile", () => {
 		it("returns undefined when subagentSession is not set", () => {
 			const record = makeSubagent();
@@ -212,6 +261,38 @@ describe("Subagent — session-encapsulation methods", () => {
 			const stub = createSubagentSessionStub(session);
 			agent.subagentSession = toSubagentSession(stub);
 			expect(agent.messages).toEqual([{ role: "user", content: "hi" }]);
+		});
+	});
+
+	describe("agentMessages", () => {
+		it("returns empty array when no session", () => {
+			const agent = makeSubagent();
+			expect(agent.agentMessages).toEqual([]);
+		});
+
+		it("delegates to SubagentSession.agentMessages when session is ready", () => {
+			const agent = makeSubagent();
+			const session = createMockSession();
+			session.messages.push({ role: "user", content: "hi" });
+			const stub = createSubagentSessionStub(session);
+			agent.subagentSession = toSubagentSession(stub);
+			expect(agent.agentMessages).toEqual([{ role: "user", content: "hi" }]);
+		});
+	});
+
+	describe("getToolDefinition", () => {
+		it("returns undefined when no session", () => {
+			const agent = makeSubagent();
+			expect(agent.getToolDefinition("read")).toBeUndefined();
+		});
+
+		it("delegates to SubagentSession.getToolDefinition when session is ready", () => {
+			const agent = makeSubagent();
+			const def = { name: "read" };
+			const session = createMockSession({ getToolDefinition: vi.fn(() => def) });
+			const stub = createSubagentSessionStub(session);
+			agent.subagentSession = toSubagentSession(stub);
+			expect(agent.getToolDefinition("read")).toBe(def);
 		});
 	});
 });

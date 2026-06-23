@@ -2,8 +2,9 @@
 // - Global:  ~/.pi/agent/subagents.json (agentDir injected at construction) — manual defaults, never written here
 // - Project: <cwd>/.pi/subagents.json — written by /agents → Settings; overrides global on load
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { type LayeredSettingsSource, loadLayeredSettings } from "#src/layered-settings";
 export interface SubagentsSettings {
   maxConcurrent?: number;
   /**
@@ -181,33 +182,19 @@ function sanitize(raw: unknown): SubagentsSettings {
   return out;
 }
 
-function globalPath(agentDir: string): string {
-  return join(agentDir, "subagents.json");
-}
-
 function projectPath(cwd: string): string {
   return join(cwd, ".pi", "subagents.json");
 }
 
-/**
- * Read a settings file. Missing file is silent (returns `{}`). A file that
- * exists but can't be parsed emits a warning to stderr so users aren't
- * silently reverted to defaults — and still returns `{}` so startup proceeds.
- */
-function readSettingsFile(path: string): SubagentsSettings {
-  if (!existsSync(path)) return {};
-  try {
-    return sanitize(JSON.parse(readFileSync(path, "utf-8")));
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    console.warn(`[pi-subagents] Ignoring malformed settings at ${path}: ${reason}`);
-    return {};
-  }
-}
-
 /** Load merged settings: global provides defaults, project overrides. */
-export function loadSettings(agentDir: string, cwd: string = process.cwd()): SubagentsSettings {
-  return { ...readSettingsFile(globalPath(agentDir)), ...readSettingsFile(projectPath(cwd)) };
+export function loadSettings(agentDir: string, cwd: string): SubagentsSettings {
+  return loadLayeredSettings({
+    agentDir,
+    cwd,
+    filename: "subagents.json",
+    sanitize,
+    warnLabel: "pi-subagents",
+  } satisfies LayeredSettingsSource<SubagentsSettings>);
 }
 
 /**

@@ -42,7 +42,6 @@ function makePermissionManager() {
       .fn<(toolName: string, agentName?: string) => PermissionState>()
       .mockReturnValue("allow"),
     getConfigIssues: vi.fn((): string[] => []),
-    getPolicyCacheStamp: vi.fn((): string => "stamp-1"),
   };
 }
 
@@ -143,6 +142,20 @@ describe("PermissionResolver", () => {
         ["/proj/src/a.ts", "src/a.ts"],
         "agent-x",
         [],
+        "path",
+      );
+    });
+
+    it("forwards an explicit surface to checkPathPolicy", () => {
+      const { resolver, permissionManager } = makeResolver();
+
+      resolver.resolvePathPolicy(["/tmp/x"], "agent-x", "external_directory");
+
+      expect(permissionManager.checkPathPolicy).toHaveBeenCalledWith(
+        ["/tmp/x"],
+        "agent-x",
+        [],
+        "external_directory",
       );
     });
 
@@ -247,19 +260,6 @@ describe("PermissionResolver", () => {
 
       expect(pm.getConfigIssues).toHaveBeenCalledWith("agent-1");
       expect(result).toEqual(["issue-1"]);
-    });
-  });
-
-  describe("getPolicyCacheStamp", () => {
-    it("delegates to permissionManager.getPolicyCacheStamp", () => {
-      const pm = makePermissionManager();
-      vi.mocked(pm.getPolicyCacheStamp).mockReturnValue("stamp-abc");
-      const { resolver } = makeResolver(pm);
-
-      const result = resolver.getPolicyCacheStamp("agent-1");
-
-      expect(pm.getPolicyCacheStamp).toHaveBeenCalledWith("agent-1");
-      expect(result).toBe("stamp-abc");
     });
   });
 });

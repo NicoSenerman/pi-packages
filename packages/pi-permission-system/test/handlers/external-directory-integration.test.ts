@@ -100,7 +100,7 @@ describe("external_directory path scope", () => {
     const result = await handler.handleToolCall(event, makeCtx());
     // Should not be blocked — the external_directory gate is skipped,
     // and the tool gate sees "allow" (default toolState in makeExtDirCheck)
-    expect(result).toEqual({});
+    expect(result).toEqual({ action: "allow" });
   });
 
   it("fires external_directory check when path is outside CWD", async () => {
@@ -110,7 +110,7 @@ describe("external_directory path scope", () => {
     });
     const event = makeToolCallEvent("read", { input: { path: EXTERNAL_PATH } });
     const result = await handler.handleToolCall(event, makeCtx());
-    expect(result).toMatchObject({ block: true });
+    expect(result).toMatchObject({ action: "block" });
   });
 
   it("skips external_directory check for non-path-bearing tool (bash)", async () => {
@@ -142,7 +142,7 @@ describe("external_directory path scope", () => {
       input: { path: EXTERNAL_PATH },
     });
     const result = await handler.handleToolCall(event, makeCtx());
-    expect(result).toMatchObject({ block: true });
+    expect(result).toMatchObject({ action: "block" });
   });
 
   it.each(
@@ -155,7 +155,7 @@ describe("external_directory path scope", () => {
     // No path in input — external_directory gate should not fire
     const event = makeToolCallEvent(toolName);
     const result = await handler.handleToolCall(event, makeCtx());
-    expect(result).toEqual({});
+    expect(result).toEqual({ action: "allow" });
   });
 });
 
@@ -169,7 +169,7 @@ describe("external_directory policy state — allow", () => {
     });
     const event = makeToolCallEvent("read", { input: { path: EXTERNAL_PATH } });
     const result = await handler.handleToolCall(event, makeCtx());
-    expect(result).toEqual({});
+    expect(result).toEqual({ action: "allow" });
   });
 
   it("emits decision event with policy_allow on external_directory surface", async () => {
@@ -214,7 +214,7 @@ describe("external_directory — allow external reads, gate external writes (#14
     });
     const event = makeToolCallEvent("read", { input: { path: EXTERNAL_PATH } });
     const result = await handler.handleToolCall(event, makeCtx());
-    expect(result).toEqual({});
+    expect(result).toEqual({ action: "allow" });
   });
 
   it("prompts for write to external path when external_directory allows but write is ask", async () => {
@@ -233,7 +233,7 @@ describe("external_directory — allow external reads, gate external writes (#14
     });
     const result = await handler.handleToolCall(event, makeCtx());
     // external_directory passes; write gate prompts and user approves
-    expect(result).toEqual({});
+    expect(result).toEqual({ action: "allow" });
     expect(prompter.prompt).toHaveBeenCalledOnce();
   });
 
@@ -246,7 +246,7 @@ describe("external_directory — allow external reads, gate external writes (#14
       input: { path: EXTERNAL_PATH },
     });
     const result = await handler.handleToolCall(event, makeCtx());
-    expect(result.block).toBe(true);
+    expect(result).toMatchObject({ action: "block" });
   });
 
   it("emits separate decision events for external_directory and write surfaces", async () => {
@@ -284,8 +284,8 @@ describe("external_directory policy state — deny", () => {
     });
     const event = makeToolCallEvent("read", { input: { path: EXTERNAL_PATH } });
     const result = await handler.handleToolCall(event, makeCtx());
-    expect(result.block).toBe(true);
-    expect(result.reason).toContain(EXTERNAL_PATH);
+    expect(result).toMatchObject({ action: "block" });
+    expect((result as { reason?: string }).reason).toContain(EXTERNAL_PATH);
   });
 
   it("block reason contains extension attribution", async () => {
@@ -295,8 +295,10 @@ describe("external_directory policy state — deny", () => {
     });
     const event = makeToolCallEvent("read", { input: { path: EXTERNAL_PATH } });
     const result = await handler.handleToolCall(event, makeCtx());
-    expect(result.reason).toContain("[pi-permission-system]");
-    expect(result.reason).not.toContain("Hard stop");
+    expect((result as { reason?: string }).reason).toContain(
+      "[pi-permission-system]",
+    );
+    expect((result as { reason?: string }).reason).not.toContain("Hard stop");
   });
 
   it("writes review-log entry with resolution policy_denied", async () => {
@@ -351,7 +353,7 @@ describe("external_directory policy state — ask", () => {
     });
     const event = makeToolCallEvent("read", { input: { path: EXTERNAL_PATH } });
     const result = await handler.handleToolCall(event, makeCtx());
-    expect(result).toEqual({});
+    expect(result).toEqual({ action: "allow" });
   });
 
   it("emits user_approved decision when user approves", async () => {
@@ -391,7 +393,7 @@ describe("external_directory policy state — ask", () => {
     });
     const event = makeToolCallEvent("read", { input: { path: EXTERNAL_PATH } });
     const result = await handler.handleToolCall(event, makeCtx());
-    expect(result.block).toBe(true);
+    expect(result).toMatchObject({ action: "block" });
   });
 
   it("emits user_denied decision when user denies", async () => {
@@ -433,8 +435,8 @@ describe("external_directory policy state — ask", () => {
     });
     const event = makeToolCallEvent("read", { input: { path: EXTERNAL_PATH } });
     const result = await handler.handleToolCall(event, makeCtx());
-    expect(result.block).toBe(true);
-    expect(result.reason).toContain("not needed");
+    expect(result).toMatchObject({ action: "block" });
+    expect((result as { reason?: string }).reason).toContain("not needed");
   });
 
   it("blocks with confirmation_unavailable when no UI is available", async () => {
@@ -451,8 +453,10 @@ describe("external_directory policy state — ask", () => {
       event,
       makeCtx({ hasUI: false }),
     );
-    expect(result.block).toBe(true);
-    expect(result.reason).toContain("outside the working directory");
+    expect(result).toMatchObject({ action: "block" });
+    expect((result as { reason?: string }).reason).toContain(
+      "outside the working directory",
+    );
   });
 
   it("writes review-log entry with confirmation_unavailable when no UI", async () => {
@@ -541,7 +545,7 @@ describe("external_directory per-agent override", () => {
     });
     const event = makeToolCallEvent("read", { input: { path: EXTERNAL_PATH } });
     const result1 = await handler1.handleToolCall(event, makeCtx());
-    expect(result1).toEqual({});
+    expect(result1).toEqual({ action: "allow" });
 
     const decisions1 = getDecisionEvents(events1);
     const extDir1 = decisions1.find((d) => d.surface === "external_directory");
@@ -560,7 +564,7 @@ describe("external_directory per-agent override", () => {
       tools: ALL_TOOLS,
     });
     const result2 = await handler2.handleToolCall(event, makeCtx());
-    expect(result2).toMatchObject({ block: true });
+    expect(result2).toMatchObject({ action: "block" });
   });
 });
 

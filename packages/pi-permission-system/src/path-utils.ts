@@ -112,6 +112,26 @@ export function getPathPolicyValues(
   ];
 }
 
+/**
+ * Equivalent `external_directory` policy-match values for a path: the lexical
+ * (as-typed) alias list plus the canonical (symlink-resolved) absolute path.
+ *
+ * The outside-CWD boundary decision uses the canonical form separately; this
+ * helper exists only for pattern matching, so a user's pattern on the typed
+ * path (`/tmp/*`) and on the resolved path (`/private/tmp/*`) both match under
+ * the last-match-wins alias evaluation. On systems where the path is not a
+ * symlink the canonical form equals the lexical absolute alias and the `Set`
+ * collapses it, leaving today's behavior unchanged.
+ */
+export function getExternalDirectoryPolicyValues(
+  pathValue: string,
+  cwd: string,
+): string[] {
+  const lexical = getPathPolicyValues(pathValue, { cwd });
+  const canonical = canonicalNormalizePathForComparison(pathValue, cwd);
+  return canonical ? [...new Set([...lexical, canonical])] : lexical;
+}
+
 function getAbsolutePathPolicyValues(
   pathValue: string,
   options: PathPolicyValueOptions,

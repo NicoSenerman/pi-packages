@@ -241,12 +241,14 @@ export function makeHandler(overrides?: {
     vi.mocked(permissionManager.checkPermission).mockImplementation(
       surfaceCheck,
     );
-    // The bash path gate resolves through checkPathPolicy; route it through
-    // the same surface dispatcher so `path` overrides apply to bash tokens.
+    // The bash path and external-directory gates resolve through
+    // checkPathPolicy; route it through the same surface dispatcher (threading
+    // the real surface) so `path` / `external_directory` overrides apply to
+    // bash tokens and tool paths alike (#418).
     vi.mocked(permissionManager.checkPathPolicy).mockImplementation(
-      (values, agentName, sessionRules) =>
+      (values, agentName, sessionRules, surface = "path") =>
         surfaceCheck(
-          "path",
+          surface,
           { path: values[0] ?? "*" },
           agentName,
           sessionRules,

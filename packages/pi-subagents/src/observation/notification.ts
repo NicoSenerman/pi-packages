@@ -1,7 +1,6 @@
 import { debugLog } from "#src/debug";
 import { getLifetimeTotal } from "#src/lifecycle/usage";
 import type { Subagent } from "#src/types";
-import type { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
 
 /** Details attached to custom notification messages for visual rendering. */
 export interface NotificationDetails {
@@ -41,7 +40,7 @@ export function getStatusLabel(status: string, error?: string): string {
   }
 }
 
-/** Format a structured task notification matching Claude Code's <task-notification> XML. */
+/** Format a structured <task-notification> XML block for the parent agent to parse. */
 export function formatTaskNotification(record: Subagent, resultMaxLen: number): string {
   const status = getStatusLabel(record.status, record.error);
   const durationMs = record.completedAt ? record.completedAt - record.startedAt : 0;
@@ -77,7 +76,6 @@ export function formatTaskNotification(record: Subagent, resultMaxLen: number): 
 export function buildNotificationDetails(
   record: Subagent,
   resultMaxLen: number,
-  activity?: AgentActivityTracker,
 ): NotificationDetails {
   const totalTokens = getLifetimeTotal(record.lifetimeUsage);
 
@@ -86,8 +84,8 @@ export function buildNotificationDetails(
     description: record.description,
     status: record.status,
     toolUses: record.toolUses,
-    turnCount: activity?.turnCount ?? 0,
-    maxTurns: activity?.maxTurns,
+    turnCount: record.turnCount,
+    maxTurns: record.maxTurns,
     totalTokens,
     durationMs: record.completedAt ? record.completedAt - record.startedAt : 0,
     outputFile: record.outputFile,
@@ -127,7 +125,6 @@ export function buildEventData(record: Subagent) {
 export interface NotificationSystem {
   cancelNudge: (key: string) => void;
   sendCompletion: (record: Subagent) => void;
-  cleanupCompleted: (id: string) => void;
   dispose: () => void;
 }
 
@@ -141,9 +138,6 @@ export class NotificationManager implements NotificationSystem {
       msg: { customType: string; content: string; display: boolean; details?: unknown },
       opts?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
     ) => void,
-    private agentActivity: Map<string, AgentActivityTracker>,
-    private markFinished: (id: string) => void,
-    private updateWidget: () => void,
   ) {}
 
   cancelNudge(key: string): void {
@@ -155,16 +149,7 @@ export class NotificationManager implements NotificationSystem {
   }
 
   sendCompletion(record: Subagent): void {
-    this.agentActivity.delete(record.id);
-    this.markFinished(record.id);
     this.scheduleNudge(record.id, () => this.emitIndividualNudge(record));
-    this.updateWidget();
-  }
-
-  cleanupCompleted(id: string): void {
-    this.agentActivity.delete(id);
-    this.markFinished(id);
-    this.updateWidget();
   }
 
   dispose(): void {
@@ -199,7 +184,7 @@ export class NotificationManager implements NotificationSystem {
         customType: "subagent-notification",
         content: notification + footer,
         display: true,
-        details: buildNotificationDetails(record, 500, this.agentActivity.get(record.id)),
+        details: buildNotificationDetails(record, 500),
       },
       { deliverAs: "followUp", triggerTurn: true },
     );

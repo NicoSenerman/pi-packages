@@ -8,6 +8,8 @@ import {
   SettingsManager,
   saveSettings,
 } from "#src/settings";
+import { captureWarn } from "#test/helpers/capture-warn";
+import { createSettingsDirs, type SettingsDirs } from "#test/helpers/tmp-settings-dirs";
 
 /**
  * Tests for persistent settings. Uses two tmp directories:
@@ -16,30 +18,22 @@ import {
  *   Simulates the user's project root. Settings live at `<projectDir>/.pi/subagents.json`.
  */
 describe("settings persistence", () => {
+  let dirs: SettingsDirs;
   let globalDir: string;
   let projectDir: string;
-
-  const globalFile = () => join(globalDir, "subagents.json");
-  const projectFile = () => join(projectDir, ".pi", "subagents.json");
+  let globalFile: () => string;
+  let projectFile: () => string;
+  let writeGlobal: (obj: unknown) => void;
+  let writeProject: (obj: unknown) => void;
 
   beforeEach(() => {
-    globalDir = mkdtempSync(join(tmpdir(), "pi-settings-global-"));
-    projectDir = mkdtempSync(join(tmpdir(), "pi-settings-project-"));
+    dirs = createSettingsDirs("subagents.json");
+    ({ globalDir, projectDir, globalFile, projectFile, writeGlobal, writeProject } = dirs);
   });
 
   afterEach(() => {
-    rmSync(globalDir, { recursive: true, force: true });
-    rmSync(projectDir, { recursive: true, force: true });
+    dirs.dispose();
   });
-
-  function writeGlobal(obj: unknown) {
-    writeFileSync(globalFile(), JSON.stringify(obj));
-  }
-
-  function writeProject(obj: unknown) {
-    mkdirSync(join(projectDir, ".pi"), { recursive: true });
-    writeFileSync(projectFile(), JSON.stringify(obj));
-  }
 
   it("returns {} when both files are missing", () => {
     expect(loadSettings(globalDir, projectDir)).toEqual({});
@@ -214,26 +208,20 @@ describe("settings persistence", () => {
     });
 
     it("warns to console.warn when an existing file is malformed", () => {
-      const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
       mkdirSync(join(projectDir, ".pi"), { recursive: true });
       writeFileSync(projectFile(), "not valid json {{{");
-      try {
+      const warnings = captureWarn(() => {
         expect(loadSettings(globalDir, projectDir)).toEqual({});
-        expect(spy).toHaveBeenCalledTimes(1);
-        expect(String(spy.mock.calls[0][0])).toMatch(/Ignoring malformed settings/);
-      } finally {
-        spy.mockRestore();
-      }
+      });
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toMatch(/Ignoring malformed settings/);
     });
 
     it("does NOT warn when a file is simply missing", () => {
-      const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      try {
+      const warnings = captureWarn(() => {
         expect(loadSettings(globalDir, projectDir)).toEqual({});
-        expect(spy).not.toHaveBeenCalled();
-      } finally {
-        spy.mockRestore();
-      }
+      });
+      expect(warnings).toEqual([]);
     });
   });
 

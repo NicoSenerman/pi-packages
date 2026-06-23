@@ -58,6 +58,11 @@ export class SessionRules implements SessionApprovalRecorder {
  *
  * For paths that already end with a separator (directories), the separator
  * is treated as the directory boundary and `*` is appended directly.
+ *
+ * The path is expected to be the canonical (cwd-resolved, absolute) form used
+ * for policy matching, so the derived pattern matches the same policy values a
+ * later tool call produces. Callers that hold a working directory resolve the
+ * path to that form first; the function itself stays free of cwd state.
  */
 export function deriveApprovalPattern(normalizedPath: string): string {
   // If the path already ends with a separator, it's a directory — glob its contents.

@@ -135,16 +135,59 @@ function findSection(
   return { start, end };
 }
 
-function removeLineSection(
+/**
+ * Tool name from an `Available tools:` bullet (`- read: …` -> `read`), or
+ * `null` for non-tool lines (blank lines, boilerplate prose). Matches the
+ * first token after the bullet marker, with or without a trailing colon.
+ */
+function extractToolBulletName(line: string): string | null {
+  const match = /^\s*-\s+([A-Za-z0-9_-]+)/.exec(line);
+  return match ? match[1] : null;
+}
+
+/**
+ * Narrow the `Available tools:` section to the allowed tools: keep allowed-tool
+ * bullet lines and any non-tool prose, drop denied/inactive bullet lines. When
+ * no tool bullet survives, remove the section header too. This mirrors what Pi
+ * itself renders for the active tool set, so the result is byte-stable across
+ * turns regardless of whether the input still carries the full default listing.
+ */
+function narrowAvailableToolsSection(
   lines: readonly string[],
-  section: LineSection | null,
+  allowedTools: ReadonlySet<string>,
 ): { lines: string[]; removed: boolean } {
+  const section = findSection(lines, AVAILABLE_TOOLS_SECTION_HEADER);
   if (!section) {
     return { lines: [...lines], removed: false };
   }
 
+  const before = lines.slice(0, section.start);
+  const header = lines[section.start];
+  const body = lines.slice(section.start + 1, section.end);
+  const after = lines.slice(section.end);
+
+  const filteredBody = body.filter((line) => {
+    const toolName = extractToolBulletName(line);
+    if (toolName === null) {
+      return true; // keep blank lines and non-tool boilerplate
+    }
+    return allowedTools.has(toolName);
+  });
+
+  const removed = filteredBody.length !== body.length;
+  if (!removed) {
+    return { lines: [...lines], removed: false };
+  }
+
+  const hasToolBullet = filteredBody.some(
+    (line) => extractToolBulletName(line) !== null,
+  );
+  if (!hasToolBullet) {
+    return { lines: [...before, ...after], removed: true };
+  }
+
   return {
-    lines: [...lines.slice(0, section.start), ...lines.slice(section.end)],
+    lines: [...before, header, ...filteredBody, ...after],
     removed: true,
   };
 }
@@ -212,15 +255,15 @@ export function sanitizeAvailableToolsSection(
     allowedToolNames.map((toolName) => toolName.trim()).filter(Boolean),
   );
   const normalizedLines = normalizePrompt(systemPrompt).split("\n");
-  const removedToolsSection = removeLineSection(
+  const narrowedToolsSection = narrowAvailableToolsSection(
     normalizedLines,
-    findSection(normalizedLines, AVAILABLE_TOOLS_SECTION_HEADER),
-  );
-  const sanitizedGuidelines = sanitizeGuidelinesSection(
-    removedToolsSection.lines,
     allowedTools,
   );
-  const removed = removedToolsSection.removed || sanitizedGuidelines.removed;
+  const sanitizedGuidelines = sanitizeGuidelinesSection(
+    narrowedToolsSection.lines,
+    allowedTools,
+  );
+  const removed = narrowedToolsSection.removed || sanitizedGuidelines.removed;
 
   return {
     prompt: removed

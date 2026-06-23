@@ -60,6 +60,16 @@ WRONG:  A["## Overview"]
 RIGHT:  A["Overview"]
 ```
 
+### Parentheses and special characters in node labels
+
+`(`, `[`, `{`, and `:` inside an unquoted flowchart node label are parsed as shape delimiters, not text — `A[Step 1 (foo)]` makes Mermaid expect a nested round node and fails with `Expecting ... got 'PS'`.
+Quote the whole label.
+
+```text
+WRONG:  S1[✅ Step 1 - Spike (#446)]
+RIGHT:  S1["✅ Step 1 - Spike (#446)"]
+```
+
 ## Verify in a real renderer
 
 Structural validators (`rumdl`) check Markdown syntax but not Mermaid semantics.

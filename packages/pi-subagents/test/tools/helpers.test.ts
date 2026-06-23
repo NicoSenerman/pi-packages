@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { TypeListRegistry } from "#src/tools/helpers";
 import { buildDetails, buildTypeListText, formatLifetimeTokens, getModelLabelFromConfig, getStatusNote, textResult } from "#src/tools/helpers";
-import { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
+import { createTestSubagent } from "#test/helpers/make-subagent";
 
 /** Build a minimal TypeListRegistry stub for tests. */
 function makeRegistry(opts: {
   defaults?: string[];
   users?: string[];
-  resolve?: (name: string) => { description: string; model: string | undefined };
+  resolve?: (name: string) => { description: string; model: string | undefined; enabled?: boolean };
 }): TypeListRegistry {
   return {
     getDefaultAgentNames: () => opts.defaults ?? [],
@@ -112,6 +112,33 @@ describe("buildTypeListText", () => {
     expect(result).toContain("- my-agent: My custom agent");
   });
 
+  it("excludes disabled agents from the default agents list", () => {
+    const registry = makeRegistry({
+      defaults: ["general-purpose", "Plan"],
+      resolve: (name) =>
+        name === "Plan"
+          ? { description: "Planning agent", model: undefined, enabled: false }
+          : { description: "General purpose agent", model: undefined },
+    });
+    const result = buildTypeListText(registry, "/home/.pi");
+    expect(result).toContain("- general-purpose: General purpose agent");
+    expect(result).not.toContain("Plan");
+  });
+
+  it("excludes disabled agents from the custom agents list", () => {
+    const registry = makeRegistry({
+      defaults: ["general-purpose"],
+      users: ["my-agent", "disabled-custom"],
+      resolve: (name) =>
+        name === "disabled-custom"
+          ? { description: "disabled custom agent", model: undefined, enabled: false }
+          : { description: "My custom agent", model: undefined },
+    });
+    const result = buildTypeListText(registry, "/home/.pi");
+    expect(result).toContain("- my-agent: My custom agent");
+    expect(result).not.toContain("disabled-custom");
+  });
+
   it("omits Custom agents section when no user agents exist", () => {
     const registry = makeRegistry({
       defaults: ["general-purpose"],
@@ -170,22 +197,23 @@ describe("buildDetails", () => {
     expect(details.agentId).toBe("agent-42");
   });
 
-  it("includes activity tracker turn counts when provided", () => {
-    const activity = new AgentActivityTracker(10);
-    for (let i = 0; i < 6; i++) activity.onTurnEnd(); // turnCount: 1 + 6 = 7
-    const details = buildDetails(base, record, activity);
+  it("reads turnCount and maxTurns from the record", () => {
+    // Use createTestSubagent to get a record with the live-activity getters
+    const recordWithActivity = createTestSubagent({ turnCount: 7, maxTurns: 10 });
+    const details = buildDetails(base, recordWithActivity);
     expect(details.turnCount).toBe(7);
     expect(details.maxTurns).toBe(10);
   });
 
-  it("leaves turnCount/maxTurns undefined when no activity provided", () => {
+  it("leaves turnCount/maxTurns undefined when the record has no such fields", () => {
+    // Plain object — optional fields absent → undefined in details
     const details = buildDetails(base, record);
     expect(details.turnCount).toBeUndefined();
     expect(details.maxTurns).toBeUndefined();
   });
 
   it("applies overrides on top of computed fields", () => {
-    const details = buildDetails(base, record, undefined, { tokens: "99.9k token" });
+    const details = buildDetails(base, record, { tokens: "99.9k token" });
     expect(details.tokens).toBe("99.9k token");
   });
 

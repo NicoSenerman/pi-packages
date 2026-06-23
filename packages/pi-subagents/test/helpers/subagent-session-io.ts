@@ -2,6 +2,7 @@ import { vi } from "vitest";
 import type { AgentConfigLookup } from "#src/config/agent-types";
 import type { ChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
 import type { AgentConfig, ShellExec } from "#src/types";
+import { createMockSession } from "#test/helpers/mock-session";
 
 /** Default AgentConfig returned by createAgentLookup. Matches the Explore stub used in factory tests. */
 const DEFAULT_AGENT_CONFIG: AgentConfig = {
@@ -108,3 +109,43 @@ export function createChildLifecycleMock() {
 
 /** The default agent config, exported for tests that build mutable wrappers around it. */
 export { DEFAULT_AGENT_CONFIG };
+
+export interface FactorySessionOptions {
+	/** Tools active before bindExtensions(). Default ["read"]. */
+	toolsBeforeBind?: string[];
+	/** Tools active after bindExtensions(). Defaults to toolsBeforeBind (no extension registration). */
+	toolsAfterBind?: string[];
+}
+
+/**
+ * Shared mock session for createSubagentSession tests.
+ *
+ * Layers the createSubagentSession factory facet (`prompt`/`abort`/
+ * `bindExtensions`/`setActiveToolsByName`/`getActiveToolNames`) on top of the
+ * shared `createMockSession` core, which supplies the `messages`/`subscribe`/
+ * `emit`/`steer`/`dispose`/`sessionManager` base (a working event bus).
+ *
+ * Builds the session stub that createSubagentSession's IO resolves
+ * (`io.createSession.mockResolvedValue({ session })`). `getActiveToolNames`
+ * returns `toolsBeforeBind` until `bindExtensions()` is awaited, then
+ * `toolsAfterBind` — modelling extension-registered tools joining the active
+ * set during bind. When `toolsAfterBind` is omitted the set is unchanged.
+ *
+ * Return type is deliberately unannotated so vi.fn() stubs retain their
+ * Mock<...> methods (mock.calls, mockResolvedValue, etc.).
+ */
+export function createFactorySession(options: FactorySessionOptions = {}) {
+	const before = options.toolsBeforeBind ?? ["read"];
+	const after = options.toolsAfterBind ?? before;
+	let bound = false;
+	return {
+		...createMockSession(),
+		prompt: vi.fn().mockResolvedValue(undefined),
+		abort: vi.fn(),
+		getActiveToolNames: vi.fn(() => (bound ? after : before)),
+		setActiveToolsByName: vi.fn(),
+		bindExtensions: vi.fn(async () => {
+			bound = true;
+		}),
+	};
+}

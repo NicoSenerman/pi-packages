@@ -7,7 +7,6 @@ import {
   getStatusLabel,
   NotificationManager,
 } from "#src/observation/notification";
-import { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
 import { createTestSubagent } from "#test/helpers/make-subagent";
 
 // ---- Pure helper tests ----
@@ -103,10 +102,13 @@ describe("buildNotificationDetails", () => {
     expect(details.resultPreview).toBe("Done.");
   });
 
-  it("uses activity turnCount when provided", () => {
-    const activity = new AgentActivityTracker(10);
-    for (let i = 0; i < 6; i++) activity.onTurnEnd(); // turnCount starts at 1, 6 increments → 7
-    const details = buildNotificationDetails(baseRecord, 500, activity);
+  it("reads turnCount and maxTurns from the record", () => {
+    const record = createTestSubagent({
+      description: "Test", result: "Done.", toolUses: 2,
+      completedAt: 3000, lifetimeUsage: { input: 100, output: 200, cacheWrite: 0 },
+      turnCount: 7, maxTurns: 10,
+    });
+    const details = buildNotificationDetails(record, 500);
     expect(details.turnCount).toBe(7);
     expect(details.maxTurns).toBe(10);
   });
@@ -173,14 +175,11 @@ describe("NotificationManager", () => {
   function makeArgs() {
     return {
       sendMessage: vi.fn(),
-      agentActivity: new Map<string, AgentActivityTracker>(),
-      markFinished: vi.fn(),
-      updateWidget: vi.fn(),
     };
   }
 
   function makeManager(args: ReturnType<typeof makeArgs>) {
-    return new NotificationManager(args.sendMessage, args.agentActivity, args.markFinished, args.updateWidget);
+    return new NotificationManager(args.sendMessage);
   }
 
   const baseRecord = createTestSubagent({
@@ -199,15 +198,10 @@ describe("NotificationManager", () => {
     expect(args.sendMessage).not.toHaveBeenCalled();
   });
 
-  it("sendCompletion cleans up activity and widget, then schedules nudge", () => {
+  it("sendCompletion schedules a nudge after the hold delay", () => {
     const args = makeArgs();
-    args.agentActivity.set("agent-1", new AgentActivityTracker());
     const system = makeManager(args);
     system.sendCompletion(baseRecord);
-    expect(args.agentActivity.has("agent-1")).toBe(false);
-    expect(args.markFinished).toHaveBeenCalledWith("agent-1");
-    expect(args.updateWidget).toHaveBeenCalled();
-    // Nudge fires after hold delay
     vi.advanceTimersByTime(300);
     expect(args.sendMessage).toHaveBeenCalledOnce();
   });
@@ -218,18 +212,6 @@ describe("NotificationManager", () => {
     const record = createTestSubagent({ toolCallId: "tc-1" });
     record.notification!.markConsumed();
     system.sendCompletion(record);
-    vi.advanceTimersByTime(300);
-    expect(args.sendMessage).not.toHaveBeenCalled();
-  });
-
-  it("cleanupCompleted removes activity and marks finished without nudge", () => {
-    const args = makeArgs();
-    args.agentActivity.set("agent-1", new AgentActivityTracker());
-    const system = makeManager(args);
-    system.cleanupCompleted("agent-1");
-    expect(args.agentActivity.has("agent-1")).toBe(false);
-    expect(args.markFinished).toHaveBeenCalledWith("agent-1");
-    expect(args.updateWidget).toHaveBeenCalled();
     vi.advanceTimersByTime(300);
     expect(args.sendMessage).not.toHaveBeenCalled();
   });

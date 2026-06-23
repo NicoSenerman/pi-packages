@@ -120,7 +120,6 @@ export function makeFakePermissionManager() {
       .fn<(toolName: string, agentName?: string) => PermissionState>()
       .mockReturnValue("allow"),
     getConfigIssues: vi.fn((): string[] => []),
-    getPolicyCacheStamp: vi.fn((): string => "stamp-1"),
   };
 }
 

@@ -5,6 +5,7 @@ import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 import {
   createAgentLookup,
   createChildLifecycleMock,
+  createFactorySession,
   createSubagentSessionDeps,
   createSubagentSessionIO,
 } from "#test/helpers/subagent-session-io";
@@ -14,34 +15,33 @@ const mockAgentLookup = createAgentLookup();
 
 let io: ReturnType<typeof createSubagentSessionIO>;
 
-// ── Session mock factory ───────────────────────────────────────────────────────
-
-function createSession() {
-  const session = {
-    messages: [] as unknown[],
-    subscribe: vi.fn(() => () => {}),
-    prompt: vi.fn().mockResolvedValue(undefined),
-    abort: vi.fn(),
-    steer: vi.fn().mockResolvedValue(undefined),
-    dispose: vi.fn(),
-    getActiveToolNames: vi.fn(() => ["read"]),
-    setActiveToolsByName: vi.fn(),
-    bindExtensions: vi.fn(async () => {}),
-  };
-  return { session };
-}
-
 const exec = vi.fn();
 
 beforeEach(() => {
   io = createSubagentSessionIO();
 });
 
-describe("createSubagentSession — assembly", () => {
-  it("returns a born-complete SubagentSession wrapping the created session", async () => {
-    const { session } = createSession();
-    io.createSession.mockResolvedValue({ session });
+/** Arrange: build a factory session and wire it as the created session. Returns it for assertions. */
+function arrangeFactory(opts?: Parameters<typeof createFactorySession>[0]) {
+  const session = createFactorySession(opts);
+  io.createSession.mockResolvedValue({ session });
+  return session;
+}
 
+/** The standard deps bag for the default `io`/`exec`/`registry` wiring. */
+function defaultDeps() {
+  return createSubagentSessionDeps({ io, exec, registry: mockAgentLookup });
+}
+
+describe("createSubagentSession — assembly", () => {
+  let session: ReturnType<typeof createFactorySession>;
+
+  beforeEach(() => {
+    session = createFactorySession();
+    io.createSession.mockResolvedValue({ session });
+  });
+
+  it("returns a born-complete SubagentSession wrapping the created session", async () => {
     const sub = await createSubagentSession(
       { snapshot: STUB_SNAPSHOT, type: "Explore" },
       createSubagentSessionDeps({ io, exec, registry: mockAgentLookup }),
@@ -52,9 +52,6 @@ describe("createSubagentSession — assembly", () => {
   });
 
   it("exposes the persisted session file as outputFile", async () => {
-    const { session } = createSession();
-    io.createSession.mockResolvedValue({ session });
-
     const sub = await createSubagentSession(
       { snapshot: STUB_SNAPSHOT, type: "Explore" },
       createSubagentSessionDeps({ io, exec, registry: mockAgentLookup }),
@@ -64,9 +61,6 @@ describe("createSubagentSession — assembly", () => {
   });
 
   it("binds extensions before returning", async () => {
-    const { session } = createSession();
-    io.createSession.mockResolvedValue({ session });
-
     await createSubagentSession(
       { snapshot: STUB_SNAPSHOT, type: "Explore" },
       createSubagentSessionDeps({ io, exec, registry: mockAgentLookup }),
@@ -77,9 +71,6 @@ describe("createSubagentSession — assembly", () => {
   });
 
   it("passes the effective cwd and agentDir to the loader, settings, and session", async () => {
-    const { session } = createSession();
-    io.createSession.mockResolvedValue({ session });
-
     await createSubagentSession(
       { snapshot: STUB_SNAPSHOT, type: "Explore", cwd: "/tmp/worktree" },
       createSubagentSessionDeps({ io, exec, registry: mockAgentLookup }),
@@ -97,9 +88,6 @@ describe("createSubagentSession — assembly", () => {
   });
 
   it("suppresses AGENTS.md/CLAUDE.md/APPEND_SYSTEM.md for subagents", async () => {
-    const { session } = createSession();
-    io.createSession.mockResolvedValue({ session });
-
     await createSubagentSession(
       { snapshot: STUB_SNAPSHOT, type: "Explore" },
       createSubagentSessionDeps({ io, exec, registry: mockAgentLookup }),
@@ -116,9 +104,6 @@ describe("createSubagentSession — assembly", () => {
   });
 
   it("calls newSession with parentSession when parentSessionId is provided", async () => {
-    const { session } = createSession();
-    io.createSession.mockResolvedValue({ session });
-
     await createSubagentSession(
       {
         snapshot: STUB_SNAPSHOT,
@@ -134,11 +119,16 @@ describe("createSubagentSession — assembly", () => {
 });
 
 describe("createSubagentSession — lifecycle ordering", () => {
-  it("emits spawning before session-created", async () => {
-    const { session } = createSession();
-    io.createSession.mockResolvedValue({ session });
-    const lifecycle = createChildLifecycleMock();
+  let session: ReturnType<typeof createFactorySession>;
+  let lifecycle: ReturnType<typeof createChildLifecycleMock>;
 
+  beforeEach(() => {
+    session = createFactorySession();
+    io.createSession.mockResolvedValue({ session });
+    lifecycle = createChildLifecycleMock();
+  });
+
+  it("emits spawning before session-created", async () => {
     await createSubagentSession(
       { snapshot: STUB_SNAPSHOT, type: "Explore" },
       createSubagentSessionDeps({ io, exec, registry: mockAgentLookup, lifecycle }),
@@ -151,10 +141,6 @@ describe("createSubagentSession — lifecycle ordering", () => {
   });
 
   it("emits session-created before bindExtensions()", async () => {
-    const { session } = createSession();
-    io.createSession.mockResolvedValue({ session });
-    const lifecycle = createChildLifecycleMock();
-
     await createSubagentSession(
       { snapshot: STUB_SNAPSHOT, type: "Explore" },
       createSubagentSessionDeps({ io, exec, registry: mockAgentLookup, lifecycle }),
@@ -167,10 +153,7 @@ describe("createSubagentSession — lifecycle ordering", () => {
   });
 
   it("carries the session id and parent session id in session-created", async () => {
-    const { session } = createSession();
-    io.createSession.mockResolvedValue({ session });
     io.deriveSessionDir.mockReturnValue("/custom/session/dir");
-    const lifecycle = createChildLifecycleMock();
 
     await createSubagentSession(
       {
@@ -191,10 +174,6 @@ describe("createSubagentSession — lifecycle ordering", () => {
   });
 
   it("does not emit completed or disposed during creation", async () => {
-    const { session } = createSession();
-    io.createSession.mockResolvedValue({ session });
-    const lifecycle = createChildLifecycleMock();
-
     await createSubagentSession(
       { snapshot: STUB_SNAPSHOT, type: "Explore" },
       createSubagentSessionDeps({ io, exec, registry: mockAgentLookup, lifecycle }),
@@ -207,7 +186,7 @@ describe("createSubagentSession — lifecycle ordering", () => {
 
 describe("createSubagentSession — dispose on creation failure", () => {
   it("disposes the session and emits disposed when bindExtensions throws, then rethrows", async () => {
-    const { session } = createSession();
+    const session = createFactorySession();
     session.bindExtensions = vi.fn().mockRejectedValue(new Error("bind failed"));
     io.createSession.mockResolvedValue({ session });
     io.deriveSessionDir.mockReturnValue("/custom/session/dir");
@@ -225,5 +204,48 @@ describe("createSubagentSession — dispose on creation failure", () => {
     expect(lifecycle.disposed).toHaveBeenCalledOnce();
     expect(lifecycle.disposed).toHaveBeenCalledWith({ sessionId: "child-session-id" });
     expect(session.dispose).toHaveBeenCalledOnce();
+  });
+});
+
+describe("createSubagentSession — post-bind recursion guard", () => {
+  // Extension-registered tools join the active set during bindExtensions; a
+  // single post-bind filter pass applies the EXCLUDED_TOOL_NAMES recursion
+  // guard to the full post-bind set. The factory session flips getActiveToolNames
+  // from its before-bind set to its after-bind set once bindExtensions resolves.
+
+  it("calls setActiveToolsByName once, after bindExtensions", async () => {
+    const session = arrangeFactory({ toolsBeforeBind: ["read"], toolsAfterBind: ["read", "extension_tool"] });
+
+    await createSubagentSession({ snapshot: STUB_SNAPSHOT, type: "Explore" }, defaultDeps());
+
+    expect(session.setActiveToolsByName).toHaveBeenCalledTimes(1);
+    const bindOrder = session.bindExtensions.mock.invocationCallOrder[0];
+    const setOrder = session.setActiveToolsByName.mock.invocationCallOrder[0];
+    expect(setOrder).toBeGreaterThan(bindOrder);
+  });
+
+  it.each([
+    {
+      name: "includes extension-registered tools",
+      toolsAfterBind: ["read", "extension_tool"],
+      expected: ["read", "extension_tool"],
+    },
+    {
+      name: "excludes EXCLUDED_TOOL_NAMES while keeping other tools",
+      toolsAfterBind: ["read", "subagent", "get_subagent_result", "steer_subagent", "external"],
+      expected: ["read", "external"],
+    },
+    {
+      name: "runs the guard unconditionally when no extension tools register",
+      toolsAfterBind: ["read"],
+      expected: ["read"],
+    },
+  ])("post-bind set: $name", async ({ toolsAfterBind, expected }) => {
+    const session = arrangeFactory({ toolsBeforeBind: ["read"], toolsAfterBind });
+
+    await createSubagentSession({ snapshot: STUB_SNAPSHOT, type: "Explore" }, defaultDeps());
+
+    expect(session.setActiveToolsByName).toHaveBeenCalledTimes(1);
+    expect(session.setActiveToolsByName.mock.calls[0][0]).toEqual(expected);
   });
 });

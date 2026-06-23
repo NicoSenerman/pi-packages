@@ -19,9 +19,13 @@ import type { PermissionCheckResult } from "#src/types";
  * `commandContext` (set only for a nested command), so the prompt,
  * session-approval suggestion, and decision event scope to that command.
  *
- * When `commands` is empty (an empty command, a comment, or a bare compound
- * statement), the whole `command` is evaluated as before, so the surface is
- * never weaker than the previous behavior.
+ * When `commands` is empty there are two cases. A trivially-empty command (an
+ * empty, whitespace-only, or comment-only line) has genuinely nothing to gate,
+ * so the whole `command` is resolved as before. A non-empty command that parsed
+ * to zero command units (a parse anomaly or an opaque program) fails closed to
+ * a synthetic `ask` so a permissive top-level `*` cannot silently allow an
+ * unparseable command (e.g. `cd /repo && git push` riding a top-level allow on
+ * the empty-parse path) — #452.
  *
  * Pure and synchronous: the (async, tree-sitter) parse happens once in the
  * handler, which passes the decomposed `commands` here.
@@ -32,6 +36,20 @@ export function resolveBashCommandCheck(
   agentName: string | undefined,
   resolver: ScopedPermissionResolver,
 ): PermissionCheckResult {
+  if (commands.length === 0) {
+    if (isTriviallyEmptyCommand(command)) {
+      return resolver.resolve("bash", { command }, agentName);
+    }
+    return {
+      state: "ask",
+      toolName: "bash",
+      source: "bash",
+      origin: "builtin",
+      command,
+      matchedPattern: "<unparseable-bash-command>",
+    };
+  }
+
   const results = commands.map((cmd) => {
     const result = resolver.resolve("bash", { command: cmd.text }, agentName);
     return cmd.context ? { ...result, commandContext: cmd.context } : result;
@@ -40,4 +58,18 @@ export function resolveBashCommandCheck(
     pickMostRestrictive(results) ??
     resolver.resolve("bash", { command }, agentName)
   );
+}
+
+/**
+ * True when a command has genuinely nothing to gate: it is empty,
+ * whitespace-only, or contains only comment lines (every non-blank line starts
+ * with `#`). Such a command yields zero command units legitimately, so the
+ * whole-string resolve is safe rather than a parse anomaly.
+ */
+function isTriviallyEmptyCommand(command: string): boolean {
+  const lines = command
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  return lines.every((line) => line.startsWith("#"));
 }

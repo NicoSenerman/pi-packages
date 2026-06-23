@@ -1,14 +1,49 @@
 import { describe, expect, it } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { resolveSpawnConfig } from "#src/tools/spawn-config";
+import type { AgentConfig } from "#src/types";
+
+function makeAgentConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
+  return {
+    name: "test-agent",
+    description: "Test agent",
+    builtinToolNames: ["read", "grep"],
+    systemPrompt: "You are a test agent.",
+    promptMode: "replace",
+    inheritContext: false,
+    runInBackground: false,
+    ...overrides,
+  };
+}
+
+/** Registry with a single disabled Plan override. */
+function makeDisabledPlanRegistry(): AgentTypeRegistry {
+  return new AgentTypeRegistry(
+    () =>
+      new Map([
+        [
+          "Plan",
+          makeAgentConfig({
+            name: "Plan",
+            description: "Disabled",
+            enabled: false,
+          }),
+        ],
+      ]),
+  );
+}
 
 /** Minimal registry with default agents only. */
 const testRegistry = new AgentTypeRegistry(() => new Map());
 
 /** Shorthand for building ModelInfo. */
-function makeModelInfo(overrides: Partial<Parameters<typeof resolveSpawnConfig>[2]> = {}) {
+function makeModelInfo(
+  overrides: Partial<Parameters<typeof resolveSpawnConfig>[2]> = {},
+) {
   return {
-    parentModel: { id: "claude-sonnet", name: "Claude Sonnet" } as { id: string; name?: string } | undefined,
+    parentModel: { id: "claude-sonnet", name: "Claude Sonnet" } as
+      | { id: string; name?: string }
+      | undefined,
     modelRegistry: { getAll: () => [], getAvailable: () => [] } as unknown,
     ...overrides,
   };
@@ -54,6 +89,34 @@ describe("resolveSpawnConfig — type resolution", () => {
     expect(result.identity.displayName).toBe("Explore");
   });
 
+  it("returns an error for a disabled agent type (exact match)", () => {
+    const registry = makeDisabledPlanRegistry();
+    const result = resolveSpawnConfig(
+      { subagent_type: "Plan", prompt: "test", description: "d" },
+      registry,
+      makeModelInfo(),
+      defaultSettings,
+    );
+    expect("error" in result).toBe(true);
+    if ("error" in result) {
+      expect(result.error).toBe('Agent type "Plan" is disabled');
+    }
+  });
+
+  it("reports the canonical casing in the disabled-agent error (case-insensitive input)", () => {
+    const registry = makeDisabledPlanRegistry();
+    const result = resolveSpawnConfig(
+      { subagent_type: "plan", prompt: "test", description: "d" },
+      registry,
+      makeModelInfo(),
+      defaultSettings,
+    );
+    expect("error" in result).toBe(true);
+    if ("error" in result) {
+      expect(result.error).toBe('Agent type "Plan" is disabled');
+    }
+  });
+
   it("uses displayName from agent config when available", () => {
     const result = resolveSpawnConfig(
       { subagent_type: "general-purpose", prompt: "test", description: "d" },
@@ -78,15 +141,24 @@ describe("resolveSpawnConfig — model resolution", () => {
     );
     if ("error" in result) return;
     expect(result.execution.model).toBe(parentModel);
-    // modelName is undefined when same as parent
-    expect(result.presentation.modelName).toBeUndefined();
+    // modelName is always shown (our d83f1eb3 feature: always show model name,
+    // even when same as parent, so agents using the default session model
+    // display it alongside explicitly-specified models).
+    expect(result.presentation.modelName).toBe("sonnet");
   });
 
   it("returns error when user-specified model cannot be resolved", () => {
     const result = resolveSpawnConfig(
-      { subagent_type: "general-purpose", prompt: "test", description: "d", model: "nonexistent-xyz" },
+      {
+        subagent_type: "general-purpose",
+        prompt: "test",
+        description: "d",
+        model: "nonexistent-xyz",
+      },
       testRegistry,
-      makeModelInfo({ modelRegistry: { getAll: () => [], getAvailable: () => [] } }),
+      makeModelInfo({
+        modelRegistry: { getAll: () => [], getAvailable: () => [] },
+      }),
       defaultSettings,
     );
     expect("error" in result && result.error).toBeTruthy();
@@ -96,7 +168,12 @@ describe("resolveSpawnConfig — model resolution", () => {
 describe("resolveSpawnConfig — max turns normalization", () => {
   it("normalizes max_turns from params", () => {
     const result = resolveSpawnConfig(
-      { subagent_type: "general-purpose", prompt: "test", description: "d", max_turns: 10 },
+      {
+        subagent_type: "general-purpose",
+        prompt: "test",
+        description: "d",
+        max_turns: 10,
+      },
       testRegistry,
       makeModelInfo(),
       defaultSettings,
@@ -131,7 +208,12 @@ describe("resolveSpawnConfig — max turns normalization", () => {
 describe("resolveSpawnConfig — invocation fields", () => {
   it("sets runInBackground from params", () => {
     const result = resolveSpawnConfig(
-      { subagent_type: "general-purpose", prompt: "test", description: "d", run_in_background: true },
+      {
+        subagent_type: "general-purpose",
+        prompt: "test",
+        description: "d",
+        run_in_background: true,
+      },
       testRegistry,
       makeModelInfo(),
       defaultSettings,
@@ -142,14 +224,19 @@ describe("resolveSpawnConfig — invocation fields", () => {
 
   it("builds agentInvocation snapshot", () => {
     const result = resolveSpawnConfig(
-      { subagent_type: "general-purpose", prompt: "test", description: "d", thinking: "high" },
+      {
+        subagent_type: "general-purpose",
+        prompt: "test",
+        description: "d",
+        thinking: "high",
+      },
       testRegistry,
       makeModelInfo(),
       defaultSettings,
     );
     if ("error" in result) return;
     expect(result.execution.agentInvocation).toEqual({
-      modelName: undefined,
+      modelName: "sonnet",
       thinking: "high",
       maxTurns: undefined,
       inheritContext: false,
@@ -161,7 +248,11 @@ describe("resolveSpawnConfig — invocation fields", () => {
 describe("resolveSpawnConfig — detailBase and tags", () => {
   it("builds detailBase with description from params", () => {
     const result = resolveSpawnConfig(
-      { subagent_type: "general-purpose", prompt: "test", description: "my task" },
+      {
+        subagent_type: "general-purpose",
+        prompt: "test",
+        description: "my task",
+      },
       testRegistry,
       makeModelInfo(),
       defaultSettings,
@@ -174,7 +265,12 @@ describe("resolveSpawnConfig — detailBase and tags", () => {
 
   it("includes thinking tag when thinking is set", () => {
     const result = resolveSpawnConfig(
-      { subagent_type: "general-purpose", prompt: "test", description: "d", thinking: "high" },
+      {
+        subagent_type: "general-purpose",
+        prompt: "test",
+        description: "d",
+        thinking: "high",
+      },
       testRegistry,
       makeModelInfo(),
       defaultSettings,
@@ -223,7 +319,11 @@ describe("resolveSpawnConfig — detailBase and tags", () => {
 describe("resolveSpawnConfig — prompt and rawType passthrough", () => {
   it("passes through prompt and rawType", () => {
     const result = resolveSpawnConfig(
-      { subagent_type: "Explore", prompt: "search for bugs", description: "bug search" },
+      {
+        subagent_type: "Explore",
+        prompt: "search for bugs",
+        description: "bug search",
+      },
       testRegistry,
       makeModelInfo(),
       defaultSettings,

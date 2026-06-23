@@ -9,6 +9,7 @@ import {
   getLegacyExtensionConfigPath,
   getLegacyGlobalPolicyPath,
   getLegacyProjectPolicyPath,
+  getProjectAgentsDir,
   getProjectConfigPath,
   REVIEW_LOG_FILENAME,
 } from "#src/config-paths";
@@ -41,6 +42,10 @@ describe("config-paths", () => {
       expect(getProjectConfigPath(cwd)).toBe(
         join(cwd, ".pi", "extensions", "pi-permission-system", "config.json"),
       );
+    });
+
+    it("getProjectAgentsDir returns .pi/agents under cwd", () => {
+      expect(getProjectAgentsDir(cwd)).toBe(join(cwd, ".pi", "agents"));
     });
   });
 

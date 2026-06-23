@@ -8,7 +8,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it, test } from "vitest";
-import { getGlobalConfigPath, getProjectConfigPath } from "#src/config-paths";
+import {
+  getGlobalConfigPath,
+  getProjectAgentsDir,
+  getProjectConfigPath,
+} from "#src/config-paths";
 import {
   PermissionManager,
   type ScopedPermissionManager,
@@ -1582,7 +1586,6 @@ describe("PermissionManager — configureForCwd and agentDir option", () => {
     expect(typeof scoped.checkPermission).toBe("function");
     expect(typeof scoped.getToolPermission).toBe("function");
     expect(typeof scoped.getConfigIssues).toBe("function");
-    expect(typeof scoped.getPolicyCacheStamp).toBe("function");
   });
 
   it("construction with { agentDir } reads global config from getGlobalConfigPath(agentDir)", () => {
@@ -1665,6 +1668,53 @@ describe("PermissionManager — configureForCwd and agentDir option", () => {
       expect(manager.checkPermission("read", { path: "foo.txt" }).state).toBe(
         "deny",
       );
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("configureForCwd(cwd) derives projectAgentsDir at <cwd>/.pi/agents (regression: #428)", () => {
+    // Bug: old code derived <cwd>/.pi/agent/agents instead of <cwd>/.pi/agents.
+    // This test pins the correct path and verifies agentsDir is unchanged.
+    const { agentDir, cwd, cleanup } = makeAgentDirSetup({
+      globalPermission: { read: "allow" },
+    });
+    try {
+      const manager = new PermissionManager({ agentDir });
+      manager.configureForCwd(cwd);
+      const paths = manager.getResolvedPolicyPaths();
+      expect(paths.projectAgentsDir).toBe(getProjectAgentsDir(cwd));
+      expect(paths.agentsDir).toBe(join(agentDir, "agents"));
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("configureForCwd(cwd) enforces permission: frontmatter from <cwd>/.pi/agents/<agent>.md (regression: #428)", () => {
+    // Bug: wrong directory meant project-agent frontmatter was never loaded.
+    const { agentDir, cwd, cleanup } = makeAgentDirSetup({
+      globalPermission: { read: "allow" },
+    });
+    try {
+      // Write a project agent definition with a deny override.
+      const projectAgentsDir = getProjectAgentsDir(cwd);
+      mkdirSync(projectAgentsDir, { recursive: true });
+      writeFileSync(
+        join(projectAgentsDir, "coder.md"),
+        "---\npermission:\n  read: deny\n---\n# Coder\n",
+      );
+
+      const manager = new PermissionManager({ agentDir });
+      manager.configureForCwd(cwd);
+
+      // Without an agent name: global allow applies.
+      expect(manager.checkPermission("read", { path: "foo.txt" }).state).toBe(
+        "allow",
+      );
+      // With the "coder" agent: project-agent deny overrides global allow.
+      expect(
+        manager.checkPermission("read", { path: "foo.txt" }, "coder").state,
+      ).toBe("deny");
     } finally {
       cleanup();
     }
@@ -3274,6 +3324,42 @@ describe("checkPathPolicy", () => {
     try {
       const result = manager.checkPathPolicy([]);
       expect(result.state).toBe("deny");
+      expect(result.matchedPattern).toBe("*");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("evaluates against the external_directory surface when one is provided", () => {
+    const { manager, cleanup } = makeManagerWithConfig({
+      external_directory: { "*": "ask", "/tmp/*": "allow" },
+    });
+    try {
+      const result = manager.checkPathPolicy(
+        ["/tmp/x"],
+        undefined,
+        undefined,
+        "external_directory",
+      );
+      expect(result.state).toBe("allow");
+      expect(result.matchedPattern).toBe("/tmp/*");
+      expect(result.source).toBe("special");
+      expect(result.toolName).toBe("external_directory");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("defaults to the path surface when no surface is provided", () => {
+    const { manager, cleanup } = makeManagerWithConfig({
+      external_directory: { "*": "ask", "/tmp/*": "allow" },
+      path: { "*": "allow" },
+    });
+    try {
+      // No path rule denies; the external_directory allow must NOT apply here.
+      const result = manager.checkPathPolicy(["/tmp/x"]);
+      expect(result.toolName).toBe("path");
+      expect(result.state).toBe("allow");
       expect(result.matchedPattern).toBe("*");
     } finally {
       cleanup();

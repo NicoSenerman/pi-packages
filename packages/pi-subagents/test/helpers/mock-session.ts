@@ -11,14 +11,9 @@ export interface MockSession {
 	dispose: Mock<() => void>;
 	steer: Mock<(...args: unknown[]) => Promise<unknown>>;
 	sessionManager: { getSessionFile: Mock<() => unknown> };
+	getToolDefinition: Mock<(name: string) => unknown>;
 }
 
-/**
- * Shared test fixture: subscribable event bus with spy stubs.
- *
- * All fields are always present — callers that only need `subscribe`/`emit`
- * can ignore the rest. Pass `overrides` to replace or extend specific fields.
- */
 /**
  * Cast a MockSession to AgentSession for use as a SubagentSession's session.
  *
@@ -58,6 +53,8 @@ export function createSubagentSessionStub(
 			contextUsage: { percent: null as number | null },
 		})),
 		get messages(): readonly unknown[] { return session.messages; },
+		get agentMessages(): readonly unknown[] { return session.messages; },
+		getToolDefinition: vi.fn((name: string): unknown => session.getToolDefinition(name)),
 	};
 }
 
@@ -71,6 +68,17 @@ export function toSubagentSession(stub: ReturnType<typeof createSubagentSessionS
 	return stub as unknown as SubagentSession;
 }
 
+/**
+ * Shared test fixture: subscribable event bus with spy stubs.
+ *
+ * This is the shared session-mock core. `createFactorySession`
+ * (`subagent-session-io.ts`) spreads it to inherit the
+ * `messages`/`subscribe`/`emit`/`steer`/`dispose`/`sessionManager` base, and
+ * `createSubagentSessionStub` (above) composes it as the wrapped `.session`.
+ *
+ * All fields are always present — callers that only need `subscribe`/`emit`
+ * can ignore the rest. Pass `overrides` to replace or extend specific fields.
+ */
 export function createMockSession(overrides: Record<string, unknown> = {}): MockSession & Record<string, unknown> {
 	const subscribers = new Set<(event: unknown) => void>();
 
@@ -90,6 +98,7 @@ export function createMockSession(overrides: Record<string, unknown> = {}): Mock
 		dispose: vi.fn(),
 		steer: vi.fn().mockResolvedValue(undefined),
 		sessionManager: { getSessionFile: vi.fn() },
+		getToolDefinition: vi.fn((_name: string): unknown => undefined),
 	};
 
 	return { ...base, ...overrides };

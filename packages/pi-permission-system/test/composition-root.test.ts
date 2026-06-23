@@ -521,3 +521,83 @@ describe("multi-instance global service interplay", () => {
     rmSync(childCwd, { recursive: true, force: true });
   });
 });
+
+describe("session approvals do not leak across same-cwd session switches", () => {
+  // Pi caches the extension *import* (the jiti module, factory function) for
+  // same-cwd `/new` / `/resume` / `/fork` / `/import` switches
+  // (earendil-works/pi#5905). The factory is still re-invoked per switch, and
+  // `session_shutdown` still fires — so a session-scoped "allow for this
+  // session" grant must not survive into the next session.
+  //
+  // Two factory invocations against the same cwd model the cached-import
+  // switch: invocation #1 records an approval and shuts down; invocation #2 is
+  // the re-invoked cached factory. The new session must start with an empty
+  // SessionRules. Two independent mechanisms keep it empty, and the grant only
+  // leaks if *both* break together: `session_shutdown` clears the first
+  // instance's rules, and the re-invoked factory builds a fresh SessionRules
+  // (no module-scoped state bridges the switch — the per-session reset the
+  // fresh-jiti load used to provide is gone once the import is cached).
+
+  /** A UI ctx that approves the gate's "for this session" option (options[1]). */
+  function makeSessionApprovingCtx(cwd: string, sessionId: string): unknown {
+    return {
+      cwd,
+      hasUI: true,
+      sessionManager: {
+        getEntries: (): unknown[] => [],
+        getSessionId: (): string => sessionId,
+        getSessionDir: (): string => cwd,
+      },
+      ui: {
+        notify: (): void => {},
+        setStatus: (): void => {},
+        select: async (
+          _title: string,
+          options: string[],
+        ): Promise<string | undefined> => options[1],
+        input: async (): Promise<string | undefined> => undefined,
+      },
+    };
+  }
+
+  it("starts the next same-cwd session with an empty session ruleset", async () => {
+    writeGlobalConfig({
+      permission: { "*": "allow", demo: "ask" },
+    });
+
+    const cwd = mkdtempSync(join(tmpdir(), "pi-perm-switch-cwd-"));
+
+    // ── Session #1: approve `demo` for the session, then shut down ──────────
+    const firstPi = makeFakePi({ toolNames: ["demo"] });
+    piPermissionSystemExtension(firstPi as unknown as ExtensionAPI);
+
+    const firstCtx = makeSessionApprovingCtx(cwd, "switch-session-1");
+    await fireSessionStart(firstPi, firstCtx);
+
+    // The gate prompts and the mock selects options[1], recording a
+    // session-scoped approval the service can read back.
+    await firstPi.fire(
+      "tool_call",
+      { toolName: "demo", toolCallId: "demo-approve", input: { foo: "bar" } },
+      firstCtx,
+    );
+    expect(getPermissionsService()!.checkPermission("demo").state).toBe(
+      "allow",
+    );
+
+    // The switch tears down the old session before the new one starts.
+    await firstPi.fire("session_shutdown");
+
+    // ── Session #2: the re-invoked cached factory, same cwd ────────────────
+    const secondPi = makeFakePi({ toolNames: ["demo"] });
+    piPermissionSystemExtension(secondPi as unknown as ExtensionAPI);
+
+    await fireSessionStart(secondPi, makeChildCtx(cwd, "switch-session-2"));
+
+    // The previous session's approval must not be visible: `demo` is back to
+    // its configured `ask`, not the carried-over `allow`.
+    expect(getPermissionsService()!.checkPermission("demo").state).toBe("ask");
+
+    rmSync(cwd, { recursive: true, force: true });
+  });
+});

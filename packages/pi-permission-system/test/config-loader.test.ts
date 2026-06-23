@@ -634,7 +634,10 @@ describe("loadAndMergeConfigs", () => {
     });
 
     const result = loadAndMergeConfigs(agentDir, cwd, extensionRoot);
-    expect(result.issues).toEqual([]);
+    // The merged config leaves a permissive top-level '*' with no bash '*' policy,
+    // so the bash-fallback footgun warning is expected.
+    expect(result.issues).toHaveLength(1);
+    expect(result.issues[0]).toContain("bash");
     expect(result.merged.debugLog).toBe(true);
     expect(result.merged.permission).toEqual({
       "*": "allow",
@@ -715,5 +718,23 @@ describe("loadAndMergeConfigs", () => {
     expect(result.issues.some((i) => i.includes("pi-permissions.jsonc"))).toBe(
       true,
     );
+  });
+
+  it("warns when the merged config leaves bash inheriting a permissive top-level '*'", () => {
+    writeGlobal({
+      permission: { "*": "allow", read: "allow" },
+    });
+
+    const result = loadAndMergeConfigs(agentDir, cwd, extensionRoot);
+    expect(result.issues.some((i) => i.includes("bash"))).toBe(true);
+  });
+
+  it("does not warn about bash fallback when bash is explicitly gated", () => {
+    writeGlobal({
+      permission: { "*": "allow", bash: { "*": "ask" } },
+    });
+
+    const result = loadAndMergeConfigs(agentDir, cwd, extensionRoot);
+    expect(result.issues).toEqual([]);
   });
 });

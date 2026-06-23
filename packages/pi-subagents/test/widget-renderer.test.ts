@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { Theme } from "#src/ui/display";
-import type { WidgetActivity, WidgetAgent } from "#src/ui/widget-renderer";
+import type { WidgetAgent } from "#src/ui/widget-renderer";
 import { renderFinishedLine, renderRunningLines, renderWidgetLines } from "#src/ui/widget-renderer";
 
 /** Minimal theme stub — wraps text with markup tags for assertion. */
@@ -24,16 +24,12 @@ function makeAgent(overrides: Partial<WidgetAgent> = {}): WidgetAgent {
 		startedAt: 1000,
 		completedAt: 6000,
 		compactionCount: 0,
-		...overrides,
-	};
-}
-
-function makeActivity(overrides: Partial<WidgetActivity> = {}): WidgetActivity {
-	return {
-		activeTools: new Map(),
-		responseText: "",
+		// Activity fields (folded from the former WidgetActivity)
 		turnCount: 3,
 		maxTurns: 10,
+		activeTools: new Map(),
+		responseText: "",
+		contextPercent: null,
 		...overrides,
 	};
 }
@@ -43,8 +39,7 @@ describe("renderFinishedLine", () => {
 
 	it("renders completed agent with success icon and stats", () => {
 		const agent = makeAgent();
-		const activity = makeActivity();
-		const line = renderFinishedLine(agent, activity, testRegistry, theme);
+		const line = renderFinishedLine(agent, testRegistry, theme);
 
 		// Success icon
 		expect(line).toContain("[success:✓]");
@@ -66,7 +61,7 @@ describe("renderFinishedLine", () => {
 
 	it("renders singular tool use", () => {
 		const agent = makeAgent({ toolUses: 1 });
-		const line = renderFinishedLine(agent, undefined, testRegistry, theme);
+		const line = renderFinishedLine(agent, testRegistry, theme);
 
 		expect(line).toContain("1 tool use");
 		expect(line).not.toContain("1 tool uses");
@@ -74,22 +69,22 @@ describe("renderFinishedLine", () => {
 
 	it("omits tool uses when zero", () => {
 		const agent = makeAgent({ toolUses: 0 });
-		const line = renderFinishedLine(agent, undefined, testRegistry, theme);
+		const line = renderFinishedLine(agent, testRegistry, theme);
 
 		expect(line).not.toContain("tool use");
 	});
 
-	it("omits turn count when no activity provided", () => {
-		const agent = makeAgent();
-		const line = renderFinishedLine(agent, undefined, testRegistry, theme);
-
-		expect(line).not.toContain("⟳");
+	it("renders turn count from agent fields (always present after record migration)", () => {
+		const agent = makeAgent(); // defaults: turnCount: 3, maxTurns: 10
+		const line = renderFinishedLine(agent, testRegistry, theme);
+		// Finished agents now always show turn count — accepted behavior change (#421)
+		expect(line).toContain("⟳3≤10");
 	});
 
 	it("uses Date.now() for duration when completedAt is undefined", () => {
 		const now = Date.now();
 		const agent = makeAgent({ startedAt: now - 2000, completedAt: undefined });
-		const line = renderFinishedLine(agent, undefined, testRegistry, theme);
+		const line = renderFinishedLine(agent, testRegistry, theme);
 
 		// Should show ~2.0s (may vary slightly due to test execution time)
 		expect(line).toMatch(/[12]\.\ds/);
@@ -97,7 +92,7 @@ describe("renderFinishedLine", () => {
 
 	it("renders error status with error icon and message", () => {
 		const agent = makeAgent({ status: "error", error: "something broke" });
-		const line = renderFinishedLine(agent, undefined, testRegistry, theme);
+		const line = renderFinishedLine(agent, testRegistry, theme);
 
 		expect(line).toContain("[error:✗]");
 		expect(line).toContain("[error: error: something broke]");
@@ -105,7 +100,7 @@ describe("renderFinishedLine", () => {
 
 	it("renders error status without message when error is undefined", () => {
 		const agent = makeAgent({ status: "error" });
-		const line = renderFinishedLine(agent, undefined, testRegistry, theme);
+		const line = renderFinishedLine(agent, testRegistry, theme);
 
 		expect(line).toContain("[error:✗]");
 		expect(line).toContain("[error: error]");
@@ -114,7 +109,7 @@ describe("renderFinishedLine", () => {
 	it("truncates long error messages to 60 chars", () => {
 		const longError = "a".repeat(80);
 		const agent = makeAgent({ status: "error", error: longError });
-		const line = renderFinishedLine(agent, undefined, testRegistry, theme);
+		const line = renderFinishedLine(agent, testRegistry, theme);
 
 		// Error message should be sliced to 60 chars
 		expect(line).toContain("a".repeat(60));
@@ -123,7 +118,7 @@ describe("renderFinishedLine", () => {
 
 	it("renders aborted status with error icon and warning text", () => {
 		const agent = makeAgent({ status: "aborted" });
-		const line = renderFinishedLine(agent, undefined, testRegistry, theme);
+		const line = renderFinishedLine(agent, testRegistry, theme);
 
 		expect(line).toContain("[error:✗]");
 		expect(line).toContain("[warning: aborted]");
@@ -131,7 +126,7 @@ describe("renderFinishedLine", () => {
 
 	it("renders steered status with warning icon and turn limit text", () => {
 		const agent = makeAgent({ status: "steered" });
-		const line = renderFinishedLine(agent, undefined, testRegistry, theme);
+		const line = renderFinishedLine(agent, testRegistry, theme);
 
 		expect(line).toContain("[warning:✓]");
 		expect(line).toContain("[warning: (turn limit)]");
@@ -139,7 +134,7 @@ describe("renderFinishedLine", () => {
 
 	it("renders stopped status with dim icon and text", () => {
 		const agent = makeAgent({ status: "stopped" });
-		const line = renderFinishedLine(agent, undefined, testRegistry, theme);
+		const line = renderFinishedLine(agent, testRegistry, theme);
 
 		expect(line).toContain("[dim:■]");
 		expect(line).toContain("[dim: stopped]");
@@ -150,13 +145,14 @@ describe("renderRunningLines", () => {
 	const theme = stubTheme();
 
 	it("returns header and activity lines", () => {
-		const agent = makeAgent({ status: "running", completedAt: undefined });
-		const activity = makeActivity({
+		const agent = makeAgent({
+			status: "running",
+			completedAt: undefined,
 			activeTools: new Map([["read_1", "read"]]),
 			turnCount: 2,
 			maxTurns: 10,
 		});
-		const [header, activityLine] = renderRunningLines(agent, activity, testRegistry, 0, theme);
+		const [header, activityLine] = renderRunningLines(agent, testRegistry, 0, theme);
 
 		// Header contains spinner frame, bold name, description
 		expect(header).toContain("[accent:⠋]");
@@ -171,17 +167,18 @@ describe("renderRunningLines", () => {
 		expect(activityLine).toContain("reading");
 	});
 
-	it("shows thinking when no activity tracker", () => {
+	it("shows thinking when activeTools is empty and responseText is blank", () => {
+		// Default makeAgent has activeTools: new Map() and responseText: ""
 		const agent = makeAgent({ status: "running", completedAt: undefined });
-		const [, activityLine] = renderRunningLines(agent, undefined, testRegistry, 0, theme);
+		const [, activityLine] = renderRunningLines(agent, testRegistry, 0, theme);
 
 		expect(activityLine).toContain("thinking…");
 	});
 
 	it("advances spinner frame", () => {
 		const agent = makeAgent({ status: "running", completedAt: undefined });
-		const [header0] = renderRunningLines(agent, undefined, testRegistry, 0, theme);
-		const [header1] = renderRunningLines(agent, undefined, testRegistry, 1, theme);
+		const [header0] = renderRunningLines(agent, testRegistry, 0, theme);
+		const [header1] = renderRunningLines(agent, testRegistry, 1, theme);
 
 		expect(header0).toContain("[accent:⠋]");
 		expect(header1).toContain("[accent:⠙]");
@@ -193,16 +190,9 @@ describe("renderRunningLines", () => {
 			completedAt: undefined,
 			lifetimeUsage: { input: 5000, output: 2000, cacheWrite: 1000 },
 			compactionCount: 1,
+			contextPercent: 45,
 		});
-		const activity = makeActivity({
-			session: {
-				getSessionStats: () => ({
-					tokens: { input: 5000, output: 2000, cacheWrite: 1000 },
-					contextUsage: { percent: 45 },
-				}),
-			},
-		});
-		const [header] = renderRunningLines(agent, activity, testRegistry, 0, theme);
+		const [header] = renderRunningLines(agent, testRegistry, 0, theme);
 
 		// 5000 + 2000 + 1000 = 8000 → "8.0k token"
 		expect(header).toContain("8.0k token");
@@ -218,7 +208,7 @@ describe("renderRunningLines", () => {
 			completedAt: undefined,
 			lifetimeUsage: { input: 0, output: 0, cacheWrite: 0 },
 		});
-		const [header] = renderRunningLines(agent, undefined, testRegistry, 0, theme);
+		const [header] = renderRunningLines(agent, testRegistry, 0, theme);
 
 		expect(header).not.toContain("token");
 	});
@@ -228,13 +218,10 @@ describe("renderWidgetLines", () => {
 	const theme = stubTheme();
 
 	it("renders a single running agent with heading and tree connectors", () => {
-		const agent = makeAgent({ status: "running", completedAt: undefined });
-		const activity = makeActivity({ turnCount: 1 });
-		const activityMap = new Map<string, WidgetActivity>([["agent-1", activity]]);
+		const agent = makeAgent({ status: "running", completedAt: undefined, turnCount: 1 });
 
 		const lines = renderWidgetLines({
 			agents: [agent],
-			activityMap,
 			registry: testRegistry,
 			spinnerFrame: 0,
 			terminalWidth: 200,
@@ -257,16 +244,11 @@ describe("renderWidgetLines", () => {
 
 	it("renders mixed running + finished + queued agents", () => {
 		const running = makeAgent({ id: "r1", status: "running", completedAt: undefined });
-		const finished = makeAgent({ id: "f1", status: "completed", completedAt: 6000 });
+		const finished = makeAgent({ id: "f1", status: "completed", completedAt: 6000, turnCount: 5 });
 		const queued = makeAgent({ id: "q1", status: "queued", completedAt: undefined });
-		const activityMap = new Map<string, WidgetActivity>([
-			["r1", makeActivity()],
-			["f1", makeActivity({ turnCount: 5 })],
-		]);
 
 		const lines = renderWidgetLines({
 			agents: [running, finished, queued],
-			activityMap,
 			registry: testRegistry,
 			spinnerFrame: 0,
 			terminalWidth: 200,
@@ -292,11 +274,9 @@ describe("renderWidgetLines", () => {
 	it("filters finished agents via shouldShowFinished", () => {
 		const finished1 = makeAgent({ id: "f1", status: "completed", completedAt: 6000 });
 		const finished2 = makeAgent({ id: "f2", status: "error", completedAt: 6000 });
-		const activityMap = new Map<string, WidgetActivity>();
 
 		const lines = renderWidgetLines({
 			agents: [finished1, finished2],
-			activityMap,
 			registry: testRegistry,
 			spinnerFrame: 0,
 			terminalWidth: 200,
@@ -317,18 +297,14 @@ describe("renderWidgetLines", () => {
 		// With 1 line reserved for overflow indicator, budget = 10.
 		// 5 running agents fit (10 lines), 1 hidden.
 		const agents: WidgetAgent[] = [];
-		const activityMap = new Map<string, WidgetActivity>();
 		for (let i = 0; i < 6; i++) {
-			const id = `r${i}`;
-			agents.push(makeAgent({ id, status: "running", completedAt: undefined }));
-			activityMap.set(id, makeActivity());
+			agents.push(makeAgent({ id: `r${i}`, status: "running", completedAt: undefined }));
 		}
 		// Add a finished agent — should be hidden since running takes priority
 		agents.push(makeAgent({ id: "f1", status: "completed", completedAt: 6000 }));
 
 		const lines = renderWidgetLines({
 			agents,
-			activityMap,
 			registry: testRegistry,
 			spinnerFrame: 0,
 			terminalWidth: 200,
@@ -348,7 +324,6 @@ describe("renderWidgetLines", () => {
 	it("returns empty array when no agents to show", () => {
 		const lines = renderWidgetLines({
 			agents: [],
-			activityMap: new Map(),
 			registry: testRegistry,
 			spinnerFrame: 0,
 			terminalWidth: 200,
@@ -364,7 +339,6 @@ describe("renderWidgetLines", () => {
 
 		const lines = renderWidgetLines({
 			agents: [agent],
-			activityMap: new Map(),
 			registry: testRegistry,
 			spinnerFrame: 0,
 			terminalWidth: 200,
@@ -380,7 +354,6 @@ describe("renderWidgetLines", () => {
 
 		const lines = renderWidgetLines({
 			agents: [agent],
-			activityMap: new Map(),
 			registry: testRegistry,
 			spinnerFrame: 0,
 			terminalWidth: 200,

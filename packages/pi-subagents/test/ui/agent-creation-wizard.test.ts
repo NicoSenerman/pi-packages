@@ -32,6 +32,37 @@ function makeWizard(deps: ReturnType<typeof makeDeps>) {
   );
 }
 
+/** Queue sequential `input` responses on a menu UI. */
+function withInputs(ui: ReturnType<typeof makeMenuUI>, ...values: (string | undefined)[]) {
+  for (const v of values) ui.input.mockResolvedValueOnce(v);
+  return ui;
+}
+
+/** Menu UI for the "Generate with Claude" path, with queued description/name inputs. */
+function generateUI(inputs: (string | undefined)[]) {
+  return withInputs(
+    makeMenuUI(["Project (.pi/agents/)", "Generate with Claude (recommended)"]),
+    ...inputs,
+  );
+}
+
+/** Menu UI for the "Manual configuration" path, with queued name/description inputs. */
+function manualUI(
+  selections: { location?: string; tools?: string; model?: string; thinking?: string },
+  inputs: (string | undefined)[],
+) {
+  return withInputs(
+    makeMenuUI([
+      selections.location ?? "Project (.pi/agents/)",
+      "Manual configuration",
+      selections.tools ?? "all",
+      selections.model ?? "inherit (parent model)",
+      selections.thinking ?? "inherit",
+    ]),
+    ...inputs,
+  );
+}
+
 describe("AgentCreationWizard", () => {
   describe("showCreateWizard", () => {
     it("returns when user cancels location selection", async () => {
@@ -68,13 +99,7 @@ describe("AgentCreationWizard", () => {
         .mockReturnValueOnce(false) // overwrite check before spawn
         .mockReturnValueOnce(true); // success check after spawn
 
-      const ui = makeMenuUI([
-        "Project (.pi/agents/)",
-        "Generate with Claude (recommended)",
-      ]);
-      ui.input = vi.fn()
-        .mockResolvedValueOnce("A code reviewer agent") // description
-        .mockResolvedValueOnce("code-reviewer"); // name
+      const ui = generateUI(["A code reviewer agent", "code-reviewer"]);
 
       const wizard = makeWizard(deps);
       await wizard.showCreateWizard(ui, STUB_SNAPSHOT);
@@ -98,13 +123,7 @@ describe("AgentCreationWizard", () => {
         createTestSubagent({ status: "error", error: "spawn failed" }),
       );
 
-      const ui = makeMenuUI([
-        "Project (.pi/agents/)",
-        "Generate with Claude (recommended)",
-      ]);
-      ui.input = vi.fn()
-        .mockResolvedValueOnce("description")
-        .mockResolvedValueOnce("test-agent");
+      const ui = generateUI(["description", "test-agent"]);
 
       const wizard = makeWizard(deps);
       await wizard.showCreateWizard(ui, STUB_SNAPSHOT);
@@ -123,13 +142,7 @@ describe("AgentCreationWizard", () => {
       // File does not exist after spawn
       deps.fileOps.exists.mockReturnValue(false);
 
-      const ui = makeMenuUI([
-        "Project (.pi/agents/)",
-        "Generate with Claude (recommended)",
-      ]);
-      ui.input = vi.fn()
-        .mockResolvedValueOnce("description")
-        .mockResolvedValueOnce("test-agent");
+      const ui = generateUI(["description", "test-agent"]);
 
       const wizard = makeWizard(deps);
       await wizard.showCreateWizard(ui, STUB_SNAPSHOT);
@@ -144,14 +157,8 @@ describe("AgentCreationWizard", () => {
       const deps = makeDeps();
       deps.fileOps.exists.mockReturnValue(true);
 
-      const ui = makeMenuUI([
-        "Project (.pi/agents/)",
-        "Generate with Claude (recommended)",
-      ]);
-      ui.input = vi.fn()
-        .mockResolvedValueOnce("description")
-        .mockResolvedValueOnce("existing-agent");
-      ui.confirm = vi.fn().mockResolvedValue(false);
+      const ui = generateUI(["description", "existing-agent"]);
+      ui.confirm.mockResolvedValue(false);
 
       const wizard = makeWizard(deps);
       await wizard.showCreateWizard(ui, STUB_SNAPSHOT);
@@ -165,11 +172,7 @@ describe("AgentCreationWizard", () => {
 
     it("returns when user cancels description input", async () => {
       const deps = makeDeps();
-      const ui = makeMenuUI([
-        "Project (.pi/agents/)",
-        "Generate with Claude (recommended)",
-      ]);
-      ui.input = vi.fn().mockResolvedValueOnce(undefined);
+      const ui = generateUI([undefined]);
 
       const wizard = makeWizard(deps);
       await wizard.showCreateWizard(ui, STUB_SNAPSHOT);
@@ -181,17 +184,8 @@ describe("AgentCreationWizard", () => {
   describe("manual wizard", () => {
     it("writes agent file with all form inputs", async () => {
       const deps = makeDeps();
-      const ui = makeMenuUI([
-        "Project (.pi/agents/)",
-        "Manual configuration",
-        "all", // tools
-        "inherit (parent model)", // model
-        "inherit", // thinking
-      ]);
-      ui.input = vi.fn()
-        .mockResolvedValueOnce("my-agent") // name
-        .mockResolvedValueOnce("A test agent"); // description
-      ui.editor = vi.fn().mockResolvedValue("You are a test agent.");
+      const ui = manualUI({}, ["my-agent", "A test agent"]);
+      ui.editor.mockResolvedValue("You are a test agent.");
 
       const wizard = makeWizard(deps);
       await wizard.showCreateWizard(ui, STUB_SNAPSHOT);
@@ -209,17 +203,8 @@ describe("AgentCreationWizard", () => {
 
     it("includes model line when a specific model is selected", async () => {
       const deps = makeDeps();
-      const ui = makeMenuUI([
-        "Project (.pi/agents/)",
-        "Manual configuration",
-        "all",
-        "haiku",
-        "inherit",
-      ]);
-      ui.input = vi.fn()
-        .mockResolvedValueOnce("fast-agent")
-        .mockResolvedValueOnce("Fast agent");
-      ui.editor = vi.fn().mockResolvedValue("prompt");
+      const ui = manualUI({ model: "haiku" }, ["fast-agent", "Fast agent"]);
+      ui.editor.mockResolvedValue("prompt");
 
       const wizard = makeWizard(deps);
       await wizard.showCreateWizard(ui, STUB_SNAPSHOT);
@@ -232,17 +217,8 @@ describe("AgentCreationWizard", () => {
 
     it("includes thinking line when a non-inherit level is selected", async () => {
       const deps = makeDeps();
-      const ui = makeMenuUI([
-        "Project (.pi/agents/)",
-        "Manual configuration",
-        "all",
-        "inherit (parent model)",
-        "high",
-      ]);
-      ui.input = vi.fn()
-        .mockResolvedValueOnce("thinker")
-        .mockResolvedValueOnce("Deep thinker");
-      ui.editor = vi.fn().mockResolvedValue("prompt");
+      const ui = manualUI({ thinking: "high" }, ["thinker", "Deep thinker"]);
+      ui.editor.mockResolvedValue("prompt");
 
       const wizard = makeWizard(deps);
       await wizard.showCreateWizard(ui, STUB_SNAPSHOT);
@@ -255,17 +231,11 @@ describe("AgentCreationWizard", () => {
 
     it("uses read-only tools when read-only is selected", async () => {
       const deps = makeDeps();
-      const ui = makeMenuUI([
-        "Project (.pi/agents/)",
-        "Manual configuration",
-        "read-only (read, bash, grep, find, ls)",
-        "inherit (parent model)",
-        "inherit",
-      ]);
-      ui.input = vi.fn()
-        .mockResolvedValueOnce("reader")
-        .mockResolvedValueOnce("Read-only agent");
-      ui.editor = vi.fn().mockResolvedValue("prompt");
+      const ui = manualUI(
+        { tools: "read-only (read, bash, grep, find, ls)" },
+        ["reader", "Read-only agent"],
+      );
+      ui.editor.mockResolvedValue("prompt");
 
       const wizard = makeWizard(deps);
       await wizard.showCreateWizard(ui, STUB_SNAPSHOT);
@@ -279,18 +249,9 @@ describe("AgentCreationWizard", () => {
     it("prompts for overwrite when target file already exists", async () => {
       const deps = makeDeps();
       deps.fileOps.exists.mockReturnValue(true);
-      const ui = makeMenuUI([
-        "Project (.pi/agents/)",
-        "Manual configuration",
-        "all",
-        "inherit (parent model)",
-        "inherit",
-      ]);
-      ui.input = vi.fn()
-        .mockResolvedValueOnce("existing")
-        .mockResolvedValueOnce("desc");
-      ui.editor = vi.fn().mockResolvedValue("prompt");
-      ui.confirm = vi.fn().mockResolvedValue(false);
+      const ui = manualUI({}, ["existing", "desc"]);
+      ui.editor.mockResolvedValue("prompt");
+      ui.confirm.mockResolvedValue(false);
 
       const wizard = makeWizard(deps);
       await wizard.showCreateWizard(ui, STUB_SNAPSHOT);
@@ -304,11 +265,10 @@ describe("AgentCreationWizard", () => {
 
     it("returns when user cancels name input", async () => {
       const deps = makeDeps();
-      const ui = makeMenuUI([
-        "Project (.pi/agents/)",
-        "Manual configuration",
-      ]);
-      ui.input = vi.fn().mockResolvedValueOnce(undefined);
+      const ui = withInputs(
+        makeMenuUI(["Project (.pi/agents/)", "Manual configuration"]),
+        undefined,
+      );
 
       const wizard = makeWizard(deps);
       await wizard.showCreateWizard(ui, STUB_SNAPSHOT);
@@ -318,17 +278,11 @@ describe("AgentCreationWizard", () => {
 
     it("writes to personal directory when personal is selected", async () => {
       const deps = makeDeps();
-      const ui = makeMenuUI([
-        "Personal (/home/.pi/agents)",
-        "Manual configuration",
-        "all",
-        "inherit (parent model)",
-        "inherit",
-      ]);
-      ui.input = vi.fn()
-        .mockResolvedValueOnce("personal-agent")
-        .mockResolvedValueOnce("Personal agent");
-      ui.editor = vi.fn().mockResolvedValue("prompt");
+      const ui = manualUI(
+        { location: "Personal (/home/.pi/agents)" },
+        ["personal-agent", "Personal agent"],
+      );
+      ui.editor.mockResolvedValue("prompt");
 
       const wizard = makeWizard(deps);
       await wizard.showCreateWizard(ui, STUB_SNAPSHOT);
