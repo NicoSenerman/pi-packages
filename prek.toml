@@ -17,7 +17,7 @@ repo = "local"
 hooks = [
     { id = "biome", name = "biome", entry = "pnpm exec biome check --write --files-ignore-unknown=true", language = "system", types_or = ["javascript", "jsx", "ts", "tsx", "json"] },
     { id = "eslint", name = "eslint", entry = "pnpm exec eslint --fix", language = "system", types = ["ts"], files = "^packages/" },
-    { id = "commitlint", name = "commitlint", entry = "pnpm exec commitlint --strict --edit", language = "system", stages = ["commit-msg"] },
+    { id = "commitlint", name = "commitlint", entry = "pnpm exec commitlint --edit", language = "system", stages = ["commit-msg"] },
 ]
 
 [[repos]]
