@@ -11,7 +11,7 @@ import type { AgentTypeRegistry } from "#src/config/agent-types";
 import type { AgentConfig } from "#src/types";
 import type { AgentFileOps } from "#src/ui/agent-file-ops";
 import { writeAgentFile } from "#src/ui/agent-file-writer";
-import type { MenuUI } from "#src/ui/agent-menu";
+import type { MenuUI } from "#src/ui/menu-ui";
 
 // ---- Pure helpers ----
 

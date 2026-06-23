@@ -12,7 +12,7 @@ import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import type { Subagent } from "#src/types";
 import type { AgentFileOps } from "#src/ui/agent-file-ops";
 import { writeAgentFile } from "#src/ui/agent-file-writer";
-import type { MenuUI } from "#src/ui/agent-menu";
+import type { MenuUI } from "#src/ui/menu-ui";
 
 // ---- Deps interface ----
 
