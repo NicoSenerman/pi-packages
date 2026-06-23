@@ -35,6 +35,7 @@ import {
   PERMISSIONS_READY_CHANNEL,
   PERMISSIONS_RPC_CHECK_CHANNEL,
 } from "#src/permission-events";
+import { resetModeState } from "#src/yolo-mode";
 import {
   createPermissionForwardingLocation,
   type ForwardedPermissionRequest,
@@ -316,6 +317,9 @@ describe("service and gate share one formatter registry", () => {
     const { ctx } = makeUiCtx(cwd, capturedTitles);
     // The service is published at session_start; publish before resolving it.
     await fireSessionStart(pi, ctx);
+    // These tests assert upstream's fail-closed (prompt-UI) contract; reset the
+    // BACH auto-approve default that session_start just enabled.
+    resetModeState();
 
     const previewMarker = "PREVIEW::shared-registry-proof";
     getPermissionsService()!.registerToolInputFormatter(
@@ -435,6 +439,7 @@ describe("single source of truth for session state", () => {
     };
 
     await fireSessionStart(pi, ctx);
+    resetModeState();
 
     // Drive a tool_call on "demo"; the gate prompts and the mock selects
     // options[1], recording a session-scoped approval.
@@ -573,6 +578,7 @@ describe("session approvals do not leak across same-cwd session switches", () =>
 
     const firstCtx = makeSessionApprovingCtx(cwd, "switch-session-1");
     await fireSessionStart(firstPi, firstCtx);
+    resetModeState();
 
     // The gate prompts and the mock selects options[1], recording a
     // session-scoped approval the service can read back.

@@ -37,6 +37,29 @@ export function isExplicitMode(): boolean {
   return modeExplicitlySet;
 }
 
+/**
+ * Mark the current mode as explicitly chosen (without changing the mode itself).
+ * Called at session_start for non-child sessions so BACH — the default mode —
+ * auto-approves permissions out of the box (the real runtime behavior), while
+ * factory wiring tests that construct the extension without firing
+ * session_start keep modeExplicitlySet=false and stay fail-closed.
+ */
+export function markModeExplicitlySet(): void {
+  modeExplicitlySet = true;
+}
+
+/**
+ * Reset mode state to the non-explicit default. Used by tests that need to
+ * assert upstream's fail-closed contract (prompt UI surfacing during `ask`,
+ * session-approval isolation) — they fire session_start (which marks the
+ * default BACH mode explicit → auto-approve) then call this to opt back into
+ * fail-closed behavior for the assertion.
+ */
+export function resetModeState(): void {
+  currentMode = "bach";
+  modeExplicitlySet = false;
+}
+
 /** Whether yolo mode is enabled per the live config (upstream contract). */
 export function isYoloModeEnabled(
   config: PermissionSystemExtensionConfig,

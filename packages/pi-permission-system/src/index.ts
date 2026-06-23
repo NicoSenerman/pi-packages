@@ -40,6 +40,7 @@ import { Key } from "@earendil-works/pi-tui";
 import {
   getCurrentMode,
   isBachMode,
+  markModeExplicitlySet,
   setCurrentMode,
   MODE_CYCLE,
   type Mode,
@@ -295,9 +296,31 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
     gateRunner,
   );
 
-  pi.on("session_start", (event, ctx) =>
-    lifecycle.handleSessionStart(event, ctx),
-  );
+  pi.on("session_start", (event, ctx) => {
+    // Mark the default BACH mode as explicitly chosen for non-child sessions so
+    // BACH auto-approve is active out of the box (the real runtime behavior).
+    // Child subagent sessions stay non-explicit (fail-closed) — they're spawned
+    // fresh by the orchestrator and shouldn't auto-approve. Factory wiring tests
+    // that construct the extension without firing session_start also stay
+    // non-explicit, preserving upstream's fail-closed contract.
+    let isChildSession = false;
+    try {
+      const header = ctx.sessionManager.getHeader();
+      isChildSession = header?.parentSession != null;
+    } catch {
+      // getHeader not available — assume not a child session
+    }
+    if (!isChildSession) {
+      // Default BACH mode auto-approves for non-child sessions (the real runtime
+      // behavior). Child subagent sessions stay fail-closed. Factory wiring
+      // tests that fire session_start on a non-child mock ctx also get
+      // auto-approve — the 3 composition-root tests that assert upstream's
+      // fail-closed-after-session_start contract are updated to reflect this
+      // deliberate fork divergence.
+      markModeExplicitlySet();
+    }
+    return lifecycle.handleSessionStart(event, ctx);
+  });
   pi.on("resources_discover", (event) =>
     lifecycle.handleResourcesDiscover(event),
   );
