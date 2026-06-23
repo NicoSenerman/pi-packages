@@ -1,0 +1,50 @@
+{
+  "name": "pi-autoname",
+  "version": "0.6.5",
+  "description": "AI-powered session naming for Pi — generate meaningful, semantic session names via LLM",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "session-name",
+    "auto-name",
+    "ai-naming",
+    "extension"
+  ],
+  "license": "MIT",
+  "author": "ssdiwu",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ssdiwu/pi-autoname.git"
+  },
+  "homepage": "https://github.com/ssdiwu/pi-autoname#readme",
+  "bugs": {
+    "url": "https://github.com/ssdiwu/pi-autoname/issues"
+  },
+  "files": [
+    "index.ts",
+    "extensions/",
+    "README.md",
+    "LICENSE",
+    "package.json",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "test": "vitest run --pool=threads",
+    "test:watch": "vitest --pool=threads"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "vitest": "^4.1.0"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}
