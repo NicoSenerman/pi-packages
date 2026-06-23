@@ -201,7 +201,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("subagent-sessions", {
     description: "View a subagent's session transcript (read-only)",
     handler: async (_args, ctx) => {
-      await sessionNavigator.handle({ ui: ctx.ui, agents: manager.listAgents(), registry });
+      await sessionNavigator.handle({ ui: ctx.ui, agents: manager.listAgents(), registry, cwd: ctx.cwd });
     },
   });
 }

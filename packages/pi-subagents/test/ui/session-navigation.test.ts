@@ -1,13 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { SessionMessage } from "#src/types";
-import {
-  listNavigableAgents,
-  liveSource,
-  type NavigableSubagent,
-  renderTranscriptLines,
-  type TranscriptSource,
-} from "#src/ui/session-navigation";
+import { listNavigableAgents, liveSource, type NavigableSubagent, type TranscriptSource } from "#src/ui/session-navigation";
 
 const registry = new AgentTypeRegistry(() => new Map());
 
@@ -96,38 +90,5 @@ describe("liveSource", () => {
     const record = makeNavigable({ getToolDefinition: vi.fn(() => def) });
     expect(liveSource(record).getToolDefinition("read")).toBe(def);
     expect(record.getToolDefinition).toHaveBeenCalledWith("read");
-  });
-});
-
-describe("renderTranscriptLines", () => {
-  function staticSource(messages: SessionMessage[], streaming?: ReturnType<TranscriptSource["streaming"]>): TranscriptSource {
-    return {
-      getMessages: () => messages,
-      subscribe: () => undefined,
-      streaming: () => streaming,
-      getToolDefinition: () => undefined,
-    };
-  }
-
-  it("returns a placeholder for an empty history", () => {
-    expect(renderTranscriptLines(staticSource([]))).toEqual(["(no messages yet)"]);
-  });
-
-  it("renders the serialized conversation split into lines", () => {
-    const messages = [
-      { role: "user", content: "Hello" },
-      { role: "assistant", content: [{ type: "text", text: "Hi there" }] },
-    ] as unknown as SessionMessage[];
-    const lines = renderTranscriptLines(staticSource(messages));
-    expect(lines.some((l) => l.includes("Hello"))).toBe(true);
-    expect(lines.some((l) => l.includes("Hi there"))).toBe(true);
-  });
-
-  it("appends a streaming-activity line while running", () => {
-    const messages = [{ role: "user", content: "go" }] as unknown as SessionMessage[];
-    const lines = renderTranscriptLines(
-      staticSource(messages, { activeTools: new Map([["k", "read"]]), responseText: "" }),
-    );
-    expect(lines.at(-1)).toContain("reading");
   });
 });

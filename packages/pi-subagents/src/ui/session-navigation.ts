@@ -2,20 +2,21 @@
  * session-navigation.ts — Pure selection and transcript-sourcing for native session navigation.
  *
  * Splits the unit-testable core of the `/subagent-sessions` command from its TUI
- * wiring (`session-navigator.ts`): which subagents are navigable, how a picked
- * agent's transcript is sourced (live, in this slice), and how the transcript
- * renders to plain text via Pi's own `serializeConversation`.
+ * wiring (`session-navigator.ts`): which subagents are navigable and how a picked
+ * agent's transcript is sourced (live, in this slice).
  *
  * The `TranscriptSource` seam decouples *how messages are sourced* (live record
- * here; a file snapshot in a follow-up) from *how they render* (text here; Pi's
- * per-entry components in a follow-up). The renderer talks only to this seam.
+ * here; a file snapshot in a follow-up) from *how they render* — the renderer
+ * (`session-navigator.ts`, which mounts Pi's per-entry components) talks only to
+ * this seam. Rendering lives in the SDK/TUI module because the per-entry
+ * components require a `TUI`, `cwd`, and markdown theme.
  */
 
-import { serializeConversation, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { AgentConfigLookup } from "#src/config/agent-types";
 import type { SubagentStatus } from "#src/lifecycle/subagent-state";
 import type { AgentSessionEvent, SessionMessage, SubagentType } from "#src/types";
-import { describeActivity, formatDuration, getDisplayName } from "#src/ui/display";
+import { formatDuration, getDisplayName } from "#src/ui/display";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -81,34 +82,6 @@ export function liveSource(record: NavigableSubagent): TranscriptSource {
         : undefined,
     getToolDefinition: (name) => record.getToolDefinition(name),
   };
-}
-
-/** Render a source's transcript to plain text lines via Pi's `serializeConversation`. */
-export function renderTranscriptLines(source: TranscriptSource): string[] {
-  const messages = source.getMessages();
-  const lines =
-    messages.length === 0 ? ["(no messages yet)"] : serializeConversation(toMessages(messages)).split("\n");
-
-  const streaming = source.streaming();
-  if (streaming) {
-    lines.push("", `◍ ${describeActivity(streaming.activeTools, streaming.responseText)}`);
-  }
-  return lines;
-}
-
-/**
- * Bridge the session's `AgentMessage[]` to `serializeConversation`'s `Message[]`.
- *
- * `AgentMessage` is a superset of `Message` (it adds session-display variants such
- * as `BashExecutionMessage`); `serializeConversation` renders the shared shape and
- * best-effort text for the rest. `Message` is not re-exported from the public
- * `@earendil-works/pi-ai` barrel, so the parameter type is referenced via the
- * function signature rather than imported by name.
- */
-function toMessages(
-  messages: readonly SessionMessage[],
-): Parameters<typeof serializeConversation>[0] {
-  return messages as unknown as Parameters<typeof serializeConversation>[0];
 }
 
 function buildLabel(record: NavigableSubagent, registry: AgentConfigLookup): string {

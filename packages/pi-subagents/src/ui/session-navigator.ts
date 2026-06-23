@@ -1,26 +1,46 @@
 /**
  * session-navigator.ts — The `/subagent-sessions` command: pick a subagent and
- * read its transcript through Pi's own session-rendering text.
+ * read its transcript through Pi's own per-entry session components.
  *
  * SDK/TUI consumer half of native session navigation. The unit-testable core
- * (selection, sourcing, text rendering) lives in `session-navigation.ts`; this
- * module wires that core to the command picker and a read-only scrollable overlay.
+ * (selection, sourcing) lives in `session-navigation.ts`; this module wires that
+ * core to the command picker and a read-only scrollable overlay, and owns the
+ * renderer — it mounts Pi's interactive components (`AssistantMessageComponent`,
+ * `ToolExecutionComponent`, …) into a `Container`, mirroring Pi's own
+ * `renderSessionContext` mapping. Rendering lives here, not in the pure module,
+ * because the components require a `TUI`, `cwd`, and markdown theme.
  *
  * The overlay is strictly read-only — steering stays in the `steer_subagent` tool
- * and the widget. It consumes a `TranscriptSource`, so the renderer-upgrade and
- * evicted-agent-source follow-ups swap the source/renderer without touching it.
+ * and the widget. It consumes a `TranscriptSource`, so the evicted-agent-source
+ * follow-up swaps the source without touching the renderer or the overlay.
  */
 
-import { type Component, matchesKey, type TUI, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
-import type { AgentConfigLookup } from "#src/config/agent-types";
-import type { Theme } from "#src/ui/display";
 import {
-  listNavigableAgents,
-  liveSource,
-  type NavigableSubagent,
-  renderTranscriptLines,
-  type TranscriptSource,
-} from "#src/ui/session-navigation";
+  AssistantMessageComponent,
+  BashExecutionComponent,
+  BranchSummaryMessageComponent,
+  CompactionSummaryMessageComponent,
+  getMarkdownTheme,
+  parseSkillBlock,
+  SkillInvocationMessageComponent,
+  type ToolDefinition,
+  ToolExecutionComponent,
+  UserMessageComponent,
+} from "@earendil-works/pi-coding-agent";
+import {
+  type Component,
+  Container,
+  type MarkdownTheme,
+  matchesKey,
+  Spacer,
+  type TUI,
+  truncateToWidth,
+  visibleWidth,
+} from "@earendil-works/pi-tui";
+import type { AgentConfigLookup } from "#src/config/agent-types";
+import type { SessionMessage } from "#src/types";
+import { describeActivity, type Theme } from "#src/ui/display";
+import { listNavigableAgents, liveSource, type NavigableSubagent, type TranscriptSource } from "#src/ui/session-navigation";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -49,6 +69,8 @@ export interface SessionNavigatorParams {
   ui: SessionNavigatorUI;
   agents: readonly NavigableSubagent[];
   registry: AgentConfigLookup;
+  /** Working directory for tool-call rendering (relative path display). */
+  cwd: string;
 }
 
 /** Options for the read-only transcript overlay. */
@@ -57,7 +79,8 @@ export interface TranscriptOverlayOptions {
   theme: Theme;
   source: TranscriptSource;
   done: (result: undefined) => void;
-  wrapText: (text: string, width: number) => string[];
+  cwd: string;
+  markdownTheme: MarkdownTheme;
 }
 
 /**
@@ -68,7 +91,7 @@ export interface TranscriptOverlayOptions {
  * manager, so it stays a reactive consumer with no inbound call into the core.
  */
 export class SessionNavigatorHandler {
-  async handle({ ui, agents, registry }: SessionNavigatorParams): Promise<void> {
+  async handle({ ui, agents, registry, cwd }: SessionNavigatorParams): Promise<void> {
     const entries = listNavigableAgents(agents, registry);
     if (entries.length === 0) {
       ui.notify("No subagent sessions to view.", "info");
@@ -83,9 +106,10 @@ export class SessionNavigatorHandler {
     if (!entry) return;
 
     const source = liveSource(entry.record);
+    const markdownTheme = getMarkdownTheme();
     await ui.custom<undefined>(
       (tui, theme, _keybindings, done) =>
-        new TranscriptOverlay({ tui, theme, source, done, wrapText: wrapTextWithAnsi }),
+        new TranscriptOverlay({ tui, theme, source, done, cwd, markdownTheme }),
       {
         overlay: true,
         overlayOptions: { anchor: "center", width: "90%", maxHeight: `${VIEWPORT_HEIGHT_PCT}%` },
@@ -97,9 +121,11 @@ export class SessionNavigatorHandler {
 /**
  * Read-only scrollable transcript overlay.
  *
- * Re-renders on every source update (live agents); the transcript text is Pi's
- * `serializeConversation` output from `renderTranscriptLines` — this class owns
- * only scroll state and chrome, no message formatting.
+ * Caches a `Container` of Pi's per-entry components and rebuilds it only when the
+ * source changes (live agents) — each paint reuses the cached tree, so markdown
+ * highlighting does not re-run per frame. This class owns scroll state, chrome,
+ * and the running-agent streaming indicator; the component mapping lives in
+ * `buildTranscriptComponents`.
  */
 export class TranscriptOverlay implements Component {
   private scrollOffset = 0;
@@ -111,16 +137,21 @@ export class TranscriptOverlay implements Component {
   private readonly theme: Theme;
   private readonly source: TranscriptSource;
   private readonly done: (result: undefined) => void;
-  private readonly wrapText: (text: string, width: number) => string[];
+  private readonly cwd: string;
+  private readonly markdownTheme: MarkdownTheme;
+  private content: Container;
 
-  constructor({ tui, theme, source, done, wrapText }: TranscriptOverlayOptions) {
+  constructor({ tui, theme, source, done, cwd, markdownTheme }: TranscriptOverlayOptions) {
     this.tui = tui;
     this.theme = theme;
     this.source = source;
     this.done = done;
-    this.wrapText = wrapText;
+    this.cwd = cwd;
+    this.markdownTheme = markdownTheme;
+    this.content = this.rebuild();
     this.unsubscribe = source.subscribe(() => {
       if (this.closed) return;
+      this.content = this.rebuild();
       this.tui.requestRender();
     });
   }
@@ -199,7 +230,7 @@ export class TranscriptOverlay implements Component {
 
   // fallow-ignore-next-line unused-class-member
   invalidate(): void {
-    /* no cached state to clear */
+    this.content.invalidate();
   }
 
   // fallow-ignore-next-line unused-class-member
@@ -224,14 +255,139 @@ export class TranscriptOverlay implements Component {
 
   private buildContentLines(innerW: number): string[] {
     if (innerW <= 0) return [];
-    const wrapped: string[] = [];
-    for (const line of renderTranscriptLines(this.source)) {
-      if (line === "") {
-        wrapped.push("");
-        continue;
-      }
-      wrapped.push(...this.wrapText(line, innerW));
+    const lines = this.content.render(innerW);
+    const streaming = this.source.streaming();
+    if (streaming) {
+      lines.push("", `◍ ${describeActivity(streaming.activeTools, streaming.responseText)}`);
     }
-    return wrapped.map((l) => truncateToWidth(l, innerW));
+    return lines.map((l) => truncateToWidth(l, innerW));
   }
+
+  private rebuild(): Container {
+    return buildTranscriptComponents(this.source.getMessages(), {
+      tui: this.tui,
+      cwd: this.cwd,
+      markdownTheme: this.markdownTheme,
+      getToolDefinition: (name) => this.source.getToolDefinition(name),
+    });
+  }
+}
+
+/** Dependencies the per-entry component tree needs from the SDK/TUI environment. */
+interface TranscriptRenderOptions {
+  tui: TUI;
+  cwd: string;
+  markdownTheme: MarkdownTheme;
+  getToolDefinition: (name: string) => ToolDefinition | undefined;
+}
+
+/**
+ * Build a `Container` of Pi's per-entry components from a message snapshot,
+ * mirroring Pi's own interactive-mode `renderSessionContext` mapping. Tool
+ * results are matched to their tool-call components by id, exactly as Pi does.
+ * `custom`-role messages are skipped — rendering them needs the child session's
+ * message-renderer registry, which the navigator does not hold.
+ */
+function buildTranscriptComponents(
+  messages: readonly SessionMessage[],
+  opts: TranscriptRenderOptions,
+): Container {
+  const container = new Container();
+  const pendingTools = new Map<string, ToolExecutionComponent>();
+  for (const message of messages) {
+    addMessageComponents(container, message, pendingTools, opts);
+  }
+  return container;
+}
+
+function addMessageComponents(
+  container: Container,
+  message: SessionMessage,
+  pendingTools: Map<string, ToolExecutionComponent>,
+  opts: TranscriptRenderOptions,
+): void {
+  switch (message.role) {
+    case "assistant": {
+      container.addChild(new AssistantMessageComponent(message, false, opts.markdownTheme));
+      for (const content of message.content) {
+        if (content.type !== "toolCall") continue;
+        const tool = new ToolExecutionComponent(
+          content.name,
+          content.id,
+          content.arguments,
+          { showImages: false },
+          opts.getToolDefinition(content.name),
+          opts.tui,
+          opts.cwd,
+        );
+        tool.setExpanded(true);
+        container.addChild(tool);
+        pendingTools.set(content.id, tool);
+      }
+      break;
+    }
+    case "toolResult": {
+      pendingTools.get(message.toolCallId)?.updateResult(message);
+      pendingTools.delete(message.toolCallId);
+      break;
+    }
+    case "user": {
+      addUserComponents(container, message.content, opts.markdownTheme);
+      break;
+    }
+    case "bashExecution": {
+      const bash = new BashExecutionComponent(message.command, opts.tui, message.excludeFromContext);
+      if (message.output) bash.appendOutput(message.output);
+      bash.setComplete(message.exitCode, message.cancelled, undefined, message.fullOutputPath);
+      container.addChild(bash);
+      break;
+    }
+    case "compactionSummary": {
+      container.addChild(new Spacer(1));
+      const summary = new CompactionSummaryMessageComponent(message, opts.markdownTheme);
+      summary.setExpanded(true);
+      container.addChild(summary);
+      break;
+    }
+    case "branchSummary": {
+      container.addChild(new Spacer(1));
+      const summary = new BranchSummaryMessageComponent(message, opts.markdownTheme);
+      summary.setExpanded(true);
+      container.addChild(summary);
+      break;
+    }
+  }
+}
+
+/** Render a user message (skill block + text) into the container, mirroring Pi. */
+function addUserComponents(
+  container: Container,
+  content: string | readonly { type: string; text?: string }[],
+  markdownTheme: MarkdownTheme,
+): void {
+  const text = userMessageText(content);
+  if (!text) return;
+  if (container.children.length > 0) container.addChild(new Spacer(1));
+
+  const skillBlock = parseSkillBlock(text);
+  if (!skillBlock) {
+    container.addChild(new UserMessageComponent(text, markdownTheme));
+    return;
+  }
+  const skill = new SkillInvocationMessageComponent(skillBlock, markdownTheme);
+  skill.setExpanded(true);
+  container.addChild(skill);
+  if (skillBlock.userMessage) {
+    container.addChild(new Spacer(1));
+    container.addChild(new UserMessageComponent(skillBlock.userMessage, markdownTheme));
+  }
+}
+
+/** Concatenate the text blocks of a user message's content (mirrors Pi). */
+function userMessageText(content: string | readonly { type: string; text?: string }[]): string {
+  if (typeof content === "string") return content;
+  return content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text ?? "")
+    .join("");
 }

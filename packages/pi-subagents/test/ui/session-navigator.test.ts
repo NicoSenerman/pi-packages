@@ -1,12 +1,16 @@
+import { getMarkdownTheme, initTheme } from "@earendil-works/pi-coding-agent";
 import type { Component, TUI } from "@earendil-works/pi-tui";
-import { wrapTextWithAnsi } from "@earendil-works/pi-tui";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { SessionMessage } from "#src/types";
 import type { NavigableSubagent, TranscriptSource } from "#src/ui/session-navigation";
 import { SessionNavigatorHandler, TranscriptOverlay } from "#src/ui/session-navigator";
 
 const registry = new AgentTypeRegistry(() => new Map());
+
+// Pi's per-entry components read the global interactive theme; Pi initializes it
+// at startup before any command runs. Tests must initialize it explicitly.
+beforeAll(() => initTheme(undefined, false));
 
 function mockTui(rows = 40, columns = 80): TUI {
   return { terminal: { rows, columns }, requestRender: vi.fn() } as unknown as TUI;
@@ -35,7 +39,8 @@ function makeOverlay(opts: { source?: TranscriptSource; done?: (r: undefined) =>
     theme: ansiTheme(),
     source: opts.source ?? fakeSource(),
     done: opts.done ?? vi.fn(),
-    wrapText: wrapTextWithAnsi,
+    cwd: "/test/cwd",
+    markdownTheme: getMarkdownTheme(),
   });
 }
 
@@ -106,6 +111,46 @@ describe("TranscriptOverlay", () => {
     captured?.();
     expect(tui.requestRender).not.toHaveBeenCalled();
   });
+
+  it("renders a tool call through Pi's tool-execution component", () => {
+    const messages = [
+      {
+        role: "assistant",
+        content: [{ type: "toolCall", id: "tc-1", name: "read", arguments: { path: "/x.ts" } }],
+        stopReason: "toolUse",
+      },
+      { role: "toolResult", toolCallId: "tc-1", toolName: "read", content: [{ type: "text", text: "file body" }], isError: false },
+    ] as unknown as SessionMessage[];
+    const out = makeOverlay({ source: fakeSource({ getMessages: () => messages }) })
+      .render(80)
+      .join("\n");
+    expect(out).toContain("read");
+  });
+
+  it("appends the streaming-activity indicator while running", () => {
+    const source = fakeSource({
+      streaming: () => ({ activeTools: new Map([["k", "read"]]), responseText: "" }),
+    });
+    const out = makeOverlay({ source }).render(80).join("\n");
+    expect(out).toContain("◍");
+  });
+
+  it("rebuilds the component tree when the source changes", () => {
+    let messages = [{ role: "user", content: "first" }] as unknown as SessionMessage[];
+    let captured: (() => void) | undefined;
+    const source = fakeSource({
+      getMessages: () => messages,
+      subscribe: (onChange) => {
+        captured = onChange;
+        return () => {};
+      },
+    });
+    const overlay = makeOverlay({ source });
+    expect(overlay.render(80).join("\n")).toContain("first");
+    messages = [{ role: "user", content: "second" }] as unknown as SessionMessage[];
+    captured?.();
+    expect(overlay.render(80).join("\n")).toContain("second");
+  });
 });
 
 describe("SessionNavigatorHandler", () => {
@@ -120,14 +165,14 @@ describe("SessionNavigatorHandler", () => {
   it("notifies and skips the overlay when no sessions are navigable", async () => {
     const ui = makeUI();
     const notReady = makeNavigable({ isSessionReady: () => false });
-    await new SessionNavigatorHandler().handle({ ui, agents: [notReady], registry });
+    await new SessionNavigatorHandler().handle({ ui, agents: [notReady], registry, cwd: "/test/cwd" });
     expect(ui.notify).toHaveBeenCalledWith("No subagent sessions to view.", "info");
     expect(ui.custom).not.toHaveBeenCalled();
   });
 
   it("does not open the overlay when the operator cancels the picker", async () => {
     const ui = makeUI(undefined);
-    await new SessionNavigatorHandler().handle({ ui, agents: [makeNavigable()], registry });
+    await new SessionNavigatorHandler().handle({ ui, agents: [makeNavigable()], registry, cwd: "/test/cwd" });
     expect(ui.select).toHaveBeenCalledOnce();
     expect(ui.custom).not.toHaveBeenCalled();
   });
@@ -143,7 +188,7 @@ describe("SessionNavigatorHandler", () => {
     })();
     const ui = makeUI(label);
 
-    await new SessionNavigatorHandler().handle({ ui, agents: [record], registry });
+    await new SessionNavigatorHandler().handle({ ui, agents: [record], registry, cwd: "/test/cwd" });
 
     expect(ui.custom).toHaveBeenCalledOnce();
     // Invoke the captured component factory and render to confirm it is sourced from the picked record.
