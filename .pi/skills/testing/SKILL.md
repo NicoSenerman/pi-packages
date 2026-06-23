@@ -134,6 +134,6 @@ A missing export throws `is not a function` at runtime but surfaces as `TS2305` 
 
 ### Exploration before planning
 
-- When integrating an unfamiliar library or data structure, write a disposable exploratory script first to inspect the actual runtime shape.
+- When integrating an unfamiliar library or data structure, write a disposable exploratory script first to inspect the actual runtime shape — and exercise the full variety of inputs you will use, since environment dependencies (e.g. a required global init) can be variant-specific and a one-representative probe gives false confidence.
 - When a TDD plan extracts a locally-declared type that shadows an SDK type, verify whether the SDK exports the type before planning around the local copy.
   Dead fallback branches in the local type produce dead test cases and unnecessary complexity.
