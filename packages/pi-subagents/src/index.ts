@@ -223,13 +223,6 @@ export default function (pi: ExtensionAPI) {
 
   // ---- ctrl+alt+a agent monitor ----
 
-  // Shared activity-tracker map. Upstream deleted the ui-observer (#422) that
-  // used to populate this, so trackers aren't currently populated externally —
-  // `getActivity` returns undefined and activity lines degrade gracefully
-  // (omitted) instead of crashing. Re-wire population later if we want the
-  // live `● <activity>` footers back.
-  const agentActivity = new Map();
-
   // registerShortcut is a real Pi API but isn't stubbed in the upstream test
   // harness. Guard so absence doesn't crash factory wiring tests.
   if (typeof pi.registerShortcut === "function") {
@@ -242,7 +235,6 @@ export default function (pi: ExtensionAPI) {
             ctx,
             manager,
             registry,
-            agentActivity,
             settings,
             new FsAgentFileOps(),
             join(getAgentDir(), "agents"),

@@ -26,7 +26,6 @@ import type { AgentTypeRegistry } from "#src/config/agent-types";
 import type { Subagent } from "#src/lifecycle/subagent";
 import type { SubagentManager } from "#src/lifecycle/subagent-manager";
 import { getLifetimeTotal } from "#src/lifecycle/usage";
-import type { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
 import {
   ConversationContainer,
   type MapperDeps,
@@ -50,11 +49,6 @@ import { mlog, mlogClose } from "#src/ui/monitor-debug";
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
-
-/** Narrow interface for agent-activity map access. */
-interface AgentActivityMap {
-  get(id: string): AgentActivityTracker | undefined;
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -264,21 +258,18 @@ class AgentMonitor implements Component {
 
   private tui: TUI;
   private manager: SubagentManager;
-  private activityMap: AgentActivityMap;
   private registry: AgentTypeRegistry;
   private theme: PiTheme;
   private done: (result: undefined) => void;
   constructor(deps: {
     tui: TUI;
     manager: SubagentManager;
-    activityMap: AgentActivityMap;
     registry: AgentTypeRegistry;
     theme: PiTheme;
     done: (result: undefined) => void;
   }) {
     this.tui = deps.tui;
     this.manager = deps.manager;
-    this.activityMap = deps.activityMap;
     this.registry = deps.registry;
     this.theme = deps.theme;
     this.done = deps.done;
@@ -584,10 +575,6 @@ class AgentMonitor implements Component {
       if (pa !== pb) return pa - pb;
       return b.startedAt - a.startedAt; // newest first within group
     });
-  }
-
-  private getActivity(agent: Subagent): AgentActivityTracker | undefined {
-    return this.activityMap.get(agent.id);
   }
 
   // ── Private: subscriptions ──────────────────────────────────────────────
@@ -1017,7 +1004,6 @@ class AgentMonitor implements Component {
 
   private renderActivityLine(agent: Subagent, _width: number): string {
     const th = this.theme;
-    const activity = this.getActivity(agent);
 
     // Terminal statuses: show final stats
     if (isTerminalStatus(agent.status)) {
@@ -1063,18 +1049,21 @@ class AgentMonitor implements Component {
     // Running/queued: show live activity
     const parts: string[] = [];
 
-    if (agent.status === "running" && activity) {
+    // Live activity is now read directly from the Subagent record (the runtime
+    // populates activeTools / responseText / turnCount via its own session
+    // subscription). This replaces the deleted AgentActivityTracker map.
+    const activeTools = agent.activeTools;
+    const responseText = agent.responseText;
+
+    if (agent.status === "running") {
       // Current tool activity
-      if (activity.activeTools.size > 0) {
-        const act = describeActivity(
-          activity.activeTools,
-          activity.responseText,
-        );
+      if (activeTools.size > 0) {
+        const act = describeActivity(activeTools, responseText);
         parts.push(act);
-      } else if (activity.responseText && activity.responseText.trim()) {
+      } else if (responseText && responseText.trim()) {
         // Streaming text — show truncated first line
         const firstLine =
-          activity.responseText
+          responseText
             .split("\n")
             .find((l) => l.trim())
             ?.trim() ?? "";
@@ -1090,7 +1079,7 @@ class AgentMonitor implements Component {
       parts.push(formatMs(elapsed));
 
       // Turns
-      parts.push(formatTurns(activity.turnCount, activity.maxTurns));
+      parts.push(formatTurns(agent.turnCount, agent.maxTurns));
 
       // Tokens
       const tokens = getLifetimeTotal(agent.lifetimeUsage);
@@ -1250,7 +1239,6 @@ export async function openAgentMonitor(
   },
   manager: SubagentManager,
   registry: AgentTypeRegistry,
-  agentActivity: Map<string, AgentActivityTracker>,
   _settings: unknown,
   _fileOps: unknown,
   _personalAgentsDir: string,
@@ -1269,7 +1257,6 @@ export async function openAgentMonitor(
         monitor = new AgentMonitor({
           tui,
           manager,
-          activityMap: agentActivity,
           registry,
           theme,
           done,
