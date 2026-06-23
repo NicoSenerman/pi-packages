@@ -35,11 +35,13 @@ function makeSetup(opts?: { configIssues?: string[] }) {
   // Use a session-independent logger so assertions verify direct injection,
   // not reach-through to session.logger.
   const logger = makeLogger();
+  const audit = { writeSummary: vi.fn<(logger: unknown) => void>() };
   const handler = new SessionLifecycleHandler(
     session,
     resolver,
     serviceLifecycle,
     logger,
+    audit,
   );
   return {
     handler,
@@ -50,6 +52,7 @@ function makeSetup(opts?: { configIssues?: string[] }) {
     forwarding,
     configStore,
     serviceLifecycle,
+    audit,
   };
 }
 
@@ -208,5 +211,11 @@ describe("handleSessionShutdown", () => {
     const { handler, serviceLifecycle } = makeSetup();
     await handler.handleSessionShutdown();
     expect(serviceLifecycle.teardown).toHaveBeenCalledOnce();
+  });
+
+  it("writes the decision-audit summary to the logger", async () => {
+    const { handler, audit, logger } = makeSetup();
+    await handler.handleSessionShutdown();
+    expect(audit.writeSummary).toHaveBeenCalledWith(logger);
   });
 });

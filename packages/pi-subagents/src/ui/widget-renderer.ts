@@ -7,8 +7,8 @@
 
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import type { AgentConfigLookup } from "#src/config/agent-types";
-import type { LifetimeUsage, SessionLike } from "#src/lifecycle/usage";
-import { getLifetimeTotal, getSessionContextPercent } from "#src/lifecycle/usage";
+import type { LifetimeUsage } from "#src/lifecycle/usage";
+import { getLifetimeTotal } from "#src/lifecycle/usage";
 import type { SubagentType } from "#src/types";
 import {
 	describeActivity,
@@ -35,15 +35,13 @@ export interface WidgetAgent {
 	readonly error?: string;
 	readonly lifetimeUsage?: Readonly<LifetimeUsage>;
 	readonly compactionCount: number;
-}
-
-/** Read-only activity snapshot for widget rendering. */
-export interface WidgetActivity {
-	readonly activeTools: ReadonlyMap<string, string>;
-	readonly responseText: string;
+	// Live activity (folded from the former WidgetActivity — precomputed by AgentWidget)
 	readonly turnCount: number;
 	readonly maxTurns?: number;
-	readonly session?: SessionLike;
+	readonly activeTools: ReadonlyMap<string, string>;
+	readonly responseText: string;
+	/** Context-window utilisation (0–100), or null when unavailable. */
+	readonly contextPercent: number | null;
 }
 
 // ── Per-agent rendering ──────────────────────────────────────────────────────
@@ -51,7 +49,6 @@ export interface WidgetActivity {
 /** Render a single finished agent line (no tree connector prefix). */
 export function renderFinishedLine(
 	agent: WidgetAgent,
-	activity: WidgetActivity | undefined,
 	registry: AgentConfigLookup,
 	theme: Theme,
 ): string {
@@ -81,7 +78,7 @@ export function renderFinishedLine(
 	}
 
 	const parts: string[] = [];
-	if (activity) parts.push(formatTurns(activity.turnCount, activity.maxTurns));
+	parts.push(formatTurns(agent.turnCount, agent.maxTurns));
 	if (agent.toolUses > 0) parts.push(`${agent.toolUses} tool use${agent.toolUses === 1 ? "" : "s"}`);
 	parts.push(duration);
 
@@ -92,7 +89,6 @@ export function renderFinishedLine(
 /** Render a single running agent as header + activity line pair (no tree connector prefix). */
 export function renderRunningLines(
 	agent: WidgetAgent,
-	activity: WidgetActivity | undefined,
 	registry: AgentConfigLookup,
 	spinnerFrame: number,
 	theme: Theme,
@@ -103,18 +99,17 @@ export function renderRunningLines(
 	const elapsed = formatMs(Date.now() - agent.startedAt);
 
 	const tokens = getLifetimeTotal(agent.lifetimeUsage);
-	const contextPercent = activity?.session ? getSessionContextPercent(activity.session) : null;
-	const tokenText = tokens > 0 ? formatSessionTokens(tokens, contextPercent, theme, agent.compactionCount) : "";
+	const tokenText = tokens > 0 ? formatSessionTokens(tokens, agent.contextPercent, theme, agent.compactionCount) : "";
 
 	const parts: string[] = [];
-	if (activity) parts.push(formatTurns(activity.turnCount, activity.maxTurns));
+	parts.push(formatTurns(agent.turnCount, agent.maxTurns));
 	if (agent.toolUses > 0) parts.push(`${agent.toolUses} tool use${agent.toolUses === 1 ? "" : "s"}`);
 	if (tokenText) parts.push(tokenText);
 	parts.push(elapsed);
 	const statsText = parts.join(" · ");
 
 	const frame = SPINNER[spinnerFrame % SPINNER.length];
-	const activityText = activity ? describeActivity(activity.activeTools, activity.responseText) : "thinking\u2026";
+	const activityText = describeActivity(agent.activeTools, agent.responseText);
 
 	const header = `${theme.fg("accent", frame)} ${theme.bold(name)}${modeTag}  ${theme.fg("muted", agent.description)} ${theme.fg("dim", "·")} ${theme.fg("dim", statsText)}`;
 	const activityLine = theme.fg("dim", `  \u23BF  ${activityText}`);
@@ -157,7 +152,6 @@ interface WidgetSections {
 /** Render each agent bucket into pre-formatted lines with ├─ tree connectors. */
 function buildSections(
 	categories: AgentCategories,
-	activityMap: ReadonlyMap<string, WidgetActivity>,
 	registry: AgentConfigLookup,
 	spinnerFrame: number,
 	theme: Theme,
@@ -165,12 +159,12 @@ function buildSections(
 ): WidgetSections {
 	const finishedLines: string[] = [];
 	for (const a of categories.finished) {
-		finishedLines.push(truncate(theme.fg("dim", "\u251C\u2500") + " " + renderFinishedLine(a, activityMap.get(a.id), registry, theme)));
+		finishedLines.push(truncate(theme.fg("dim", "\u251C\u2500") + " " + renderFinishedLine(a, registry, theme)));
 	}
 
 	const runningLines: [string, string][] = [];
 	for (const a of categories.running) {
-		const [header, act] = renderRunningLines(a, activityMap.get(a.id), registry, spinnerFrame, theme);
+		const [header, act] = renderRunningLines(a, registry, spinnerFrame, theme);
 		runningLines.push([
 			truncate(theme.fg("dim", "\u251C\u2500") + ` ${header}`),
 			truncate(theme.fg("dim", "\u2502  ") + act),
@@ -259,14 +253,13 @@ function assembleOverflow(
 /** Pure rendering of the widget body. Returns lines to display. */
 export function renderWidgetLines(params: {
 	agents: readonly WidgetAgent[];
-	activityMap: ReadonlyMap<string, WidgetActivity>;
 	registry: AgentConfigLookup;
 	spinnerFrame: number;
 	terminalWidth: number;
 	theme: Theme;
 	shouldShowFinished: (agentId: string, status: string) => boolean;
 }): string[] {
-	const { agents, activityMap, registry, spinnerFrame, terminalWidth, theme, shouldShowFinished } = params;
+	const { agents, registry, spinnerFrame, terminalWidth, theme, shouldShowFinished } = params;
 
 	const { running, queued, finished } = categorizeAgents(agents, shouldShowFinished);
 
@@ -281,7 +274,6 @@ export function renderWidgetLines(params: {
 
 	const { finishedLines, runningLines, queuedLine } = buildSections(
 		{ running, queued, finished },
-		activityMap,
 		registry,
 		spinnerFrame,
 		theme,

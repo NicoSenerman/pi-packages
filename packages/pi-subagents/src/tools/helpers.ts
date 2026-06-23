@@ -1,6 +1,5 @@
 import type { AgentConfigLookup } from "#src/config/agent-types";
 import { getLifetimeTotal, type LifetimeUsage } from "#src/lifecycle/usage";
-import { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
 import { type AgentDetails, formatTokens } from "#src/ui/display";
 
 /** Parenthetical status note for completed agent result text. */
@@ -28,16 +27,18 @@ export function buildDetails(
     error?: string;
     id?: string;
     lifetimeUsage: LifetimeUsage;
+    /** Live-activity counters — exposed as getters on Subagent (Phase 18 Step 2). */
+    turnCount?: number;
+    maxTurns?: number;
   },
-  activity?: AgentActivityTracker,
   overrides?: Partial<AgentDetails>,
 ): AgentDetails {
   return {
     ...base,
     toolUses: record.toolUses,
     tokens: formatLifetimeTokens(record),
-    turnCount: activity?.turnCount,
-    maxTurns: activity?.maxTurns,
+    turnCount: record.turnCount,
+    maxTurns: record.maxTurns,
     durationMs: (record.completedAt ?? Date.now()) - record.startedAt,
     status: record.status as AgentDetails["status"],
     agentId: record.id,
@@ -71,8 +72,9 @@ export interface TypeListRegistry extends AgentConfigLookup {
  * Extracted from index.ts so it can be called inside createAgentTool.
  */
 export function buildTypeListText(registry: TypeListRegistry, agentDir: string): string {
-  const defaultNames = registry.getDefaultAgentNames();
-  const userNames = registry.getUserAgentNames();
+  const isEnabled = (name: string) => registry.resolveAgentConfig(name).enabled !== false;
+  const defaultNames = registry.getDefaultAgentNames().filter(isEnabled);
+  const userNames = registry.getUserAgentNames().filter(isEnabled);
 
   const defaultDescs = defaultNames.map((name) => {
     const cfg = registry.resolveAgentConfig(name);

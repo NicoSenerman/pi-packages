@@ -30,12 +30,30 @@ function createSession(finalText: string) {
       tokens: { input: 100, output: 50, cacheWrite: 10 },
       contextUsage: { percent: 42 },
     })),
+    getToolDefinition: vi.fn((_name: string): unknown => undefined),
   };
   return { session, listeners };
 }
 
 function emitTurnEnd(listeners: Array<(e: any) => void>) {
   for (const l of listeners) l({ type: "turn_end" });
+}
+
+/**
+ * Program session.prompt to emit `turns` turn_end events, then settle the run
+ * with a final assistant message. The turn count is the meaningful input that
+ * drives the steer/abort boundary each turn-limit test asserts on.
+ */
+function programTurns(
+  session: ReturnType<typeof createSession>["session"],
+  listeners: ReturnType<typeof createSession>["listeners"],
+  turns: number,
+  finalText = "done",
+) {
+  session.prompt = vi.fn(async () => {
+    for (let i = 0; i < turns; i++) emitTurnEnd(listeners);
+    session.messages.push({ role: "assistant", content: [{ type: "text", text: finalText }] });
+  });
 }
 
 /** Build a SubagentSession around a session stub with default meta. */
@@ -119,12 +137,7 @@ describe("SubagentSession — runTurnLoop response capture", () => {
 describe("SubagentSession — runTurnLoop turn limits", () => {
   it("steers at the soft limit and aborts after the grace window", async () => {
     const { session, listeners } = createSession("done");
-    session.prompt = vi.fn(async () => {
-      emitTurnEnd(listeners); // turn 1
-      emitTurnEnd(listeners); // turn 2 → steer (maxTurns=2)
-      emitTurnEnd(listeners); // turn 3 → abort (maxTurns+grace=3)
-      session.messages.push({ role: "assistant", content: [{ type: "text", text: "done" }] });
-    });
+    programTurns(session, listeners, 3);
     const { sub } = makeSubagentSession(session);
     const result = await sub.runTurnLoop("go", { maxTurns: 2, graceTurns: 1 });
     expect(session.steer).toHaveBeenCalledWith(expect.stringContaining("turn limit"));
@@ -135,12 +148,7 @@ describe("SubagentSession — runTurnLoop turn limits", () => {
 
   it("graceTurns extends the window so a finishing agent is not aborted", async () => {
     const { session, listeners } = createSession("done");
-    session.prompt = vi.fn(async () => {
-      emitTurnEnd(listeners); // turn 1 → steer (maxTurns=1)
-      emitTurnEnd(listeners); // turn 2 → grace
-      emitTurnEnd(listeners); // turn 3 → grace (< 1+3=4)
-      session.messages.push({ role: "assistant", content: [{ type: "text", text: "done" }] });
-    });
+    programTurns(session, listeners, 3);
     const { sub } = makeSubagentSession(session);
     const result = await sub.runTurnLoop("go", { maxTurns: 1, graceTurns: 3 });
     expect(result.steered).toBe(true);
@@ -150,11 +158,7 @@ describe("SubagentSession — runTurnLoop turn limits", () => {
 
   it("per-call maxTurns takes precedence over agentMaxTurns and defaultMaxTurns", async () => {
     const { session, listeners } = createSession("done");
-    session.prompt = vi.fn(async () => {
-      emitTurnEnd(listeners); // turn 1
-      emitTurnEnd(listeners); // turn 2 (under maxTurns=3)
-      session.messages.push({ role: "assistant", content: [{ type: "text", text: "done" }] });
-    });
+    programTurns(session, listeners, 2);
     const { sub } = makeSubagentSession(session, { agentMaxTurns: 1 });
     await sub.runTurnLoop("go", { maxTurns: 3, defaultMaxTurns: 1, graceTurns: 1 });
     expect(session.steer).not.toHaveBeenCalled();
@@ -163,10 +167,7 @@ describe("SubagentSession — runTurnLoop turn limits", () => {
 
   it("falls back to agentMaxTurns when no per-call maxTurns is set", async () => {
     const { session, listeners } = createSession("done");
-    session.prompt = vi.fn(async () => {
-      emitTurnEnd(listeners); // turn 1 → steer (agentMaxTurns=1)
-      session.messages.push({ role: "assistant", content: [{ type: "text", text: "done" }] });
-    });
+    programTurns(session, listeners, 1);
     const { sub } = makeSubagentSession(session, { agentMaxTurns: 1 });
     const result = await sub.runTurnLoop("go", { defaultMaxTurns: 9 });
     expect(session.steer).toHaveBeenCalledWith(expect.stringContaining("turn limit"));
@@ -175,10 +176,7 @@ describe("SubagentSession — runTurnLoop turn limits", () => {
 
   it("falls back to defaultMaxTurns when neither per-call nor agentMaxTurns is set", async () => {
     const { session, listeners } = createSession("done");
-    session.prompt = vi.fn(async () => {
-      emitTurnEnd(listeners); // turn 1 → steer (defaultMaxTurns=1)
-      session.messages.push({ role: "assistant", content: [{ type: "text", text: "done" }] });
-    });
+    programTurns(session, listeners, 1);
     const { sub } = makeSubagentSession(session);
     const result = await sub.runTurnLoop("go", { defaultMaxTurns: 1, graceTurns: 5 });
     expect(session.steer).toHaveBeenCalledWith(expect.stringContaining("turn limit"));
@@ -321,6 +319,22 @@ describe("SubagentSession — delegate methods", () => {
     session.messages.push({ role: "user", content: "hi" });
     const { sub } = makeSubagentSession(session);
     expect(sub.messages).toBe(session.messages);
+  });
+
+  it("agentMessages returns the underlying session messages typed", () => {
+    const { session } = createSession("X");
+    session.messages.push({ role: "user", content: "hi" });
+    const { sub } = makeSubagentSession(session);
+    expect(sub.agentMessages).toBe(session.messages);
+  });
+
+  it("getToolDefinition delegates to the underlying session", () => {
+    const { session } = createSession("X");
+    const def = { name: "read" };
+    session.getToolDefinition = vi.fn(() => def);
+    const { sub } = makeSubagentSession(session);
+    expect(sub.getToolDefinition("read")).toBe(def);
+    expect(session.getToolDefinition).toHaveBeenCalledWith("read");
   });
 });
 

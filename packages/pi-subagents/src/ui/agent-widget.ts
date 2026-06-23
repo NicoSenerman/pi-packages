@@ -7,10 +7,11 @@
  */
 
 import { AgentTypeRegistry } from "#src/config/agent-types";
-import type { SubagentManager } from "#src/lifecycle/subagent-manager";
-import type { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
+import type { Subagent } from "#src/lifecycle/subagent";
+import type { SubagentManager, SubagentManagerObserver } from "#src/lifecycle/subagent-manager";
+import type { CompactionInfo } from "#src/types";
 import { ERROR_STATUSES, type Theme } from "#src/ui/display";
-import { renderWidgetLines } from "#src/ui/widget-renderer";
+import { renderWidgetLines, type WidgetAgent } from "#src/ui/widget-renderer";
 
 // ---- Types ----
 
@@ -61,7 +62,7 @@ export type UICtx = {
 
 // ---- Widget manager ----
 
-export class AgentWidget {
+export class AgentWidget implements SubagentManagerObserver {
   private uiCtx: UICtx | undefined;
   private widgetFrame = 0;
   private widgetInterval: ReturnType<typeof setInterval> | undefined;
@@ -79,12 +80,10 @@ export class AgentWidget {
 
   constructor(
     private manager: SubagentManager,
-    private agentActivity: Map<string, AgentActivityTracker>,
     private registry: AgentTypeRegistry,
   ) {}
 
   /** Set the UI context (grabbed from first tool execution). */
-  // fallow-ignore-next-line unused-class-member
   setUICtx(ctx: UICtx) {
     if (ctx !== this.uiCtx) {
       // UICtx changed — the widget registered on the old context is gone.
@@ -100,7 +99,6 @@ export class AgentWidget {
    * Called on each new turn (tool_execution_start).
    * Ages finished agents and clears those that have lingered long enough.
    */
-  // fallow-ignore-next-line unused-class-member
   onTurnStart() {
     // Age all finished agents
     for (const [id, age] of this.finishedTurnAge) {
@@ -110,9 +108,36 @@ export class AgentWidget {
     this.update();
   }
 
+  // ---- SubagentManagerObserver: react to lifecycle, self-drive the timer ----
+
+  /** A subagent started running — ensure the update loop is live and render. */
+  onSubagentStarted(_record: Subagent) {
+    this.startLoop();
+  }
+
+  /** A background subagent was created (queued) — ensure the loop is live and render. */
+  onSubagentCreated(_record: Subagent) {
+    this.startLoop();
+  }
+
+  /** A subagent completed — render so the finished state is seeded and shown. */
+  onSubagentCompleted(_record: Subagent) {
+    this.update();
+  }
+
+  /** A subagent's session compacted — render to refresh the compaction count. */
+  onSubagentCompacted(_record: Subagent, _info: CompactionInfo) {
+    this.update();
+  }
+
+  /** Start the update timer (if not already running) and render immediately. */
+  private startLoop() {
+    this.ensureTimer();
+    this.update();
+  }
+
   /** Ensure the widget update timer is running. */
-  // fallow-ignore-next-line unused-class-member
-  ensureTimer() {
+  private ensureTimer() {
     this.widgetInterval ??= setInterval(() => this.update(), 80);
   }
 
@@ -123,19 +148,41 @@ export class AgentWidget {
     return age < maxAge;
   }
 
-  /** Record an agent as finished (call when agent completes). */
-  // fallow-ignore-next-line unused-class-member
-  markFinished(agentId: string) {
-    if (!this.finishedTurnAge.has(agentId)) {
-      this.finishedTurnAge.set(agentId, 0);
-    }
+  /**
+   * Background agents only — the widget's sole audience (ADR-0004 Decision A).
+   * Foreground runs are rendered by the `subagent` tool's inline `onUpdate` stream,
+   * so funneling both `listAgents()` call sites through this accessor applies the
+   * background predicate exactly once at the source.
+   */
+  private listBackgroundAgents(): Subagent[] {
+    return this.manager.listAgents().filter(record => record.invocation?.runInBackground === true);
+  }
+
+  /** Project a live Subagent record onto a pure-data WidgetAgent snapshot. */
+  private toWidgetAgent(record: Subagent): WidgetAgent {
+    return {
+      id: record.id,
+      type: record.type,
+      status: record.status,
+      description: record.description,
+      toolUses: record.toolUses,
+      startedAt: record.startedAt,
+      completedAt: record.completedAt,
+      error: record.error,
+      lifetimeUsage: record.lifetimeUsage,
+      compactionCount: record.compactionCount,
+      turnCount: record.turnCount,
+      maxTurns: record.maxTurns,
+      activeTools: record.activeTools,
+      responseText: record.responseText,
+      contextPercent: record.getContextPercent(),
+    };
   }
 
   /** Delegate rendering to the pure widget-renderer module. */
   private renderWidget(tui: any, theme: Theme): string[] {
     return renderWidgetLines({
-      agents: this.manager.listAgents(),
-      activityMap: this.agentActivity,
+      agents: this.listBackgroundAgents().map(r => this.toWidgetAgent(r)),
       registry: this.registry,
       spinnerFrame: this.widgetFrame,
       terminalWidth: tui.terminal.columns,
@@ -146,10 +193,10 @@ export class AgentWidget {
 
   /**
    * Unregister the widget, clear the status bar, stop the interval timer, and
-   * purge stale `finishedTurnAge` entries for agents no longer in `allAgents`.
+   * purge stale `finishedTurnAge` entries for agents no longer in `backgroundAgents`.
    * Called only from `update`'s idle path — not from `dispose`.
    */
-  private clearWidget(allAgents: readonly AgentSummary[]): void {
+  private clearWidget(backgroundAgents: readonly AgentSummary[]): void {
     if (this.widgetRegistered) {
       this.uiCtx!.setWidget("agents", undefined);
       this.widgetRegistered = false;
@@ -161,7 +208,7 @@ export class AgentWidget {
     }
     if (this.widgetInterval) { clearInterval(this.widgetInterval); this.widgetInterval = undefined; }
     for (const [id] of this.finishedTurnAge) {
-      if (!allAgents.some(a => a.id === id)) this.finishedTurnAge.delete(id);
+      if (!backgroundAgents.some(a => a.id === id)) this.finishedTurnAge.delete(id);
     }
   }
 
@@ -184,15 +231,31 @@ export class AgentWidget {
     }
   }
 
+  /**
+   * Seed linger tracking for any newly-observed finished agent.
+   * The widget owns detection of completions it observes via `listAgents()`,
+   * so no external bookkeeping call is needed.
+   * Idempotent — only seeds when an entry is absent, so repeated updates within
+   * a turn neither reset nor advance the age.
+   */
+  private seedFinishedAgents(agents: readonly AgentSummary[]): void {
+    for (const a of agents) {
+      if (a.completedAt && !this.finishedTurnAge.has(a.id)) {
+        this.finishedTurnAge.set(a.id, 0);
+      }
+    }
+  }
+
   /** Force an immediate widget update. */
   update() {
     if (!this.uiCtx) return;
 
-    const allAgents = this.manager.listAgents();
-    const state = assembleWidgetState(allAgents, (id, status) => this.shouldShowFinished(id, status));
+    const backgroundAgents = this.listBackgroundAgents();
+    this.seedFinishedAgents(backgroundAgents);
+    const state = assembleWidgetState(backgroundAgents, (id, status) => this.shouldShowFinished(id, status));
 
     if (!state.hasActive && !state.hasFinished) {
-      this.clearWidget(allAgents);
+      this.clearWidget(backgroundAgents);
       return;
     }
 

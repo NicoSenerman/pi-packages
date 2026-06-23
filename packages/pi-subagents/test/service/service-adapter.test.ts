@@ -130,6 +130,25 @@ function makeRuntimeStub(override: Partial<ServiceRuntimeLike> = {}): ServiceRun
   };
 }
 
+/**
+ * Stub `SubagentManagerLike` for adapter tests.
+ *
+ * Return type is unannotated so callers retain each stub's `Mock<...>` methods
+ * (`mockReturnValue`, `mockImplementation`); configure per-test behavior on the
+ * returned object's fields.
+ */
+function createManagerStub() {
+  return {
+    spawn: vi.fn<SubagentManagerLike["spawn"]>(() => "spawned-id"),
+    getRecord: vi.fn<SubagentManagerLike["getRecord"]>(),
+    listAgents: vi.fn<SubagentManagerLike["listAgents"]>(() => []),
+    abort: vi.fn<SubagentManagerLike["abort"]>(() => true),
+    waitForAll: vi.fn<SubagentManagerLike["waitForAll"]>(async () => {}),
+    hasRunning: vi.fn<SubagentManagerLike["hasRunning"]>(() => false),
+    registerWorkspaceProvider: vi.fn<SubagentManagerLike["registerWorkspaceProvider"]>(() => () => {}),
+  };
+}
+
 describe("SubagentsServiceAdapter — getRecord and listAgents", () => {
   const recordA = createTestSubagent({
     id: "a-1",
@@ -150,20 +169,10 @@ describe("SubagentsServiceAdapter — getRecord and listAgents", () => {
     lifetimeUsage: { input: 5, output: 10, cacheWrite: 0 },
   });
 
-  function createMockManager(records: Subagent[]) {
-    return {
-      spawn: vi.fn(() => "id"),
-      getRecord: vi.fn((id: string) => records.find((r) => r.id === id)),
-      listAgents: vi.fn(() => [...records].sort((a, b) => b.startedAt - a.startedAt)),
-      abort: vi.fn(() => true),
-      waitForAll: vi.fn(async () => {}),
-      hasRunning: vi.fn(() => false),
-      registerWorkspaceProvider: vi.fn(() => () => {}),
-    };
-  }
-
   function createService(records: Subagent[]): SubagentsService {
-    const manager = createMockManager(records);
+    const manager = createManagerStub();
+    manager.getRecord.mockImplementation((id) => records.find((r) => r.id === id));
+    manager.listAgents.mockImplementation(() => [...records].sort((a, b) => b.startedAt - a.startedAt));
     return new SubagentsServiceAdapter(
       manager,
       () => ({ id: "test" }),
@@ -198,21 +207,9 @@ describe("SubagentsServiceAdapter — getRecord and listAgents", () => {
 });
 
 describe("SubagentsServiceAdapter — spawn", () => {
-  function defaultManager(): SubagentManagerLike {
-    return {
-      spawn: vi.fn(() => "spawned-id"),
-      getRecord: vi.fn(),
-      listAgents: vi.fn(() => []),
-      abort: vi.fn(() => true),
-      waitForAll: vi.fn(async () => {}),
-      hasRunning: vi.fn(() => false),
-      registerWorkspaceProvider: vi.fn(() => () => {}),
-    };
-  }
-
   it("throws when currentCtx is undefined (no active session)", () => {
     const svc = new SubagentsServiceAdapter(
-      defaultManager(),
+      createManagerStub(),
       vi.fn(),
       makeRuntimeStub({ currentCtx: undefined }),
     );
@@ -225,7 +222,7 @@ describe("SubagentsServiceAdapter — spawn", () => {
     const resolveModel = vi.fn(() => ({ id: "claude-sonnet", provider: "anthropic" }));
     const registry = { find: () => null, getAll: () => [] };
     const svc = new SubagentsServiceAdapter(
-      defaultManager(),
+      createManagerStub(),
       resolveModel,
       makeRuntimeStub({ currentCtx: { ...makeStubCtx(), modelRegistry: registry } }),
     );
@@ -235,7 +232,7 @@ describe("SubagentsServiceAdapter — spawn", () => {
 
   it("throws on model resolution failure", () => {
     const svc = new SubagentsServiceAdapter(
-      defaultManager(),
+      createManagerStub(),
       () => 'Model not found: "bad-model".\n\nAvailable models:\n  anthropic/claude-sonnet',
       makeRuntimeStub(),
     );
@@ -246,7 +243,7 @@ describe("SubagentsServiceAdapter — spawn", () => {
 
   it("delegates to manager.spawn with resolved model", () => {
     const resolvedModel = { id: "claude-sonnet", provider: "anthropic" };
-    const mgr = defaultManager();
+    const mgr = createManagerStub();
     const svc = new SubagentsServiceAdapter(
       mgr,
       () => resolvedModel,
@@ -267,7 +264,7 @@ describe("SubagentsServiceAdapter — spawn", () => {
   });
 
   it("spawns as foreground when options.foreground is true", () => {
-    const mgr = defaultManager();
+    const mgr = createManagerStub();
     const svc = new SubagentsServiceAdapter(
       mgr,
       vi.fn(),
@@ -283,7 +280,7 @@ describe("SubagentsServiceAdapter — spawn", () => {
   });
 
   it("uses truncated prompt as default description", () => {
-    const mgr = defaultManager();
+    const mgr = createManagerStub();
     const svc = new SubagentsServiceAdapter(mgr, vi.fn(), makeRuntimeStub());
     const longPrompt = "x".repeat(200);
     svc.spawn("Explore", longPrompt);
@@ -296,7 +293,7 @@ describe("SubagentsServiceAdapter — spawn", () => {
   });
 
   it("uses provided description over default", () => {
-    const mgr = defaultManager();
+    const mgr = createManagerStub();
     const svc = new SubagentsServiceAdapter(mgr, vi.fn(), makeRuntimeStub());
     svc.spawn("Explore", "long prompt here", { description: "short desc" });
     expect(mgr.spawn).toHaveBeenCalledWith(
@@ -309,32 +306,20 @@ describe("SubagentsServiceAdapter — spawn", () => {
 
   it("does not call resolveModel when no model option is provided", () => {
     const resolveModel = vi.fn();
-    const svc = new SubagentsServiceAdapter(defaultManager(), resolveModel, makeRuntimeStub());
+    const svc = new SubagentsServiceAdapter(createManagerStub(), resolveModel, makeRuntimeStub());
     svc.spawn("Explore", "quick check");
     expect(resolveModel).not.toHaveBeenCalled();
   });
 });
 
 describe("SubagentsServiceAdapter — steer, abort, waitForAll, hasRunning", () => {
-  function createTestManager() {
-    return {
-      spawn: vi.fn(() => "id"),
-      getRecord: vi.fn<SubagentManagerLike["getRecord"]>(),
-      listAgents: vi.fn(() => [] as Subagent[]),
-      abort: vi.fn<SubagentManagerLike["abort"]>(() => true),
-      waitForAll: vi.fn(async () => {}),
-      hasRunning: vi.fn(() => true),
-      registerWorkspaceProvider: vi.fn(() => () => {}),
-    };
-  }
-
-  function createSvc(mgr: ReturnType<typeof createTestManager>) {
+  function createSvc(mgr: ReturnType<typeof createManagerStub>) {
     return new SubagentsServiceAdapter(mgr, vi.fn(), makeRuntimeStub());
   }
 
   describe("abort", () => {
     it("delegates to manager.abort and returns its result", () => {
-      const mgr = createTestManager();
+      const mgr = createManagerStub();
       const svc = createSvc(mgr);
       const result = svc.abort("agent-1");
       expect(mgr.abort).toHaveBeenCalledWith("agent-1");
@@ -342,7 +327,7 @@ describe("SubagentsServiceAdapter — steer, abort, waitForAll, hasRunning", () 
     });
 
     it("returns false when manager returns false", () => {
-      const mgr = createTestManager();
+      const mgr = createManagerStub();
       mgr.abort.mockReturnValue(false);
       const svc = createSvc(mgr);
       expect(svc.abort("unknown")).toBe(false);
@@ -351,7 +336,7 @@ describe("SubagentsServiceAdapter — steer, abort, waitForAll, hasRunning", () 
 
   describe("waitForAll", () => {
     it("delegates to manager.waitForAll", async () => {
-      const mgr = createTestManager();
+      const mgr = createManagerStub();
       const svc = createSvc(mgr);
       await svc.waitForAll();
       expect(mgr.waitForAll).toHaveBeenCalled();
@@ -360,7 +345,8 @@ describe("SubagentsServiceAdapter — steer, abort, waitForAll, hasRunning", () 
 
   describe("hasRunning", () => {
     it("delegates to manager.hasRunning", () => {
-      const mgr = createTestManager();
+      const mgr = createManagerStub();
+      mgr.hasRunning.mockReturnValue(true);
       const svc = createSvc(mgr);
       expect(svc.hasRunning()).toBe(true);
       expect(mgr.hasRunning).toHaveBeenCalled();
@@ -369,7 +355,7 @@ describe("SubagentsServiceAdapter — steer, abort, waitForAll, hasRunning", () 
 
   describe("steer", () => {
     it("returns false for non-running agent", async () => {
-      const mgr = createTestManager();
+      const mgr = createManagerStub();
       mgr.getRecord.mockReturnValue({
         id: "a-1",
         status: "completed",
@@ -379,7 +365,7 @@ describe("SubagentsServiceAdapter — steer, abort, waitForAll, hasRunning", () 
     });
 
     it("returns false for unknown agent", async () => {
-      const mgr = createTestManager();
+      const mgr = createManagerStub();
       mgr.getRecord.mockReturnValue(undefined);
       const svc = createSvc(mgr);
       expect(await svc.steer("unknown", "hurry")).toBe(false);
@@ -387,7 +373,7 @@ describe("SubagentsServiceAdapter — steer, abort, waitForAll, hasRunning", () 
 
     it("queues message and returns true when session not ready", async () => {
       const record = createTestSubagent({ id: "a-1", status: "running" });
-      const mgr = createTestManager();
+      const mgr = createManagerStub();
       mgr.getRecord.mockReturnValue(record);
       const svc = createSvc(mgr);
       expect(await svc.steer("a-1", "do this")).toBe(true);
@@ -398,7 +384,7 @@ describe("SubagentsServiceAdapter — steer, abort, waitForAll, hasRunning", () 
       const mockSteer = vi.fn(async () => {});
       const record = createTestSubagent({ id: "a-1", status: "running" });
       record.subagentSession = toSubagentSession(createSubagentSessionStub(createMockSession({ steer: mockSteer })));
-      const mgr = createTestManager();
+      const mgr = createManagerStub();
       mgr.getRecord.mockReturnValue(record);
       const svc = createSvc(mgr);
       expect(await svc.steer("a-1", "focus on tests")).toBe(true);
@@ -410,15 +396,8 @@ describe("SubagentsServiceAdapter — steer, abort, waitForAll, hasRunning", () 
 describe("SubagentsServiceAdapter — registerWorkspaceProvider", () => {
   it("delegates to manager.registerWorkspaceProvider and returns its disposer", () => {
     const disposer = vi.fn();
-    const mgr: SubagentManagerLike = {
-      spawn: vi.fn(() => "id"),
-      getRecord: vi.fn(),
-      listAgents: vi.fn(() => []),
-      abort: vi.fn(() => true),
-      waitForAll: vi.fn(async () => {}),
-      hasRunning: vi.fn(() => false),
-      registerWorkspaceProvider: vi.fn(() => disposer),
-    };
+    const mgr = createManagerStub();
+    mgr.registerWorkspaceProvider.mockReturnValue(disposer);
     const svc = new SubagentsServiceAdapter(mgr, vi.fn(), makeRuntimeStub());
     const provider: WorkspaceProvider = { prepare: vi.fn(async () => undefined) };
 

@@ -14,11 +14,30 @@ import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { Subagent, type SubagentLifecycleObserver } from "#src/lifecycle/subagent";
 import type { SubagentSession } from "#src/lifecycle/subagent-session";
-import { SubagentState } from "#src/lifecycle/subagent-state";
+import { SubagentState, type SubagentStatus } from "#src/lifecycle/subagent-state";
 import type { WorkspaceProvider } from "#src/lifecycle/workspace";
 
 import type { RunConfig } from "#src/runtime";
 import type { AgentInvocation, CompactionInfo, ParentSessionInfo, SubagentType, ThinkingLevel } from "#src/types";
+
+/**
+ * A lightweight snapshot of a subagent evicted by the 10-minute cleanup sweep.
+ *
+ * The sweep frees the heavy in-memory session (its message history included);
+ * this descriptor retains only the fields the session navigator needs to label
+ * the agent in the picker, plus the persisted `outputFile` to source its
+ * transcript from disk. Carries no messages, so memory stays bounded.
+ */
+export interface EvictedSubagent {
+  readonly id: string;
+  readonly type: SubagentType;
+  readonly description: string;
+  readonly status: SubagentStatus;
+  readonly startedAt: number;
+  readonly completedAt: number | undefined;
+  readonly toolUses: number;
+  readonly outputFile: string;
+}
 
 /** Observer interface for agent lifecycle notifications. */
 export interface SubagentManagerObserver {
@@ -65,6 +84,8 @@ export interface AgentSpawnConfig {
 
 export class SubagentManager {
   private agents = new Map<string, Subagent>();
+  /** Descriptors of agents removed by the cleanup sweep, keyed by id — navigable from disk. */
+  private readonly evicted = new Map<string, EvictedSubagent>();
   private cleanupInterval: ReturnType<typeof setInterval>;
   private readonly observer?: SubagentManagerObserver;
   private readonly createSubagentSession: (params: CreateSubagentSessionParams) => Promise<SubagentSession>;
@@ -220,6 +241,11 @@ export class SubagentManager {
     );
   }
 
+  /** Descriptors of agents evicted by the cleanup sweep, most recent first. */
+  listEvicted(): EvictedSubagent[] {
+    return [...this.evicted.values()].sort((a, b) => b.startedAt - a.startedAt);
+  }
+
   abort(id: string): boolean {
     const record = this.agents.get(id);
     if (!record) return false;
@@ -245,6 +271,9 @@ export class SubagentManager {
     for (const [id, record] of this.agents) {
       if (record.status === "running" || record.status === "queued") continue;
       if ((record.completedAt ?? 0) >= cutoff) continue;
+      // Retain a navigable descriptor before freeing the heavy session. Only an
+      // agent with a persisted file can be sourced from disk after eviction.
+      if (record.outputFile) this.evicted.set(id, toEvictedSubagent(record, record.outputFile));
       this.removeRecord(id, record);
     }
   }
@@ -258,6 +287,8 @@ export class SubagentManager {
       if (record.status === "running" || record.status === "queued") continue;
       this.removeRecord(id, record);
     }
+    // Evicted descriptors belong to the session that swept them — a new session starts empty.
+    this.evicted.clear();
   }
 
   /** Whether any agents are still running or queued. */
@@ -314,5 +345,20 @@ export class SubagentManager {
       record.disposeSession();
     }
     this.agents.clear();
+    this.evicted.clear();
   }
+}
+
+/** Capture an evicted agent's navigable fields from its record. */
+function toEvictedSubagent(record: Subagent, outputFile: string): EvictedSubagent {
+  return {
+    id: record.id,
+    type: record.type,
+    description: record.description,
+    status: record.status,
+    startedAt: record.startedAt,
+    completedAt: record.completedAt,
+    toolUses: record.toolUses,
+    outputFile,
+  };
 }

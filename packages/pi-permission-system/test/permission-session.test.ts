@@ -103,23 +103,6 @@ describe("PermissionSession", () => {
       expect(pm.configureForCwd).toHaveBeenCalledWith("/new/project");
     });
 
-    it("clears cache keys", () => {
-      const { session } = createSession();
-      // Prime both gates with a key
-      session.activeToolsGate.runIfChanged("key-1", () => {});
-      session.promptStateGate.runIfChanged("key-2", () => {});
-
-      session.resetForNewSession(makeCtx());
-
-      // After reset, the same keys should run the effect again
-      const toolsEffect = vi.fn();
-      const promptEffect = vi.fn();
-      session.activeToolsGate.runIfChanged("key-1", toolsEffect);
-      session.promptStateGate.runIfChanged("key-2", promptEffect);
-      expect(toolsEffect).toHaveBeenCalledOnce();
-      expect(promptEffect).toHaveBeenCalledOnce();
-    });
-
     it("clears skill entries", () => {
       const { session } = createSession();
       session.setActiveSkillEntries([makeSkillEntry("test")]);
@@ -161,23 +144,6 @@ describe("PermissionSession", () => {
       session.shutdown();
 
       expect(sessionRules.getRuleset()).toEqual([]);
-    });
-
-    it("clears cache keys", () => {
-      const { session } = createSession();
-      // Prime both gates with a key
-      session.activeToolsGate.runIfChanged("k1", () => {});
-      session.promptStateGate.runIfChanged("k2", () => {});
-
-      session.shutdown();
-
-      // After shutdown, the same keys should run the effect again
-      const toolsEffect = vi.fn();
-      const promptEffect = vi.fn();
-      session.activeToolsGate.runIfChanged("k1", toolsEffect);
-      session.promptStateGate.runIfChanged("k2", promptEffect);
-      expect(toolsEffect).toHaveBeenCalledOnce();
-      expect(promptEffect).toHaveBeenCalledOnce();
     });
 
     it("clears skill entries", () => {
@@ -333,22 +299,12 @@ describe("PermissionSession", () => {
       expect(pm.configureForCwd).toHaveBeenCalledWith("/project");
     });
 
-    it("clears caches and skill entries", () => {
+    it("clears skill entries", () => {
       const { session } = createSession();
-      // Prime both gates with a key
-      session.activeToolsGate.runIfChanged("k1", () => {});
-      session.promptStateGate.runIfChanged("k2", () => {});
       session.setActiveSkillEntries([makeSkillEntry("s")]);
 
       session.reload();
 
-      // After reload, the same keys should run the effect again
-      const toolsEffect = vi.fn();
-      const promptEffect = vi.fn();
-      session.activeToolsGate.runIfChanged("k1", toolsEffect);
-      session.promptStateGate.runIfChanged("k2", promptEffect);
-      expect(toolsEffect).toHaveBeenCalledOnce();
-      expect(promptEffect).toHaveBeenCalledOnce();
       expect(session.getActiveSkillEntries()).toEqual([]);
     });
   });

@@ -3,7 +3,7 @@
  */
 
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
-import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import type { AgentSessionEvent, SessionContext as SdkSessionContext } from "@earendil-works/pi-coding-agent";
 import type { ModelRegistry } from "#src/session/model-resolver";
 
 
@@ -11,8 +11,17 @@ export { Subagent } from "#src/lifecycle/subagent";
 export type { AgentSessionEvent, ThinkingLevel };
 
 /**
+ * One message in a child session's history, typed from Pi's `SessionContext`.
+ *
+ * Derived from the barrel-exported `SessionContext` (whose `messages` field is
+ * `AgentMessage[]`) so the package needs no direct dependency on
+ * `@earendil-works/pi-agent-core`, which is not re-exported from the public barrel.
+ */
+export type SessionMessage = SdkSessionContext["messages"][number];
+
+/**
  * Narrow session interface for event subscription.
- * Used by record-observer and ui-observer — only the subscribe method is needed.
+ * Used by record-observer — only the subscribe method is needed.
  */
 export interface SubscribableSession {
   subscribe(fn: (event: AgentSessionEvent) => void): () => void;

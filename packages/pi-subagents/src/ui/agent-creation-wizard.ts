@@ -12,7 +12,7 @@ import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import type { Subagent } from "#src/types";
 import type { AgentFileOps } from "#src/ui/agent-file-ops";
 import { writeAgentFile } from "#src/ui/agent-file-writer";
-import type { MenuUI } from "#src/ui/agent-menu";
+import type { MenuUI } from "#src/ui/menu-ui";
 
 // ---- Deps interface ----
 
@@ -42,6 +42,8 @@ export class AgentCreationWizard {
     private readonly projectAgentsDir: string,
   ) {}
 
+  // Only caller was agent-menu.ts (deleted in #442); this file is removed in #441.
+  // fallow-ignore-next-line unused-class-member
   async showCreateWizard(ui: MenuUI, parentSnapshot: ParentSnapshot): Promise<void> {
     const location = await ui.select("Choose location", [
       "Project (.pi/agents/)",

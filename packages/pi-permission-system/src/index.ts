@@ -4,6 +4,7 @@ import { registerBuiltinToolInputFormatters } from "./builtin-tool-input-formatt
 import { registerPermissionSystemCommand } from "./config-modal";
 import { getGlobalConfigPath } from "./config-paths";
 import { ConfigStore } from "./config-store";
+import { DecisionAudit } from "./decision-audit";
 import { GateDecisionReporter } from "./decision-reporter";
 import { computeExtensionPaths } from "./extension-paths";
 import {
@@ -19,6 +20,7 @@ import {
 import { GateRunner } from "./handlers/gates/runner";
 import { SkillInputGatePipeline } from "./handlers/gates/skill-input-gate-pipeline";
 import { ToolCallGatePipeline } from "./handlers/gates/tool-call-gate-pipeline";
+import { createFailClosedToolCall } from "./handlers/tool-call-boundary";
 import { requestPermissionDecisionFromUi } from "./permission-dialog";
 import { registerPermissionRpcHandlers } from "./permission-event-rpc";
 import { PermissionManager } from "./permission-manager";
@@ -104,32 +106,36 @@ function registerModeCommand(pi: ExtensionAPI, configStore: ConfigStore): void {
     },
   });
 
-  pi.registerShortcut(Key.ctrlAlt("m"), {
-    description: "Cycle yolo/bach/gated mode forward",
-    handler: async (ctx) => {
-      const current = getCurrentMode();
-      const idx = MODE_CYCLE.indexOf(current);
-      const next = MODE_CYCLE[(idx + 1) % MODE_CYCLE.length];
-      setCurrentMode(next, ctx, configStore.current());
+  // registerShortcut is a real Pi API but isn't stubbed in the upstream test
+  // harness (makeFakePi). Guard so absence doesn't crash factory wiring tests.
+  if (typeof pi.registerShortcut === "function") {
+    pi.registerShortcut(Key.ctrlAlt("m"), {
+      description: "Cycle yolo/bach/gated mode forward",
+      handler: async (ctx) => {
+        const current = getCurrentMode();
+        const idx = MODE_CYCLE.indexOf(current);
+        const next = MODE_CYCLE[(idx + 1) % MODE_CYCLE.length];
+        setCurrentMode(next, ctx, configStore.current());
 
-      const label = next.toUpperCase();
-      ctx.ui.notify(`${label} mode`, "info");
-    },
-  });
+        const label = next.toUpperCase();
+        ctx.ui.notify(`${label} mode`, "info");
+      },
+    });
 
-  pi.registerShortcut(Key.ctrlAlt("n"), {
-    description: "Cycle yolo/bach/gated mode backward",
-    handler: async (ctx) => {
-      const current = getCurrentMode();
-      const idx = MODE_CYCLE.indexOf(current);
-      const next =
-        MODE_CYCLE[(idx - 1 + MODE_CYCLE.length) % MODE_CYCLE.length];
-      setCurrentMode(next, ctx, configStore.current());
+    pi.registerShortcut(Key.ctrlAlt("n"), {
+      description: "Cycle yolo/bach/gated mode backward",
+      handler: async (ctx) => {
+        const current = getCurrentMode();
+        const idx = MODE_CYCLE.indexOf(current);
+        const next =
+          MODE_CYCLE[(idx - 1 + MODE_CYCLE.length) % MODE_CYCLE.length];
+        setCurrentMode(next, ctx, configStore.current());
 
-      const label = next.toUpperCase();
-      ctx.ui.notify(`${label} mode`, "info");
-    },
-  });
+        const label = next.toUpperCase();
+        ctx.ui.notify(`${label} mode`, "info");
+      },
+    });
+  }
 }
 
 export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
@@ -262,11 +268,13 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
 
   const resolver = new PermissionResolver(permissionManager, sessionRules);
 
+  const audit = new DecisionAudit();
   const lifecycle = new SessionLifecycleHandler(
     session,
     resolver,
     serviceLifecycle,
     logger,
+    audit,
   );
   const agentPrep = new AgentPrepHandler(session, resolver, toolRegistry);
 
@@ -432,5 +440,13 @@ Subagents use the global default model from ~/.pi/settings.json, NOT your curren
     return undefined;
   });
   pi.on("input", (event, ctx) => gates.handleInput(event, ctx));
-  pi.on("tool_call", (event, ctx) => gates.handleToolCall(event, ctx));
+  pi.on(
+    "tool_call",
+    createFailClosedToolCall(
+      (event, ctx) => gates.handleToolCall(event, ctx),
+      reporter,
+      audit,
+      logger,
+    ),
+  );
 }

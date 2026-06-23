@@ -231,3 +231,106 @@ describe("SubagentState — resetForResume", () => {
 		expect(state.error).toBeUndefined();
 	});
 });
+
+describe("SubagentState — turnCount", () => {
+	it("defaults to 1", () => {
+		const state = new SubagentState();
+		expect(state.turnCount).toBe(1);
+	});
+
+	it("increments by 1 on each incrementTurnCount call", () => {
+		const state = new SubagentState();
+		state.incrementTurnCount();
+		expect(state.turnCount).toBe(2);
+		state.incrementTurnCount();
+		expect(state.turnCount).toBe(3);
+	});
+});
+
+describe("SubagentState — activeTools", () => {
+	it("defaults to an empty map", () => {
+		const state = new SubagentState();
+		expect(state.activeTools.size).toBe(0);
+	});
+
+	it("addActiveTool adds a tool by name", () => {
+		const state = new SubagentState();
+		state.addActiveTool("Read");
+		expect(state.activeTools.size).toBe(1);
+		expect([...state.activeTools.values()]).toContain("Read");
+	});
+
+	it("addActiveTool assigns unique keys for concurrent same-name tools", () => {
+		const state = new SubagentState();
+		state.addActiveTool("Read");
+		state.addActiveTool("Read");
+		expect(state.activeTools.size).toBe(2);
+		expect([...state.activeTools.values()]).toEqual(["Read", "Read"]);
+		const keys = [...state.activeTools.keys()];
+		expect(keys[0]).not.toBe(keys[1]);
+	});
+
+	it("removeActiveTool removes the first matching tool by name", () => {
+		const state = new SubagentState();
+		state.addActiveTool("Read");
+		state.addActiveTool("Write");
+		state.removeActiveTool("Read");
+		expect(state.activeTools.size).toBe(1);
+		expect([...state.activeTools.values()]).toContain("Write");
+		expect([...state.activeTools.values()]).not.toContain("Read");
+	});
+
+	it("removeActiveTool removes only one entry when two same-name tools are active", () => {
+		const state = new SubagentState();
+		state.addActiveTool("Read");
+		state.addActiveTool("Read");
+		state.removeActiveTool("Read");
+		expect(state.activeTools.size).toBe(1);
+		expect([...state.activeTools.values()]).toEqual(["Read"]);
+	});
+
+	it("removeActiveTool is a no-op when the tool is not active", () => {
+		const state = new SubagentState();
+		state.addActiveTool("Read");
+		state.removeActiveTool("Write"); // not present
+		expect(state.activeTools.size).toBe(1);
+	});
+
+	it("activeTools getter returns a ReadonlyMap", () => {
+		const state = new SubagentState();
+		state.addActiveTool("Read");
+		const tools = state.activeTools;
+		// Verify it's a Map (ReadonlyMap is Map at runtime)
+		expect(tools).toBeInstanceOf(Map);
+		expect(tools.size).toBe(1);
+	});
+});
+
+describe("SubagentState — responseText", () => {
+	it("defaults to an empty string", () => {
+		const state = new SubagentState();
+		expect(state.responseText).toBe("");
+	});
+
+	it("appendResponseText concatenates text deltas", () => {
+		const state = new SubagentState();
+		state.appendResponseText("Hello ");
+		state.appendResponseText("world");
+		expect(state.responseText).toBe("Hello world");
+	});
+
+	it("resetResponseText clears accumulated text", () => {
+		const state = new SubagentState();
+		state.appendResponseText("previous text");
+		state.resetResponseText();
+		expect(state.responseText).toBe("");
+	});
+
+	it("appendResponseText works after a reset", () => {
+		const state = new SubagentState();
+		state.appendResponseText("first message");
+		state.resetResponseText();
+		state.appendResponseText("second message");
+		expect(state.responseText).toBe("second message");
+	});
+});

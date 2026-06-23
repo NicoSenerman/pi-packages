@@ -1,4 +1,4 @@
-import { getToolInputPath } from "#src/path-utils";
+import { getToolInputPath, normalizePathForComparison } from "#src/path-utils";
 import type { ScopedPermissionResolver } from "#src/permission-resolver";
 import { SessionApproval } from "#src/session-approval";
 import { deriveApprovalPattern } from "#src/session-rules";
@@ -35,7 +35,12 @@ export function describePathGate(
   // "path" key should not trigger path-level prompts (#58).
   if (check.matchedPattern === undefined) return null;
 
-  const pattern = deriveApprovalPattern(filePath);
+  // Resolve to the canonical (cwd-anchored, absolute) path so the approval
+  // pattern matches the policy values a later call produces.
+  const approvalPath = tcc.cwd
+    ? normalizePathForComparison(filePath, tcc.cwd)
+    : filePath;
+  const pattern = deriveApprovalPattern(approvalPath);
 
   const descriptor: GateDescriptor = {
     surface: "path",

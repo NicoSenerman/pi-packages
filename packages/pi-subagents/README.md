@@ -2,15 +2,12 @@
 
 [![npm version](https://img.shields.io/npm/v/@gotgenes/pi-subagents?style=flat&logo=npm&logoColor=white)](https://www.npmjs.com/package/@gotgenes/pi-subagents) [![CI](https://img.shields.io/github/actions/workflow/status/gotgenes/pi-packages/ci.yml?style=flat&logo=github&label=CI)](https://github.com/gotgenes/pi-packages/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat)](https://opensource.org/licenses/MIT) [![TypeScript](https://img.shields.io/badge/TypeScript-6.x-3178C6?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![pnpm](https://img.shields.io/badge/pnpm-%3E%3D11-F69220?style=flat&logo=pnpm&logoColor=white)](https://pnpm.io/) [![Pi Package](https://img.shields.io/badge/Pi-Package-6366F1?style=flat)](https://pi.mariozechner.at/)
 
-A [pi](https://pi.dev) extension that brings **Claude Code-style autonomous sub-agents** to pi.
+A [pi](https://pi.dev) extension that gives pi **a focused, in-process sub-agent core** — autonomous agents that run inside the same pi runtime (no spawned subprocesses), plus a typed API and lifecycle events other extensions build on.
 Spawn specialized agents that run in isolated sessions — each with its own tools, system prompt, model, and thinking level.
 Run them in foreground or background, steer them mid-run, resume completed sessions, and define your own custom agent types.
 
-> **Fork notice:** This package is a friendly fork of [`tintinweb/pi-subagents`](https://github.com/tintinweb/pi-subagents), published to npm as `@gotgenes/pi-subagents`.
-> It carries a small number of patches on top of upstream — peer-dep migration to `@earendil-works/pi-*`, a post-`bindExtensions` active-tool re-filter, and an `<active_agent>` system-prompt tag for permission resolution.
-> See [Deviations from upstream](#deviations-from-upstream) at the bottom of this README for details.
->
-> **Status:** Early release.
+> Originally forked from [`tintinweb/pi-subagents`](https://github.com/tintinweb/pi-subagents) by [@tintinweb](https://github.com/tintinweb), now an independently maintained hard fork.
+> See [Comparison with upstream](./docs/comparison-with-upstream.md) for a feature-by-feature comparison and guidance on which to choose.
 
 <img width="600" alt="pi-subagents screenshot" src="https://github.com/gotgenes/pi-subagents/raw/main/media/screenshot.png" />
 
@@ -18,7 +15,7 @@ Run them in foreground or background, steer them mid-run, resume completed sessi
 
 ## Features
 
-- **Claude Code look & feel** — same tool names, calling conventions, and UI patterns (`subagent`, `get_subagent_result`, `steer_subagent`) — feels native
+- **In-process & native** — agents run inside the same pi runtime (no spawned subprocesses), sharing tool names, calling conventions, and UI patterns (`subagent`, `get_subagent_result`, `steer_subagent`) — feels native
 - **Parallel background agents** — spawn multiple agents that run concurrently with automatic queuing (configurable concurrency limit, default 4) and individual completion notifications
 - **Live widget UI** — persistent above-editor widget with animated spinners, live tool activity, token counts, and colored status icons
 - **Conversation viewer** — select any agent in `/agents` to open a live-scrolling overlay of its full conversation (auto-follows new content, scroll up to pause)
@@ -30,9 +27,6 @@ Run them in foreground or background, steer them mid-run, resume completed sessi
   Unknown types fall back to general-purpose with a note
 - **Fuzzy model selection** — specify models by name (`"haiku"`, `"sonnet"`) instead of full IDs, with automatic filtering to only available/configured models
 - **Context inheritance** — optionally fork the parent conversation into a sub-agent so it knows what's been discussed
-- **Persistent agent memory** — three scopes (project, local, user) with automatic read-only fallback for agents without write tools
-- **Git worktree isolation** — run agents in isolated repo copies; changes auto-committed to branches on completion
-- **Skill preloading** — inject named skills into agent system prompts, discovered from `.pi/skills/`, `.agents/skills/`, and global locations (Pi-standard `<name>/SKILL.md` directory layout supported)
 - **Styled completion notifications** — background agent results render as themed, compact notification boxes (icon, stats, result preview) instead of raw XML.
   Expandable to show full output
 - **Event bus** — lifecycle events (`subagents:created`, `started`, `completed`, `failed`, `steered`, `compacted`) emitted via `pi.events`, enabling other extensions to react to sub-agent activity
@@ -67,7 +61,7 @@ Background agents return an ID immediately and notify you on completion.
 
 ## UI
 
-The extension renders a persistent widget above the editor showing all active agents:
+The extension renders a persistent widget above the editor showing active background agents (foreground runs are rendered inline by the `subagent` tool's progress stream):
 
 ```text
 ● Agents
@@ -87,7 +81,7 @@ The token field is annotated with two optional signals inside parens:
 - **`↻N`** — number of times the session has compacted, when > 0.
   Stays dim; the percent's color carries urgency.
 
-Individual agent results render Claude Code-style in the conversation:
+Individual agent results render inline in the conversation:
 
 | State          | Example                                                                                  |
 | -------------- | ---------------------------------------------------------------------------------------- |
@@ -177,21 +171,16 @@ All fields are optional — sensible defaults for everything.
 | `description`       | filename       | Agent description shown in tool listings                                                                                                                                                                                                                                                                                |
 | `display_name`      | —              | Display name for UI (e.g. widget, agent list)                                                                                                                                                                                                                                                                           |
 | `tools`             | all 7          | Comma-separated built-in tools: read, bash, edit, write, grep, find, ls. `none` for no tools                                                                                                                                                                                                                            |
-| `extensions`        | `true`         | `true` to inherit all MCP/extension tools, `false` to disable                                                                                                                                                                                                                                                           |
-| `skills`            | `true`         | Inherit skills from parent. Can be a comma-separated list of skill names to preload (see [Skill Preloading](#skill-preloading) for discovery locations)                                                                                                                                                                 |
-| `memory`            | —              | Persistent agent memory scope: `project`, `local`, or `user`. Auto-detects read-only agents                                                                                                                                                                                                                             |
-| `isolation`         | —              | Set to `worktree` to run in an isolated git worktree                                                                                                                                                                                                                                                                    |
 | `model`             | inherit parent | Model — `provider/modelId` or fuzzy name (`"haiku"`, `"sonnet"`)                                                                                                                                                                                                                                                        |
 | `thinking`          | inherit        | off, minimal, low, medium, high, xhigh                                                                                                                                                                                                                                                                                  |
 | `max_turns`         | unlimited      | Max agentic turns before graceful shutdown. `0` or omit for unlimited                                                                                                                                                                                                                                                   |
 | `prompt_mode`       | `append`       | `replace`: parent prompt is the cacheable base; body is appended last with full control (no `<sub_agent_context>` bridge, no `<agent_instructions>` wrapper). `append`: parent prompt is the base; body is wrapped in `<agent_instructions>` and a sub-agent context bridge is injected (agent acts as a "parent twin") |
 | `inherit_context`   | `false`        | Fork parent conversation into agent                                                                                                                                                                                                                                                                                     |
 | `run_in_background` | `false`        | Run in background by default                                                                                                                                                                                                                                                                                            |
-| `isolated`          | `false`        | No extension/MCP tools, only built-in                                                                                                                                                                                                                                                                                   |
 | `enabled`           | `true`         | Set to `false` to disable an agent (useful for hiding a default agent per-project)                                                                                                                                                                                                                                      |
 
 Frontmatter is authoritative.
-If an agent file sets `model`, `thinking`, `max_turns`, `inherit_context`, `run_in_background`, `isolated`, or `isolation`, those values are locked for that agent.
+If an agent file sets `model`, `thinking`, `max_turns`, `inherit_context`, or `run_in_background`, those values are locked for that agent.
 `subagent` tool parameters only fill fields the agent config leaves unspecified.
 
 ## Tools
@@ -210,8 +199,6 @@ Launch a sub-agent.
 | `max_turns`         | number       | no       | Max agentic turns. Omit for unlimited (default)                  |
 | `run_in_background` | boolean      | no       | Run without blocking                                             |
 | `resume`            | string       | no       | Agent ID to resume a previous session                            |
-| `isolated`          | boolean      | no       | No extension/MCP tools                                           |
-| `isolation`         | `"worktree"` | no       | Run in an isolated git worktree                                  |
 | `inherit_context`   | boolean      | no       | Fork parent conversation into agent                              |
 
 ### `get_subagent_result`
@@ -334,77 +321,16 @@ Agent lifecycle events are emitted via `pi.events.emit()` so other extensions ca
 `cacheRead` is excluded — each turn's `cacheRead` is the cumulative cached prefix re-read on that one API call, so summing per-message would over-count it.
 Use `contextUsage.percent` (surfaced as `(NN%)` in the widget) for current context size.
 
-## Persistent Agent Memory
-
-Agents can have persistent memory across sessions.
-Set `memory` in frontmatter to enable:
-
-```yaml
----
-memory: project   # project | local | user
----
-```
-
-| Scope     | Location                         | Use case                           |
-| --------- | -------------------------------- | ---------------------------------- |
-| `project` | `.pi/agent-memory/<name>/`       | Shared across the team (committed) |
-| `local`   | `.pi/agent-memory-local/<name>/` | Machine-specific (gitignored)      |
-| `user`    | `~/.pi/agent-memory/<name>/`     | Global personal memory             |
-
-Memory uses a `MEMORY.md` index file and individual memory files with frontmatter.
-Agents with write tools get full read-write access.
-**Read-only agents** (no `write`/`edit` tools) automatically get read-only memory — they can consume memories written by other agents but cannot modify them.
-This prevents unintended tool escalation.
-
 ## Worktree Isolation
 
-Set `isolation: worktree` to run an agent in a temporary git worktree:
+Worktree isolation lives in a companion package, not this core.
+Install [`@gotgenes/pi-subagents-worktrees`](https://github.com/gotgenes/pi-packages/tree/main/packages/pi-subagents-worktrees) and list the agent types you want isolated in its `worktreeAgents` config — opted-in agents run in a temporary git worktree, and their changes are saved to a branch on completion.
+The earlier `isolation: "worktree"` spawn flag and `isolation:` frontmatter key were removed from the core.
 
-```text
-subagent({ subagent_type: "refactor", prompt: "...", isolation: "worktree" })
-```
+## Removed: agent memory and skill preloading
 
-The agent gets a full, isolated copy of the repository.
-On completion:
-
-- **No changes:** worktree is cleaned up automatically
-- **Changes made:** changes are committed to a new branch (`pi-agent-<id>`) and returned in the result
-
-If the worktree cannot be created (not a git repo, no commits, or `git worktree add` fails), the `subagent` tool returns a clear error instead of running unisolated — `isolation: "worktree"` is a strict guarantee, not a hint.
-Initialize git and commit at least once, or omit `isolation`.
-
-## Skill Preloading
-
-Skills can be preloaded by name and injected into the agent's system prompt:
-
-```yaml
----
-skills: api-conventions, error-handling
----
-```
-
-**Discovery roots** (checked in this order, first match wins):
-
-| Scope   | Path                                                           | Source                                                       |
-| ------- | -------------------------------------------------------------- | ------------------------------------------------------------ |
-| Project | `<cwd>/.pi/skills/`                                            | Pi-standard                                                  |
-| Project | `<cwd>/.agents/skills/`                                        | [Agent Skills spec](https://agentskills.io/integrate-skills) |
-| User    | `$PI_CODING_AGENT_DIR/skills/` (default `~/.pi/agent/skills/`) | Pi-standard                                                  |
-| User    | `~/.agents/skills/`                                            | [Agent Skills spec](https://agentskills.io/integrate-skills) |
-| User    | `~/.pi/skills/`                                                | Legacy (pre-Pi)                                              |
-
-**Per root, a skill named `foo` resolves to the first of:**
-
-- `<root>/foo.md` — flat file at the top level
-- `<root>/foo/SKILL.md` — directory skill (top-level)
-- `<root>/*/.../foo/SKILL.md` — directory skill, found by recursive descent
-
-Recursion skips dotfile directories and `node_modules`.
-A directory that itself contains a `SKILL.md` is treated as a single skill — we don't descend into it.
-Traversal is byte-order sorted for deterministic resolution across filesystems.
-
-**Security:** symlinks are rejected at every layer (root, flat file, skill directory, `SKILL.md` inside a skill directory) — intentional deviation from Pi, which follows symlinks.
-Skill names with path-traversal characters (`..`, `/`, `\`, spaces, leading dot, >128 chars) are rejected.
+Persistent agent memory (the `memory:` frontmatter key) and skill preloading (the `skills:` frontmatter key) were removed when the core was slimmed down.
+Children now always inherit the parent's skills and extensions, so the `isolated`, `extensions`, and `skills` frontmatter keys no longer exist.
 
 ## Migrating from `disallowed_tools`
 
@@ -434,75 +360,67 @@ When [`@gotgenes/pi-permission-system`](https://github.com/gotgenes/pi-permissio
 No configuration is required.
 When `@gotgenes/pi-permission-system` is not installed, the lifecycle events have no subscriber — a harmless no-op.
 
-## Architecture
+## For Extension Authors
 
-See `docs/architecture/architecture.md` for the full architecture document with domain decomposition, Mermaid diagrams, and improvement roadmap.
+This package exposes two public subpath exports for companion extensions to import from the published tarball.
 
-```text
-src/
-  index.ts                          # Extension entry: tool/command registration, rendering
-  runtime.ts                        # Session-scoped state bag with methods
-  types.ts                          # Shared type definitions
-  settings.ts                       # Persistent settings (concurrency, turn limits)
-  config/                           # Agent type registry and configuration
-    agent-types.ts                  # Unified agent registry (defaults + custom)
-    default-agents.ts               # Embedded default agent configs
-    custom-agents.ts                # Load user-defined agents from .pi/agents/*.md
-    invocation-config.ts            # Per-call merge of tool params + agent config
-  session/                          # Pure session assembly
-    session-config.ts               # Session configuration assembler
-    prompts.ts                      # Config-driven system prompt builder
-    context.ts                      # Parent conversation context for inherit_context
-    conversation.ts                 # Render a session's messages as formatted text
-    content-items.ts                # Shared message content parsing
-    env.ts                          # Environment detection (git, platform)
-    model-resolver.ts               # Fuzzy model matching
-    session-dir.ts                  # Session directory derivation
-  lifecycle/                        # Agent execution and state tracking
-    agent-manager.ts                # Collection manager + observer wiring
-    agent.ts                        # Full execution lifecycle (run, abort, steer, workspace)
-    create-subagent-session.ts      # Assembly factory: session creation, binding, tool filtering
-    subagent-session.ts             # Born-complete child session: turn loop, steer, dispose
-    child-lifecycle.ts              # Child-execution lifecycle event publisher
-    concurrency-queue.ts            # Background agent scheduling
-    parent-snapshot.ts              # Immutable spawn-time parent state
-    turn-limits.ts                  # Turn-count policy (normalizeMaxTurns)
-    workspace.ts                    # Workspace provider seam
-    usage.ts                        # Token usage tracking
-  observation/                      # Progress tracking and notification
-    record-observer.ts              # Session-event stats observer
-    notification.ts                 # Completion nudges
-    notification-state.ts           # Notification state tracking
-    renderer.ts                     # Notification rendering
-  service/                          # Cross-extension API boundary
-    service.ts                      # SubagentsService interface + Symbol.for() accessors
-    service-adapter.ts              # SubagentsService wrapper around AgentManager
-  tools/                            # LLM-facing tools
-  ui/                               # Widget, conversation viewer, /agents menu
+### `@gotgenes/pi-subagents` — cross-extension service contract
+
+Access the subagent service from another extension at runtime:
+
+```typescript
+const { getSubagentsService } = await import("@gotgenes/pi-subagents");
+const svc = getSubagentsService();
+svc?.spawn("Explore", "Check for stale TODOs");
 ```
 
-## Deviations from upstream
+Declare this package as an optional peer dependency.
+See `src/service/service.ts` for the full `SubagentsService` interface and the `WorkspaceProvider` seam.
 
-This fork carries three divergences from [`tintinweb/pi-subagents`](https://github.com/tintinweb/pi-subagents).
-Each has a corresponding upstream PR:
+### `@gotgenes/pi-subagents/settings` — layered config loader
 
-1. **Peer-dep migration to `@earendil-works/pi-*`** — `peerDependencies` and all imports point at `@earendil-works/pi-ai`, `@earendil-works/pi-coding-agent`, and `@earendil-works/pi-tui` (the active scope on npm) instead of the deprecated `@mariozechner/pi-*` scope.
-   Also fixes a latent bug where `ThinkingLevel` was imported from `pi-agent-core` (an undeclared transitive dep that breaks under pnpm).
-   Upstream PR: [tintinweb/pi-subagents#71](https://github.com/tintinweb/pi-subagents/pull/71).
-2. **Post-`bindExtensions` active-tool re-filter** (`src/agent-runner.ts`) — `runAgent` re-runs its active-tool filter after `session.bindExtensions(...)` so the `EXCLUDED_TOOL_NAMES` recursion guard applies to extension-registered tools (which join the active set during `bindExtensions`).
-   Upstream PR: [tintinweb/pi-subagents#72](https://github.com/tintinweb/pi-subagents/pull/72).
-3. **`<active_agent>` system-prompt tag** (`src/prompts.ts`) — `buildAgentPrompt` includes `<active_agent name="${config.name}"/>` in every assembled child system prompt (both `replace` and `append` modes); the tag follows the cacheable parent-prompt prefix in both modes.
-   Downstream extensions like [`@gotgenes/pi-permission-system`](https://github.com/gotgenes/pi-permission-system) parse this tag to resolve per-agent `permission:` frontmatter inside the child session.
-   Upstream PR: [tintinweb/pi-subagents#73](https://github.com/tintinweb/pi-subagents/pull/73).
-4. **Child-execution lifecycle events** (`src/lifecycle/child-lifecycle.ts`) — the child-session execution lifecycle is published as ordered events on `pi.events` (`subagents:child:spawning`, `session-created`, `completed`, `disposed`).
-   `session-created` fires synchronously before `bindExtensions()` so consumers (e.g. `@gotgenes/pi-permission-system`) can register the child session before binding proceeds.
-   This inverts the former outbound `permission-bridge` pattern ([ADR-0002] / [#261]) — the core publishes, consumers subscribe.
-   No upstream equivalent — this feature is specific to the `@gotgenes` fork.
+Extensions that store configuration in JSON files can use the shared layered loader, which reads a global file (`<agentDir>/<filename>`) and a project file (`<cwd>/.pi/<filename>`) and merges them — project wins on conflicts, missing files are silent, malformed files warn and fall back:
 
-The upstream `vitest` suite plus tests added for each patch all pass on every commit.
+```typescript
+import { loadLayeredSettings, type LayeredSettingsSource } from "@gotgenes/pi-subagents/settings";
+
+interface MyConfig { enabled?: boolean; limit?: number }
+
+function sanitize(raw: unknown): Partial<MyConfig> {
+  if (!raw || typeof raw !== "object") return {};
+  const r = raw as Record<string, unknown>;
+  const out: Partial<MyConfig> = {};
+  if (typeof r.enabled === "boolean") out.enabled = r.enabled;
+  if (typeof r.limit === "number") out.limit = r.limit;
+  return out;
+}
+
+const config = loadLayeredSettings<MyConfig>({
+  agentDir,          // Pi runtime agent home directory
+  cwd,               // project root — project file lives at <cwd>/.pi/<filename>
+  filename: "my-extension.json",
+  sanitize,
+  warnLabel: "my-extension",  // prefix for the malformed-file stderr warning
+});
+```
+
+`loadLayeredSettings` returns `Partial<T>` (all fields optional); apply your defaults after the call.
+It never throws — all error conditions produce a `console.warn` and return `{}`.
+
+## Architecture
+
+This extension is a minimal, composable core: it owns agent spawning, execution, and result retrieval, and exposes a typed `SubagentsService` plus lifecycle events that other extensions build on.
+
+See [`docs/architecture/architecture.md`](./docs/architecture/architecture.md) for the full architecture document — design principles, domain decomposition, module dependency flow, Mermaid diagrams, and the improvement roadmap.
+
+## Relationship to upstream
+
+This package is an independently maintained hard fork of [`tintinweb/pi-subagents`](https://github.com/tintinweb/pi-subagents) by [@tintinweb](https://github.com/tintinweb).
+It has diverged substantially in scope and architecture: a minimal core with a typed service API and lifecycle events, with tool-restriction policy and worktree isolation delegated to companion packages.
+Upstream remains the batteries-included option, keeping scheduling, cross-extension RPC, model-scope enforcement, and a built-in tool denylist in a single package.
+
+See [Comparison with upstream](./docs/comparison-with-upstream.md) for a full feature-by-feature comparison against the current upstream release and guidance on which to choose.
 
 ## License
 
 MIT — [tintinweb](https://github.com/tintinweb) (upstream) and [Chris Lasher](https://github.com/gotgenes) (fork)
-
-[ADR-0002]: docs/decisions/0002-extensions-on-a-minimal-core.md

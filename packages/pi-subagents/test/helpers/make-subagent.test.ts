@@ -2,6 +2,49 @@ import { describe, expect, it } from "vitest";
 import { createTestSubagent } from "./make-subagent";
 
 describe("createTestSubagent", () => {
+	describe("live-activity shorthands", () => {
+		it("defaults turnCount to 1", () => {
+			const record = createTestSubagent();
+			expect(record.turnCount).toBe(1);
+		});
+
+		it("sets turnCount to the requested value", () => {
+			const record = createTestSubagent({ turnCount: 4 });
+			expect(record.turnCount).toBe(4);
+		});
+
+		it("defaults activeTools to an empty map", () => {
+			const record = createTestSubagent();
+			expect(record.activeTools.size).toBe(0);
+		});
+
+		it("seeds active tools by name", () => {
+			const record = createTestSubagent({ activeTools: ["read", "grep"] });
+			expect(record.activeTools.size).toBe(2);
+			expect([...record.activeTools.values()]).toEqual(["read", "grep"]);
+		});
+
+		it("defaults responseText to empty string", () => {
+			const record = createTestSubagent();
+			expect(record.responseText).toBe("");
+		});
+
+		it("seeds responseText", () => {
+			const record = createTestSubagent({ responseText: "thinking…" });
+			expect(record.responseText).toBe("thinking…");
+		});
+
+		it("defaults maxTurns to undefined", () => {
+			const record = createTestSubagent();
+			expect(record.maxTurns).toBeUndefined();
+		});
+
+		it("threads maxTurns into the stub execution", () => {
+			const record = createTestSubagent({ maxTurns: 10 });
+			expect(record.maxTurns).toBe(10);
+		});
+	});
+
 	it("returns a completed agent with expected defaults", () => {
 		const record = createTestSubagent();
 		expect(record.id).toBe("agent-1");

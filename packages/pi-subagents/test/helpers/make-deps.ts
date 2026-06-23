@@ -1,8 +1,11 @@
 import { vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
-import { type AgentToolManager, type AgentToolRuntime, type AgentToolSettings } from "#src/tools/agent-tool";
-import { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
+import {
+	type AgentToolManager,
+	type AgentToolRuntime,
+	type AgentToolSettings,
+} from "#src/tools/agent-tool";
 import { createTestSubagent } from "./make-subagent";
 import { STUB_SNAPSHOT } from "./stub-ctx";
 
@@ -16,12 +19,7 @@ const defaultRegistry = new AgentTypeRegistry(() => new Map());
  */
 export type AgentToolFixture = {
 	manager: AgentToolManager;
-	/**
-	 * Mock runtime satisfying `AgentToolRuntime`.
-	 * Also satisfies `BackgroundWidgetDeps` and `ForegroundWidgetDeps` structurally
-	 * (both use a subset of the runtime's widget delegation methods).
-	 * `runtime.agentActivity` replaces the old top-level `agentActivity` field.
-	 */
+	/** Mock runtime satisfying `AgentToolRuntime` (context queries). */
 	runtime: AgentToolRuntime;
 	settings: AgentToolSettings;
 	registry: AgentTypeRegistry;
@@ -38,14 +36,7 @@ export type AgentToolFixture = {
  * ```
  */
 export function createToolDeps(overrides: Partial<AgentToolFixture> = {}): AgentToolFixture {
-	const agentActivity = new Map<string, AgentActivityTracker>();
-
 	const runtime: AgentToolRuntime = {
-		agentActivity,
-		setUICtx: vi.fn(),
-		ensureTimer: vi.fn(),
-		update: vi.fn(),
-		markFinished: vi.fn(),
 		buildSnapshot: vi.fn((_inheritContext: boolean): ParentSnapshot => STUB_SNAPSHOT),
 		getModelInfo: vi.fn(() => ({
 			parentModel: { id: "claude-sonnet", name: "Claude Sonnet" },

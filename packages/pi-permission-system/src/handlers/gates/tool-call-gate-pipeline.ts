@@ -81,7 +81,12 @@ export class ToolCallGatePipeline {
         describeSkillReadGate(tcc, () => this.inputs.getActiveSkillEntries()),
       () => describePathGate(tcc, this.resolver, this.customExtractors),
       () =>
-        describeExternalDirectoryGate(tcc, infraDirs, this.customExtractors),
+        describeExternalDirectoryGate(
+          tcc,
+          infraDirs,
+          this.resolver,
+          this.customExtractors,
+        ),
       () => describeBashExternalDirectoryGate(tcc, bashProgram, this.resolver),
       () => describeBashPathGate(tcc, bashProgram, this.resolver),
       () => {

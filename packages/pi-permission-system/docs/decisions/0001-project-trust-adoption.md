@@ -27,7 +27,7 @@ Pi SDK 0.79.x introduced a project-trust system with three extension-facing APIs
 handleSessionStart(event: SessionStartPayload, ctx: ExtensionContext): Promise<void> {
   this.session.refreshConfig(ctx);     // calls permissionManager.configureForCwd(ctx.cwd)
   // ... which calls loader.loadProjectConfig()  → reads {cwd}/.pi/settings.json
-  //                   loader.loadProjectAgentConfig() → reads {cwd}/.pi/agent/agents/*.md
+  //                   loader.loadProjectAgentConfig() → reads {cwd}/.pi/agents/*.md
 ```
 
 This load happens unconditionally — the extension never queries `ctx.isProjectTrusted()`.

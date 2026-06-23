@@ -1,7 +1,6 @@
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import type { AgentSpawnConfig } from "#src/lifecycle/subagent-manager";
-import type { AgentActivityAccess } from "#src/tools/agent-tool";
 import {
   buildDetails,
   formatLifetimeTokens,
@@ -10,14 +9,12 @@ import {
 } from "#src/tools/helpers";
 import type { ResolvedSpawnConfig } from "#src/tools/spawn-config";
 import type { ParentSessionInfo, Subagent } from "#src/types";
-import { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
 import {
   type AgentDetails,
   describeActivity,
   formatMs,
   SPINNER,
 } from "#src/ui/display";
-import { subscribeUIObserver } from "#src/ui/ui-observer";
 
 /** Narrow manager interface for the foreground runner. */
 export interface ForegroundManagerDeps {
@@ -29,12 +26,6 @@ export interface ForegroundManagerDeps {
   ): Promise<Subagent>;
 }
 
-/** Narrow widget interface for the foreground runner. */
-export interface ForegroundWidgetDeps {
-  ensureTimer(): void;
-  markFinished(id: string): void;
-}
-
 /** All values the foreground runner needs beyond the resolved config. */
 export interface ForegroundParams {
   config: ResolvedSpawnConfig;
@@ -44,13 +35,10 @@ export interface ForegroundParams {
 
 /**
  * Run an agent synchronously in the foreground, streaming spinner updates.
- * Owns: spinner interval, AgentActivityTracker creation, UI observer subscription,
- * streaming onUpdate callbacks, cleanup, and result formatting.
+ * Owns: spinner interval, streaming onUpdate callbacks, cleanup, and result formatting.
  */
 export async function runForeground(
   manager: ForegroundManagerDeps,
-  widget: ForegroundWidgetDeps,
-  agentActivity: AgentActivityAccess,
   params: ForegroundParams,
   signal: AbortSignal | undefined,
   onUpdate: ((update: AgentToolResult<any>) => void) | undefined,
@@ -58,10 +46,7 @@ export async function runForeground(
   const { identity, execution, presentation } = params.config;
   let spinnerFrame = 0;
   const startedAt = Date.now();
-  let fgId: string | undefined;
 
-  const fgState = new AgentActivityTracker(execution.effectiveMaxTurns);
-  let unsubUI: (() => void) | undefined;
   let recordRef: Subagent | undefined;
 
   const streamUpdate = () => {
@@ -70,11 +55,15 @@ export async function runForeground(
       ...presentation.detailBase,
       toolUses,
       tokens: recordRef ? formatLifetimeTokens(recordRef) : "",
-      turnCount: fgState.turnCount,
-      maxTurns: fgState.maxTurns,
+      // Read activity off the record; fall back to safe defaults before onSessionCreated fires
+      turnCount: recordRef?.turnCount ?? 1,
+      maxTurns: recordRef?.maxTurns ?? execution.effectiveMaxTurns,
       durationMs: Date.now() - startedAt,
       status: "running",
-      activity: describeActivity(fgState.activeTools, fgState.responseText),
+      activity: describeActivity(
+        recordRef?.activeTools ?? new Map(),
+        recordRef?.responseText ?? "",
+      ),
       spinnerFrame: spinnerFrame % SPINNER.length,
     };
     onUpdate?.({
@@ -109,34 +98,20 @@ export async function runForeground(
         parentSession: params.parentSession,
         observer: {
           onSessionCreated: (agent) => {
-            const sub = agent.subagentSession!;
-            fgState.setSession(sub);
             recordRef = agent;
-            unsubUI = subscribeUIObserver(sub, fgState, streamUpdate);
-            fgId = agent.id;
-            agentActivity.set(agent.id, fgState);
-            widget.ensureTimer();
           },
         },
       },
     );
   } catch (err) {
     clearInterval(spinnerInterval);
-    unsubUI?.();
     return textResult(err instanceof Error ? err.message : String(err));
   }
 
   clearInterval(spinnerInterval);
-  unsubUI?.();
-
-  // Clean up foreground agent from widget
-  if (fgId) {
-    agentActivity.delete(fgId);
-    widget.markFinished(fgId);
-  }
 
   const tokenText = formatLifetimeTokens(record);
-  const details = buildDetails(presentation.detailBase, record, fgState, { tokens: tokenText });
+  const details = buildDetails(presentation.detailBase, record, { tokens: tokenText });
 
   const fallbackNote = identity.fellBack
     ? `Note: Unknown agent type "${identity.rawType}" — using general-purpose.\n\n`

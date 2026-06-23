@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import type { BackgroundManagerDeps, BackgroundWidgetDeps } from "#src/tools/background-spawner";
-import type { ForegroundManagerDeps, ForegroundWidgetDeps } from "#src/tools/foreground-runner";
-import { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
+import type { BackgroundManagerDeps } from "#src/tools/background-spawner";
+import type { ForegroundManagerDeps } from "#src/tools/foreground-runner";
 import { createToolDeps } from "./make-deps";
 import { STUB_SNAPSHOT } from "./stub-ctx";
 
@@ -28,26 +27,6 @@ describe("createToolDeps", () => {
 			const { manager } = createToolDeps();
 			const record = manager.getRecord("id-1");
 			expect(record?.status).toBe("completed");
-		});
-	});
-
-	describe("runtime defaults", () => {
-		it("all widget delegation methods are vi.fn stubs", () => {
-			const { runtime } = createToolDeps();
-			runtime.setUICtx({} as any);
-			runtime.ensureTimer();
-			runtime.update();
-			runtime.markFinished("id-1");
-			expect(runtime.setUICtx).toHaveBeenCalledOnce();
-			expect(runtime.ensureTimer).toHaveBeenCalledOnce();
-			expect(runtime.update).toHaveBeenCalledOnce();
-			expect(runtime.markFinished).toHaveBeenCalledWith("id-1");
-		});
-
-		it("agentActivity is an empty Map on the runtime", () => {
-			const { runtime } = createToolDeps();
-			expect(runtime.agentActivity).toBeInstanceOf(Map);
-			expect(runtime.agentActivity.get("x")).toBeUndefined();
 		});
 	});
 
@@ -100,33 +79,10 @@ describe("createToolDeps", () => {
 			expect(bgManager.getRecord).toBeTypeOf("function");
 		});
 
-		it("runtime satisfies BackgroundWidgetDeps structurally", () => {
-			const { runtime } = createToolDeps();
-			const bgWidget: BackgroundWidgetDeps = runtime;
-			expect(bgWidget.ensureTimer).toBeTypeOf("function");
-			expect(bgWidget.update).toBeTypeOf("function");
-		});
-
 		it("manager satisfies ForegroundManagerDeps structurally", () => {
 			const { manager } = createToolDeps();
 			const fgManager: ForegroundManagerDeps = manager;
 			expect(fgManager.spawnAndWait).toBeTypeOf("function");
-		});
-
-		it("runtime satisfies ForegroundWidgetDeps structurally", () => {
-			const { runtime } = createToolDeps();
-			const fgWidget: ForegroundWidgetDeps = runtime;
-			expect(fgWidget.ensureTimer).toBeTypeOf("function");
-			expect(fgWidget.markFinished).toBeTypeOf("function");
-		});
-
-		it("runtime.agentActivity satisfies AgentActivityAccess", () => {
-			const { runtime } = createToolDeps();
-			const tracker = new AgentActivityTracker();
-			runtime.agentActivity.set("id-1", tracker);
-			expect(runtime.agentActivity.get("id-1")).toBe(tracker);
-			runtime.agentActivity.delete("id-1");
-			expect(runtime.agentActivity.get("id-1")).toBeUndefined();
 		});
 	});
 });

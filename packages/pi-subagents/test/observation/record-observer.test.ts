@@ -120,6 +120,81 @@ describe("subscribeSubagentObserver", () => {
     expect(state.compactionCount).toBe(0);
   });
 
+  it("adds to activeTools on tool_execution_start", () => {
+    const session = createMockSession();
+    const state = makeState();
+    subscribeSubagentObserver(session, state);
+
+    session.emit({ type: "tool_execution_start", toolName: "Read" });
+    expect(state.activeTools.size).toBe(1);
+    expect([...state.activeTools.values()]).toContain("Read");
+  });
+
+  it("removes from activeTools on tool_execution_end (paired with start)", () => {
+    const session = createMockSession();
+    const state = makeState();
+    subscribeSubagentObserver(session, state);
+
+    session.emit({ type: "tool_execution_start", toolName: "Read" });
+    session.emit({ type: "tool_execution_end", toolName: "Read" });
+    expect(state.activeTools.size).toBe(0);
+  });
+
+  it("increments turnCount on turn_end", () => {
+    const session = createMockSession();
+    const state = makeState();
+    subscribeSubagentObserver(session, state);
+
+    expect(state.turnCount).toBe(1);
+    session.emit({ type: "turn_end" });
+    expect(state.turnCount).toBe(2);
+    session.emit({ type: "turn_end" });
+    expect(state.turnCount).toBe(3);
+  });
+
+  it("resets responseText on message_start", () => {
+    const session = createMockSession();
+    const state = makeState();
+    subscribeSubagentObserver(session, state);
+
+    session.emit({
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: "previous text" },
+    });
+    session.emit({ type: "message_start" });
+    expect(state.responseText).toBe("");
+  });
+
+  it("appends to responseText on message_update text_delta", () => {
+    const session = createMockSession();
+    const state = makeState();
+    subscribeSubagentObserver(session, state);
+
+    session.emit({
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: "Hello " },
+    });
+    expect(state.responseText).toBe("Hello ");
+
+    session.emit({
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: "world" },
+    });
+    expect(state.responseText).toBe("Hello world");
+  });
+
+  it("ignores message_update with non-text_delta events", () => {
+    const session = createMockSession();
+    const state = makeState();
+    subscribeSubagentObserver(session, state);
+
+    session.emit({
+      type: "message_update",
+      assistantMessageEvent: { type: "thinking_delta", delta: "pondering..." },
+    });
+    expect(state.responseText).toBe("");
+  });
+
   it("returned function unsubscribes from session", () => {
     const session = createMockSession();
     const state = makeState();

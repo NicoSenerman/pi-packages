@@ -258,6 +258,25 @@ describe("describeBashPathGate", () => {
       undefined,
     );
   });
+
+  it("binds a current-directory token's session approval to the cwd subtree", async () => {
+    const resolver = makeResolver(
+      makeCheckResult({ state: "ask", matchedPattern: "*" }),
+    );
+    const result = (await describeGate(
+      makeTcc({
+        input: { command: "cat .env" },
+        cwd: "/test/project",
+      }),
+      resolver,
+    )) as GateDescriptor;
+
+    expect(result.decision.value).toBe(".env");
+    expect(result.sessionApproval?.surface).toBe("path");
+    expect(result.sessionApproval?.representativePattern).toBe(
+      "/test/project/*",
+    );
+  });
 });
 
 // Home-relative path characterization (#350) ──────────────────────────────

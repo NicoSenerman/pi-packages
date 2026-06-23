@@ -15,22 +15,50 @@ export type Mode = "yolo" | "bach" | "gated";
 
 export const MODE_CYCLE: Mode[] = ["yolo", "bach", "gated"];
 
-let currentMode: Mode = "bach";
+// `currentMode` is only set when the user explicitly picks a mode via /mode or
+// the ctrl+alt+m shortcut. Until then it stays `null` and permission decisions
+// fall back to `config.yoloMode` — the upstream fail-closed contract. This keeps
+// factory tests (which pass `yoloMode: undefined` and expect `ask` to stay
+// `ask`) green while still allowing the runtime mode toggle to override.
+let currentMode: Mode | null = null;
 
 export function getCurrentMode(): Mode {
-  return currentMode;
+  // Default to whatever the live config says when no explicit mode is set.
+  // Callers that need "what did the user pick" should treat null as "no pick".
+  return currentMode ?? "bach";
 }
 
 export function isBachMode(): boolean {
   return currentMode === "bach";
 }
 
-/** Whether the current mode auto-approves permission requests. */
-export function isAutoApproveMode(): boolean {
-  // YOLO and BACH auto-approve; GATED does not.
-  // currentMode is the single source of truth — config.yoloMode is ignored
-  // when the user has explicitly chosen a mode via /mode or the shortcut.
-  return currentMode !== "gated";
+/** Whether the user has explicitly picked a mode via /mode or shortcut. */
+export function isExplicitMode(): boolean {
+  return currentMode !== null;
+}
+
+/** Whether yolo mode is enabled per the live config (upstream contract). */
+export function isYoloModeEnabled(
+  config: PermissionSystemExtensionConfig,
+): boolean {
+  return Boolean(config.yoloMode);
+}
+
+/**
+ * Whether the current mode auto-approves permission requests.
+ *
+ * When the user has explicitly chosen a mode (currentMode != null), that
+ * choice is authoritative. Otherwise we defer to `config.yoloMode` so the
+ * fail-closed default (yoloMode undefined/false) is honored — matching
+ * upstream's contract and the factory wiring tests.
+ */
+export function isAutoApproveMode(
+  config?: PermissionSystemExtensionConfig,
+): boolean {
+  if (currentMode !== null) {
+    return currentMode !== "gated";
+  }
+  return config ? isYoloModeEnabled(config) : false;
 }
 
 export function setCurrentMode(
@@ -48,13 +76,15 @@ export function setCurrentMode(
 
 export function shouldAutoApprovePermissionState(
   state: PermissionState,
-  _config: PermissionSystemExtensionConfig,
+  config: PermissionSystemExtensionConfig,
 ): boolean {
-  return state === "ask" && isAutoApproveMode();
+  return state === "ask" && isAutoApproveMode(config);
 }
 
 export function canResolveAskPermissionRequest(
   options: AskPermissionResolutionOptions,
 ): boolean {
-  return options.hasUI || options.isSubagent || isAutoApproveMode();
+  return (
+    options.hasUI || options.isSubagent || isAutoApproveMode(options.config)
+  );
 }

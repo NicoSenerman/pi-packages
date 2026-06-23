@@ -64,6 +64,24 @@ function spawnFg(mgr: SubagentManager, prompt = "test", desc = prompt) {
   });
 }
 
+/** Spawn a background agent carrying a parentSession.toolCallId (notification path). */
+function spawnBgWithToolCall(mgr: SubagentManager, toolCallId: string, prompt = "test", desc = prompt) {
+  return mgr.spawn(STUB_SNAPSHOT, "general-purpose", prompt, {
+    description: desc,
+    isBackground: true,
+    parentSession: { toolCallId },
+  });
+}
+
+/** Arrange a manager at limit 1 with two bg agents over a blocking factory: first runs, second queues. */
+function arrangeQueuedPair() {
+  const factory = createBlockingFactory();
+  const { manager: mgr } = createManager({ createSubagentSession: factory, getMaxConcurrent: () => 1 });
+  const running = spawnBg(mgr, "a");
+  const queued = spawnBg(mgr, "b");
+  return { manager: mgr, factory, running, queued };
+}
+
 describe("SubagentManager — Bug 1 race condition (notification.resultConsumed vs onComplete)", () => {
   let manager: SubagentManager;
 
@@ -77,11 +95,7 @@ describe("SubagentManager — Bug 1 race condition (notification.resultConsumed 
       seenConsumed = r.notification?.resultConsumed;
     } } }));
 
-    const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "test", {
-      description: "test",
-      isBackground: true,
-      parentSession: { toolCallId: "tc-1" },
-    });
+    const id = spawnBgWithToolCall(manager, "tc-1");
     const record = manager.getRecord(id)!;
 
     // Simulate the buggy get_subagent_result: await THEN mark consumed
@@ -98,11 +112,7 @@ describe("SubagentManager — Bug 1 race condition (notification.resultConsumed 
       seenConsumed = r.notification?.resultConsumed;
     } } }));
 
-    const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "test", {
-      description: "test",
-      isBackground: true,
-      parentSession: { toolCallId: "tc-1" },
-    });
+    const id = spawnBgWithToolCall(manager, "tc-1");
     const record = manager.getRecord(id)!;
 
     // The fix: pre-mark BEFORE awaiting
@@ -235,6 +245,59 @@ describe("SubagentManager — Bug 3 clearCompleted", () => {
 
     manager.clearCompleted();
     expect(manager.getRecord(id)).toBeUndefined();
+  });
+});
+
+describe("SubagentManager — evicted descriptors", () => {
+  let manager: SubagentManager;
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    manager.dispose();
+  });
+
+  /** Spawn, await completion, then evict via the 10-minute cleanup sweep. */
+  async function spawnAndEvict(outputFile?: string): Promise<string> {
+    const { factory } = createSessionFactory(createMockSession(), outputFile);
+    ({ manager } = createManager({ createSubagentSession: factory }));
+    const id = spawnBg(manager, "test", "investigate the bug");
+    await manager.getRecord(id)!.promise;
+    const completedAt = manager.getRecord(id)!.completedAt!;
+    vi.spyOn(Date, "now").mockReturnValue(completedAt + 11 * 60_000);
+    (manager as any).cleanup();
+    return id;
+  }
+
+  it("retains a descriptor for an evicted agent with an outputFile", async () => {
+    const id = await spawnAndEvict("/tasks/agent.jsonl");
+
+    expect(manager.listAgents()).toHaveLength(0);
+    const evicted = manager.listEvicted();
+    expect(evicted).toHaveLength(1);
+    expect(evicted[0]).toMatchObject({
+      id,
+      type: "general-purpose",
+      description: "investigate the bug",
+      status: "completed",
+      toolUses: 0,
+      outputFile: "/tasks/agent.jsonl",
+    });
+    expect(typeof evicted[0].startedAt).toBe("number");
+  });
+
+  it("does not retain a descriptor for an evicted agent without an outputFile", async () => {
+    await spawnAndEvict(undefined);
+
+    expect(manager.listAgents()).toHaveLength(0);
+    expect(manager.listEvicted()).toEqual([]);
+  });
+
+  it("clearCompleted empties the evicted descriptors", async () => {
+    await spawnAndEvict("/tasks/agent.jsonl");
+    expect(manager.listEvicted()).toHaveLength(1);
+
+    manager.clearCompleted();
+    expect(manager.listEvicted()).toEqual([]);
   });
 });
 
@@ -476,41 +539,33 @@ describe("SubagentManager — queueing and concurrency with injected stubs", () 
   });
 
   it("gives a queued agent an awaitable promise at spawn (before its slot opens)", () => {
-    const factory = createBlockingFactory();
-    ({ manager } = createManager({ createSubagentSession: factory, getMaxConcurrent: () => 1 }));
-
-    // First runs, second queues
-    const id1 = spawnBg(manager, "a");
-    const id2 = spawnBg(manager, "b");
+    const { manager: mgr, running, queued } = arrangeQueuedPair();
+    manager = mgr;
 
     // A still-queued agent must already expose a settle-on-completion promise,
     // so waitForAll can await it without relying on a re-poll. (Regression
     // guard: #374 made the promise lazy; the limiter handle is captured eagerly.)
-    expect(manager.getRecord(id2)!.status).toBe("queued");
-    expect(manager.getRecord(id2)!.promise).toBeInstanceOf(Promise);
+    expect(manager.getRecord(queued)!.status).toBe("queued");
+    expect(manager.getRecord(queued)!.promise).toBeInstanceOf(Promise);
 
-    manager.abort(id1);
-    manager.abort(id2);
+    manager.abort(running);
+    manager.abort(queued);
   });
 
   it("abort removes a queued agent without ever running it", () => {
-    const factory = createBlockingFactory();
-    ({ manager } = createManager({ createSubagentSession: factory, getMaxConcurrent: () => 1 }));
+    const { manager: mgr, factory, running, queued } = arrangeQueuedPair();
+    manager = mgr;
 
-    // First runs, second queues
-    const id1 = spawnBg(manager, "a");
-    const id2 = spawnBg(manager, "b");
-
-    expect(manager.getRecord(id2)!.status).toBe("queued");
+    expect(manager.getRecord(queued)!.status).toBe("queued");
 
     // Abort the queued agent
-    expect(manager.abort(id2)).toBe(true);
-    expect(manager.getRecord(id2)!.status).toBe("stopped");
+    expect(manager.abort(queued)).toBe(true);
+    expect(manager.getRecord(queued)!.status).toBe("stopped");
 
     // factory was called once (for the first agent), never for the aborted one
     expect(factory).toHaveBeenCalledOnce();
 
-    manager.abort(id1);
+    manager.abort(running);
   });
 
   it("onStart fires when agent transitions from queued to running", async () => {
@@ -693,11 +748,7 @@ describe("SubagentManager — toolCallId notification wiring", () => {
   it("wires NotificationState on spawn when toolCallId is provided", () => {
     ({ manager } = createManager());
 
-    const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "test", {
-      description: "bg",
-      isBackground: true,
-      parentSession: { toolCallId: "tc-42" },
-    });
+    const id = spawnBgWithToolCall(manager, "tc-42", "test", "bg");
     const record = manager.getRecord(id)!;
 
     expect(record.notification).toBeInstanceOf(NotificationState);

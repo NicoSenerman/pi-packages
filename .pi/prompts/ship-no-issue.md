@@ -45,7 +45,7 @@ If either fails, fix the issues and commit before pushing.
      This is expected; do not block on it.
    - If `release_pr_merge` returns an error (not mergeable), stop and report — let the user decide.
    - Exception: if it fails with `merge_state: UNSTABLE`, check `gh pr view <N> --json statusCheckRollup`.
-     An empty rollup means no checks ran — the `GITHUB_TOKEN` case above; merge with `gh pr merge <N> --merge`, then `git pull --ff-only`.
+     An empty rollup means no checks ran — the `GITHUB_TOKEN` case above; merge with `gh pr merge <N> --rebase` (matches the `defaultMergeMethod: rebase` config so the release lands as a linear commit, not a merge bubble), then `git pull --ff-only`.
      Stop and report only when the PR is genuinely blocked (`CONFLICTING`/`DIRTY`/`BEHIND` or a failing check).
 4. Use `release_watch` to wait for the release tag to land on HEAD.
 

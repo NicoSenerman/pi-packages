@@ -84,6 +84,20 @@ describe("describeBashExternalDirectoryGate", () => {
     expect(result).toBeNull();
   });
 
+  it("resolves each external path on the external_directory surface via resolvePathPolicy (#418)", async () => {
+    const resolver = makeResolver(makeCheckResult("ask"));
+    await describeGate(
+      makeTcc({ input: { command: "cat /outside/a.ts" } }),
+      resolver,
+    );
+    expect(resolver.resolvePathPolicy).toHaveBeenCalledWith(
+      ["/outside/a.ts"],
+      undefined,
+      "external_directory",
+    );
+    expect(resolver.resolve).not.toHaveBeenCalled();
+  });
+
   it("returns GateBypass when all external paths are session-covered", async () => {
     const resolver = makeResolver(
       makeCheckResult("allow", { source: "session" }),
@@ -116,11 +130,12 @@ describe("describeBashExternalDirectoryGate", () => {
     // not just session-level allow. This was the bug: source !== "session"
     // kept config-allowed paths in the uncovered set.
     const resolver = makeResolver();
-    resolver.resolve.mockImplementation((_surface: string, input: unknown) => {
-      if ((input as Record<string, unknown>).path)
-        return makeCheckResult("allow", { source: "special" });
-      return makeCheckResult("ask");
-    });
+    resolver.resolvePathPolicy.mockImplementation(
+      (values: readonly string[]) =>
+        values.length > 0
+          ? makeCheckResult("allow", { source: "special" })
+          : makeCheckResult("ask"),
+    );
     const result = await describeGate(makeTcc(), resolver);
     expect(result).not.toBeNull();
     expect(isGateBypass(result)).toBe(true);
@@ -131,12 +146,12 @@ describe("describeBashExternalDirectoryGate", () => {
     // silently downgrading a config-level deny to ask. After the fix, the
     // descriptor's preCheck is derived from the actual path check result.
     const resolver = makeResolver();
-    resolver.resolve.mockImplementation((_surface: string, input: unknown) => {
-      if ((input as Record<string, unknown>).path)
-        return makeCheckResult("deny", { source: "special" });
-      // Path-less catch-all returns ask — should NOT be used as preCheck.
-      return makeCheckResult("ask");
-    });
+    resolver.resolvePathPolicy.mockImplementation(
+      (values: readonly string[]) =>
+        values.length > 0
+          ? makeCheckResult("deny", { source: "special" })
+          : makeCheckResult("ask"),
+    );
     const result = await describeGate(makeTcc(), resolver);
     expect(isGateDescriptor(result)).toBe(true);
     const desc = result as GateDescriptor;
@@ -192,11 +207,12 @@ describe("describeBashExternalDirectoryGate", () => {
   it("config-allowed path is excluded; remaining ask path produces a descriptor", async () => {
     // One path config-allowed, one config-ask → descriptor with only the ask path.
     const resolver = makeResolver();
-    resolver.resolve.mockImplementation((_surface: string, input: unknown) => {
-      if ((input as Record<string, unknown>).path === "/outside/a.ts")
-        return makeCheckResult("allow", { source: "special" });
-      return makeCheckResult("ask");
-    });
+    resolver.resolvePathPolicy.mockImplementation(
+      (values: readonly string[]) =>
+        values.includes("/outside/a.ts")
+          ? makeCheckResult("allow", { source: "special" })
+          : makeCheckResult("ask"),
+    );
     const result = await describeGate(
       makeTcc({ input: { command: "diff /outside/a.ts /outside/b.ts" } }),
       resolver,
@@ -212,11 +228,12 @@ describe("describeBashExternalDirectoryGate", () => {
   it("config-denied path makes worstCheck deny even when another path is ask", async () => {
     // One path config-denied, one config-ask → descriptor with preCheck.state === "deny".
     const resolver = makeResolver();
-    resolver.resolve.mockImplementation((_surface: string, input: unknown) => {
-      if ((input as Record<string, unknown>).path === "/outside/a.ts")
-        return makeCheckResult("deny", { source: "special" });
-      return makeCheckResult("ask");
-    });
+    resolver.resolvePathPolicy.mockImplementation(
+      (values: readonly string[]) =>
+        values.includes("/outside/a.ts")
+          ? makeCheckResult("deny", { source: "special" })
+          : makeCheckResult("ask"),
+    );
     const result = await describeGate(
       makeTcc({ input: { command: "diff /outside/a.ts /outside/b.ts" } }),
       resolver,
@@ -232,12 +249,12 @@ describe("describeBashExternalDirectoryGate", () => {
 
   it("only includes uncovered paths when some are session-covered", async () => {
     const resolver = makeResolver();
-    resolver.resolve.mockImplementation((_surface: string, input: unknown) => {
-      if ((input as Record<string, unknown>).path === "/outside/a.ts") {
-        return makeCheckResult("allow", { source: "session" });
-      }
-      return makeCheckResult("ask");
-    });
+    resolver.resolvePathPolicy.mockImplementation(
+      (values: readonly string[]) =>
+        values.includes("/outside/a.ts")
+          ? makeCheckResult("allow", { source: "session" })
+          : makeCheckResult("ask"),
+    );
     const result = await describeGate(
       makeTcc({ input: { command: "diff /outside/a.ts /outside/b.ts" } }),
       resolver,

@@ -11,6 +11,14 @@ import { createTestSubagentConfig, makeFileOps, makeMenuUI } from "#test/helpers
 const testDefaultConfig = createTestSubagentConfig();
 const testCustomConfig = createTestSubagentConfig({ isDefault: false, source: "project" });
 
+/** The override/custom agent file path used across the showAgentDetail tests. */
+const AGENT_FILE_PATH = "/project/.pi/agents/test-agent.md";
+
+/** A config marked disabled (`enabled: false`), preserving the rest of `base`. */
+function disabledConfig(base: typeof testDefaultConfig) {
+  return { ...base, enabled: false };
+}
+
 const testRegistry = new AgentTypeRegistry(() => new Map());
 
 function makeEditor(overrides: {
@@ -86,58 +94,44 @@ describe("createAgentConfigEditor", () => {
 
     // ---- Menu option structure ----
 
-    it("shows Eject and Disable for a default agent with no file", async () => {
-      const { editor, ui } = setupDetail([undefined]);
+    it.each([
+      {
+        name: "default agent with no file",
+        config: testDefaultConfig,
+        filePath: undefined,
+        expected: ["Eject (export as .md)", "Disable", "Back"],
+      },
+      {
+        name: "default agent with override file",
+        config: testDefaultConfig,
+        filePath: AGENT_FILE_PATH,
+        expected: ["Edit", "Disable", "Reset to default", "Delete", "Back"],
+      },
+      {
+        name: "custom agent with file",
+        config: testCustomConfig,
+        filePath: AGENT_FILE_PATH,
+        expected: ["Edit", "Disable", "Delete", "Back"],
+      },
+      {
+        name: "disabled default agent with file",
+        config: disabledConfig(testDefaultConfig),
+        filePath: AGENT_FILE_PATH,
+        expected: ["Enable", "Edit", "Reset to default", "Delete", "Back"],
+      },
+      {
+        name: "disabled custom agent with file",
+        config: disabledConfig(testCustomConfig),
+        filePath: AGENT_FILE_PATH,
+        expected: ["Enable", "Edit", "Delete", "Back"],
+      },
+    ])("shows the $name menu options", async ({ config, filePath, expected }) => {
+      vi.spyOn(testRegistry, "resolveAgentConfig").mockReturnValue(config);
+      const { editor, ui } = setupDetail([undefined], filePath ? { filePath } : {});
 
       await editor.showAgentDetail(ui, "test-agent");
 
-      const options = ui.select.mock.calls[0][1] as string[];
-      expect(options).toEqual(["Eject (export as .md)", "Disable", "Back"]);
-    });
-
-    it("shows Edit, Disable, Reset, Delete for a default agent with override file", async () => {
-      const { editor, ui } = setupDetail([undefined], { filePath: "/project/.pi/agents/test-agent.md" });
-
-      await editor.showAgentDetail(ui, "test-agent");
-
-      const options = ui.select.mock.calls[0][1] as string[];
-      expect(options).toEqual(["Edit", "Disable", "Reset to default", "Delete", "Back"]);
-    });
-
-    it("shows Edit, Disable, Delete for a custom agent with file", async () => {
-      vi.spyOn(testRegistry, "resolveAgentConfig").mockReturnValue(testCustomConfig);
-      const { editor, ui } = setupDetail([undefined], { filePath: "/project/.pi/agents/test-agent.md" });
-
-      await editor.showAgentDetail(ui, "test-agent");
-
-      const options = ui.select.mock.calls[0][1] as string[];
-      expect(options).toEqual(["Edit", "Disable", "Delete", "Back"]);
-    });
-
-    it("shows Enable, Edit, Reset, Delete for a disabled default agent with file", async () => {
-      vi.spyOn(testRegistry, "resolveAgentConfig").mockReturnValue({
-        ...testDefaultConfig,
-        enabled: false,
-      });
-      const { editor, ui } = setupDetail([undefined], { filePath: "/project/.pi/agents/test-agent.md" });
-
-      await editor.showAgentDetail(ui, "test-agent");
-
-      const options = ui.select.mock.calls[0][1] as string[];
-      expect(options).toEqual(["Enable", "Edit", "Reset to default", "Delete", "Back"]);
-    });
-
-    it("shows Enable, Edit, Delete for a disabled custom agent with file", async () => {
-      vi.spyOn(testRegistry, "resolveAgentConfig").mockReturnValue({
-        ...testCustomConfig,
-        enabled: false,
-      });
-      const { editor, ui } = setupDetail([undefined], { filePath: "/project/.pi/agents/test-agent.md" });
-
-      await editor.showAgentDetail(ui, "test-agent");
-
-      const options = ui.select.mock.calls[0][1] as string[];
-      expect(options).toEqual(["Enable", "Edit", "Delete", "Back"]);
+      expect(ui.select.mock.calls[0][1] as string[]).toEqual(expected);
     });
 
     // ---- Edit ----
@@ -174,41 +168,29 @@ describe("createAgentConfigEditor", () => {
       expect(fileOps.write).not.toHaveBeenCalled();
     });
 
-    // ---- Delete ----
+    // ---- Delete & Reset to default (confirm removes the file) ----
 
-    it("removes file when user confirms delete", async () => {
-      const filePath = "/project/.pi/agents/test-agent.md";
-      const { fileOps, editor, ui } = setupDetail(["Delete"], { filePath });
+    it.each([
+      { action: "Delete", notify: `Deleted ${AGENT_FILE_PATH}` },
+      { action: "Reset to default", notify: "Restored default test-agent" },
+    ])("removes the file and reloads when the user confirms $action", async ({ action, notify }) => {
+      const { fileOps, editor, ui } = setupDetail([action], { filePath: AGENT_FILE_PATH });
       ui.confirm.mockResolvedValue(true);
 
       await editor.showAgentDetail(ui, "test-agent");
 
-      expect(fileOps.remove).toHaveBeenCalledWith(filePath);
+      expect(fileOps.remove).toHaveBeenCalledWith(AGENT_FILE_PATH);
       expect(testRegistry.reload).toHaveBeenCalled();
-      expect(ui.notify).toHaveBeenCalledWith(`Deleted ${filePath}`, "info");
+      expect(ui.notify).toHaveBeenCalledWith(notify, "info");
     });
 
     it("does not remove file when user cancels delete", async () => {
-      const { fileOps, editor, ui } = setupDetail(["Delete"], { filePath: "/project/.pi/agents/test-agent.md" });
+      const { fileOps, editor, ui } = setupDetail(["Delete"], { filePath: AGENT_FILE_PATH });
       ui.confirm.mockResolvedValue(false);
 
       await editor.showAgentDetail(ui, "test-agent");
 
       expect(fileOps.remove).not.toHaveBeenCalled();
-    });
-
-    // ---- Reset to default ----
-
-    it("removes override file when user confirms reset", async () => {
-      const filePath = "/project/.pi/agents/test-agent.md";
-      const { fileOps, editor, ui } = setupDetail(["Reset to default"], { filePath });
-      ui.confirm.mockResolvedValue(true);
-
-      await editor.showAgentDetail(ui, "test-agent");
-
-      expect(fileOps.remove).toHaveBeenCalledWith(filePath);
-      expect(testRegistry.reload).toHaveBeenCalled();
-      expect(ui.notify).toHaveBeenCalledWith("Restored default test-agent", "info");
     });
 
     // ---- Eject ----
@@ -289,10 +271,7 @@ describe("createAgentConfigEditor", () => {
     // ---- Enable ----
 
     it("enables agent by removing enabled:false from file", async () => {
-      vi.spyOn(testRegistry, "resolveAgentConfig").mockReturnValue({
-        ...testCustomConfig,
-        enabled: false,
-      });
+      vi.spyOn(testRegistry, "resolveAgentConfig").mockReturnValue(disabledConfig(testCustomConfig));
       const filePath = "/project/.pi/agents/test-agent.md";
       const { fileOps, editor, ui } = setupDetail(["Enable"], {
         filePath,
@@ -309,10 +288,7 @@ describe("createAgentConfigEditor", () => {
     });
 
     it("removes empty override file when enabling", async () => {
-      vi.spyOn(testRegistry, "resolveAgentConfig").mockReturnValue({
-        ...testDefaultConfig,
-        enabled: false,
-      });
+      vi.spyOn(testRegistry, "resolveAgentConfig").mockReturnValue(disabledConfig(testDefaultConfig));
       const filePath = "/project/.pi/agents/test-agent.md";
       const { fileOps, editor, ui } = setupDetail(["Enable"], {
         filePath,

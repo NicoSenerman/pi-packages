@@ -7,6 +7,10 @@ import type {
 import { isGateBypass, isGateDescriptor } from "#src/handlers/gates/descriptor";
 import { describeExternalDirectoryGate } from "#src/handlers/gates/external-directory";
 import type { ToolCallContext } from "#src/handlers/gates/types";
+import type { ScopedPermissionResolver } from "#src/permission-resolver";
+import type { ToolAccessExtractorLookup } from "#src/tool-access-extractor-registry";
+import { makeResolver } from "#test/helpers/gate-fixtures";
+import { makeCheckResult } from "#test/helpers/handler-fixtures";
 
 // ── helpers ───────────────────────────��────────────────────────────��───────
 
@@ -21,18 +25,31 @@ function makeTcc(overrides: Partial<ToolCallContext> = {}): ToolCallContext {
   };
 }
 
+// Default resolver for descriptor-shape tests that do not assert the resolved
+// state: returns `ask` for the external_directory surface so a descriptor is
+// produced. Tests that assert the typed+resolved matching pass an explicit
+// resolver to `describeExternalDirectoryGate` directly.
+function gateUnderTest(
+  tcc: ToolCallContext,
+  infraDirs: string[],
+  extractors?: ToolAccessExtractorLookup,
+  resolver: ScopedPermissionResolver = makeResolver(
+    makeCheckResult({ state: "ask", toolName: "external_directory" }),
+  ),
+) {
+  return describeExternalDirectoryGate(tcc, infraDirs, resolver, extractors);
+}
+
 // ── tests ────────────────────��────────────────────────────────────��────────
 
 describe("describeExternalDirectoryGate", () => {
   it("returns null when no CWD", () => {
-    const result = describeExternalDirectoryGate(makeTcc({ cwd: undefined }), [
-      "/test/agent",
-    ]);
+    const result = gateUnderTest(makeTcc({ cwd: undefined }), ["/test/agent"]);
     expect(result).toBeNull();
   });
 
   it("returns null when tool is not path-bearing", () => {
-    const result = describeExternalDirectoryGate(
+    const result = gateUnderTest(
       makeTcc({ toolName: "bash", input: { command: "ls" } }),
       ["/test/agent"],
     );
@@ -40,7 +57,7 @@ describe("describeExternalDirectoryGate", () => {
   });
 
   it("returns null when path is inside CWD", () => {
-    const result = describeExternalDirectoryGate(
+    const result = gateUnderTest(
       makeTcc({ input: { path: "/test/project/src/index.ts" } }),
       ["/test/agent"],
     );
@@ -50,7 +67,7 @@ describe("describeExternalDirectoryGate", () => {
   // ── Pi infrastructure read bypass ─────────────────���────────────────────
 
   it("returns GateBypass for read targeting an infra dir", () => {
-    const result = describeExternalDirectoryGate(
+    const result = gateUnderTest(
       makeTcc({
         toolName: "read",
         input: { path: "/test/agent/git/some-package/SKILL.md" },
@@ -71,7 +88,7 @@ describe("describeExternalDirectoryGate", () => {
   });
 
   it("returns GateBypass respecting custom infraDirs", () => {
-    const result = describeExternalDirectoryGate(
+    const result = gateUnderTest(
       makeTcc({
         toolName: "read",
         input: { path: "/custom/infra/SKILL.md" },
@@ -82,7 +99,7 @@ describe("describeExternalDirectoryGate", () => {
   });
 
   it("does NOT bypass for write tools targeting infra dirs", () => {
-    const result = describeExternalDirectoryGate(
+    const result = gateUnderTest(
       makeTcc({
         toolName: "write",
         input: { path: "/test/agent/git/some-file.ts", content: "x" },
@@ -97,14 +114,14 @@ describe("describeExternalDirectoryGate", () => {
   // ── GateDescriptor for external paths ─────────────────────────────────��
 
   it("returns GateDescriptor with surface 'external_directory'", () => {
-    const result = describeExternalDirectoryGate(makeTcc(), ["/test/agent"]);
+    const result = gateUnderTest(makeTcc(), ["/test/agent"]);
     expect(isGateDescriptor(result)).toBe(true);
     const desc = result as GateDescriptor;
     expect(desc.surface).toBe("external_directory");
   });
 
   it("decision value is the external path", () => {
-    const result = describeExternalDirectoryGate(
+    const result = gateUnderTest(
       makeTcc({ input: { path: "/outside/project/file.ts" } }),
       ["/test/agent"],
     ) as GateDescriptor;
@@ -112,16 +129,36 @@ describe("describeExternalDirectoryGate", () => {
     expect(result.decision.surface).toBe("external_directory");
   });
 
-  it("input contains normalized path for checkPermission", () => {
-    const result = describeExternalDirectoryGate(
+  it("carries a precomputed preCheck and an empty input (matching is done by the gate)", () => {
+    const result = gateUnderTest(
       makeTcc({ input: { path: "/outside/project/file.ts" } }),
       ["/test/agent"],
     ) as GateDescriptor;
-    expect(result.input).toHaveProperty("path");
+    expect(result.input).toEqual({});
+    expect(result.preCheck).toBeDefined();
+    expect(result.preCheck?.state).toBe("ask");
+  });
+
+  it("resolves the typed and symlink-resolved aliases on the external_directory surface (#418)", () => {
+    const resolver = makeResolver(
+      makeCheckResult({ state: "ask", toolName: "external_directory" }),
+    );
+    gateUnderTest(
+      makeTcc({ input: { path: "/outside/project/file.ts" } }),
+      ["/test/agent"],
+      undefined,
+      resolver,
+    );
+    expect(resolver.resolvePathPolicy).toHaveBeenCalledWith(
+      ["/outside/project/file.ts"],
+      undefined,
+      "external_directory",
+    );
+    expect(resolver.resolve).not.toHaveBeenCalled();
   });
 
   it("sessionApproval uses deriveApprovalPattern", () => {
-    const result = describeExternalDirectoryGate(
+    const result = gateUnderTest(
       makeTcc({ input: { path: "/outside/project/file.ts" } }),
       ["/test/agent"],
     ) as GateDescriptor;
@@ -131,7 +168,7 @@ describe("describeExternalDirectoryGate", () => {
   });
 
   it("denialContext contains the external path and cwd", () => {
-    const result = describeExternalDirectoryGate(
+    const result = gateUnderTest(
       makeTcc({ input: { path: "/outside/project/file.ts" } }),
       ["/test/agent"],
     ) as GateDescriptor;
@@ -144,7 +181,7 @@ describe("describeExternalDirectoryGate", () => {
   });
 
   it("promptDetails includes path and tool_call source", () => {
-    const result = describeExternalDirectoryGate(
+    const result = gateUnderTest(
       makeTcc({ toolName: "read", agentName: "agent-1", toolCallId: "tc-5" }),
       ["/test/agent"],
     ) as GateDescriptor;
@@ -158,9 +195,7 @@ describe("describeExternalDirectoryGate", () => {
   });
 
   it("logContext includes path and message", () => {
-    const result = describeExternalDirectoryGate(makeTcc(), [
-      "/test/agent",
-    ]) as GateDescriptor;
+    const result = gateUnderTest(makeTcc(), ["/test/agent"]) as GateDescriptor;
     expect(result.logContext).toMatchObject({
       source: "tool_call",
       path: "/outside/project/file.ts",
@@ -173,7 +208,7 @@ describe("describeExternalDirectoryGate", () => {
 
 describe("describeExternalDirectoryGate — extension and MCP tools (#352)", () => {
   it("gates an extension tool with an external input.path", () => {
-    const result = describeExternalDirectoryGate(
+    const result = gateUnderTest(
       makeTcc({
         toolName: "my-ext",
         input: { path: "/outside/project/file.ts" },
@@ -185,7 +220,7 @@ describe("describeExternalDirectoryGate — extension and MCP tools (#352)", () 
   });
 
   it("gates an MCP tool with an external arguments.path", () => {
-    const result = describeExternalDirectoryGate(
+    const result = gateUnderTest(
       makeTcc({
         toolName: "mcp",
         input: { arguments: { path: "/outside/project/file.ts" } },
@@ -203,7 +238,7 @@ describe("describeExternalDirectoryGate — extension and MCP tools (#352)", () 
               typeof input.target === "string" ? input.target : undefined
           : undefined,
     };
-    const result = describeExternalDirectoryGate(
+    const result = gateUnderTest(
       makeTcc({ toolName: "ffgrep", input: { target: "/outside/project/x" } }),
       ["/test/agent"],
       extractors,
@@ -212,7 +247,7 @@ describe("describeExternalDirectoryGate — extension and MCP tools (#352)", () 
   });
 
   it("returns null for an extension tool whose path is inside cwd", () => {
-    const result = describeExternalDirectoryGate(
+    const result = gateUnderTest(
       makeTcc({
         toolName: "my-ext",
         input: { path: "/test/project/src/x.ts" },

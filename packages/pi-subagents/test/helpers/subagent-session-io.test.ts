@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentConfig } from "#src/types";
-import { createAgentLookup, createSubagentSessionIO } from "./subagent-session-io";
+import { createAgentLookup, createFactorySession, createSubagentSessionIO } from "./subagent-session-io";
 
 describe("createSubagentSessionIO", () => {
 	it("returns a stub with all EnvironmentIO methods", () => {
@@ -94,5 +94,57 @@ describe("createAgentLookup", () => {
 		const lookup = createAgentLookup();
 		expect(lookup.resolveAgentConfig.mock).toBeDefined();
 		expect(lookup.getToolNamesForType.mock).toBeDefined();
+	});
+});
+
+describe("createFactorySession", () => {
+	it("returns a stub with all eight session methods", () => {
+		const session = createFactorySession();
+		expect(Array.isArray(session.messages)).toBe(true);
+		expect(typeof session.subscribe).toBe("function");
+		expect(typeof session.prompt).toBe("function");
+		expect(typeof session.abort).toBe("function");
+		expect(typeof session.steer).toBe("function");
+		expect(typeof session.dispose).toBe("function");
+		expect(typeof session.getActiveToolNames).toBe("function");
+		expect(typeof session.setActiveToolsByName).toBe("function");
+		expect(typeof session.bindExtensions).toBe("function");
+	});
+
+	it("getActiveToolNames defaults to ['read'] before and after bind", async () => {
+		const session = createFactorySession();
+		expect(session.getActiveToolNames()).toEqual(["read"]);
+		await session.bindExtensions();
+		expect(session.getActiveToolNames()).toEqual(["read"]);
+	});
+
+	it("flips getActiveToolNames from before-bind to after-bind set", async () => {
+		const session = createFactorySession({
+			toolsBeforeBind: ["read"],
+			toolsAfterBind: ["read", "extension_tool"],
+		});
+		expect(session.getActiveToolNames()).toEqual(["read"]);
+		await session.bindExtensions();
+		expect(session.getActiveToolNames()).toEqual(["read", "extension_tool"]);
+	});
+
+	it("defaults toolsAfterBind to toolsBeforeBind when omitted", async () => {
+		const session = createFactorySession({ toolsBeforeBind: ["read", "grep"] });
+		await session.bindExtensions();
+		expect(session.getActiveToolNames()).toEqual(["read", "grep"]);
+	});
+
+	it("stubs retain Mock methods (vi.fn())", () => {
+		const session = createFactorySession();
+		session.setActiveToolsByName(["read"]);
+		expect(session.setActiveToolsByName.mock.calls[0][0]).toEqual(["read"]);
+	});
+
+	it("exposes the core's working event bus (subscribe/emit)", () => {
+		const session = createFactorySession();
+		const events: unknown[] = [];
+		session.subscribe((e) => events.push(e));
+		session.emit({ type: "factory-event" });
+		expect(events).toEqual([{ type: "factory-event" }]);
 	});
 });

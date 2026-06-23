@@ -1,4 +1,8 @@
-import { getPathBearingToolPath, PATH_BEARING_TOOLS } from "#src/path-utils";
+import {
+  getPathBearingToolPath,
+  normalizePathForComparison,
+  PATH_BEARING_TOOLS,
+} from "#src/path-utils";
 import { suggestSessionPattern } from "#src/pattern-suggest";
 import { formatAskPrompt } from "#src/permission-prompts";
 import { SessionApproval } from "#src/session-approval";
@@ -12,7 +16,9 @@ import type { ToolCallContext } from "./types";
  * Derive the value used for session-approval pattern suggestions.
  *
  * Bash → command string; MCP → qualified target;
- * path-bearing tools → file path; others → catch-all wildcard.
+ * path-bearing tools → the file path resolved to its canonical (cwd-anchored,
+ * absolute) form so the suggested pattern matches the policy values a later
+ * call produces; others → catch-all wildcard.
  */
 function deriveSuggestionValue(
   tcc: ToolCallContext,
@@ -20,7 +26,9 @@ function deriveSuggestionValue(
 ): string {
   if (tcc.toolName === "bash") return check.command ?? "";
   if (tcc.toolName === "mcp") return check.target ?? "mcp";
-  return getPathBearingToolPath(tcc.toolName, tcc.input) ?? "*";
+  const path = getPathBearingToolPath(tcc.toolName, tcc.input);
+  if (path === null) return "*";
+  return tcc.cwd ? normalizePathForComparison(path, tcc.cwd) : path;
 }
 
 /**

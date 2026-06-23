@@ -1,5 +1,6 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
+import type { DecisionSummaryWriter } from "#src/decision-audit";
 import type { PermissionResolver } from "#src/permission-resolver";
 import type { PermissionSession } from "#src/permission-session";
 import type { ServiceLifecycle } from "#src/service-lifecycle";
@@ -26,6 +27,7 @@ interface ResourcesDiscoverPayload {
  *   `activate` publishes (skipped for registered subagent children) and emits
  *   the ready event; `teardown` unsubscribes all session listeners and unpublishes
  * - `logger` — injected directly; replaces the former `session.logger` reach-through
+ * - `audit` — per-session decision counters; its summary is written on shutdown
  */
 export class SessionLifecycleHandler {
   constructor(
@@ -33,6 +35,7 @@ export class SessionLifecycleHandler {
     private readonly resolver: PermissionResolver,
     private readonly serviceLifecycle: ServiceLifecycle,
     private readonly logger: SessionLogger,
+    private readonly audit: DecisionSummaryWriter,
   ) {}
 
   handleSessionStart(
@@ -84,6 +87,7 @@ export class SessionLifecycleHandler {
     if (ctx) {
       ctx.ui.setStatus(PERMISSION_SYSTEM_STATUS_KEY, undefined);
     }
+    this.audit.writeSummary(this.logger);
     this.session.shutdown();
     this.serviceLifecycle.teardown();
     return Promise.resolve();

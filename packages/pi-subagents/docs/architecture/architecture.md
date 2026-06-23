@@ -13,8 +13,8 @@ This document describes the architecture of the pi-subagents fork: a focused, co
 4. **No time-based scheduling** — cron-style timed dispatch (upstream's `schedule.ts` subsystem) is removed from the core (#52).
    Timed dispatch is a separate concern that any extension can implement by calling `spawn()` on the published API.
    The max-concurrent admission gate is not scheduling in this sense — concurrency management stays in core.
-5. **UI extraction is deferred** — the widget, conversation viewer, and `/agents` command menu stay in the core for now.
-   They are the first candidate for extraction once the API boundary is proven stable.
+5. **UI is an in-core, substitutable consumer** — [ADR-0004](../decisions/0004-reconsider-ui-direction.md) records the per-component decision: the widget shrinks to background agents only, the bespoke conversation viewer is replaced by native session navigation, the `/agents` command is dissolved into focused surfaces, and the surviving UI stays in the core as a reactive consumer (not extracted to a separate package).
+   Extraction remains an available future option because the composition invariant holds — the core is byte-for-byte identical with or without a given UI consumer.
 6. **Snapshot, don't capture** — mutable parent state (ctx, session, model) is read once at spawn time and frozen into a `ParentSnapshot` data object.
    No live references survive past the spawn call.
 7. **Subscribe, don't thread** — observation of agent progress uses direct session-event subscription, not callback parameters threaded through multiple layers.
@@ -63,9 +63,8 @@ flowchart TB
 
     subgraph observation["Observation domain"]
         direction TB
-        RecordObserver["record-observer<br/>(stats via events)"]
+        RecordObserver["record-observer<br/>(stats + live activity via events)"]
         Notification["notification<br/>(completion nudges)"]
-        UIObserver["ui-observer<br/>(streaming state)"]
     end
 
     subgraph tools["Tools domain"]
@@ -95,8 +94,8 @@ flowchart TB
     SessionConfig --> Prompts & Env
     AgentTypeRegistry --> DefaultAgents & CustomAgents
     RecordObserver -.->|subscribes| SubagentSession
-    UIObserver -.->|subscribes| SubagentSession
     Widget -.->|polls| SubagentManager
+    SubagentManager -.->|notifies| Widget
 ```
 
 ### Key domain types
@@ -258,7 +257,7 @@ sequenceDiagram
     Asm-->>Factory: SessionConfig
     Factory->>Child: create session + bind extensions
     Factory-->>Ag: SubagentSession (born complete)
-    Note over Ag: agent-observer + ui-observer subscribe to session events
+    Note over Ag: record-observer subscribes to session events
     Ag->>Sub: runTurnLoop(prompt, opts)
     Sub->>Child: prompt + drive turn loop
     Child-->>Sub: result text
@@ -271,7 +270,7 @@ sequenceDiagram
 
 ## Module organization
 
-The extension has 58 source files organized into six domains plus entry-point wiring.
+The extension has 62 source files organized into six domains plus entry-point wiring.
 All eight domains have directories: `config/`, `session/`, `lifecycle/`, `observation/`, `service/`, `tools/`, `ui/`, and `handlers/`.
 Issue #164 moved the 26 previously flat root-level files into five new domain directories, reducing the root to 5 files + 8 directories.
 
@@ -284,6 +283,7 @@ src/
 ├── types.ts                        shared type definitions
 ├── settings.ts                     SettingsManager (persistent operational settings)
 ├── debug.ts                        debug logging utility
+├── layered-settings.ts             loadLayeredSettings helper (published as @gotgenes/pi-subagents/settings)
 │
 ├── config/                         agent type definitions and resolution
 │   ├── agent-types.ts              AgentTypeRegistry class
@@ -320,7 +320,9 @@ src/
 │   ├── record-observer.ts          session-event stats observer
 │   ├── notification.ts             completion nudges
 │   ├── notification-state.ts       per-agent notification tracking
-│   └── renderer.ts                 notification TUI component
+│   ├── renderer.ts                 notification TUI component
+│   ├── composite-subagent-observer.ts fans manager notifications out to multiple observers
+│   └── subagent-events-observer.ts manager lifecycle observer (event emission + persistence + notification)
 │
 ├── service/                        cross-extension API boundary
 │   ├── service.ts                  SubagentsService interface + Symbol.for() accessors
@@ -339,16 +341,14 @@ src/
 ├── ui/                             user-facing presentation
 │   ├── agent-widget.ts             above-editor live status widget
 │   ├── widget-renderer.ts          pure rendering for widget
-│   ├── agent-menu.ts               /agents slash command menu
-│   ├── agent-config-editor.ts      agent detail/edit view (AgentConfigEditor class)
-│   ├── agent-creation-wizard.ts    agent creation (AgentCreationWizard class)
-│   ├── conversation-viewer.ts      scrollable session overlay
-│   ├── message-formatters.ts       pure per-message-type formatters (extracted from conversation-viewer)
-│   ├── agent-activity-tracker.ts   live activity state tracker
-│   ├── agent-file-ops.ts           filesystem abstraction
-│   ├── agent-file-writer.ts        overwrite-guard + write + reload + notify helper
-│   ├── ui-observer.ts              session-event observer for streaming
-│   └── display.ts                  pure formatters and shared types
+│   ├── agent-config-editor.ts      agent detail/edit view (AgentConfigEditor class) ← removing in #441
+│   ├── agent-creation-wizard.ts    agent creation (AgentCreationWizard class) ← removing in #441
+│   ├── menu-ui.ts                  transient: MenuUI interface (removed with wizard/editor in #441)
+│   ├── agent-file-ops.ts           filesystem abstraction ← removing in #441
+│   ├── agent-file-writer.ts        overwrite-guard + write + reload + notify helper ← removing in #441
+│   ├── display.ts                  pure formatters and shared types
+│   ├── subagents-settings.ts       /subagents:settings command handler
+│   └── session-navigator.ts        /subagents:sessions command handler
 │
 └── handlers/                       event handlers
     ├── index.ts                    barrel re-export
@@ -359,11 +359,11 @@ src/
 
 ### Observation model
 
-Record statistics (tool uses, token usage, compaction counts) are updated by `record-observer.ts`, which subscribes directly to session events.
-UI streaming (active tools, response text, turn counts) is handled by `ui/ui-observer.ts`, which subscribes to the same session events independently.
-Neither observer wraps or forwards the other — both subscribe directly to the session.
+Record statistics (tool uses, token usage, compaction counts) and live activity (active tools, response text, turn counts) are updated by `record-observer.ts`, which subscribes directly to session events.
+This is the single per-child session subscription — all run state lives on the `Subagent` record.
 
-The widget reads agent state by polling a shared `Map<string, AgentActivityTracker>` on `SubagentRuntime` every 80 ms. The conversation viewer subscribes to session events via `Subagent.subscribeToUpdates()` and reads messages via `Subagent.messages` — no direct `AgentSession` reference (#277).
+The widget reads agent state by polling the records exposed via `SubagentManager.listAgents()` every 80 ms; that poll loop is now started by the manager's lifecycle notifications (the widget subscribes as a `SubagentManagerObserver` fanned out through `CompositeSubagentObserver`), not by inbound calls from the spawn tools.
+The conversation viewer subscribes to session events via `Subagent.subscribeToUpdates()` and reads messages via `Subagent.messages` — no direct `AgentSession` reference (#277).
 
 ## Cross-extension architecture
 
@@ -481,11 +481,14 @@ If Pi gains a native service registry ([earendil-works/pi#4207]), these accessor
 
 The core emits events on `pi.events` that any extension can observe:
 
-| Channel               | Payload                                     | When                 |
-| --------------------- | ------------------------------------------- | -------------------- |
-| `subagents:started`   | `{ id, type, description }`                 | Agent begins running |
-| `subagents:completed` | `{ id, type, status, result?, error? }`     | Agent finishes       |
-| `subagents:activity`  | `{ id, toolName?, textDelta?, turnCount? }` | Streaming progress   |
+| Channel               | Payload                                                                             | When                                          |
+| --------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------- |
+| `subagents:started`   | `{ id, type, description }`                                                         | Agent begins running                          |
+| `subagents:completed` | `{ id, type, description, status, result?, error?, toolUses, durationMs, tokens? }` | Agent finishes successfully                   |
+| `subagents:failed`    | same as `completed` (`buildEventData` shape)                                        | Agent ends in `error`/`stopped`/`aborted`     |
+| `subagents:compacted` | `{ id, type, description, reason, tokensBefore, compactionCount }`                  | Child session compacts                        |
+| `subagents:created`   | `{ id, type, description, isBackground }`                                           | Background agent created (pre-admission)      |
+| `subagents:steered`   | `{ id, message }`                                                                   | Steering message delivered to a running agent |
 
 These are fire-and-forget broadcast events — no request IDs, no reply channels.
 
@@ -496,6 +499,9 @@ The core spawns a child session derived from the parent, runs the turn loop, tra
 Everything else — permissions, worktree/workspace isolation, UI, telemetry — is an extension that attaches through one of two surfaces and never reaches into the core.
 
 The rationale and the full reasoning chain that led here are recorded in [`docs/decisions/0002-extensions-on-a-minimal-core.md`](../decisions/0002-extensions-on-a-minimal-core.md).
+
+A separate, longer-horizon note — [`client-server-opportunities.md`](./client-server-opportunities.md) — records what Pi's eventual client-server split (Mario Zechner's session-sync unification) would unlock for pi-subagents: viewing live subagent sessions, viewing suspended ones, and operators interacting with a subagent through an editor.
+That architecture is not on the near-term roadmap; the note captures the opportunity so it is on record.
 
 ### Two extension surfaces
 
@@ -520,7 +526,7 @@ The governing rule — **no vacant hooks**: the architecture must _admit_ a seam
 A provider seam with no consumer is a speculative abstraction that taxes every reader and that `fallow` flags as dead.
 Latent extensibility is the deliverable; a vacant hook is not.
 
-The [first-principles refinement](#first-principles-refinement-the-deeper-target) below sharpens this two-surface split.
+The [first-principles refinement](#first-principles-refinement-and-the-deeper-target) below sharpens this two-surface split.
 The awaited, behavior-affecting lifecycle events (notably `session-created` before `bindExtensions`) are _hooks_ — the child's own extension surface applied recursively, generative because the core waits on the handler before deciding what to do next.
 The observational surface then carries only fire-and-forget broadcasts of immutable snapshots, which no consumer can use to change the core.
 
@@ -554,14 +560,14 @@ In the target state, pi-subagents publishes events and a provider seam; other pa
 
 - **pi-permission-system** (observational) subscribes to child-session lifecycle events, detects subagent execution context in the child, and gates tool calls at runtime.
 - **pi-subagents-worktrees** (generative) registers a `WorkspaceProvider` that prepares a git worktree at run-start and tears it down after, supplying the child's cwd.
-- **pi-subagents-ui** (future, under reconsideration — see the [first-principles refinement](#first-principles-refinement-the-deeper-target)) subscribes to the broadcast and the query/behavior interfaces; whether the inherited widget, conversation viewer, and `/agents` menu survive is judged on our principles, not preserved by default.
+- **pi-subagents-ui** (future, under reconsideration — see the [first-principles refinement](#first-principles-refinement-and-the-deeper-target)) subscribes to the broadcast and the query/behavior interfaces; whether the inherited widget, conversation viewer, and `/agents` menu survive is judged on our principles, not preserved by default.
 - **Any future extension** (OTel, auditing, cost tracking) subscribes to the same events without pi-subagents knowing.
 
 Composition test: install neither extension, only permissions, only workspaces, or both — the core is byte-for-byte identical in all four cases, and the two extensions never reference each other.
 
 This is achieved across phases: Phase 14 (strip policy), Phase 16 (invert dependencies — extensions on a minimal core), and Phase 18 (reconsider UI).
 
-### First-principles refinement (the deeper target)
+### First-principles refinement and the deeper target
 
 The two-surface model above is correct but coarse.
 Pushing it against our own principles — construct complete, state owns its mutations, tell-don't-ask, dependency inversion — surfaces sharper boundaries that the current code draws through the middle of classes.
@@ -643,17 +649,17 @@ That method — testability friction as a boundary probe, with its limits — is
 
 ### Health metrics
 
-| Metric                     | Value                                   |
-| -------------------------- | --------------------------------------- |
-| Health score               | 78/100 (B)                              |
-| Total LOC                  | 8,356 (60 files, as of Phase 17 Step 4) |
-| Dead code                  | 0 files, 0 exports                      |
-| Maintainability index      | 90.8 (good)                             |
-| Avg cyclomatic complexity  | 1.4                                     |
-| P90 cyclomatic complexity  | 2                                       |
-| Production duplication     | 11 lines (1 internal clone group)       |
-| Test duplication           | 42 clone groups, 661 lines              |
-| Fallow refactoring targets | 0                                       |
+| Metric                     | Value                                        |
+| -------------------------- | -------------------------------------------- |
+| Health score               | 78/100 (B)                                   |
+| Total LOC                  | 7,751 (62 files, end of Phase 17)            |
+| Dead code                  | 0 files, 0 exports                           |
+| Maintainability index      | 90.8 (good)                                  |
+| Avg cyclomatic complexity  | 1.4                                          |
+| P90 cyclomatic complexity  | 2                                            |
+| Production duplication     | 11 lines (1 internal clone group)            |
+| Test duplication           | 28 clone groups, 503 lines (end of Phase 17) |
+| Fallow refactoring targets | 0                                            |
 
 ### Dependency bag inventory
 
@@ -877,228 +883,331 @@ All five steps are closed: [#261], [#262], [#263], [#264], [#265].
 The earlier "agent collaborator architecture" framing (#256 superseded, #257 parked, #258 and #259 closed not-planned) was abandoned; its structural win was reached cleanly via the workspace seam.
 See [phase-16-invert-dependencies.md](history/phase-16-invert-dependencies.md) for details.
 
-## Improvement roadmap (Phase 17 — core consolidation)
+## Phase 17 (complete)
 
-Phase 17 consolidates the core's remaining structural debt before the UI reconsideration (now Phase 18).
-The findings come from the standard discovery pass — fallow suite, entry-point trace, design-review checklist, and test-constructibility audit — run after Phase 16 landed.
+Phase 17 consolidated the core's remaining structural debt before the UI reconsideration (Phase 18).
+The `Subagent` record/executor duality was resolved by extracting `SubagentState` (status, result, timestamps, metrics) into a private owned value object and making `SubagentExecution` a mandatory constructor collaborator — eliminating ~20 optional fields and the two "not configured for execution" runtime throws.
+The concurrency queue was replaced with a thunk-based `ConcurrencyLimiter` that knows nothing about agents or IDs.
+Run collaborators (`RunListeners`, `WorkspaceBracket`) were extracted from the 455-LOC `Subagent` class.
+The inline `SubagentManagerObserver` literal was promoted to `SubagentEventsObserver`, making its three concerns (event emission, record persistence, notification dispatch) unit-testable in isolation.
+Widget delegation and the post-construction `runtime.widget =` write were removed from `SubagentRuntime` by dissolving the notification→widget cycle via `AgentWidget.seedFinishedAgents`.
+Lifecycle, UI/tools, and cross-package test fixture clones were consolidated.
+`loadLayeredSettings<T>` was extracted to `src/layered-settings.ts` and published via the `@gotgenes/pi-subagents/settings` subpath export, eliminating the 23-line production clone with `pi-subagents-worktrees`.
+All nine steps are closed: [#381], [#373], [#374], [#375], [#376], [#377], [#378], [#379], [#380].
+[#412] unified the overlapping session-mock builders identified during Step 7.
+[#415] migrated `pi-subagents-worktrees` to `loadLayeredSettings` after the Step 9 published release.
+See [phase-17-core-consolidation.md](history/phase-17-core-consolidation.md) for the full findings, step outcomes, dependency diagram, and tracks.
 
-Phase 17 is the consolidation slice of the [first-principles refinement](#first-principles-refinement-the-deeper-target), not the full domain split.
-It lands the first cut of the lifecycle-state domain (Step 2's `SubagentState`) plus the wiring, queue, and duplication cleanups.
-The fuller four-domain split — metrics as a projection, result delivery as its own domain, the hook/broadcast reclassification, and the push/pull (DIP) inversion — is recorded in the refinement and sequenced into later phases.
+## Phase 18 (complete)
 
-### Findings summary
+Phase 18 disentangled the activity tier from the core and recorded a first-principles decision about the UI's direction.
+Steps 1–5 (the spine) consolidated all run state onto `SubagentState`, deleted `AgentActivityTracker` and `ui-observer` (−145 LOC), and made the widget a pure reactive consumer of lifecycle events with no inbound calls from core spawn tools.
+Step 6 reconciled the public event contract (breaking: removed the vacant `SUBAGENT_EVENTS.ACTIVITY` channel; added `FAILED`, `COMPACTED`, `CREATED`, `STEERED`).
+Step 7 consolidated residual test clone families, dropping from 24 to 14 clone groups (below the <15 target).
+Step 8 captured the per-component UI decisions in [ADR-0004]: the widget shrinks to background agents only; the bespoke `ConversationViewer` is replaced by native session navigation (a read-only transcript via `parseSessionEntries`, per the Step 1 spike — see [ADR-0004]'s addendum); the `/agents` command is dissolved (remove the create wizard and agent-types editor, extract settings to a focused command); the surviving UI stays in-core as a substitutable reactive consumer.
+Source LOC decreased from 7,751 (62 files) to 7,650 (61 files); tests grew from 1,031 to 1,047.
+All eight steps are closed: [#420], [#421], [#422], [#423], [#424], [#425], [#426], [#427].
+See [phase-18-reconsider-ui.md](history/phase-18-reconsider-ui.md) for the full findings, step outcomes, dependency diagram, and tracks.
 
-Updated health metrics (fallow, package-wide including tests):
+## Phase 19 (proposed)
 
-| Metric                     | Phase 16 baseline              | Current                                       |
-| -------------------------- | ------------------------------ | --------------------------------------------- |
-| Health score               | 78/100 (B)                     | 78/100 (B)                                    |
-| Source LOC                 | 7,778 (57 files)               | 8,356 (60 files, landed Phase 17 Step 4)      |
-| Dead code                  | 0 files, 0 exports             | 0 files, 0 exports                            |
-| Maintainability index      | 90.8 (good)                    | 90.8 (good)                                   |
-| Avg / P90 cyclomatic       | 1.4 / 2                        | 1.4 / 2                                       |
-| Production duplication     | 11 lines (1 internal group)    | 34 lines (1 internal + 1 cross-package group) |
-| Test duplication           | 42 groups, 661 lines           | 44 groups, ~750 lines                         |
-| Fallow refactoring targets | 0                              | 0                                             |
-| Top churn hotspot          | `index.ts` 65.0 ▲ accelerating | `index.ts` 31.3 ▼ cooling                     |
+Phase 19 implements the per-component UI decisions recorded in [ADR-0004]: shrink the widget to background-only, replace the bespoke conversation viewer with native session navigation, dissolve the monolithic `/agents` menu, and keep the surviving UI in-core.
 
-The syntactic metrics are healthy and stable — the remaining debt is structural, mostly invisible to fallow, and concentrated in three places:
+The sequencing follows Kent Beck's "make the change easy, then make the easy change."
+The end state deletes `agent-menu.ts` — the god-command that bundles four unrelated jobs — and everything reachable only from it.
+Rather than surgically mutate that doomed module (and the #1 churn hotspot `index.ts`) once per option, Phase 19 first stands up the replacement surfaces additively, then removes the now-orphaned subtree in a single terminal cut.
+This keeps every responsibility's old surface live until its replacement exists (ADR-0004's no-interim-regression invariant), turns the three replacement steps into genuinely parallel work (none touch `agent-menu.ts`), and reduces `index.ts` edits from four surgical removals to one deregistration.
 
-1. **`Subagent` construction duality.**
-   `SubagentInit` carries ~20 fields, nearly all optional with "required for run(), optional for tests" semantics, and `run()` compensates with runtime throws ("not configured for execution").
-   This violates principle 8 (construct complete): the class is simultaneously a passive record (tests build display-only snapshots) and an executor (production wires factory, observer, run config, workspace provider).
-   The symptoms are in the tests: external writes `record.promise = …` (manager, queue callback, four test files) and `record.notification = new NotificationState(…)` (seven test sites) are output-argument smells on fields the object should own.
-   This duality is the two most visible of four domains fused into `Subagent`; Phase 17 resolves it (Step 2) and defers the remaining split (metrics, result delivery) to a later phase per the [first-principles refinement](#first-principles-refinement-the-deeper-target).
-2. **Wiring debt in `index.ts`.**
-   Two forward references (settings → queue, queue → manager) are replicated with an `eslint-disable prefer-const` dance in `test/lifecycle/subagent-manager.test.ts`; the queue's start callback (`record.promise = record.run()` after a status check) is duplicated verbatim between `index.ts` and the test helper.
-   A ~70-line inline `SubagentManagerObserver` literal mixes three concerns (event emission, `appendEntry` persistence, notification dispatch).
-   `runtime.widget` is assigned post-construction behind five relay-only delegation methods on `SubagentRuntime`.
-3. **Duplication.**
-   A 23-line cross-package production clone (`settings.ts:198-211` ↔ `pi-subagents-worktrees/src/config.ts:51-73`: the layered global/project settings-file loader) and 44 test clone groups (~750 lines), with clone families concentrated in `test/lifecycle/` and `test/ui/`.
+Seven numbered steps in three phases, plus two follow-ups (Steps 4a–4b) carved from the #445 slice:
 
-Deferred findings (scored below the priority cut, tracked here rather than as steps): the `resolveModel` error-as-string union return (callers branch on `typeof resolved === "string"`), the file-top SDK `eslint-disable` headers in 14 files (re-audit when the Pi SDK exports improve), missing unit tests for `observation/renderer.ts` (the top CRAP-risk file), and the 11-line internal clone in `ui/agent-config-editor.ts` (folds into the Phase 18 UI extraction).
+- **Phase A — stand up replacements (additive):** spike, settings command, background widget, native session navigation and its renderer/source follow-ups (Steps 1–4, 4a–4b).
+- **Phase B — dissolve `/agents` (terminal cut):** delete the orphaned subtree in two deletion commits, one per subtree (Steps 5–6).
+- **Phase C — test health:** consolidate the test clones that survive the cut (Step 7).
 
-### Steps
+### Health metrics (Phase 18 → Phase 19 target)
 
-Priority = Impact × (6 − Risk).
+| Metric                 | Phase 18 (current)       | Phase 19 target      |
+| ---------------------- | ------------------------ | -------------------- |
+| Health score           | 78/100 (B)               | 83/100 (B+)          |
+| Source LOC             | 7,650 (61 files)         | ~6,780 (~55 files)   |
+| Production duplication | 11 lines (1 group)       | 0 lines              |
+| Test clone groups      | 16                       | ≤ 10                 |
+| Top churn hotspot      | `index.ts` (103 commits) | `index.ts` (cooling) |
 
-| Step | Title                                                                                | Category | Impact | Risk | Priority |
-| ---- | ------------------------------------------------------------------------------------ | -------- | ------ | ---- | -------- |
-| 1    | Replace ConcurrencyQueue with a thunk-based ConcurrencyLimiter                       | A/C      | 4      | 2    | 16       |
-| 2    | Extract `SubagentState`; make `Subagent` execution deps mandatory                    | B/D      | 4      | 3    | 12       |
-| 3    | Encapsulate run start and notification attachment on Subagent                        | C        | 3      | 2    | 12       |
-| 4    | Extract run-listener and workspace-bracket collaborators from Subagent               | B/C      | 3      | 2    | 12       |
-| 5    | Extract the manager observer from index.ts into a class                              | B/E      | 3      | 2    | 12       |
-| 6    | Split widget delegation out of SubagentRuntime                                       | C        | 3      | 3    | 9        |
-| 7    | Consolidate lifecycle test fixtures                                                  | D        | 3      | 1    | 15       |
-| 8    | Consolidate UI and tools test fixtures                                               | D        | 2      | 1    | 10       |
-| 9    | Resolve the cross-package settings-loader duplication                                | A        | 2      | 2    | 8        |
+### ✅ Step 1 — Spike: resolve ADR-0004 entry criteria ([#446])
 
-#### Step 1 — Replace ConcurrencyQueue with a thunk-based ConcurrencyLimiter ([#381]) ✅ Complete
+Smell: Category C (coupling boundary) — four open decisions block the session-navigation implementation.
+Target: `docs/decisions/0004-reconsider-ui-direction.md` addendum.
 
-- Targets: `src/lifecycle/concurrency-queue.ts` (→ `concurrency-limiter.ts`), `src/lifecycle/subagent-manager.ts`, `src/index.ts`, `test/lifecycle/concurrency-queue.test.ts`, `test/lifecycle/subagent-manager.test.ts`.
-- Smell: Category C (forward references: the queue's ID-registry design forces a start callback that reaches back into the manager, duplicated between `index.ts` and the test helper) and Category A (dual counting: the queue's `running` counter is fed by `markStarted`/`markFinished` relays in the manager's observer, mirroring state the agents already carry).
-- Change: replace the ID-registry queue with a `ConcurrencyLimiter` that schedules thunks FIFO against a dynamic `getLimit()` — the injected limiter knows nothing about agents, IDs, or the manager.
-  Spawn gates background runs with `limiter.schedule(() => record.start())` — `start()` owns the abort-while-queued status guard and stores the promise internally; foreground and `bypassQueue` runs invoke `record.start()` directly.
-  The settings `onMaxConcurrentChanged` hook wires to `limiter.recheck()` in `index.ts`; `dispose()` calls `limiter.clear()` to drop pending thunks.
-- Outcome: dependency direction is strictly manager → limiter (no callback back-edge; the `prefer-const` eslint-disable in the test helper is deleted); the observer's two queue relays are gone; every spawned agent has a `promise` at spawn, collapsing `waitForAll`'s `while (true)` drain loop and its eslint-disable.
+The four entry criteria from ADR-0004:
 
-#### Step 2 — Extract `SubagentState`; make `Subagent` execution deps mandatory ([#373]) ✅ Complete
+1. **Root-continuity:** Does the root's in-flight turn survive `ctx.switchSession()` and a return gesture?
+2. **View-only vs interactive:** `switchSession` (full interactive takeover) or `loadEntriesFromFile` (read-only transcript built from JSONL)?
+3. **Parallel-agent navigation:** Operator gesture to select which of N background agents to view (from the widget, a command, or both).
+4. **Settings command name:** `/subagents-settings`, `/agents-settings`, or another form consistent with sibling packages?
 
-- Targets: `src/lifecycle/subagent.ts` (state fields, transition/accumulation methods, constructor, `run()` guards), `src/lifecycle/subagent-manager.ts` (`spawn`), `test/helpers/make-subagent.ts`, `test/lifecycle/subagent.test.ts`, `test/observation/record-observer.test.ts`.
-- Smell: Category B (god interface — ~20 fields) and Category D (constructibility: "optional for tests" fields with compensating runtime throws).
-  The record/executor duality is the two most visible of the four conflated domains (see [First-principles refinement](#first-principles-refinement-the-deeper-target)).
-- Change: extract the passive-record state — status, result, error, timestamps, and the stats (toolUses, lifetimeUsage, compactionCount) — into a `SubagentState` value object that owns the transition and accumulation methods.
-  `Subagent` holds one privately; its existing getters and `markX`/`incrementX`/`addUsage` methods become one-line delegations, so the ~40 read sites and the mutation callers are unchanged.
-  This is not reach-through: `SubagentState` is a private owned value, not a foreign collaborator (contrast [#277], which removed reach-through to the raw SDK session).
-  With the readable state extracted, the remaining execution inputs (snapshot, prompt, model, maxTurns, thinkingLevel, parentSession, signal, createSubagentSession, observer, getRunConfig, getWorkspaceProvider, baseCwd) collapse into a single **mandatory** `SubagentExecution` collaborator: production always supplies it (the one `spawn()` site), the passive-record construction moves entirely into `make-subagent.ts`, and `run()`'s two "not configured" throws vanish by construction.
-- Outcome: state-machine and observer tests target `SubagentState` directly (no stub execution); `Subagent` is construct-complete with no optional execution fields and no runtime throws (grep-verifiable: no "not configured for execution" in `subagent.ts`); the record-vs-executor duality is resolved, not type-encoded.
-- Scope boundary: stats stay on `SubagentState` for now.
-  Hoisting **metrics** into a projection over the child session's event stream and extracting **result delivery** (`notification`/`resultConsumed`) into its own domain are the remaining two of the four domains, deferred to a later phase per the refinement.
-- Landed: `SubagentState` (`src/lifecycle/subagent-state.ts`) owns status/result/error/timestamps/stats and the transition/accumulation methods; `Subagent` delegates getters and `markX`/`incrementX`/`addUsage` to it.
-  `subscribeSubagentObserver` targets `SubagentState`, so observer and state-machine tests no longer stub execution.
-  `SubagentExecution` is a mandatory constructor collaborator (production wires it in the single `spawn()` site; passive records build via `make-subagent.ts`), and the two `run()` throws are gone.
+Produce a minimal spike (observed test or PoC against a real session) that answers each question, then record the answers as an addendum to ADR-0004.
+No production source files change; the spike closes when the ADR addendum is merged.
 
-#### Step 3 — Encapsulate run start and notification attachment on Subagent ([#374]) ✅ Complete
+Outcome: ADR-0004 updated with all four entry-criteria answers; Step 4 unblocked.
 
-- Targets: `src/lifecycle/subagent.ts`, `src/lifecycle/subagent-manager.ts`, `test/tools/get-result-tool.test.ts`, `test/lifecycle/subagent-manager.test.ts`, `test/service/service-adapter.test.ts`, `test/observation/notification.test.ts`, `test/helpers/make-subagent.test.ts`, `test/lifecycle/subagent.test.ts`.
-- Smell: Category C — output arguments: external writes to `record.promise` (2 production sites in `subagent-manager.ts`, 4 test sites) and `record.notification` (7 test sites; the production path was resolved in Step 2 — the constructor creates `notification` from `execution.parentSession?.toolCallId`, so Step 3's remaining work is making the field read-only and updating tests to supply it via `parentSession`).
-- Change: add `Subagent.start()` that runs and stores its own promise (plus an awaitable accessor for `spawnAndWait`/`waitForAll`); make `promise` and `notification` externally read-only (private `_promise`/`_notification` fields backed by public getters); the abort-while-queued status guard folds into `start()`, removing the inline check from the limiter callback; tests use `createTestSubagent({ toolCallId })` or spawn with `parentSession.toolCallId` instead of post-construction assignment.
-- Outcome: zero external writes to `Subagent` fields outside its own methods (grep-verifiable: `\.promise =` and `\.notification =` appear only inside `subagent.ts`); 6 new unit tests for `start()` behaviour; test count +6 (975 → 981).
-- Landed: `Subagent.start()` (immediate path) and `Subagent.scheduleVia(schedule)` (queued path) own the promise and the shared `guardedRun()` status guard; `SubagentManager.spawn()` calls one or the other; `TestSubagentOptions.toolCallId` wires notification state via the constructor path.
-- Correction (post-merge): the first cut used `void this.limiter.schedule(() => record.start())`, which left a queued agent's `promise` unset until its slot opened — silently regressing Step 1's "every spawned agent has a `promise` at spawn" invariant.
-  Fixed by inverting control: `scheduleVia` captures the limiter promise eagerly inside the agent (no external `.promise =` write), restoring the invariant.
-  Lesson: a step's acceptance criteria must include the cross-step invariants it could regress, not only its own grep-verifiable outcome.
+`Release: independent`
 
-#### Step 4 — Extract run-listener and workspace-bracket collaborators from Subagent ([#375])
+### ✅ Step 2 — Extract settings to a focused `/subagents-settings` command ([#447])
 
-- Targets: `src/lifecycle/subagent.ts` (455 LOC after Step 2 extracted SubagentState — still the largest source file).
-- Smell: Category B (oversized class; per-run listener fields declared mid-class) and Category C (state owns its mutations: workspace dispose logic appears in `run()`'s catch, `completeRun`, and `failRun`).
-- Change: extract a `RunListeners` object owning the observer-unsubscribe and signal-detach handles (`wireSignal`/`attachObserver`/`release`), and a `WorkspaceBracket` collaborator owning prepare/dispose-with-addendum, centralising the dispose logic.
-- Outcome: `subagent.ts` ≤ 450 LOC; workspace disposal logic in exactly one place; listener handles no longer raw nullable fields.
-- Landed: `RunListeners` (`src/lifecycle/run-listeners.ts`) owns the signal-detach and observer-unsub handles with a single `release()` call; `WorkspaceBracket` (`src/lifecycle/workspace-bracket.ts`) owns prepare-at-run-start and dispose-with-addendum — `completeRun` and `failRun` call `workspaceBracket.dispose(outcome)` and receive the addendum string (or `""`) without reaching through to the workspace object directly.
-  `Subagent.wireSignal`, `attachObserver`, and `releaseListeners` are removed.
-  `subagent.ts`: 488 → 448 LOC.
-  Test count: 982 → 994 (+12: 7 RunListeners + 13 WorkspaceBracket − 8 redundant Subagent listener tests).
+Smell: Category E (naming/organization) — settings are buried inside the monolithic `/agents` command per ADR-0004 Decision C. This step is purely additive: it stands up the new surface without touching `agent-menu.ts`.
+Target files:
 
-#### Step 5 — Extract the manager observer from index.ts into a class ([#376])
+- New `src/ui/subagents-settings.ts` — `SubagentsSettingsHandler` lifted from `AgentsMenuHandler.showSettings`, carrying its own narrow `SubagentsSettingsManager` interface (the three `apply*` methods and three readonly accessors only).
+- `src/index.ts` — register the new command (name confirmed by Step 1); pass `settings` directly.
+- New `test/ui/subagents-settings.test.ts` — unit tests for the extracted handler.
 
-- Targets: `src/index.ts` (inline `SubagentManagerObserver` literal, ~70 lines), new module under `src/observation/`.
-- Smell: Category B/E — `index.ts` is the dominant churn hotspot (31.3, 91 commits); the literal mixes event emission, record persistence (`appendEntry`), and notification dispatch; principle 9 (state and behavior belong in classes, not closure-captured literals).
-- Change: extract a class (e.g. `SubagentEventsObserver`) constructed with narrow deps (`emit`, `appendEntry`, the `NotificationSystem`).
-- Outcome: `index.ts` < 170 lines; the observer's three concerns unit-tested directly without booting the extension.
+`showSettings` depends only on `this.settings` (the self-contained `AgentMenuSettings` shape), so the extraction copies that logic into a new file with zero coupling to the wizard, editor, or viewer.
+The old in-menu Settings option keeps working until the terminal cut deletes `agent-menu.ts` wholesale — there is no surgical removal of `showSettings` or `AgentMenuSettings` from the doomed file.
 
-#### Step 6 — Split widget delegation out of SubagentRuntime ([#377])
+Outcome: new `subagents-settings.ts` (~80 LOC) and focused command registered; `agent-menu.ts` untouched.
 
-- Targets: `src/runtime.ts`, `src/tools/agent-tool.ts` (`AgentToolRuntime`), `src/tools/foreground-runner.ts`, `src/tools/background-spawner.ts`, `src/observation/notification.ts` (`NotificationManager` constructor), `src/index.ts`.
-- Smell: Category C — relay-only dependency (five delegation methods that only forward to `widget`) and a post-construction `runtime.widget =` write violating principle 8.
-- Change: pass the existing `WidgetLike` handle directly to the consumers that need it (tool deps, `NotificationManager`) and construct the widget before them; remove the `widget` field and the five relay methods from `SubagentRuntime`.
-- Outcome: `SubagentRuntime` has zero widget knowledge; no post-construction field writes in `index.ts`; tool fixtures stub a 5-method `WidgetLike` instead of widget methods on the runtime mock.
+`Release: independent`
 
-#### Step 7 — Consolidate lifecycle test fixtures ([#378])
+### ✅ Step 3 — Shrink widget to background agents only ([#444])
 
-- Targets: `test/lifecycle/subagent-manager.test.ts` (766 LOC), `test/lifecycle/subagent.test.ts`, `test/lifecycle/subagent-session.test.ts`, `test/lifecycle/create-subagent-session.test.ts`, `test/lifecycle/create-subagent-session-extension-tools.test.ts`, `test/lifecycle/concurrency-limiter.test.ts`, `test/helpers/`.
-- Smell: Category D — fallow reports five clone families across the lifecycle tests.
-- Change: extract the repeated spawn/run/factory arrangements into shared helpers, migrating incrementally (lift-and-shift, never a single-step rewrite of a large test file).
-- Outcome: lifecycle clone families 5 → ≤ 1; package test duplication below 600 lines.
+Smell: Category C (coupling) — the widget shows all agents including foreground ones, duplicating the `subagent` tool's inline `onUpdate` stream for foreground runs.
+Target files:
 
-#### Step 8 — Consolidate UI and tools test fixtures ([#379])
+- `src/ui/agent-widget.ts` — funnel both `manager.listAgents()` call sites (`update()` and `renderWidget()`) through a single private accessor, then flip that accessor to background-only via `record.invocation?.runInBackground === true`.
+- `src/ui/widget-renderer.ts` — verify no foreground-specific rendering path survives.
+- `test/ui/agent-widget.test.ts` — add background-only filtering tests; update assertions.
 
-- Targets: `test/ui/agent-creation-wizard.test.ts`, `test/ui/agent-config-editor.test.ts`, `test/ui/ui-observer.test.ts`, `test/tools/foreground-runner.test.ts`, `test/tools/background-spawner.test.ts`, `test/session/session-config.test.ts`.
-- Smell: Category D — remaining clone families outside the lifecycle tree.
-- Change: extract per-file repeated arrangements into local helpers or `test/helpers/` where shared across files.
-- Outcome: package clone groups 44 → ≤ 25; overall duplication ≤ 0.6%.
+The widget calls `listAgents()` at two sites today — `update()` (feeding `seedFinishedAgents`, `assembleWidgetState`, and `clearWidget`) and `renderWidget()` (the tree map).
+Filtering at only one site leaves the other rendering foreground agents, so the enabling move is to route both through one accessor and apply the predicate once at the source.
+`Subagent.invocation.runInBackground` is the reliable signal: set by `spawn-config.ts` → `AgentInvocation.runInBackground` → stored on `Subagent.invocation`.
+ADR-0004 Decision A: foreground runs suppress the widget; the inline `onUpdate` stream is authoritative there.
 
-#### Step 9 — Resolve the cross-package settings-loader duplication ([#380])
+Outcome: widget shows only background agents; foreground/widget duplication eliminated; the background predicate lives at a single funnel.
 
-- Targets: `src/settings.ts:198-211`, `packages/pi-subagents-worktrees/src/config.ts:51-73`.
-- Smell: Category A — 23-line production clone: the layered global/project JSON read-sanitize-warn-merge loader.
-- Change: decide explicitly between (a) exporting a small `loadLayeredSettings` helper from pi-subagents' public surface for worktrees to consume, and (b) documenting the duplication as intentional (separate release cadences, registry-resolved dependency) with a recorded fallow suppression.
-  The issue weighs the public-API cost (type bundle, `verify:public-types`, docs for third-party authors) against living with the flag.
-- Outcome: `pnpm fallow:dupes` no longer reports the pair, via extraction or recorded suppression.
+`Release: independent`
 
-### Step dependencies
+### ✅ Step 4 — Implement native session navigation ([#445])
+
+Smell: Category C (coupling) — the bespoke `ConversationViewer` re-implements session-transcript rendering when Pi's own machinery targets the already-persisted child session JSONL.
+This step adds the new surface alongside the existing viewer; it does not touch `agent-menu.ts`.
+Target files:
+
+- New `src/ui/session-navigator.ts` — a flat command that lists any subagent with a live record or a persisted session file (foreground included, never background-filtered), lets the operator pick one, and renders that child's transcript read-only.
+- New typed accessor on `Subagent`/`SubagentSession` returning `record.messages` as `AgentMessage[]` (the boundary currently widens it to `readonly unknown[]`).
+- `src/index.ts` — register the new command; the background widget ([#444]) is an optional secondary selection gesture, not a dependency.
+
+ADR-0004 Decision B: "Tell-Don't-Ask — hand Pi the session path; Pi owns the viewer."
+Mechanism (confirmed by the Step 1 spike and revised by [ADR-0004] Addendum 2): a **read-only** (non-interactive) transcript **dual-sourced by liveness**, rendered through Pi's own public entry components (no bespoke renderer).
+
+- **Tracked agent** (still in `manager.listAgents()`) — render live from the in-memory record: `record.messages` for history, `record.subscribeToUpdates()` to re-render on streaming updates, and `record.activeTools` / `record.responseText` for the running-agent streaming indicator.
+- **Evicted / untracked agent** — render from the file snapshot: `parseSessionEntries(readFileSync(record.outputFile, "utf8"))` → drop the `SessionHeader` → `buildSessionContext(...).messages`.
+
+Both sources yield `AgentMessage[]`, so one Pi-component renderer serves both: Pi's public entry components (`AssistantMessageComponent` / `ToolExecutionComponent` / …) or `serializeConversation` (see the [ADR-0004] addendum, Findings 0 and 1).
+Neither `switchSession` (a full takeover that invalidates the root's in-flight turn) nor `loadEntriesFromFile` (a test-only export the package's public barrel does not re-export, in both `0.79.1` and `0.79.8`) is used.
+`Subagent.outputFile` already exposes the persisted child session JSONL path via `subagentSession?.outputFile` — no new SDK dependency.
+The new surface stands up while the old `viewAgentConversation`/`ConversationViewer` path still works; the bespoke viewer is removed only by the terminal cut (Step 5).
+
+Outcome: operator views any subagent's session through Pi's native machinery — live for a running agent, a file snapshot for an evicted one; the new surface coexists with the old viewer until Step 5.
+
+Landed ([#445], sliced): #445 shipped the first releasable vertical slice — the `/subagent-sessions` command (`src/ui/session-navigator.ts`), the pure selection/sourcing/text-render core (`src/ui/session-navigation.ts`), and the typed `agentMessages` accessor (`SessionMessage` on `SubagentSession`/`Subagent`).
+It is **live-source only** behind a renderer-agnostic `TranscriptSource` seam, rendered via Pi's `serializeConversation` text.
+With the `manager.listAgents()`-only candidate set, no listed record is ever session-disposed (dispose-and-delete are atomic), so the file-snapshot branch has no reachable caller and was deferred to keep `fallow dead-code` clean.
+Step 4 (#445, the slice) is complete and released (`pi-subagents` v17.3.0); the remaining work is now tracked as two follow-up steps behind the same seam: Step 4a ([#462]) upgrades the renderer from `serializeConversation` text to Pi's per-entry TUI components (gates Step 5 for rendering parity); Step 4b ([#463]) broadens the candidate set to evicted agents and adds the file-snapshot source (`parseSessionEntries` → `buildSessionContext`, independent).
+
+`Release: independent` (spike-gated)
+
+### ✅ Step 4a — Upgrade native-navigation renderer to Pi TUI components ([#462])
+
+Smell: Category C (coupling) — the #445 slice renders the transcript as `serializeConversation` plain text, while the bespoke `ConversationViewer` it replaces renders richer per-message formatting.
+Until the native renderer reaches parity, the terminal cut (Step 5) cannot delete the bespoke viewer without a fidelity regression.
+This step swaps the renderer behind the existing `TranscriptSource` seam (`src/ui/session-navigation.ts` / `session-navigator.ts`) for Pi's per-entry components (`AssistantMessageComponent` / `ToolExecutionComponent` / …); selection and sourcing are untouched.
+
+Gates Step 5: per [ADR-0004]'s no-interim-regression invariant, the native navigator must reach rendering parity with the bespoke viewer before Step 5 deletes it.
+
+Outcome: native session navigation renders at parity with the removed `ConversationViewer`; Step 5 can delete the bespoke viewer with no fidelity regression.
+
+Landed ([#462]): the renderer now mounts Pi's per-entry components (`AssistantMessageComponent` / `ToolExecutionComponent` / `BashExecutionComponent` / `UserMessageComponent` / `CompactionSummaryMessageComponent` / `BranchSummaryMessageComponent` / `SkillInvocationMessageComponent`) into a `Container`, mirroring Pi's own `renderSessionContext` mapping.
+The `TranscriptOverlay` caches that `Container` and rebuilds it on source change only (Pi's `rebuildChatFromMessages` path), keeping the lightweight `◍` streaming indicator.
+Tool calls render with their real `ToolDefinition`, resolved through a dependency-safe `getToolDefinition` read accessor on the record (mirroring `agentMessages`) surfaced on the `TranscriptSource` seam — no inbound call into the core.
+The pure `session-navigation.ts` sheds `renderTranscriptLines`/`serializeConversation`; rendering now lives in the SDK/TUI `session-navigator.ts`, which threads `cwd` from the command context.
+`custom`-role messages are skipped (the bespoke viewer never rendered them either).
+Selection and sourcing are untouched; native navigation now renders at parity, unblocking Step 5 for rendering fidelity.
+
+`Release: independent`
+
+### ✅ Step 4b — File-snapshot source for evicted agents ([#463])
+
+Smell: Category C (coupling) — the #445 slice sources transcripts live from `manager.listAgents()` only; an agent evicted by the 10-minute cleanup sweep has a persisted session JSONL but no live record, so it is unreachable.
+This step adds the file-snapshot `TranscriptSource` branch (`parseSessionEntries(readFile(outputFile))` → drop the `SessionHeader` → `buildSessionContext(...).messages`) and broadens the candidate set to evicted agents, behind the same seam; the renderer is untouched.
+
+Independent: this is a new capability the bespoke viewer never had, so it gates nothing and is not a Step 5 prerequisite.
+Best sequenced after Step 4a (shared renderer), but carries no hard dependency.
+
+Outcome: the operator can view a fully-evicted agent's transcript from its persisted session file; the dual-source design recorded in [ADR-0004] Addendum 2 is fully realized.
+
+Landed ([#463]): `fileSnapshotSource(outputFile, readFile)` lands in the pure `session-navigation.ts` (`parseSessionEntries` → drop the `SessionHeader` → `buildSessionContext(...).messages`; a static no-subscribe, no-streaming source).
+The candidate set is broadened via **manager-retained descriptors**, not a directory scan: the persisted child session carries no subagent `type`/`description` (those live only on the in-memory record), so a scan would yield degraded labels and parse every file per open.
+Instead `SubagentManager.cleanup()` stashes a lightweight `EvictedSubagent` descriptor (label fields + `outputFile`, no messages) before disposing a record with a persisted file, exposed via `listEvicted()` and cleared by `clearCompleted()`/`dispose()`.
+`NavigationEntry` became a `live | evicted` discriminated union; the handler selects `liveSource` vs `fileSnapshotSource` by kind inside a `try/catch` (an unreadable file notifies and skips), and `index.ts` injects `readFileSync`.
+Evicted entries carry an `· evicted (snapshot)` label marker.
+Coverage is in-session evictions (the sweep's only targets); old-session orphan files — the ones a scan would surface with degraded labels — are out of scope.
+
+`Release: independent`
+
+### ✅ Step 5 — Dissolve `/agents` and remove the conversation-viewer subtree ([#442])
+
+Smell: Category A (dead subsystem) plus Category B (oversized) — once Steps 2–4 re-home all four menu responsibilities, the `/agents` command and everything reachable only from `agent-menu.ts` is an unreferenced subtree.
+This is the first of two deletion commits (split by subtree).
+The hub `agent-menu.ts` is deleted here, not surgically narrowed, and deleting it is what orphans the leaf subtrees — so it must precede the definition-management deletion (Step 6), because `agent-menu.ts` statically imports the wizard, editor, and file-ops, and dynamically imports the viewer.
+Target files:
+
+- `src/index.ts` — remove the `registerCommand("agents", …)` block, the `AgentsMenuHandler` construction and import, and the `FsAgentFileOps` import/construction (its only use is wiring the menu).
+- Delete `src/ui/agent-menu.ts` (331 LOC) and `test/ui/agent-menu.test.ts` (185 LOC).
+- Delete `src/ui/conversation-viewer.ts` (241 LOC) and `test/conversation-viewer.test.ts` (239 LOC) — its only consumer is `agent-menu.ts`'s dynamic import, gone with the hub.
+- Delete `src/ui/message-formatters.ts` (195 LOC) and `test/message-formatters.test.ts` (388 LOC, the largest test function by LOC) — its only consumer is `ConversationViewer`.
+
+Running-agent visibility is now owned by the background widget (Step 3); session navigation replaces the bespoke overlay (Step 4); settings live in `/subagents-settings` (Step 2).
+Deleting the hub in one move avoids any surgical edit to the doomed file and leaves the definition-management leaves orphaned for Step 6.
+
+Actual approach (vs. original plan): a tidy-first preparatory commit first extracted `MenuUI` from `agent-menu.ts` into a new `src/ui/menu-ui.ts` module, breaking the bidirectional type cycle — the hub imported the wizard/editor classes while the leaves imported back the `MenuUI` type.
+Without the prep commit, deleting either subtree first would have left the other half referencing a deleted module.
+`index.ts` also shed the now-dead `join` (node:path) and `buildParentSnapshot` imports in addition to the two module imports.
+The `menu-ui.ts` module is transient and is removed with the wizard/editor in Step 6.
+
+Outcome: ✅ `/agents` dissolved; −767 LOC source (menu hub + viewer + formatters); −812 LOC test; largest test function eliminated; `index.ts` dewired.
+
+`Release: batch "dissolve-agents"`
+
+### Step 6 — Remove the orphaned agent-definition management subtree ([#441])
+
+Smell: Category A (dead subsystem) — the creation wizard and config editor are removed per ADR-0004 Decision C; after Step 5 deletes their only importer (`agent-menu.ts`), they and their file-ops helpers are pure orphans.
+This is the second deletion commit (split by subtree).
+Target files:
+
+- Delete `src/ui/agent-creation-wizard.ts` (233 LOC) and `test/ui/agent-creation-wizard.test.ts` (296 LOC).
+- Delete `src/ui/agent-config-editor.ts` (199 LOC) and `test/ui/agent-config-editor.test.ts` (392 LOC) — eliminates the 11-line internal production clone in `disableAgent`/`ejectAgent`, the package's only remaining production duplication.
+- Delete `src/ui/agent-file-ops.ts` (59 LOC) and `test/ui/agent-file-ops.test.ts` (112 LOC) — only consumers were wizard + editor.
+- Delete `src/ui/agent-file-writer.ts` (55 LOC) and `test/ui/agent-file-writer.test.ts` (148 LOC) — only consumers were wizard + editor.
+- `test/helpers/ui-stubs.ts` — delete `makeFileOps`, `createTestSubagentConfig`, and `spawnAndWait` from `makeMenuManager` if no surviving consumer remains; delete the file outright once all consumers are gone.
+
+An operator generates a new agent `.md` by asking a Pi session directly (more capable than a fixed wizard) or by writing the file in an editor; viewing and editing definitions is served by opening the `.md` files in an editor or IDE.
+These files are orphaned by Step 5, so this is a pure `git rm` with no surviving references and no edit to any doomed file.
+
+Outcome: −546 LOC source (wizard + editor + file-ops + file-writer); −948 LOC test; production duplication → 0 lines; 1 production and 1 test clone group eliminated.
+
+`Release: batch "dissolve-agents"`
+
+### Step 7 — Consolidate remaining test clone families ([#443])
+
+Smell: Category D (testability) — 16 clone groups at Phase 18 end; the terminal cut (Steps 5–6) removes ~4 groups; remaining groups are extraction targets.
+Run after the cut so no helper is extracted into a file the cut then deletes.
+Target files:
+
+- `test/lifecycle/subagent-manager.test.ts` — extract a shared assertion helper for 3 clone families (23 lines across groups at :92/:109, :282/:330, and :323 shared with `subagent.test.ts`).
+- `test/ui/agent-widget.test.ts` — merge the duplicate `makeWidget` helper defined twice across two `describe` blocks (14-line clone at :225/:284).
+- `test/session/session-config.test.ts` — extract a shared fixture for the 16-line internal clone (lines 131–146 / 151–166).
+- `test/lifecycle/concurrency-limiter.test.ts` — extract shared setup for the 10-line clone (lines 21–30 / 148–155).
+- `test/tools/spawn-config.test.ts` — extract a shared fixture for the 9-line clone (lines 22–30 / 35–43).
+
+Outcome: test clone groups ≤ 10 (from 16); `subagent-manager.test.ts` uses shared factory helpers.
+
+`Release: independent`
+
+### Step dependency diagram
 
 ```mermaid
-flowchart TB
-    S1["Step 1 (#381)<br/>ConcurrencyLimiter replacement"]
-    S2["Step 2 (#373)<br/>SubagentState extraction"]
-    S3["Step 3 (#374)<br/>Encapsulate start + notification"]
-    S4["Step 4 (#375)<br/>Run collaborators extraction"]
-    S5["Step 5 (#376)<br/>Observer class from index.ts"]
-    S6["Step 6 (#377)<br/>Widget handle out of runtime"]
-    S7["Step 7 (#378)<br/>Lifecycle test fixtures"]
-    S8["Step 8 (#379)<br/>UI/tools test fixtures"]
-    S9["Step 9 (#380)<br/>Settings-loader duplication"]
+flowchart LR
+    S1["✅ Step 1 - Spike (#446)"]
+    S2["✅ Step 2 - Settings command (#447)"]
+    S3["✅ Step 3 - Background widget (#444)"]
+    S4["✅ Step 4 - Native session nav slice (#445)"]
+    S4a["✅ Step 4a - Renderer to TUI components (#462)"]
+    S4b["✅ Step 4b - File-snapshot source (#463)"]
+    S5["✅ Step 5 - Dissolve /agents + viewer (#442)"]
+    S6["Step 6 - Remove definition mgmt (#441)"]
+    S7["Step 7 - Test clones (#443)"]
 
-    S1 --> S3
-    S2 --> S3
-    S3 --> S4
-    S4 --> S7
+    S1 --> S4
+    S4 --> S4a
+    S4 --> S4b
+    S2 --> S5
+    S3 --> S5
+    S4a --> S5
     S5 --> S6
+    S6 --> S7
 ```
 
-Steps 8 and 9 have no dependencies and can run at any point.
+The terminal cut (Step 5) depends on all three replacements — settings (Step 2), widget (Step 3), and session navigation **at rendering parity** (Step 4a, which completes the #445 slice) — because each of the four `/agents` options must have its responsibility re-homed, and the viewer replacement at parity, before its branch can die.
+Step 4b (file-snapshot source) is a new capability and gates nothing.
+The old `S1 → S6 → S7` chain hid the widget dependency; this diagram makes it explicit.
 
-### Tracks
+### Parallel tracks
 
-| Track                         | Steps         | Theme                                                                              |
-| ----------------------------- | ------------- | ---------------------------------------------------------------------------------- |
-| A — Subagent constructibility | 2 → 3 → 4 → 7 | Construct complete; encapsulate run state; then consolidate the tests that churned |
-| B — Wiring debt               | 1, 5 → 6      | Shrink index.ts; eliminate forward references and relay delegation                 |
-| C — Test hygiene              | 8             | Clone families outside the lifecycle tree                                          |
-| D — Duplication policy        | 9             | Cross-package clone decision                                                       |
+- **Track A — Replacements (Steps 1–4):** the spike gates session navigation (Step 1 → Step 4); settings (Step 2) and the background widget (Step 3) are independent of the spike and of each other.
+  None of these steps edits `agent-menu.ts`, so they carry no shared-file collision on the menu — genuinely parallelizable, unlike the prior plan's Steps 2/3/5, which all collided on `agent-menu.ts` and `index.ts`.
+  Steps 2 and 4 each append a command registration to `index.ts` (additive, low-conflict).
+  Steps 4a (renderer parity) and 4b (file-snapshot source) complete the #445 slice behind its `TranscriptSource` seam; Step 4a gates Step 5, Step 4b is independent.
+- **Track B — Dissolution (Steps 5 → 6):** the terminal cut, gated on all of Track A landing.
+  Hub-first ordering is forced: Step 5 deletes `agent-menu.ts` (orphaning the leaves), then Step 6 `git rm`s the now-orphaned definition-management subtree.
+- **Track C — Test health (Step 7):** clone consolidation, run after the cut so no surviving helper is extracted into a doomed file.
 
-Tracks A and B intersect only at Step 3 (which needs Step 1's queue relocation); otherwise they proceed in parallel.
-Tracks C and D are fully independent.
+### Release batches
+
+- **Batch "dissolve-agents":** Steps 5, 6 (ship together; tail = Step 6).
+  Depends on Steps 2, 3, 4 already merged.
+- Independently releasable: Steps 1, 2, 3, 4, 4a, 4b, 7.
 
 ## Refactoring history
 
-Phases 1–5, 7–16 are complete.
-Phase 6 (UI extraction to a separate package) is deferred → Phase 18.
+Phases 1–5, 7–18 are complete.
+Phase 6 (UI extraction to a separate package) was deferred to Phase 18; its intent was resolved by [ADR-0004] (Phase 18 Step 8).
 Detailed records are preserved in per-phase history files:
 
-| Phase | Title                                               | Status              | History                                                                              |
-| ----- | --------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------ |
-| 1     | Export SubagentsService API boundary                | Complete            | [phase-1-api-boundary.md](history/phase-1-api-boundary.md)                           |
-| 2     | Remove scheduling subsystem                         | Complete            | [phase-2-remove-scheduling.md](history/phase-2-remove-scheduling.md)                 |
-| 3     | Remove group-join, RPC; replace output-file         | Complete            | [phase-3-remove-rpc-groupjoin.md](history/phase-3-remove-rpc-groupjoin.md)           |
-| 4     | Implement and publish SubagentsService              | Complete            | [phase-4-implement-service.md](history/phase-4-implement-service.md)                 |
-| 5     | Decompose index.ts                                  | Complete            | [phase-5-decompose-index.md](history/phase-5-decompose-index.md)                     |
-| 6     | Extract UI to separate package                      | Deferred → Phase 18 | —                                                                                    |
-| 7     | Encapsulation and dependency narrowing              | Complete            | [phase-7-encapsulation.md](history/phase-7-encapsulation.md)                         |
-| 8     | Testability, display extraction, menu decomposition | Complete            | [phase-8-testability.md](history/phase-8-testability.md)                             |
-| 9     | Observation consolidation, ctx elimination          | Complete            | [phase-9-observation-ctx.md](history/phase-9-observation-ctx.md)                     |
-| 10    | Domain organization, bag decomposition, complexity  | Complete            | [phase-10-structural-decomposition.md](history/phase-10-structural-decomposition.md) |
-| 11    | Closure factories to classes                        | Complete            | [phase-11-closure-to-class.md](history/phase-11-closure-to-class.md)                 |
-| 12    | Complexity reduction and test fixture extraction    | Complete            | [phase-12-complexity-test-fixtures.md](history/phase-12-complexity-test-fixtures.md) |
-| 13    | Remaining structural smells                         | Complete            | [phase-13-remaining-smells.md](history/phase-13-remaining-smells.md)                 |
-| 14    | Strip policy from core                              | Complete            | [phase-14-strip-policy.md](history/phase-14-strip-policy.md)                         |
-| 15    | Domain model evolution                              | Complete            | [phase-15-domain-model-evolution.md](history/phase-15-domain-model-evolution.md)     |
-| 16    | Invert dependencies (extensions on a minimal core)  | Complete            | [phase-16-invert-dependencies.md](history/phase-16-invert-dependencies.md)           |
-| 17    | Core consolidation                                  | Planned             | —                                                                                    |
-| 18    | Reconsider UI (first principles)                    | Planned             | —                                                                                    |
+| Phase | Title                                               | Status                 | History                                                                              |
+| ----- | --------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------ |
+| 1     | Export SubagentsService API boundary                | Complete               | [phase-1-api-boundary.md](history/phase-1-api-boundary.md)                           |
+| 2     | Remove scheduling subsystem                         | Complete               | [phase-2-remove-scheduling.md](history/phase-2-remove-scheduling.md)                 |
+| 3     | Remove group-join, RPC; replace output-file         | Complete               | [phase-3-remove-rpc-groupjoin.md](history/phase-3-remove-rpc-groupjoin.md)           |
+| 4     | Implement and publish SubagentsService              | Complete               | [phase-4-implement-service.md](history/phase-4-implement-service.md)                 |
+| 5     | Decompose index.ts                                  | Complete               | [phase-5-decompose-index.md](history/phase-5-decompose-index.md)                     |
+| 6     | Extract UI to separate package                      | Superseded by ADR-0004 | —                                                                                    |
+| 7     | Encapsulation and dependency narrowing              | Complete               | [phase-7-encapsulation.md](history/phase-7-encapsulation.md)                         |
+| 8     | Testability, display extraction, menu decomposition | Complete               | [phase-8-testability.md](history/phase-8-testability.md)                             |
+| 9     | Observation consolidation, ctx elimination          | Complete               | [phase-9-observation-ctx.md](history/phase-9-observation-ctx.md)                     |
+| 10    | Domain organization, bag decomposition, complexity  | Complete               | [phase-10-structural-decomposition.md](history/phase-10-structural-decomposition.md) |
+| 11    | Closure factories to classes                        | Complete               | [phase-11-closure-to-class.md](history/phase-11-closure-to-class.md)                 |
+| 12    | Complexity reduction and test fixture extraction    | Complete               | [phase-12-complexity-test-fixtures.md](history/phase-12-complexity-test-fixtures.md) |
+| 13    | Remaining structural smells                         | Complete               | [phase-13-remaining-smells.md](history/phase-13-remaining-smells.md)                 |
+| 14    | Strip policy from core                              | Complete               | [phase-14-strip-policy.md](history/phase-14-strip-policy.md)                         |
+| 15    | Domain model evolution                              | Complete               | [phase-15-domain-model-evolution.md](history/phase-15-domain-model-evolution.md)     |
+| 16    | Invert dependencies (extensions on a minimal core)  | Complete               | [phase-16-invert-dependencies.md](history/phase-16-invert-dependencies.md)           |
+| 17    | Core consolidation                                  | Complete               | [phase-17-core-consolidation.md](history/phase-17-core-consolidation.md)             |
+| 18    | Reconsider UI (first principles)                    | Complete               | [phase-18-reconsider-ui.md](history/phase-18-reconsider-ui.md)                       |
 
 ### Structural refactoring issues
 
-| Phase                | Issue                                                      | Summary                                                                                                                                                    |
-| -------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Foundation           | #69, #71, #76, #80                                         | SubagentRuntime, pure assembler, cwd injection, config consolidation                                                                                       |
-| Core decomposition   | #84, #72, #87, #70                                         | WorktreeManager, AgentManager DI, runtime methods, handler extraction                                                                                      |
-| Interface polish     | #66, #77                                                   | SDK types, projectAgentsDir                                                                                                                                |
-| Features             | #61                                                        | JSONL session transcripts                                                                                                                                  |
-| AgentManager         | #98, #99, #100, #102                                       | Record state machine, ParentSnapshot, session-event observation, test factory                                                                              |
-| Encapsulation        | #108, #109, #110, #111, #112, #113, #114, #115, #116, #118 | Registry, settings, activity tracker, record lifecycle, observer, spawn options, deps narrowing, tool split, type housekeeping                             |
-| Testability          | #131, #132, #133, #134, #135, #136                         | Shared fixtures, session-config IO, runner SDK boundary, as-any reduction, display extraction, menu decomposition                                          |
-| Observation/ctx      | #144, #145, #146, #147, #148                               | Observation consolidation, execute decomposition, UI context, text wrapping injection, widget rendering split                                              |
-| Phase 10             | #164, #165, #166, #167, #168, #169, #170, #171, #172       | Domain directories, ResolvedSpawnConfig, ParentSessionInfo, RunnerIO split, ToolFilterConfig, RunContext, buildContentLines, renderResult, content-items   |
-| Phase 11             | #192, #193, #194, #195, #196                               | SessionContext, runtime queries, interface alignment, tool classes, runner/menu classes, index.ts simplification                                           |
-| Phase 12             | #205, #206, #207, #208                                     | renderWidgetLines, showAgentDetail, widget update, shared test fixtures                                                                                    |
-| Phase 13             | #214, #215, #216, #217, #218, #219                         | Closure-to-class, buildParentContext, startAgent decomp, overwrite guard, settings SDK, test duplication                                                   |
-| Phase 14             | #237, #238, #239, #242                                     | Remove disallowed_tools, remove extensions filtering, collapse filterActiveTools, rename Agent to subagent                                                 |
-| Phase 15             | #227, #228, #231, #229, #230, #232                         | Agent domain model, async startAgent, runner self-contained, Agent.run(), ConcurrencyQueue, Agent.resume()                                                 |
-| Phase 16             | #261, #262, #263, #264, #265                               | Lifecycle events (retire permission-bridge), WorkspaceProvider seam, extract worktrees package, remove isolated, born-complete execution / dissolve runner |
-| Phase 16 (abandoned) | #256 (superseded), #257 (parked), #258, #259 (not planned) | Agent collaborator architecture — replaced by the inversion approach above ([ADR-0002])                                                                    |
+| Phase                | Issue                                                      | Summary                                                                                                                                                                                        |
+| -------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Foundation           | #69, #71, #76, #80                                         | SubagentRuntime, pure assembler, cwd injection, config consolidation                                                                                                                           |
+| Core decomposition   | #84, #72, #87, #70                                         | WorktreeManager, AgentManager DI, runtime methods, handler extraction                                                                                                                          |
+| Interface polish     | #66, #77                                                   | SDK types, projectAgentsDir                                                                                                                                                                    |
+| Features             | #61                                                        | JSONL session transcripts                                                                                                                                                                      |
+| AgentManager         | #98, #99, #100, #102                                       | Record state machine, ParentSnapshot, session-event observation, test factory                                                                                                                  |
+| Encapsulation        | #108, #109, #110, #111, #112, #113, #114, #115, #116, #118 | Registry, settings, activity tracker, record lifecycle, observer, spawn options, deps narrowing, tool split, type housekeeping                                                                 |
+| Testability          | #131, #132, #133, #134, #135, #136                         | Shared fixtures, session-config IO, runner SDK boundary, as-any reduction, display extraction, menu decomposition                                                                              |
+| Observation/ctx      | #144, #145, #146, #147, #148                               | Observation consolidation, execute decomposition, UI context, text wrapping injection, widget rendering split                                                                                  |
+| Phase 10             | #164, #165, #166, #167, #168, #169, #170, #171, #172       | Domain directories, ResolvedSpawnConfig, ParentSessionInfo, RunnerIO split, ToolFilterConfig, RunContext, buildContentLines, renderResult, content-items                                       |
+| Phase 11             | #192, #193, #194, #195, #196                               | SessionContext, runtime queries, interface alignment, tool classes, runner/menu classes, index.ts simplification                                                                               |
+| Phase 12             | #205, #206, #207, #208                                     | renderWidgetLines, showAgentDetail, widget update, shared test fixtures                                                                                                                        |
+| Phase 13             | #214, #215, #216, #217, #218, #219                         | Closure-to-class, buildParentContext, startAgent decomp, overwrite guard, settings SDK, test duplication                                                                                       |
+| Phase 14             | #237, #238, #239, #242                                     | Remove disallowed_tools, remove extensions filtering, collapse filterActiveTools, rename Agent to subagent                                                                                     |
+| Phase 15             | #227, #228, #231, #229, #230, #232                         | Agent domain model, async startAgent, runner self-contained, Agent.run(), ConcurrencyQueue, Agent.resume()                                                                                     |
+| Phase 16             | #261, #262, #263, #264, #265                               | Lifecycle events (retire permission-bridge), WorkspaceProvider seam, extract worktrees package, remove isolated, born-complete execution / dissolve runner                                     |
+| Phase 16 (abandoned) | #256 (superseded), #257 (parked), #258, #259 (not planned) | Agent collaborator architecture — replaced by the inversion approach above ([ADR-0002])                                                                                                        |
+| Phase 17             | #381, #373, #374, #375, #376, #377, #378, #379, #380       | ConcurrencyLimiter, SubagentState, run-start encapsulation, run collaborators, events observer, widget decoupling, lifecycle test fixtures, UI/tools test fixtures, settings-loader extraction |
+| Phase 17 (follow-on) | #412, #415                                                 | Session-mock builder unification, worktrees settings-helper migration                                                                                                                          |
+| Phase 18             | #420, #421, #422, #423, #424, #425, #426, #427             | Fold metrics onto record, migrate readers, delete activity tier, widget self-drives, drop widget from tool, reconcile event contract, consolidate test clones, UI-direction ADR                |
 
 The remaining open issue is #22 (parent-session resolution), a cross-extension track that does not gate the structural work.
 
@@ -1152,4 +1261,24 @@ The upstream test suite is run periodically as a regression canary for the sessi
 [#379]: https://github.com/gotgenes/pi-packages/issues/379
 [#380]: https://github.com/gotgenes/pi-packages/issues/380
 [#381]: https://github.com/gotgenes/pi-packages/issues/381
+[#412]: https://github.com/gotgenes/pi-packages/issues/412
+[#415]: https://github.com/gotgenes/pi-packages/issues/415
+[#420]: https://github.com/gotgenes/pi-packages/issues/420
+[#421]: https://github.com/gotgenes/pi-packages/issues/421
+[#422]: https://github.com/gotgenes/pi-packages/issues/422
+[#423]: https://github.com/gotgenes/pi-packages/issues/423
+[#424]: https://github.com/gotgenes/pi-packages/issues/424
+[#425]: https://github.com/gotgenes/pi-packages/issues/425
+[#426]: https://github.com/gotgenes/pi-packages/issues/426
+[#427]: https://github.com/gotgenes/pi-packages/issues/427
+[#441]: https://github.com/gotgenes/pi-packages/issues/441
+[#442]: https://github.com/gotgenes/pi-packages/issues/442
+[#443]: https://github.com/gotgenes/pi-packages/issues/443
+[#444]: https://github.com/gotgenes/pi-packages/issues/444
+[#445]: https://github.com/gotgenes/pi-packages/issues/445
+[#446]: https://github.com/gotgenes/pi-packages/issues/446
+[#447]: https://github.com/gotgenes/pi-packages/issues/447
+[#462]: https://github.com/gotgenes/pi-packages/issues/462
+[#463]: https://github.com/gotgenes/pi-packages/issues/463
 [ADR-0002]: ../decisions/0002-extensions-on-a-minimal-core.md
+[ADR-0004]: ../decisions/0004-reconsider-ui-direction.md

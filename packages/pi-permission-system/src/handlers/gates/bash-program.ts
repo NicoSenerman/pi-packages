@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 import { basename, isAbsolute, join, resolve } from "node:path";
+import { memoizeAsyncWithRetry } from "#src/async-cache";
 import { canonicalizePath } from "#src/canonicalize-path";
 import {
   classifyTokenAsPathCandidate,
@@ -37,8 +38,6 @@ interface TSParser {
   delete(): void;
 }
 
-let parserPromise: Promise<TSParser> | null = null;
-
 async function initParser(): Promise<TSParser> {
   // Use named imports — web-tree-sitter exports Parser as a named class.
   const { Parser, Language } = await import("web-tree-sitter");
@@ -53,10 +52,10 @@ async function initParser(): Promise<TSParser> {
   return parser;
 }
 
-function getParser(): Promise<TSParser> {
-  parserPromise ??= initParser();
-  return parserPromise;
-}
+// Memoize on success but drop a rejected result so a transient init failure
+// (e.g. a slow WASM load) is retried on the next tool call instead of poisoning
+// the parser for the process lifetime.
+const getParser = memoizeAsyncWithRetry(initParser);
 
 // ── Parsed bash command representation ───────────────────────────────────────
 
@@ -199,13 +198,22 @@ export class BashProgram {
   }
 
   /**
-   * Deduplicated paths that resolve outside `cwd`.
+   * Deduplicated paths that resolve outside `cwd`, in their lexical (as-typed,
+   * normalized but not symlink-resolved) form.
    *
    * Each candidate is resolved against the effective working directory in force
    * where it appears, projected by folding a sequence of current-shell `cd`
    * commands (joined by `&&`, `||`, `;`, or a newline). A `cd` inside a
    * pipeline or a backgrounded command runs in a subshell and does not update
-   * the running directory.
+   * the running directory; a leading current-shell `cd` before a
+   * redirect-then-pipe (`cd a && pnpm x 2>&1 | tail`) folds because bash `|`
+   * binds tighter than `&&`/`||`/`;`, even though tree-sitter-bash groups the
+   * whole redirected list as the pipeline's first stage (#454).
+   *
+   * The outside-`cwd` decision and the dedup identity use the canonical
+   * (symlink-resolved) form, but the returned value is the lexical form so
+   * `external_directory` config patterns match the path as the user typed it
+   * (#418); the gate re-derives the canonical alias for matching.
    */
   externalPaths(cwd: string): string[] {
     const normalizedCwd = canonicalizePath(
@@ -224,36 +232,37 @@ export class BashProgram {
       // display path). Absolute / `~` candidates are base-independent and
       // resolve normally below.
       if (base.kind === "unknown" && isRelativeCandidate(candidate)) {
-        const normalized = canonicalizePath(
-          normalizePathForComparison(candidate, cwd),
-        );
+        const lexical = normalizePathForComparison(candidate, cwd);
+        const canonical = canonicalizePath(lexical);
         if (
-          normalized &&
+          canonical &&
           normalizedCwd !== "" &&
-          !isSafeSystemPath(normalized) &&
-          !seen.has(normalized)
+          !isSafeSystemPath(canonical) &&
+          !seen.has(canonical)
         ) {
-          seen.add(normalized);
-          externalPaths.push(normalized);
+          seen.add(canonical);
+          externalPaths.push(lexical);
         }
         continue;
       }
 
       const resolveBase =
         base.kind === "known" ? resolve(cwd, base.offset) : cwd;
-      const normalized = canonicalizePath(
-        normalizePathForComparison(candidate, resolveBase),
-      );
-      if (!normalized) continue;
+      const lexical = normalizePathForComparison(candidate, resolveBase);
+      if (!lexical) continue;
+      // The boundary decision and dedup identity use the canonical
+      // (symlink-resolved) form, but the returned value is the lexical form so
+      // config patterns match the path as the user typed it (#418).
+      const canonical = canonicalizePath(lexical);
 
       if (
         normalizedCwd !== "" &&
-        !isSafeSystemPath(normalized) &&
-        !isPathWithinDirectory(normalized, normalizedCwd) &&
-        !seen.has(normalized)
+        !isSafeSystemPath(canonical) &&
+        !isPathWithinDirectory(canonical, normalizedCwd) &&
+        !seen.has(canonical)
       ) {
-        seen.add(normalized);
-        externalPaths.push(normalized);
+        seen.add(canonical);
+        externalPaths.push(lexical);
       }
     }
 
@@ -848,6 +857,15 @@ function walkForCandidates(
     case "command":
       tagTokens(collectCommandTokens(node), base, out);
       return foldCd(node, base);
+    case "pipeline":
+      // tree-sitter-bash mis-groups a redirect-bearing `&&`/`;` list as the
+      // first stage of a pipeline (`cd a && pnpm x 2>&1 | tail` parses as
+      // `(cd a && pnpm x 2>&1) | tail`), burying a current-shell `cd` inside a
+      // node the `default` case treats as non-folding. Recover bash operator
+      // precedence (`|` binds tighter than `&&`/`||`/`;`): fold the first
+      // stage's leading current-shell commands while keeping its terminal
+      // command and every downstream stage as non-folding subshells (#454).
+      return walkPipeline(node, base, out);
     case "subshell":
       // A subshell runs in a child shell: its interior `cd`s fold within the
       // subshell but reset on exit, so the folded base is discarded.
@@ -885,6 +903,109 @@ function walkCurrentShellSequence(
     if (SKIP_SUBTREE_TYPES.has(child.type)) continue;
     const after = walkForCandidates(child, current, out);
     current = isBackgrounded(seqNode, i) ? current : after;
+  }
+  return current;
+}
+
+/**
+ * Walk a `pipeline` node, returning the effective base in force after it.
+ *
+ * Each stage of a true pipeline (`A | B | C`) runs in a subshell, so a `cd`
+ * inside any stage must not leak — the base normally passes through unchanged.
+ * The exception is the first stage: tree-sitter-bash wraps a redirect-bearing
+ * current-shell `&&`/`;` list (`cd a && pnpm x 2>&1 | tail`) as that stage, and
+ * bash precedence makes the list's leading commands current-shell, so they fold
+ * and the folded base persists past the pipeline to following siblings.
+ *
+ * The terminal command of the first stage is the real pipe stage (a subshell)
+ * and must not fold; every stage after a `|` is a downstream subshell stage and
+ * collects tokens against the folded base without folding (#454).
+ */
+function walkPipeline(
+  node: TSNode,
+  base: EffectiveBase,
+  out: PathCandidate[],
+): EffectiveBase {
+  let current = base;
+  let first = true;
+  for (let i = 0; i < node.childCount; i++) {
+    const child = node.child(i);
+    if (!child?.isNamed) continue;
+    if (SKIP_SUBTREE_TYPES.has(child.type)) continue;
+    if (first) {
+      current = foldPipelineFirstStage(child, current, out);
+      first = false;
+      continue;
+    }
+    // Downstream stage (after a `|`): subshell — collect against the folded
+    // base, do not fold.
+    tagTokens(collectPathCandidateTokens(child), current, out);
+  }
+  return current;
+}
+
+/**
+ * Collect the first pipe stage's candidates, folding its leading current-shell
+ * `cd` commands when tree-sitter wrapped a `list` or `redirected_statement`
+ * around them. The terminal command of that container is the real pipe stage (a
+ * subshell) and is collected without folding. A bare `command` first stage (a
+ * true pipeline first stage such as `cd nested | cat ../b`) is a subshell: it
+ * collects against the input base and does not fold.
+ */
+function foldPipelineFirstStage(
+  node: TSNode,
+  base: EffectiveBase,
+  out: PathCandidate[],
+): EffectiveBase {
+  if (node.type === "list") return foldListExceptTerminal(node, base, out);
+  if (node.type === "redirected_statement") {
+    let current = base;
+    for (let i = 0; i < node.childCount; i++) {
+      const child = node.child(i);
+      if (!child?.isNamed) continue;
+      if (child.type === "file_redirect") {
+        // Redirect destinations are part of the piped stage; collect them
+        // against the folded base without folding.
+        tagTokens(collectRedirectTokens(child), current, out);
+        continue;
+      }
+      // The inner statement is the `list`/`command` being redirected; fold its
+      // leading current-shell commands via the terminal-excluding walk.
+      current = foldPipelineFirstStage(child, current, out);
+    }
+    return current;
+  }
+  // Bare `command` or any other shape: a true subshell first stage.
+  tagTokens(collectPathCandidateTokens(node), base, out);
+  return base;
+}
+
+/**
+ * Fold every named, non-skip child of a `list` except the last, threading the
+ * effective base left-to-right through the leading current-shell commands; the
+ * terminal child is the real pipe stage and is collected without folding.
+ */
+function foldListExceptTerminal(
+  node: TSNode,
+  base: EffectiveBase,
+  out: PathCandidate[],
+): EffectiveBase {
+  const namedChildren: TSNode[] = [];
+  for (let i = 0; i < node.childCount; i++) {
+    const child = node.child(i);
+    if (child?.isNamed && !SKIP_SUBTREE_TYPES.has(child.type)) {
+      namedChildren.push(child);
+    }
+  }
+  let current = base;
+  for (let i = 0; i < namedChildren.length; i++) {
+    const child = namedChildren[i];
+    if (i < namedChildren.length - 1) {
+      current = walkForCandidates(child, current, out);
+    } else {
+      // Terminal child = the real pipe stage; collect without folding.
+      tagTokens(collectPathCandidateTokens(child), current, out);
+    }
   }
   return current;
 }

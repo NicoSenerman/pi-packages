@@ -1,9 +1,12 @@
 import {
   canonicalNormalizePathForComparison,
+  getExternalDirectoryPolicyValues,
   getToolInputPath,
   isPathOutsideWorkingDirectory,
   isPiInfrastructureRead,
+  normalizePathForComparison,
 } from "#src/path-utils";
+import type { ScopedPermissionResolver } from "#src/permission-resolver";
 import { SessionApproval } from "#src/session-approval";
 import { deriveApprovalPattern } from "#src/session-rules";
 import type { ToolAccessExtractorLookup } from "#src/tool-access-extractor-registry";
@@ -22,6 +25,7 @@ import type { ToolCallContext } from "./types";
 export function describeExternalDirectoryGate(
   tcc: ToolCallContext,
   infraDirs: string[],
+  resolver: ScopedPermissionResolver,
   extractors?: ToolAccessExtractorLookup,
 ): GateResult {
   if (!tcc.cwd) return null;
@@ -37,14 +41,17 @@ export function describeExternalDirectoryGate(
     return null;
   }
 
-  const normalizedExtPath = canonicalNormalizePathForComparison(
+  // The boundary decision (above) and the infrastructure-read containment
+  // check (below) use the canonical, symlink-resolved path; pattern matching
+  // uses the typed and resolved aliases (#418).
+  const canonicalExtPath = canonicalNormalizePathForComparison(
     externalDirectoryPath,
     tcc.cwd,
   );
 
   // ── Pi infrastructure read bypass ──────────────────────────────────────
   if (
-    isPiInfrastructureRead(tcc.toolName, normalizedExtPath, infraDirs, tcc.cwd)
+    isPiInfrastructureRead(tcc.toolName, canonicalExtPath, infraDirs, tcc.cwd)
   ) {
     return {
       action: "allow",
@@ -78,11 +85,22 @@ export function describeExternalDirectoryGate(
     tcc.agentName ?? undefined,
   );
 
-  const pattern = deriveApprovalPattern(normalizedExtPath);
+  // Match against both the typed and symlink-resolved aliases on the
+  // external_directory surface, so a config pattern on either form applies
+  // (#418). The runner consumes this preCheck and skips its own resolve.
+  const preCheck = resolver.resolvePathPolicy(
+    getExternalDirectoryPolicyValues(externalDirectoryPath, tcc.cwd),
+    tcc.agentName ?? undefined,
+    "external_directory",
+  );
+  const pattern = deriveApprovalPattern(
+    normalizePathForComparison(externalDirectoryPath, tcc.cwd),
+  );
 
   return {
     surface: "external_directory",
-    input: { path: normalizedExtPath },
+    input: {},
+    preCheck,
     denialContext: {
       kind: "external_directory",
       toolName: tcc.toolName,

@@ -1,10 +1,13 @@
 /**
- * subagent-state.ts — SubagentState value object: lifecycle status and metrics.
+ * subagent-state.ts — SubagentState value object: lifecycle status, metrics, and live activity.
  *
  * Owns the passive, readable state of a subagent — status, result, error,
- * timestamps, and stats (toolUses, lifetimeUsage, compactionCount) — together
- * with the transition methods (markRunning, markCompleted, …) and accumulation
- * methods (incrementToolUses, addUsage, incrementCompactions) that mutate it.
+ * timestamps, stats (toolUses, lifetimeUsage, compactionCount), and live-activity
+ * fields (turnCount, activeTools, responseText) — together with the transition
+ * methods (markRunning, markCompleted, …), accumulation methods
+ * (incrementToolUses, addUsage, incrementCompactions), and live-activity
+ * transition methods (incrementTurnCount, addActiveTool, removeActiveTool,
+ * resetResponseText, appendResponseText) that mutate them.
  *
  * State is encapsulated behind getters; external code reads through them but
  * mutates only via the transition/accumulation methods. The value object owns
@@ -62,6 +65,18 @@ export class SubagentState {
 	private _compactionCount = 0;
 	get compactionCount(): number { return this._compactionCount; }
 
+	// Live activity — accumulated via transition methods, readable via getters
+	private _turnCount = 1;
+	get turnCount(): number { return this._turnCount; }
+
+	private _activeTools = new Map<string, string>();
+	get activeTools(): ReadonlyMap<string, string> { return this._activeTools; }
+
+	private _toolKeySeq = 0;
+
+	private _responseText = "";
+	get responseText(): string { return this._responseText; }
+
 	constructor(init: SubagentStateInit = {}) {
 		this._status = init.status ?? "queued";
 		this._result = init.result;
@@ -83,6 +98,36 @@ export class SubagentState {
 	/** Increment compaction count. Called by record-observer on compaction_end. */
 	incrementCompactions(): void {
 		this._compactionCount++;
+	}
+
+	/** Record a turn boundary. Called by record-observer on turn_end. */
+	incrementTurnCount(): void {
+		this._turnCount++;
+	}
+
+	/** Record a tool starting. Called by record-observer on tool_execution_start. */
+	addActiveTool(toolName: string): void {
+		this._activeTools.set(toolName + "_" + (++this._toolKeySeq), toolName);
+	}
+
+	/** Remove one active tool by name (first match). Called by record-observer on tool_execution_end. */
+	removeActiveTool(toolName: string): void {
+		for (const [key, name] of this._activeTools) {
+			if (name === toolName) {
+				this._activeTools.delete(key);
+				break;
+			}
+		}
+	}
+
+	/** Reset the current response text. Called by record-observer on message_start. */
+	resetResponseText(): void {
+		this._responseText = "";
+	}
+
+	/** Append a text delta to the current response text. Called by record-observer on message_update. */
+	appendResponseText(delta: string): void {
+		this._responseText += delta;
 	}
 
 	/** Transition to running state. Sets status and startedAt. */

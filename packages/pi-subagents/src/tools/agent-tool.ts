@@ -12,21 +12,7 @@ import { buildDetails, buildTypeListText, textResult } from "#src/tools/helpers"
 import { renderAgentResult } from "#src/tools/result-renderer";
 import { type ModelInfo, resolveSpawnConfig } from "#src/tools/spawn-config";
 import type { ParentSessionInfo, Subagent } from "#src/types";
-import { AgentActivityTracker } from "#src/ui/agent-activity-tracker";
-import { type UICtx } from "#src/ui/agent-widget";
 import { type AgentDetails, getDisplayName } from "#src/ui/display";
-
-// ---- Shared interfaces (also used by background-spawner and foreground-runner) ----
-
-/**
- * Narrow read/write interface for the agent-tool's agentActivity access.
- * The full Map satisfies this structurally — no wrapper needed.
- */
-export interface AgentActivityAccess {
-	get(id: string): AgentActivityTracker | undefined;
-	set(id: string, tracker: AgentActivityTracker): void;
-	delete(id: string): void;
-}
 
 // ---- Deps interfaces ----
 
@@ -40,11 +26,6 @@ export interface AgentToolManager {
 
 /** Narrow runtime interface — the Agent tool's slice of SubagentRuntime. */
 export interface AgentToolRuntime {
-	readonly agentActivity: AgentActivityAccess;
-	setUICtx(ctx: UICtx): void;
-	ensureTimer(): void;
-	update(): void;
-	markFinished(id: string): void;
 	buildSnapshot(inheritContext: boolean): ParentSnapshot;
 	getModelInfo(): ModelInfo;
 	getSessionInfo(): { parentSessionFile: string; parentSessionId: string };
@@ -78,11 +59,8 @@ export class AgentTool {
 		params: Record<string, unknown>,
 		signal: AbortSignal | undefined,
 		onUpdate: ((update: AgentToolResult<any>) => void) | undefined,
-		ctx: any,
+		_ctx: any,
 	) {
-		// Ensure we have UI context for widget rendering
-		this.runtime.setUICtx(ctx.ui as UICtx);
-
 		// Reload custom agents so new .pi/agents/*.md files are picked up without restart
 		this.registry.reload();
 
@@ -131,8 +109,6 @@ export class AgentTool {
 		if (config.execution.runInBackground) {
 			return spawnBackground(
 				this.manager,
-				this.runtime,
-				this.runtime.agentActivity,
 				{ config, snapshot, parentSession, settings: this.settings },
 			);
 		}
@@ -140,8 +116,6 @@ export class AgentTool {
 		// ---- Foreground execution — stream progress via onUpdate ----
 		return runForeground(
 			this.manager,
-			this.runtime,
-			this.runtime.agentActivity,
 			{ config, snapshot, parentSession },
 			signal,
 			onUpdate,
@@ -227,7 +201,7 @@ Guidelines:
 				),
 			}),
 
-			// ---- Custom rendering: Claude Code style ----
+			// ---- Custom rendering: inline subagent results ----
 
 			renderCall(args: Record<string, unknown>, theme: any) {
 				const displayName = args.subagent_type

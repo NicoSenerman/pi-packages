@@ -5,6 +5,122 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [17.5.0](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v17.4.0...pi-subagents-v17.5.0) (2026-06-23)
+
+
+### Features
+
+* **pi-subagents:** add file-snapshot transcript source ([06a9ee3](https://github.com/gotgenes/pi-packages/commit/06a9ee39b5f529f770c39cf8d8bdcefd1511bb7d))
+* **pi-subagents:** retain evicted-agent descriptors in the manager ([3128e2a](https://github.com/gotgenes/pi-packages/commit/3128e2a44b94be9b976b74d24cf5127ca0944074))
+* **pi-subagents:** source evicted-agent transcripts from disk in /subagent-sessions ([b4da762](https://github.com/gotgenes/pi-packages/commit/b4da762b0574b49e028518c62e7b2f11acaf1ad4))
+
+## [17.4.0](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v17.3.0...pi-subagents-v17.4.0) (2026-06-23)
+
+
+### Features
+
+* add getToolDefinition accessor on subagent record ([#462](https://github.com/gotgenes/pi-packages/issues/462)) ([e0bfdac](https://github.com/gotgenes/pi-packages/commit/e0bfdacec33120d0f52e6294f3676f4776aee4af))
+* expose getToolDefinition on the transcript source seam ([#462](https://github.com/gotgenes/pi-packages/issues/462)) ([669f5ff](https://github.com/gotgenes/pi-packages/commit/669f5ff71523122ebb011adc6875b54d7001d53a))
+* render /subagent-sessions transcript with Pi per-entry components ([#462](https://github.com/gotgenes/pi-packages/issues/462)) ([b832a43](https://github.com/gotgenes/pi-packages/commit/b832a437c97378f701033ef8e98c6f7805d7e7a8))
+
+## [17.3.0](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v17.2.0...pi-subagents-v17.3.0) (2026-06-22)
+
+
+### Features
+
+* add /subagent-sessions read-only navigation command ([#445](https://github.com/gotgenes/pi-packages/issues/445)) ([341385c](https://github.com/gotgenes/pi-packages/commit/341385cf1f0c9f5ae1d3035c5b3b34bc3e636c92))
+* add subagent session selection and live transcript source ([#445](https://github.com/gotgenes/pi-packages/issues/445)) ([7173647](https://github.com/gotgenes/pi-packages/commit/71736478c37af2c6ceaebc3ce0ee5a85e75ab1cb))
+* add typed agentMessages accessor on subagent record ([#445](https://github.com/gotgenes/pi-packages/issues/445)) ([3bd49e3](https://github.com/gotgenes/pi-packages/commit/3bd49e37feea2cca52c706f7e765b8ae934ab9fe))
+
+## [17.2.0](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v17.1.0...pi-subagents-v17.2.0) (2026-06-20)
+
+
+### Features
+
+* shrink agent widget to background runs only ([#444](https://github.com/gotgenes/pi-packages/issues/444)) ([76463b4](https://github.com/gotgenes/pi-packages/commit/76463b47227961226dbce5efb70a71d596fe092e))
+
+
+### Documentation
+
+* note background-only widget in README and roadmap ([#444](https://github.com/gotgenes/pi-packages/issues/444)) ([437332f](https://github.com/gotgenes/pi-packages/commit/437332fa4a1fbb2f0a0358495454847bc597ae13))
+
+## [17.1.0](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v17.0.1...pi-subagents-v17.1.0) (2026-06-20)
+
+
+### Features
+
+* add SubagentsSettingsHandler for focused settings command ([#447](https://github.com/gotgenes/pi-packages/issues/447)) ([cae804d](https://github.com/gotgenes/pi-packages/commit/cae804d1be7ac437ad7344035b5d99cd1424e0c0))
+* register /subagents-settings command ([#447](https://github.com/gotgenes/pi-packages/issues/447)) ([7735a38](https://github.com/gotgenes/pi-packages/commit/7735a38db2658fd9faca6388ac4bc712fa8e5a86))
+
+## [17.0.1](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v17.0.0...pi-subagents-v17.0.1) (2026-06-20)
+
+
+### Bug Fixes
+
+* **pi-subagents:** exclude disabled agents from the subagent tool description ([#448](https://github.com/gotgenes/pi-packages/issues/448)) ([9a43414](https://github.com/gotgenes/pi-packages/commit/9a43414b3e15f0c978db9d468b737b13b801fdb2))
+* **pi-subagents:** return an error when spawning a disabled agent type ([#448](https://github.com/gotgenes/pi-packages/issues/448)) ([0e0225e](https://github.com/gotgenes/pi-packages/commit/0e0225e167596217dc7b1d99dd6269600d65326b))
+
+## [17.0.0](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v16.6.0...pi-subagents-v17.0.0) (2026-06-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* SUBAGENT_EVENTS.ACTIVITY ("subagents:activity") is removed. It was never emitted, so no consumer could act on it, and there is no replacement — the activity tier was removed in Phase 18. Consumers should subscribe to the now-declared FAILED, COMPACTED, CREATED, and STEERED channels instead.
+
+### Features
+
+* reconcile SUBAGENT_EVENTS with emitted channels ([#425](https://github.com/gotgenes/pi-packages/issues/425)) ([ba0c48b](https://github.com/gotgenes/pi-packages/commit/ba0c48b294123c1498db2040b1037adcd7ad4e4e))
+
+## [16.6.0](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v16.5.0...pi-subagents-v16.6.0) (2026-06-17)
+
+
+### Features
+
+* read widget activity off subagent records ([#421](https://github.com/gotgenes/pi-packages/issues/421)) ([df09e03](https://github.com/gotgenes/pi-packages/commit/df09e03d122c391212507c4c5d8436cd4a0561ba))
+
+## [16.5.0](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v16.4.0...pi-subagents-v16.5.0) (2026-06-17)
+
+
+### Features
+
+* accumulate live activity in record-observer ([#420](https://github.com/gotgenes/pi-packages/issues/420)) ([c75e7cf](https://github.com/gotgenes/pi-packages/commit/c75e7cf20e44116743fc847238b4364a1edda25a))
+* add live-activity fields to SubagentState ([#420](https://github.com/gotgenes/pi-packages/issues/420)) ([713f19a](https://github.com/gotgenes/pi-packages/commit/713f19aa13306b6c41dc54f3ddfa73fcdfc65427))
+* expose live-activity getters on Subagent ([#420](https://github.com/gotgenes/pi-packages/issues/420)) ([6438d6c](https://github.com/gotgenes/pi-packages/commit/6438d6ca0fdb25b1dfeffa0f76a1eae8630f0cce))
+
+## [16.4.0](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v16.3.1...pi-subagents-v16.4.0) (2026-06-16)
+
+
+### Features
+
+* **pi-subagents:** add loadLayeredSettings layered config loader ([2eeba78](https://github.com/gotgenes/pi-packages/commit/2eeba78230bd4537fa568641d4a77a6f1824271c))
+* **pi-subagents:** export loadLayeredSettings via ./settings subpath ([cefe7f6](https://github.com/gotgenes/pi-packages/commit/cefe7f6b7a9133cd0bbcc523ac8b34e48fce0a58))
+
+## [16.3.1](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v16.3.0...pi-subagents-v16.3.1) (2026-06-16)
+
+
+### Documentation
+
+* reframe pi-subagents positioning away from "Claude Code-style" ([c8d380d](https://github.com/gotgenes/pi-packages/commit/c8d380d440a4ae29f9173673523337cf667fb3da))
+
+## [16.3.0](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v16.2.2...pi-subagents-v16.3.0) (2026-06-16)
+
+
+### Features
+
+* self-seed finished agents in AgentWidget.update ([#377](https://github.com/gotgenes/pi-packages/issues/377)) ([fd99a29](https://github.com/gotgenes/pi-packages/commit/fd99a297f70ce4c1c078fd486be042f691fe5a79))
+
+
+### Documentation
+
+* **pi-subagents:** drop removed memory, skills, isolation surfaces ([7cf20ee](https://github.com/gotgenes/pi-packages/commit/7cf20eebf109c979a864000cd8b9d84a13d0df90))
+
+## [16.2.2](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v16.2.1...pi-subagents-v16.2.2) (2026-06-15)
+
+
+### Documentation
+
+* **pi-subagents:** replace fork notice with upstream comparison ([513df4d](https://github.com/gotgenes/pi-packages/commit/513df4d6149178c5c8074cf07d8ad248c50d4c47))
+
 ## [16.2.1](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v16.2.0...pi-subagents-v16.2.1) (2026-06-15)
 
 

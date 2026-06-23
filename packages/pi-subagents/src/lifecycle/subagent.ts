@@ -7,7 +7,7 @@
  */
 
 import type { Model } from "@earendil-works/pi-ai";
-import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import type { AgentSessionEvent, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { debugLog } from "#src/debug";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
@@ -20,7 +20,7 @@ import { WorkspaceBracket } from "#src/lifecycle/workspace-bracket";
 import { NotificationState } from "#src/observation/notification-state";
 import { subscribeSubagentObserver } from "#src/observation/record-observer";
 import type { RunConfig } from "#src/runtime";
-import type { AgentInvocation, CompactionInfo, ParentSessionInfo, SubagentType, ThinkingLevel } from "#src/types";
+import type { AgentInvocation, CompactionInfo, ParentSessionInfo, SessionMessage, SubagentType, ThinkingLevel } from "#src/types";
 
 /** Per-subagent lifecycle observer — created by SubagentManager for each spawn. */
 export interface SubagentLifecycleObserver {
@@ -94,6 +94,10 @@ export class Subagent {
 	get toolUses(): number { return this.state.toolUses; }
 	get lifetimeUsage(): Readonly<LifetimeUsage> { return this.state.lifetimeUsage; }
 	get compactionCount(): number { return this.state.compactionCount; }
+	get turnCount(): number { return this.state.turnCount; }
+	get activeTools(): ReadonlyMap<string, string> { return this.state.activeTools; }
+	get responseText(): string { return this.state.responseText; }
+	get maxTurns(): number | undefined { return this.execution.maxTurns; }
 
 	readonly abortController: AbortController;
 	private _promise?: Promise<void>;
@@ -156,6 +160,16 @@ export class Subagent {
 	/** The session's message history, or an empty array if no session. */
 	get messages(): readonly unknown[] {
 		return this.subagentSession?.messages ?? [];
+	}
+
+	/** The session's message history typed for Pi's session-rendering machinery, or empty if no session. */
+	get agentMessages(): readonly SessionMessage[] {
+		return this.subagentSession?.agentMessages ?? [];
+	}
+
+	/** Resolve a registered tool definition by name, or undefined if no session. */
+	getToolDefinition(name: string): ToolDefinition | undefined {
+		return this.subagentSession?.getToolDefinition(name);
 	}
 
 	constructor(init: SubagentInit) {

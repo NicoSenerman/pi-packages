@@ -5,8 +5,8 @@
  * with a mocked narrow runtime interface.
  */
 
-/** Narrow runtime interface — only the widget-delegation methods the handler calls. */
-export interface ToolStartRuntime {
+/** Narrow widget interface — only the methods the handler calls. */
+export interface ToolStartWidget {
   setUICtx(ctx: unknown): void;
   onTurnStart(): void;
 }
@@ -23,10 +23,10 @@ interface ToolStartCtx {
  * and signals the widget to clear lingering state.
  */
 export class ToolStartHandler {
-  constructor(private readonly runtime: ToolStartRuntime) {}
+  constructor(private readonly widget: ToolStartWidget) {}
 
   handleToolExecutionStart(_event: unknown, ctx: ToolStartCtx): void {
-    this.runtime.setUICtx(ctx.ui);
-    this.runtime.onTurnStart();
+    this.widget.setUICtx(ctx.ui);
+    this.widget.onTurnStart();
   }
 }

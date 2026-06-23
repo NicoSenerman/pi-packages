@@ -97,19 +97,46 @@ describe("resolveBashCommandCheck", () => {
     expect(result.matchedPattern).toBe("a *");
   });
 
-  it("falls back to the whole command when no top-level commands are found", () => {
-    const resolver = makeResolver(bashResult("ask", "( rm x )", "*"));
+  it("falls back to the whole command for a comment-only line (genuinely nothing to gate)", () => {
+    const resolver = makeResolver(bashResult("allow", "# just a comment", "*"));
 
-    const result = resolveBashCommandCheck("( rm x )", [], undefined, resolver);
+    const result = resolveBashCommandCheck(
+      "# just a comment",
+      [],
+      undefined,
+      resolver,
+    );
 
-    expect(result.state).toBe("ask");
-    expect(result.commandContext).toBeUndefined();
+    expect(result.state).toBe("allow");
     expect(resolver.resolve).toHaveBeenCalledTimes(1);
     expect(resolver.resolve).toHaveBeenCalledWith(
       "bash",
-      { command: "( rm x )" },
+      { command: "# just a comment" },
       undefined,
     );
+  });
+
+  it("falls back to the whole command for an empty/whitespace-only command", () => {
+    const resolver = makeResolver(bashResult("allow", "   ", "*"));
+
+    const result = resolveBashCommandCheck("   ", [], undefined, resolver);
+
+    expect(result.state).toBe("allow");
+    expect(resolver.resolve).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed to ask when a non-empty command parses to zero command units", () => {
+    const resolver = makeResolver(bashResult("allow", "( rm x )", "*"));
+
+    const result = resolveBashCommandCheck("( rm x )", [], undefined, resolver);
+
+    // A permissive top-level '*' must NOT silently allow an unparseable command.
+    expect(result.state).toBe("ask");
+    expect(result.matchedPattern).toBe("<unparseable-bash-command>");
+    expect(result.command).toBe("( rm x )");
+    expect(result.commandContext).toBeUndefined();
+    // The synthetic ask is returned without consulting the resolver.
+    expect(resolver.resolve).not.toHaveBeenCalled();
   });
 
   it("forwards the agent name to each sub-command check", () => {

@@ -95,6 +95,8 @@ Check in both directions:
 - Prompt templates (`.pi/prompts/`) — if agent infrastructure changed, are stale references updated?
 - READMEs — check the root `README.md` and any package `README.md` files that describe affected modules.
 - Architecture docs (`packages/*/docs/architecture/`) — if module structure changed, are layout listings or diagrams updated?
+- Roadmap status (`packages/*/docs/architecture/`) — if the issue completes a numbered step, do **both** the step heading and its Mermaid diagram node carry `✅` (a `Landed:` line alone is not enough)?
+  The phase status row flips only when every step is done — verify it against the actual step count.
 
 #### Reverse — does existing content need condensing or removal?
 
@@ -167,10 +169,19 @@ Read the earlier completed steps for the modified surface and extract their `Out
 For each, confirm the current change still upholds it — preferably via a test that pins it, otherwise by reading the code.
 Report a regressed invariant as **FAIL**; an invariant that holds but is pinned only by prose (no test) as **WARN**.
 
+### 2i. Planned follow-up issues
+
+**Applicability:** a plan file was provided and it names work deferred to a follow-up issue (in Design Overview, Non-Goals, Open Questions, or a Decomposition subsection).
+Skip if no plan was provided or it names no follow-up.
+
+`/plan-issue` files these during planning and records each issue number in the plan.
+For each follow-up the plan names, confirm the plan (or its retro) records a GitHub issue number for it.
+Report a named follow-up with no recorded issue number as **WARN** — it should have been filed during planning.
+
 ## Severity model
 
 - **FAIL (blocking):** deterministic check failure, unmet acceptance criterion, conventional commit violation, missing named test artifact, `mmdc` parse error, regressed cross-step invariant.
-- **WARN (non-blocking):** documentation staleness, code design suggestions, Mermaid renderer pitfalls, `mmdc` unavailable, cross-step invariant pinned only by prose.
+- **WARN (non-blocking):** documentation staleness, code design suggestions, Mermaid renderer pitfalls, `mmdc` unavailable, cross-step invariant pinned only by prose, a planned follow-up with no recorded issue number.
 - **PASS:** section verified with no issues.
 - **SKIP:** section not applicable — state the reason.
 
@@ -241,6 +252,13 @@ WARN — invariant "<text>" holds but is pinned only by prose, not a test
 FAIL — invariant "<text>" from <step> regressed
 — or —
 SKIP — no phased roadmap, or no modified src/ file was a prior step's target
+
+### Planned follow-up issues
+PASS — all named follow-ups have recorded issue numbers
+— or —
+WARN — plan names a "<X>" follow-up but records no issue number (file it before ship)
+— or —
+SKIP — no plan, or plan names no follow-up
 
 ### Overall
 PASS — ready for /ship-issue

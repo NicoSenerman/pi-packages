@@ -1,6 +1,10 @@
 import { join } from "node:path";
 import { isPermissionState } from "./common";
-import { getGlobalConfigPath, getProjectConfigPath } from "./config-paths";
+import {
+  getGlobalConfigPath,
+  getProjectAgentsDir,
+  getProjectConfigPath,
+} from "./config-paths";
 import { normalizeInput } from "./input-normalizer";
 import { normalizeFlatConfig } from "./normalize";
 import { PATH_SURFACES } from "./path-utils";
@@ -65,19 +69,21 @@ export interface ScopedPermissionManager {
     sessionRules?: Ruleset,
   ): PermissionCheckResult;
   /**
-   * Evaluate the cross-cutting `path` surface against a caller-supplied set of
-   * equivalent policy values (e.g. bash tokens already resolved against a
-   * preceding literal `cd`). The values are trusted because they are computed
-   * internally, never read from a field on raw tool input.
+   * Evaluate a path-shaped surface (`path` or `external_directory`) against a
+   * caller-supplied set of equivalent policy values (e.g. bash tokens already
+   * resolved against a preceding literal `cd`, or a path's typed and
+   * symlink-resolved aliases). The values are trusted because they are computed
+   * internally, never read from a field on raw tool input. `surface` defaults
+   * to `path`.
    */
   checkPathPolicy(
     values: readonly string[],
     agentName?: string,
     sessionRules?: Ruleset,
+    surface?: string,
   ): PermissionCheckResult;
   getToolPermission(toolName: string, agentName?: string): PermissionState;
   getConfigIssues(agentName?: string): string[];
-  getPolicyCacheStamp(agentName?: string): string;
 }
 
 export interface PermissionManagerOptions extends PolicyLoaderOptions {
@@ -135,10 +141,6 @@ export class PermissionManager implements ScopedPermissionManager {
 
   getResolvedPolicyPaths(): ResolvedPolicyPaths {
     return this.loader.getResolvedPolicyPaths();
-  }
-
-  getPolicyCacheStamp(agentName?: string): string {
-    return this.loader.getCacheStamp(agentName);
   }
 
   private resolvePermissions(agentName?: string): ResolvedPermissions {
@@ -277,6 +279,7 @@ export class PermissionManager implements ScopedPermissionManager {
     values: readonly string[],
     agentName?: string,
     sessionRules?: Ruleset,
+    surface = "path",
   ): PermissionCheckResult {
     const { composedRules } = this.resolvePermissions(agentName);
     const fullRules: Ruleset = sessionRules?.length
@@ -285,11 +288,11 @@ export class PermissionManager implements ScopedPermissionManager {
 
     const lookupValues = values.length > 0 ? [...values] : ["*"];
     return buildCheckResult(
-      "path",
+      surface,
       lookupValues,
       {},
-      "path",
-      "path",
+      surface,
+      surface,
       fullRules,
     );
   }
@@ -346,7 +349,7 @@ function derivePolicyLoaderOptions(
     globalConfigPath: getGlobalConfigPath(agentDir),
     agentsDir: join(agentDir, "agents"),
     projectGlobalConfigPath: cwd ? getProjectConfigPath(cwd) : undefined,
-    projectAgentsDir: cwd ? join(cwd, ".pi", "agent", "agents") : undefined,
+    projectAgentsDir: cwd ? getProjectAgentsDir(cwd) : undefined,
   };
 }
 

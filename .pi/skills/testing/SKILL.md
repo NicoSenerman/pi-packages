@@ -59,11 +59,22 @@ Load this skill when writing, debugging, or planning tests.
 - When a test reveals a pre-existing bug rather than a wrong assumption, use `test.fails` to document the expected behavior and file a GitHub issue.
 - Do not insert no-op statements (`void 0;`, unused locals) in tests just to make an `Edit` tool's `oldText` unique — widen `oldText` with surrounding context instead.
 - When a non-`async` method declared `Promise<T>` must signal a precondition failure, `return Promise.reject(new Error(...))`, not `throw` — a synchronous `throw` escapes `expect(...).rejects.toThrow(...)`, and switching to `async` to fix that trips `@typescript-eslint/require-await` when the body has no `await`.
+- Assert mock calls with `expect(fn).toHaveBeenCalledWith(...)`, not `fn.mock.calls[0]![0]`.
+  A typed `vi.fn<(a: string) => void>()` makes the call tuple non-optional, so the `!` trips `@typescript-eslint/no-unnecessary-type-assertion`.
+
+## Test organization
+
+Group tests by the behavior or concern they exercise — open a nested `describe("<concern>", () => { ... })` per concern rather than appending `it` blocks to a flat list.
+When adding tests for a new concern (e.g. a `details` field alongside existing content assertions), start a new `describe` block instead of extending the existing one.
+When consolidating duplicated test arrangements, group the shared setup in a describe-scoped `beforeEach` and keep the act (the call under test) explicit in each test.
+Do not wrap the system-under-test call in a helper to eliminate a duplication-metric clone — the repeated act is the test subject, not duplication to remove.
 
 ## Type checking
 
 Vitest uses esbuild and does not typecheck.
 Run `pnpm run check` (`tsc --noEmit`) for type-only changes.
+Confirm any claim about what a module exports with `tsc`, not a runtime symptom.
+A missing export throws `is not a function` at runtime but surfaces as `TS2305` under `tsc` (e.g. #446, a runtime error misread as a types/runtime mismatch).
 
 ## Running tests
 
@@ -102,6 +113,8 @@ Run `pnpm run check` (`tsc --noEmit`) for type-only changes.
 - When removing fields from a shared init type, grep for all test files and factory helpers that pass the removed field — esbuild won't reject unknown properties at runtime, so tests silently get wrong default values instead of failing.
 - When a change moves *when* a value or service becomes available (e.g. factory-init → `session_start`), grep all test files for consumers that resolve it — not just the tests you already plan to touch.
   A timing change breaks them at runtime (the full suite), not at typecheck, so `pnpm run check` will not flag them.
+- When a step changes the *format* of a value recorded at runtime and replayed by a different consumer (e.g. a session-approval pattern matched against a later request), fold every producer and consumer of that namespace into one commit.
+  `tsc` passes either way; only a cross-consumer runtime test exercising both the producer and the consumer catches the mismatch.
 - When extracting a conditional `await` (`if (x) await f()`) into an always-`async` helper, the no-op path gains a microtask boundary it did not have.
   Tests asserting synchronous ordering (e.g. a factory called in the same tick as `spawn()`) break at runtime, not typecheck.
   Keep a synchronous guard at the call site (`if (bracket.hasProvider()) await bracket.prepare(…)`) to preserve the fast path.
@@ -121,6 +134,6 @@ Run `pnpm run check` (`tsc --noEmit`) for type-only changes.
 
 ### Exploration before planning
 
-- When integrating an unfamiliar library or data structure, write a disposable exploratory script first to inspect the actual runtime shape.
+- When integrating an unfamiliar library or data structure, write a disposable exploratory script first to inspect the actual runtime shape — and exercise the full variety of inputs you will use, since environment dependencies (e.g. a required global init) can be variant-specific and a one-representative probe gives false confidence.
 - When a TDD plan extracts a locally-declared type that shadows an SDK type, verify whether the SDK exports the type before planning around the local copy.
   Dead fallback branches in the local type produce dead test cases and unnecessary complexity.

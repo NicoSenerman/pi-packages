@@ -54,6 +54,11 @@ Before investigating the issue, load skills relevant to the change:
    Note whether each is implemented yet — your plan must say what it depends on vs. defers.
 5. Open the source files most relevant to the change and skim them before writing.
 6. When the plan introduces a public API pattern (package `exports`, `Symbol.for()` accessor, service interface) or agent-facing message formatting (attribution tags, error prefixes, log labels), use colgrep or grep to search sibling packages for the established convention and follow it unless there is a documented reason to diverge.
+7. Determine the issue's **release recommendation** from the package's architecture roadmap, if it is part of one.
+   Grep `packages/<PKG>/docs/architecture/architecture.md` for the step that references this issue (`(#$1)` / `[#$1]`) and read its `Release:` tag (defined by the `improvement-discovery` skill):
+   - `Release: independent` (or no tag, or the issue is not in any roadmap) → **ship independently**.
+   - `Release: batch "<name>"` → look up `<name>` in the roadmap's `Release batches` subsection; if this step is the batch tail (last listed member) → **ship now — batch tail**; otherwise → **mid-batch — defer**.
+   You will write this into the plan's `Release Recommendation` section (see Write the plan).
 
 ## Check for prior session context
 
@@ -102,6 +107,13 @@ issue_title: "<exact title from `gh issue view`>"
 
 Then an H1 title (e.g., `# <short descriptive title>`) — required by markdownlint MD041 — followed by the body sections:
 
+- **Release Recommendation** — the first `##` section after the H1, so it is prominent.
+  Write the canonical grep-able marker line (`/ship-issue` reads it) as exactly one of:
+  - `**Release:** ship independently`
+  - `**Release:** ship now — batch "<name>" tail (this issue completes the batch)`
+  - `**Release:** mid-batch — defer (batch "<name>"); confirm at ship time`
+
+  Use the value derived in Gather context step 7, then add a sentence of rationale (which batch, why independent).
 - **Problem Statement** — quote the issue's framing in your own words.
 - **Goals** — bullet list, scoped to this change.
 - **Non-Goals** — explicitly defer anything tangential (sibling issues, follow-ups).
@@ -121,7 +133,9 @@ Then an H1 title (e.g., `# <short descriptive title>`) — required by markdownl
   When a step reworks the documented behavior of a mechanism rather than removing a symbol (e.g. a patch description, an architecture note, or wording like "prepends" → "includes"), also grep `.pi/skills/package-*/SKILL.md` for the mechanism name — reworded prose carries no removed symbol to match.
   When a step removes a call to a private (non-exported) function, grep the file for other callers — if the removed call was the sole call site, list the function for removal in the same step.
   When the change adds, removes, or moves a module, check `packages/<PKG>/docs/architecture/` for layout listings, complexity tables, health metrics, or domain diagrams that reference the affected files and list them as doc updates.
+  When a step corrects a literal value that appears in prose (a path, default, or identifier in sample output, log snippets, or ADR code comments), grep the whole `packages/<PKG>/docs/` tree for the old value — not a hand-picked file subset; stale sample logs and decision-record comments do not surface in a `src/`/`test/` grep.
   When a file appears in Module-Level Changes, verify it is not also claimed as unchanged in Non-Goals — contradictions between these sections cause confusion during implementation.
+  When a plan step's verify criterion names a specific static-analysis finding as resolved (a clone fingerprint, a dead-code symbol, a complexity target), the step's design or Module-Level Changes must show which change clears it — do not list a finding as expected-gone without a change mapped to it.
 - **Test Impact Analysis** — for extraction and refactoring issues: (1) what new unit tests does the extraction enable that were previously impossible or impractical?
   (2) what existing tests become redundant with the new lower-level tests, and can they be simplified or removed?
   (3) which existing tests must stay as-is because they genuinely exercise the layer being extracted?
@@ -138,6 +152,12 @@ Then an H1 title (e.g., `# <short descriptive title>`) — required by markdownl
 - **Open Questions** — defer-until-needed items.
 
 If the change is breaking, say so explicitly in Goals and use `feat!:` in the suggested commit messages.
+
+## File follow-up issues
+
+If planning identified work to defer to a separate issue (a follow-up named in Design Overview, Non-Goals, or Open Questions), create it now with `gh issue create` — before the plan commit, while this session holds full context.
+Record each new issue number in the plan's Non-Goals / Open Questions.
+File nothing speculative — only follow-ups the plan concretely names.
 
 ## Commit
 

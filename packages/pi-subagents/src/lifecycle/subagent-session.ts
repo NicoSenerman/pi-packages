@@ -13,12 +13,14 @@
 import {
   type AgentSession,
   type AgentSessionEvent,
+  type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { ChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
 import { normalizeMaxTurns } from "#src/lifecycle/turn-limits";
 import { getSessionContextPercent, type SessionStatsLike } from "#src/lifecycle/usage";
 import { extractText } from "#src/session/context";
 import { getAgentConversation } from "#src/session/conversation";
+import type { SessionMessage } from "#src/types";
 
 /** Outcome of one turn loop. */
 export interface TurnLoopResult {
@@ -176,6 +178,16 @@ export class SubagentSession {
   /** The session's message history. */
   get messages(): readonly unknown[] {
     return this._session.messages as readonly unknown[];
+  }
+
+  /** The session's message history, typed for Pi's session-rendering machinery. */
+  get agentMessages(): readonly SessionMessage[] {
+    return this._session.messages;
+  }
+
+  /** Resolve a registered tool definition by name, for Pi's tool-execution components. */
+  getToolDefinition(name: string): ToolDefinition | undefined {
+    return this._session.getToolDefinition(name);
   }
 
   /** Tear down: session.dispose() + emit `disposed` (registry unregister). */

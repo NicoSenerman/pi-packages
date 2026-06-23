@@ -186,13 +186,58 @@ describe("BashProgram", () => {
         );
         expect(program.externalPaths(cwd)).toHaveLength(0);
       });
+
+      it("folds a leading current-shell cd across a redirect-then-pipe", async () => {
+        // tree-sitter-bash groups `cd a && pnpm x 2>&1 | tail` as
+        // `(cd a && pnpm x 2>&1) | tail`, burying the current-shell `cd a`
+        // inside a `pipeline` node. Bash precedence (`|` binds tighter than
+        // `&&`) makes `cd a` current-shell, so the fold must persist past the
+        // pipeline: ../b resolves against cwd/a (inside), not cwd (#454).
+        const program = await BashProgram.parse(
+          "cd a && pnpm x 2>&1 | tail ; cat ../b",
+        );
+        expect(program.externalPaths(cwd)).toHaveLength(0);
+      });
+
+      it("persists the fold past a redirect-then-pipe to a later cd", async () => {
+        // The issue reproduction: the fold from `cd a/b` survives the
+        // redirect-then-pipe, so the trailing `cd .. && cd ..` lands back at
+        // cwd instead of escaping one level above.
+        const program = await BashProgram.parse(
+          "cd a/b && pnpm x 2>&1 | tail ; cd .. && cd ..",
+        );
+        expect(program.externalPaths(cwd)).toHaveLength(0);
+      });
+
+      it("does not fold the terminal piped command of the first stage", async () => {
+        // Fail-closed: `cd b` is the terminal command of the first stage, i.e.
+        // the real pipe stage (a subshell), so it must NOT fold. With the
+        // correct base cwd/a, ../../x escapes to /projects/x. If `cd b` were
+        // wrongly folded, the base would be cwd/a/b and ../../x would stay
+        // inside — a fail-open regression this test pins.
+        const program = await BashProgram.parse(
+          "cd a && cd b 2>&1 | tail ; cat ../../x",
+        );
+        expect(program.externalPaths(cwd)).toContain("/projects/x");
+      });
+
+      it("resolves a downstream pipe stage against the folded base", async () => {
+        // The stage after the `|` runs in a subshell that inherits the folded
+        // cwd/a, so ../foo resolves inside cwd rather than escaping against the
+        // pre-cd base.
+        const program = await BashProgram.parse(
+          "cd a && pnpm x 2>&1 | cat ../foo",
+        );
+        expect(program.externalPaths(cwd)).toHaveLength(0);
+      });
     });
 
-    it("flags an absolute in-cwd path that resolves externally via a symlink", async () => {
+    it("flags an absolute in-cwd path that resolves externally via a symlink, returning the typed form", async () => {
       // The strict classifier only processes absolute tokens, so the escape
       // surface is `cat /cwd/link/hosts` (absolute) where `link -> /etc`.
-      // Without canonicalization: /projects/my-app/link/hosts looks internal.
-      // With canonicalization: realpathSync resolves it to /etc/hosts.
+      // The boundary decision still uses the canonical form (so the path is
+      // flagged), but the returned value is the typed/lexical form so config
+      // patterns match the path as the user wrote it (#418).
       realpathSync.mockImplementation((p: string) => {
         if (p === "/projects/my-app/link/hosts") return "/etc/hosts";
         return p;
@@ -200,7 +245,9 @@ describe("BashProgram", () => {
       const program = await BashProgram.parse(
         "cat /projects/my-app/link/hosts",
       );
-      expect(program.externalPaths(cwd)).toContain("/etc/hosts");
+      const external = program.externalPaths(cwd);
+      expect(external).toContain("/projects/my-app/link/hosts");
+      expect(external).not.toContain("/etc/hosts");
     });
 
     it("does not flag a token that resolves within a symlinked cwd", async () => {

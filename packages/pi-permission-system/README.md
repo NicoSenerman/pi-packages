@@ -19,6 +19,7 @@ Permission enforcement extension for the [Pi](https://pi.mariozechner.at/) codin
 - **Gates MCP and skill access** at server, tool, and skill-name granularity
 - **Protects sensitive file patterns** — cross-cutting `path` rules deny `.env`, `~/.ssh/*`, etc. across all tools and bash at once
 - **Guards external paths** — prompts before file tools or bash commands reach outside `cwd`
+- **Fails closed** — an internal gate error blocks the tool (with a `gate_error` review-log entry), and an unparseable bash command prompts (`ask`) rather than passing silently
 - **Forwards prompts from subagents** — `ask` policies work even in non-UI execution contexts
 - **Broadcasts UI prompt events** — `permissions:ui_prompt` fires only when the permission system is about to invoke the active user-facing permission UI
 - **Native [`@gotgenes/pi-subagents`](https://github.com/gotgenes/pi-subagents) integration** — in-process child sessions register with the permission system automatically, enabling per-agent policy enforcement and `ask`-state forwarding to the parent UI without configuration
@@ -44,6 +45,7 @@ pi install npm:@gotgenes/pi-permission-system
           "*.env.example": "allow"
         },
         "bash": {
+          "*": "ask",
           "rm -rf *": "deny",
           "sudo *": "ask"
         },
@@ -72,7 +74,25 @@ For per-tool path patterns (`read`, `write`, `edit`, `find`, `grep`, `ls`), patt
 This lets you express rules like "allow reads but deny `.env` files" at the individual tool level.
 When Pi's current working directory is known, relative path inputs also match their cwd-normalized absolute form, so `src/App.jsx` can match both `src/*` and `/workspace/project/*`.
 
+The `external_directory` surface is the CWD-boundary gate: it decides whether reaching **outside** the working tree is allowed, and accepts a pattern map so you can allow specific outside-CWD directories without opening up all external access.
+This is the right surface for silencing repeated prompts on a local cache like `~/.cargo/registry` — allow it here, not on `path`:
+
+```jsonc
+{
+  "permission": {
+    "external_directory": {
+      "*": "ask",
+      "~/.cargo/registry/*": "allow"
+    }
+  }
+}
+```
+
+The trailing `*` is greedy and crosses subdirectory boundaries, so it allows every file beneath the directory; a bare `~/.cargo/registry` matches only the directory entry itself.
+
 Four layers compose with most-restrictive-wins: `path` (cross-cutting) → `external_directory` (CWD boundary) → per-tool patterns → `bash` command patterns.
+Because `ask` is more restrictive than `allow`, a `path` allow cannot loosen an `external_directory: ask` boundary — allow outside-CWD directories on `external_directory`.
+See [docs/configuration.md](docs/configuration.md) for the full recipe.
 
 ## Configuration
 
@@ -88,6 +108,15 @@ Project overrides global; per-agent YAML frontmatter overrides both.
 Within a surface map like `bash` or `mcp`, **last matching rule wins** — put broad catch-alls first and specific overrides after.
 
 For the full reference — all surfaces, runtime knobs, per-agent overrides, merge semantics, and common recipes — see [docs/configuration.md](docs/configuration.md).
+
+## Upgrading
+
+### 16.0.0 — the bash gate now fails closed
+
+The permission gate fails closed: an internal gate error blocks the tool (with a `gate_error` review-log entry) instead of running it ungated, and a non-empty bash command that cannot be parsed resolves to `ask` (sentinel `<unparseable-bash-command>`) rather than falling through to a permissive top-level `*`.
+Commands that previously slipped through silently on the error or empty-parse path now block or prompt.
+
+If you relied on the old permissive behavior for bash, set an explicit permissive bash policy — `"bash": { "*": "allow" }` — which also suppresses the new startup warning emitted when a top-level `"*": "allow"` leaves bash ungated.
 
 ## Documentation
 

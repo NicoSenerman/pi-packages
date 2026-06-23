@@ -17,6 +17,7 @@ Use this skill to audit a module (or a set of related modules) for structural sm
 - A shared interface (options bag, config type, handler params) is gaining a new field.
 - A test factory helper has more than 8 fields.
 - A plan adds a parameter that threads through 3+ layers.
+- A change reads as a localized bug fix but adds or relays a parameter across functions — a bug fix can be a wiring change.
 - You are unsure whether a new dependency belongs on an existing object or needs a new one.
 
 ## Checklist

@@ -2,10 +2,6 @@ import type {
   BeforeAgentStartEventResult,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import {
-  createActiveToolsCacheKey,
-  createBeforeAgentStartPromptStateKey,
-} from "#src/before-agent-start-cache";
 import type { PermissionResolver } from "#src/permission-resolver";
 import type { PermissionSession } from "#src/permission-session";
 import { resolveSkillPromptEntries } from "#src/skill-prompt-sanitizer";
@@ -35,9 +31,14 @@ export function shouldExposeTool(
 /**
  * Handles the `before_agent_start` event: tool filtering + prompt sanitization.
  *
+ * Recomputes the active tool set and the returned system-prompt override on
+ * every fire (no memoization): the override must be returned each turn so that
+ * skill filtering is reapplied and the wire prompt stays byte-stable, rather
+ * than letting Pi reset to its skill-unfiltered base prompt on a cache hit.
+ *
  * Constructor deps:
  * - `session` — encapsulates all mutable session state and lifecycle operations
- * - `resolver` — owns permission-query surface: `getToolPermission`, `getPolicyCacheStamp`, skill check
+ * - `resolver` — owns permission-query surface: `getToolPermission`, skill check
  * - `toolRegistry` — Pi tool API subset (getActive + setActive)
  */
 export class AgentPrepHandler {
@@ -73,40 +74,21 @@ export class AgentPrepHandler {
       }
     }
 
-    const activeToolsCacheKey = createActiveToolsCacheKey(allowedTools);
-    this.session.activeToolsGate.runIfChanged(activeToolsCacheKey, () => {
-      this.toolRegistry.setActive(allowedTools);
-    });
+    this.toolRegistry.setActive(allowedTools);
 
-    const promptStateCacheKey = createBeforeAgentStartPromptStateKey({
-      agentName,
-      cwd: ctx.cwd,
-      permissionStamp: this.resolver.getPolicyCacheStamp(
-        agentName ?? undefined,
-      ),
-      systemPrompt: event.systemPrompt,
-      allowedToolNames: allowedTools,
-    });
-
-    const promptResult = this.session.promptStateGate.runIfChanged(
-      promptStateCacheKey,
-      () => {
-        const toolPromptResult = sanitizeAvailableToolsSection(
-          event.systemPrompt,
-          allowedTools,
-        );
-        const skillPromptResult = resolveSkillPromptEntries(
-          toolPromptResult.prompt,
-          this.resolver,
-          agentName,
-          ctx.cwd,
-        );
-        this.session.setActiveSkillEntries(skillPromptResult.entries);
-        return skillPromptResult.prompt !== event.systemPrompt
-          ? { systemPrompt: skillPromptResult.prompt }
-          : {};
-      },
+    const toolPromptResult = sanitizeAvailableToolsSection(
+      event.systemPrompt,
+      allowedTools,
     );
-    return promptResult ?? {};
+    const skillPromptResult = resolveSkillPromptEntries(
+      toolPromptResult.prompt,
+      this.resolver,
+      agentName,
+      ctx.cwd,
+    );
+    this.session.setActiveSkillEntries(skillPromptResult.entries);
+    return skillPromptResult.prompt !== event.systemPrompt
+      ? { systemPrompt: skillPromptResult.prompt }
+      : {};
   }
 }

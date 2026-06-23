@@ -20,14 +20,26 @@ function prompt(...sections: string[]): string {
 }
 
 describe("sanitizeAvailableToolsSection — Available tools section", () => {
-  test("sets removed:true and strips the Available tools header", () => {
+  test("keeps allowed tool lines and the header, drops denied ones", () => {
+    const input = prompt(
+      availableToolsSection(["bash", "read"]),
+      "Other content",
+    );
+    const result = sanitizeAvailableToolsSection(input, ["read"]);
+    expect(result.removed).toBe(true);
+    expect(result.prompt).toContain("Available tools:");
+    expect(result.prompt).toContain("- read");
+    expect(result.prompt).not.toContain("- bash");
+  });
+
+  test("leaves the section untouched when every tool is allowed", () => {
     const input = prompt(
       availableToolsSection(["bash", "read"]),
       "Other content",
     );
     const result = sanitizeAvailableToolsSection(input, ["bash", "read"]);
-    expect(result.removed).toBe(true);
-    expect(result.prompt).not.toContain("Available tools:");
+    expect(result.removed).toBe(false);
+    expect(result.prompt).toBe(input);
   });
 
   // Bug #33: findSection extends to lines.length when no subsequent recognised
@@ -37,7 +49,18 @@ describe("sanitizeAvailableToolsSection — Available tools section", () => {
       availableToolsSection(["bash", "read"]),
       "Other content",
     );
-    const result = sanitizeAvailableToolsSection(input, ["bash", "read"]);
+    const result = sanitizeAvailableToolsSection(input, ["read"]);
+    expect(result.prompt).toContain("Other content");
+  });
+
+  test("removes the whole section when no tool is allowed", () => {
+    const input = prompt(
+      availableToolsSection(["bash", "read"]),
+      "Other content",
+    );
+    const result = sanitizeAvailableToolsSection(input, []);
+    expect(result.removed).toBe(true);
+    expect(result.prompt).not.toContain("Available tools:");
     expect(result.prompt).toContain("Other content");
   });
 
@@ -48,21 +71,65 @@ describe("sanitizeAvailableToolsSection — Available tools section", () => {
     expect(result.prompt).toBe(input);
   });
 
-  test("removes only the tools section and leaves other sections intact", () => {
-    const input = prompt(
-      "Preamble text",
-      availableToolsSection(["bash"]),
-      guidelinesSection(["use bash for file operations like ls, rg, find"]),
-    );
-    const result = sanitizeAvailableToolsSection(input, ["bash"]);
-    expect(result.prompt).not.toContain("Available tools:");
-    expect(result.prompt).toContain("Guidelines:");
+  test("keeps non-tool boilerplate prose near the section", () => {
+    const input = [
+      "Available tools:",
+      "- read: Read file contents",
+      "- bash: Run shell commands",
+      "",
+      "In addition to the tools above, you may have access to other custom tools depending on the project.",
+    ].join("\n");
+    const result = sanitizeAvailableToolsSection(input, ["read"]);
+    expect(result.prompt).toContain("- read: Read file contents");
+    expect(result.prompt).not.toContain("- bash: Run shell commands");
+    expect(result.prompt).toContain("In addition to the tools above");
   });
 
   test("returns original prompt reference unchanged when nothing is removed", () => {
     const input = "No tools section here.";
     const result = sanitizeAvailableToolsSection(input, []);
     expect(result.prompt).toBe(input);
+  });
+
+  test("narrowing the full listing yields the already-narrowed listing (cache byte-stability)", () => {
+    const allowed = ["read", "edit", "write"];
+    const fullProse = [
+      "You are an assistant.",
+      "",
+      "Available tools:",
+      "- bash: Run shell commands",
+      "- read: Read file contents",
+      "- edit: Edit a file",
+      "- write: Write a file",
+      "",
+      "Guidelines:",
+      "- use bash for file operations like ls, rg, find",
+      "- use read to examine files instead of cat or sed.",
+      "- Be concise in your responses",
+    ].join("\n");
+    const narrowedProse = [
+      "You are an assistant.",
+      "",
+      "Available tools:",
+      "- read: Read file contents",
+      "- edit: Edit a file",
+      "- write: Write a file",
+      "",
+      "Guidelines:",
+      "- use read to examine files instead of cat or sed.",
+      "- Be concise in your responses",
+    ].join("\n");
+
+    const fromFull = sanitizeAvailableToolsSection(fullProse, allowed).prompt;
+    const fromNarrowed = sanitizeAvailableToolsSection(
+      narrowedProse,
+      allowed,
+    ).prompt;
+
+    // Idempotent on the already-narrowed input Pi feeds back on later turns.
+    expect(fromNarrowed).toBe(narrowedProse);
+    // Turn 1 (full) and turn 2+ (narrowed) produce identical wire bytes.
+    expect(fromFull).toBe(fromNarrowed);
   });
 });
 
@@ -208,18 +275,18 @@ describe("sanitizeAvailableToolsSection — findSection boundary edge cases", ()
     expect(result.prompt).toContain("Important user note");
   });
 
-  test("section at EOF with no trailing content still works", () => {
+  test("section at EOF is removed entirely when no tool is allowed", () => {
     const input = availableToolsSection(["bash", "read"]);
-    const result = sanitizeAvailableToolsSection(input, ["bash", "read"]);
+    const result = sanitizeAvailableToolsSection(input, []);
     expect(result.removed).toBe(true);
     expect(result.prompt).toBe("");
   });
 
-  test("section followed by blank lines then prose — prose survives", () => {
+  test("section followed by blank lines then prose — prose survives removal", () => {
     const input = ["Available tools:", "- bash", "", "", "Custom note"].join(
       "\n",
     );
-    const result = sanitizeAvailableToolsSection(input, ["bash"]);
+    const result = sanitizeAvailableToolsSection(input, []);
     expect(result.removed).toBe(true);
     expect(result.prompt).toContain("Custom note");
     expect(result.prompt).not.toContain("Available tools:");
@@ -230,7 +297,7 @@ describe("sanitizeAvailableToolsSection — findSection boundary edge cases", ()
 // Moved from permission-system.test.ts catch-all (#342)
 // ---------------------------------------------------------------------------
 
-test("System prompt sanitizer removes the Available tools section and surrounding boilerplate", () => {
+test("System prompt sanitizer keeps the active tools in the Available tools section", () => {
   const prompt = [
     "Available tools:",
     "- read: Read file contents",
@@ -245,11 +312,31 @@ test("System prompt sanitizer removes the Available tools section and surroundin
 
   const result = sanitizeAvailableToolsSection(prompt, ["read", "mcp"]);
 
-  expect(result.removed).toBe(true);
-  expect(result.prompt).not.toContain("Available tools:");
-  expect(result.prompt).not.toContain("In addition to the tools above");
+  expect(result.removed).toBe(false);
+  expect(result.prompt).toContain("Available tools:");
+  expect(result.prompt).toContain("- read: Read file contents");
+  expect(result.prompt).toContain("- mcp: Discover");
+  expect(result.prompt).toContain("In addition to the tools above");
   expect(result.prompt).toMatch(/Guidelines:/);
-  expect(result.prompt).toMatch(/Use mcp for MCP discovery first/i);
+});
+
+test("System prompt sanitizer drops a denied tool's line but keeps the section", () => {
+  const prompt = [
+    "Available tools:",
+    "- read: Read file contents",
+    "- mcp: Discover, inspect, and call MCP tools across configured servers",
+    "",
+    "Guidelines:",
+    "- Use mcp for MCP discovery first: search by capability, describe one exact tool name, then call it.",
+    "- Be concise in your responses",
+  ].join("\n");
+
+  const result = sanitizeAvailableToolsSection(prompt, ["read"]);
+
+  expect(result.removed).toBe(true);
+  expect(result.prompt).toContain("Available tools:");
+  expect(result.prompt).toContain("- read: Read file contents");
+  expect(result.prompt).not.toContain("- mcp: Discover");
 });
 
 test("System prompt sanitizer removes denied tool guidelines while keeping global guidance", () => {
