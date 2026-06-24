@@ -130,10 +130,17 @@ const loaderDeps: LoaderDeps = {
   onInFlightChange: (inFlight, model) => {
     // Green "vis → <model>" footer during in-flight vision describer calls.
     // Mirrors pi-quick-lint's `ql` slot pattern. Cleared (undefined) when idle.
+    //
+    // Color: pi's footer renders extension statuses with no theme wrapper, so the
+    // text would inherit the terminal's default foreground. We embed ANSI green
+    // directly because pi's `sanitizeStatusText` only strips whitespace — escape
+    // codes pass through untouched. `[32m` = green, `[39m` = default fg.
     if (!inFlightUi) return;
+    const GREEN = "\u001b[32m";
+    const RESET_FG = "\u001b[39m";
     inFlightUi.setStatus(
       "vis",
-      inFlight && model ? `vis → ${model}` : undefined,
+      inFlight && model ? `${GREEN}vis → ${model}${RESET_FG}` : undefined,
     );
   },
 };
