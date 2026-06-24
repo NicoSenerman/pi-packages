@@ -1,0 +1,52 @@
+{
+  "name": "pi-vision-handoff",
+  "version": "0.4.0",
+  "description": "Give text-only pi models vision — describe images with a vision model you pick via an interactive picker, then hand off the text description to non-vision models",
+  "type": "module",
+  "author": "Tom X Nguyen",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/monotykamary/pi-vision-handoff.git"
+  },
+  "homepage": "https://github.com/monotykamary/pi-vision-handoff#readme",
+  "bugs": {
+    "url": "https://github.com/monotykamary/pi-vision-handoff/issues"
+  },
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-coding-agent",
+    "extension",
+    "vision",
+    "image",
+    "handoff",
+    "multimodal",
+    "model-selector",
+    "accessibility"
+  ],
+  "files": [
+    "*.ts",
+    "src/",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "0.80.2",
+    "@earendil-works/pi-coding-agent": "0.80.2",
+    "@earendil-works/pi-tui": "0.80.2",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "pi": {
+    "extensions": [
+      "./vision-handoff.ts"
+    ]
+  },
+  "peerDependencies": {}
+}
