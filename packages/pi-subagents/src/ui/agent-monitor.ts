@@ -277,20 +277,41 @@ class AgentMonitor implements Component {
     // Subscribe to live updates from all agents
     this.subscribeToAgents();
 
-    // Spinner animation timer — only animates the list view.
-    // When in conversation view the timer is paused; updates are driven
-    // by the subscribe-callback instead of polling.
+    // Spinner animation + agent-polling timer. Advances the spinner frame
+    // (needed by both list-view status icon and conversation-view header
+    // spinner) and re-polls for newly spawned agents (subscribeToAgents) on
+    // every tick. In conversation view the list-render path is skipped (the
+    // body updates are event-driven via the subscribe callback).
+    // NOTE: the per-tick headerdoc above is partially stale — this timer is
+    // NOT paused in conversation view; it just skips list-only rendering.
     this.spinnerTimer = setInterval(() => {
       if (this.closed) return;
       try {
-        // In conversation view, pause spinner and let event-driven updates handle rendering.
-        // The subscribe callback calls updateLivePartial(messages, event) on every
-        // AgentSessionEvent and requestRender()s immediately — this is the primary
-        // path. The block below is a SAFETY NET: if the event-driven path missed
-        // a state change (e.g. messages mutated without an event, or the view
-        // was just opened and an early event arrived before we subscribed), we
-        // catch up here using the heuristic (no-event) branch of updateLivePartial.
+        // Conversation-view body updates are primarily event-driven: the
+        // subscribe callback calls updateLivePartial(messages, event) on every
+        // AgentSessionEvent and requestRender()s immediately. The block below is
+        // a SAFETY NET for missed state changes (messages mutated without an
+        // event, or an early event arriving before subscription). The spinner
+        // frame advance above runs in both views so the header indicator keeps
+        // animating.
+        // Always advance the spinner frame so the conversation-view header
+        // indicator (which reads spinnerFrame) keeps animating, and always poll
+        // for newly spawned agents so they get subscribed even while drilled
+        // into a conversation. Previously this ran only in list view, which
+        // froze the header spinner and left agents spawned during conversation
+        // view unsubscribed.
+        this.spinnerFrame++;
+        this.subscribeToAgents(); // pick up newly spawned agents
+
         if (this.view === "conversation") {
+          // Mark the view dirty so the render() cache (which otherwise skips
+          // repainting identical content) actually repaints the header spinner
+          // with the new frame. Without this, spinnerFrame advances but the
+          // cached conversation lines are returned unchanged every 80ms, so the
+          // header spinner only animates when the subscribe callback sets
+          // needsRender=true on an event — i.e. it jumps on new messages
+          // instead of spinning continuously.
+          this.needsRender = true;
           if (
             this.conversationContainer &&
             this.selectedAgentForViewer &&
@@ -308,14 +329,11 @@ class AgentMonitor implements Component {
               });
             }
           }
-          // Don't animate spinner or poll subscriptions while in conversation.
-          // The `finally` below still requests a render so the overlay keeps
+          // The list-view render path below is skipped in conversation view;
+          // the `finally` still requests a render so the overlay keeps
           // refreshing while event-driven updates stream in.
           return;
         }
-
-        this.spinnerFrame++;
-        this.subscribeToAgents(); // pick up newly spawned agents
       } catch (err) {
         // Swallow-and-continue: a thrown tick must NOT re-throw and freeze the
         // overlay forever (the root cause of "overlay won't open until restart").
