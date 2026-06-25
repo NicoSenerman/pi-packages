@@ -36,7 +36,7 @@ const ANSI_SGR_RE = /\x1b\[[0-9;]*m/g;
 const ANSI_OSC8_RE = /\x1b\]8;[^\x07\x1b]*(?:\x07|\x1b\\)/g;
 const FENCE_MARKER_RE = /^`{3}/;
 
-export const BORDER_VERTICAL_OVERHEAD = 2;
+export const BORDER_VERTICAL_OVERHEAD = 0;
 export const BORDER_HORIZONTAL_OVERHEAD = 2;
 export const BORDER_INNER_PADDING_HORIZONTAL = 1;
 export const BOX_MIN_CONTENT_WIDTH = 40;
@@ -54,28 +54,21 @@ export function renderBorderedBox(
   colorFn: (s: string) => string,
   hidden = 0,
 ): string[] {
-  const dashSpan = Math.max(1, width - BORDER_HORIZONTAL_OVERHEAD);
-  const contentInner = Math.max(
-    1,
-    dashSpan - 2 * BORDER_INNER_PADDING_HORIZONTAL,
-  );
+  // No full framed box around the preview body — just the content lines,
+  // rendered at the available width. When content is truncated, append a
+  // single dim `✂ N lines hidden` indicator line instead of a bordered
+  // bottom row. Keeps the preview pane visually light (no inner box)
+  // while still signalling truncation.
+  const inner = Math.max(1, width - 2 * BORDER_INNER_PADDING_HORIZONTAL);
   const pad = " ".repeat(BORDER_INNER_PADDING_HORIZONTAL);
-  const top = colorFn(`┌${"─".repeat(dashSpan)}┐`);
-  const out: string[] = [top];
+  const out: string[] = [];
   for (const line of lines) {
-    const padded = truncateToWidth(line, contentInner, "", true);
-    out.push(`${colorFn("│")}${pad}${padded}${pad}${colorFn("│")}`);
+    const padded = truncateToWidth(line, inner, "", true);
+    out.push(`${pad}${padded}`);
   }
   if (hidden > 0) {
-    const indicator = ` ✂ ── ${hidden} lines hidden ── `;
-    const space = dashSpan - indicator.length;
-    const leftFill = "─".repeat(Math.max(0, Math.floor(space / 2)));
-    const rightFill = "─".repeat(
-      Math.max(0, dashSpan - leftFill.length - indicator.length),
-    );
-    out.push(colorFn(`└${leftFill}${indicator}${rightFill}┘`));
-  } else {
-    out.push(colorFn(`└${"─".repeat(dashSpan)}┘`));
+    const indicator = `✂ ${hidden} lines hidden`;
+    out.push(`${pad}${colorFn(indicator)}`);
   }
   return out;
 }
@@ -122,38 +115,24 @@ export class MarkdownContentCache {
   private readonly theme: Theme;
   private readonly markdownTheme: MarkdownTheme;
 
-  // Footer baked into every cached option body so a per-option Markdown
-  // instance stays reusable across redraws. Set at construction; the
-  // single/multi lists pass the right affordance string.
-  private readonly footerMarkdown: string;
-
   constructor(
     options: QuestionOption[],
     theme: Theme,
     markdownTheme: MarkdownTheme,
-    footerMarkdown = "Press `Enter` to select this option.",
   ) {
     this.theme = theme;
     this.markdownTheme = markdownTheme;
-    this.footerMarkdown = footerMarkdown;
     this.composedTexts = new Map();
     for (let i = 0; i < options.length; i++) {
       const opt = options[i];
       const raw = opt?.description;
       if (!raw || raw.length === 0) continue;
-      // Compose the same body shape the predecessor rendered inline:
-      //   ## {title}
-      //   {description}
-      //   ---
-      //   Press Enter to select this option.
-      // The fork has no separate `preview` field, so the cache composes the
-      // full body (title + separator + description + fixed footer) per
-      // option up front.
+      // Compose the body shape: `## {title}` heading + the description. No
+      // footer — the "Press Enter to select" hint was dead weight taking
+      // vertical space in the preview pane; the help row already documents
+      // affordances.
       const title = opt?.title ?? "";
-      this.composedTexts.set(
-        i,
-        `## ${title}\n\n${raw}\n\n---\n\n${this.footerMarkdown}`,
-      );
+      this.composedTexts.set(i, `## ${title}\n\n${raw}`);
     }
     this.markdownCache = new Map();
   }
@@ -282,6 +261,15 @@ export interface RenderPreviewBlockParams {
   optionIndex: number;
   /** Cache holding the markdown bodies. */
   cache: MarkdownContentCache;
+  /**
+   * Max rendered rows the host has budgeted for this preview block (the body
+   * region height, passed by `AskComponent.renderTwoColumnBody`). When provided
+   * and larger than the layout cap, this lets the preview grow past the
+   * hardcoded 20/15 defaults so it fills tall modals instead of showing
+   * `✂ N lines hidden` while the right column still has space. Defaults to
+   * the layout cap (preserves prior behavior for callers that don't pass it).
+   */
+  maxLines?: number;
   /** Theme for the box border color. */
   theme: Theme;
 }
@@ -311,12 +299,18 @@ export function renderPreviewBlock({
   optionIndex,
   cache,
   theme,
+  maxLines,
 }: RenderPreviewBlockParams): { lines: string[]; mode: PreviewLayoutMode } {
   const mode = decideLayout(terminalWidth, paneWidth);
-  const cap =
+  // Layout cap is a safety ceiling (20 side-by-side / 15 stacked). When the
+  // caller passes a larger `maxLines` (the host has a tall body region), let
+  // the preview grow to fill it instead of truncating with `✂ N lines hidden`
+  // while the right column still has physical space.
+  const layoutCap =
     mode === "side-by-side"
       ? MAX_PREVIEW_HEIGHT_SIDE_BY_SIDE
       : MAX_PREVIEW_HEIGHT_STACKED;
+  const cap = Math.max(layoutCap, maxLines ?? layoutCap);
   const contentBudget = Math.max(1, cap - BORDER_VERTICAL_OVERHEAD);
   const maxInnerWidth = Math.max(
     1,

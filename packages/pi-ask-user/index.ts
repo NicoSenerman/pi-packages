@@ -283,9 +283,19 @@ function createEditorTheme(theme: Theme): EditorTheme {
   };
 }
 
-const BOX_BORDER_LEFT = "│ ";
-const BOX_BORDER_RIGHT = " │";
+const BOX_BORDER_LEFT = "";
+const BOX_BORDER_RIGHT = "";
+// No lateral borders — inner content renders at the full modal width. Kept as
+// named constants (both empty) so the earlier `width - BOX_BORDER_OVERHEAD`
+// sizing math stays correct (= width) and existing call sites don't need
+// changing.
 const BOX_BORDER_OVERHEAD = BOX_BORDER_LEFT.length + BOX_BORDER_RIGHT.length;
+
+const BORDER_DASH = "-";
+const BORDER_CORNER_TL = "+";
+const BORDER_CORNER_TR = "+";
+const BORDER_CORNER_BL = "+";
+const BORDER_CORNER_BR = "+";
 
 class BoxBorderTop implements Component {
   private color: (s: string) => string;
@@ -304,15 +314,21 @@ class BoxBorderTop implements Component {
   render(width: number): string[] {
     const inner = Math.max(0, width - 2);
     if (!this.title || inner < this.title.length + 4) {
-      return [this.color(`╭${"─".repeat(inner)}╮`)];
+      return [
+        this.color(
+          `${BORDER_CORNER_TL}${BORDER_DASH.repeat(inner)}${BORDER_CORNER_TR}`,
+        ),
+      ];
     }
     const label = ` ${this.title} `;
     const remaining = inner - 1 - label.length;
     const titleStyle = this.titleColor ?? this.color;
     return [
-      this.color("╭─") +
+      this.color(`${BORDER_CORNER_TL}${BORDER_DASH}`) +
         titleStyle(label) +
-        this.color("─".repeat(Math.max(0, remaining)) + "╮"),
+        this.color(
+          BORDER_DASH.repeat(Math.max(0, remaining)) + BORDER_CORNER_TR,
+        ),
     ];
   }
 }
@@ -334,15 +350,21 @@ class BoxBorderBottom implements Component {
   render(width: number): string[] {
     const inner = Math.max(0, width - 2);
     if (!this.label || inner < this.label.length + 4) {
-      return [this.color(`╰${"─".repeat(inner)}╯`)];
+      return [
+        this.color(
+          `${BORDER_CORNER_BL}${BORDER_DASH.repeat(inner)}${BORDER_CORNER_BR}`,
+        ),
+      ];
     }
     const tag = ` ${this.label} `;
     const leftDashes = inner - tag.length - 1;
     const style = this.labelColor ?? this.color;
     return [
-      this.color("╰" + "─".repeat(Math.max(0, leftDashes))) +
+      this.color(
+        `${BORDER_CORNER_BL}` + BORDER_DASH.repeat(Math.max(0, leftDashes)),
+      ) +
         style(tag) +
-        this.color("─╯"),
+        this.color(BORDER_DASH + BORDER_CORNER_BR),
     ];
   }
 }
@@ -432,7 +454,21 @@ function resolveShortcut(
 
 type AskMode = "select" | "freeform" | "comment";
 
-const ASK_OVERLAY_MAX_HEIGHT_RATIO = 0.25;
+/**
+ * Target modal height when the content fits comfortably. The modal prefers
+ * this ratio but grows beyond it (up to the overlay `maxHeight: "85%"` cap)
+ * when the preview body or option list needs more rows — so a tall
+ * description is shown in full instead of being clipped with
+ * `\u2702 N lines hidden` while the terminal still has space. Falls back
+ * to this ratio only as a floor on short content (keeps the modal tidy when
+ * there are 2–3 options). Effectively: `min(contentHeight, 85% terminal)`
+ * with this ratio as the starting budget before content is measured.
+ */
+const ASK_OVERLAY_MAX_HEIGHT_RATIO = 0.45;
+/** Max visible lines for the question text before clamping with `…`. */
+const QUESTION_MAX_LINES = 1;
+/** Max visible lines for the context block before clamping with `…`. */
+const CONTEXT_MAX_LINES = 3;
 
 /**
  * Responsive chrome budget for the ask modal. Returned by
@@ -537,6 +573,13 @@ class MultiSelectList implements Component {
   private selectedIndex = 0;
   private checked = new Set<number>();
   private commentEnabled = false;
+  // Inline freeform input state (issue #3): when the freeform row is focused
+  // and the user types, printable chars populate `inlineFreeformText` in
+  // place — no editor mode switch. `inlineFreeformActive` is set on the
+  // first printable keystroke / Space-activate and cleared on navigation away
+  // or Escape. Enter submits the typed text directly via `onSubmit`.
+  private inlineFreeformText = "";
+  private inlineFreeformActive = false;
   // Height budget for the option-list window. Set by AskComponent from the
   // terminal-height ratio so the modal never exceeds ~1/4 of terminal rows.
   // Mirrors WrappedSingleSelectList.maxVisibleRows. Default kept modest (6) so
@@ -577,7 +620,6 @@ class MultiSelectList implements Component {
         this.options,
         this.theme,
         mdTheme,
-        "Press `Space` to toggle an option, `Enter` to submit.",
       );
     }
   }
@@ -597,6 +639,82 @@ class MultiSelectList implements Component {
       this.maxVisibleRows = next;
       this.invalidate();
     }
+  }
+
+  /**
+   * Render the freeform row as an inline input field (issue #3). When not
+   * active, shows the dim "Type something." prompt; when active, shows the
+   * typed text followed by a block cursor `▏` so the user sees where they're
+   * typing — no editor mode switch, no full-screen UI change.
+   */
+  private renderInlineFreeformRow(width: number, isSelected: boolean): string {
+    const theme = this.theme;
+    const prefix = isSelected ? theme.fg("accent", "→") : " ";
+    if (!this.inlineFreeformActive) {
+      const label = theme.fg("dim", "Type something.");
+      return `${prefix}   ${label}`;
+    }
+    const cur = theme.fg("accent", "▏");
+    const text = this.inlineFreeformText
+      ? theme.fg("text", this.inlineFreeformText)
+      : "";
+    return `${prefix}   ${text}${cur}`;
+  }
+
+  /**
+   * Handle printable/erase/submit input for the inline freeform field
+   * (issue #3). Returns `true` when the input was consumed (so the caller
+   * skips the normal list navigation/toggle logic). Backspace erases a char;
+   * Escape deactivates the field (stays on the row, clears text);
+   * Enter/confirm is handled by the caller's confirm branch which reads
+   * `inlineFreeformText` directly.
+   */
+  private handleInlineFreeformInput(data: string): boolean {
+    if (
+      this.keybindings.matches(data, "tui.editor.deleteCharBackward") ||
+      matchesKey(data, Key.backspace)
+    ) {
+      if (this.inlineFreeformActive && this.inlineFreeformText.length > 0) {
+        const chars = [...this.inlineFreeformText];
+        chars.pop();
+        this.inlineFreeformText = chars.join("");
+        this.invalidate();
+      }
+      return true;
+    }
+    if (matchesKey(data, Key.escape)) {
+      if (this.inlineFreeformActive) {
+        this.inlineFreeformActive = false;
+        this.inlineFreeformText = "";
+        this.invalidate();
+      }
+      return true;
+    }
+    // Printable char capture (mirrors WrappedSingleSelectList.getPrintableInput).
+    const ch = decodeKittyPrintable(data);
+    if (ch !== undefined) {
+      this.inlineFreeformActive = true;
+      this.inlineFreeformText += ch;
+      this.invalidate();
+      return true;
+    }
+    const chars = [...data];
+    if (chars.length === 1) {
+      const code = chars[0]!.charCodeAt(0);
+      if (code >= 32 && code !== 0x7f && (code < 0x80 || code > 0x9f)) {
+        this.inlineFreeformActive = true;
+        this.inlineFreeformText += chars[0]!;
+        this.invalidate();
+        return true;
+      }
+    }
+    // Not a printable/erase/escape input — let the caller handle navigation etc.
+    // (But if the field is already active, swallow other control keys so they
+    // don't toggle options underneath the cursor.)
+    if (this.inlineFreeformActive) {
+      return true;
+    }
+    return false;
   }
 
   invalidate(): void {
@@ -654,6 +772,19 @@ class MultiSelectList implements Component {
       return;
     }
 
+    // Inline freeform: when the freeform row is focused, printable input is
+    // captured into the inline text buffer (no editor mode switch). Backspace
+    // erases, Enter submits, Escape deactivates (stays on the row). Up/Down
+    // navigation is suppressed while actively typing so the cursor stays in
+    // the field — mirror a real input. Issue #3.
+    if (
+      this.allowFreeform &&
+      this.isFreeformRow(this.selectedIndex) &&
+      this.handleInlineFreeformInput(data)
+    ) {
+      return;
+    }
+
     if (
       this.allowComment &&
       !this.commentToggle.disabled &&
@@ -664,6 +795,7 @@ class MultiSelectList implements Component {
     }
 
     if (matchesSelectUp(data, this.keybindings)) {
+      this.inlineFreeformActive = false;
       this.selectedIndex =
         this.selectedIndex === 0 ? count - 1 : this.selectedIndex - 1;
       this.invalidate();
@@ -671,6 +803,7 @@ class MultiSelectList implements Component {
     }
 
     if (matchesSelectDown(data, this.keybindings)) {
+      this.inlineFreeformActive = false;
       this.selectedIndex =
         this.selectedIndex === count - 1 ? 0 : this.selectedIndex + 1;
       this.invalidate();
@@ -681,6 +814,7 @@ class MultiSelectList implements Component {
     if (numMatch) {
       const idx = Number.parseInt(numMatch[0], 10) - 1;
       if (idx >= 0 && idx < this.options.length) {
+        this.inlineFreeformActive = false;
         this.toggle(idx);
         this.selectedIndex = Math.min(idx, count - 1);
         this.invalidate();
@@ -694,7 +828,15 @@ class MultiSelectList implements Component {
         return;
       }
       if (this.isFreeformRow(this.selectedIndex)) {
-        this.onEnterFreeform?.();
+        // Space on the freeform row: if actively typing, insert a space; else
+        // activate the inline field (no editor mode switch).
+        if (this.inlineFreeformActive) {
+          this.inlineFreeformText += " ";
+          this.invalidate();
+        } else {
+          this.inlineFreeformActive = true;
+          this.invalidate();
+        }
         return;
       }
       this.toggle(this.selectedIndex);
@@ -708,7 +850,17 @@ class MultiSelectList implements Component {
         return;
       }
       if (this.isFreeformRow(this.selectedIndex)) {
-        this.onEnterFreeform?.();
+        // Enter on the freeform row: submit the inline text if any, else fall
+        // back to the legacy editor mode (empty input activation).
+        const trimmed = this.inlineFreeformText.trim();
+        if (trimmed) {
+          this.inlineFreeformActive = false;
+          this.onSubmit?.([trimmed]);
+        } else {
+          // Empty: activate the inline field instead of switching to the editor.
+          this.inlineFreeformActive = true;
+          this.invalidate();
+        }
         return;
       }
 
@@ -732,8 +884,11 @@ class MultiSelectList implements Component {
    * SINGLE_SELECT_SPLIT_PANE_* guard constants and the #4
    * adaptiveLeftWidth() helper so the left column tracks the widest option
    * title instead of a fixed 42%.
+   *
+   * Public so `AskComponent.render` can compute the two-column body's left/right
+   * widths itself (the list no longer owns the split in two-column mode).
    */
-  private getSplitPaneWidths(
+  public getSplitPaneWidths(
     width: number,
   ): { left: number; right: number } | null {
     if (width < SINGLE_SELECT_SPLIT_PANE_MIN_WIDTH) return null;
@@ -769,8 +924,11 @@ class MultiSelectList implements Component {
    * #1 — Build the option-list rows. Extracted from the old inline render()
    * loop so the split-pane path can render list rows WITHOUT descriptions
    * (hideDescriptions=true) to avoid double-showing them in the side preview.
+   *
+   * Public so `AskComponent.render` can render the list-only column of the
+   * two-column body via `renderListOnly`. Signature unchanged.
    */
-  private buildListLines(width: number, hideDescriptions = false): string[] {
+  public buildListLines(width: number, hideDescriptions = false): string[] {
     const theme = this.theme;
     const count = this.getItemCount();
     const maxVisible = Math.min(count, this.maxVisibleRows);
@@ -808,9 +966,7 @@ class MultiSelectList implements Component {
       }
 
       if (this.isFreeformRow(i)) {
-        const label = theme.fg("text", theme.bold("Type something."));
-        const desc = theme.fg("muted", "Enter a custom response");
-        const line = `${prefix}   ${label} ${theme.fg("dim", "—")} ${desc}`;
+        const line = this.renderInlineFreeformRow(width, isSelected);
         lines.push(truncateToWidth(line, width, ""));
         continue;
       }
@@ -832,8 +988,15 @@ class MultiSelectList implements Component {
       if (!hideDescriptions && option.description) {
         const indent = "      ";
         const wrapWidth = Math.max(10, width - indent.length);
-        const wrapped = wrapTextWithAnsi(option.description, wrapWidth);
-        for (const w of wrapped) {
+        const mdTheme = safeMarkdownTheme();
+        let descLines: string[];
+        if (mdTheme) {
+          const md = new Markdown(option.description, 0, 0, mdTheme);
+          descLines = md.render(wrapWidth).filter((l) => l.trim() !== "");
+        } else {
+          descLines = wrapTextWithAnsi(option.description, wrapWidth);
+        }
+        for (const w of descLines) {
           lines.push(truncateToWidth(indent + theme.fg("muted", w), width, ""));
         }
       }
@@ -857,8 +1020,12 @@ class MultiSelectList implements Component {
    * body via MarkdownContentCache (#3) and wraps it in a bordered box (#2)
    * with a `✂ … lines hidden …` indicator when truncated. Synthetic
    * (comment-toggle / freeform) rows fall back to a throwaway Markdown render.
+   *
+   * Public so `AskComponent.render` can compose the preview into the
+   * full-right-side two-column body (the list no longer renders its own
+   * preview in two-column mode). Signature unchanged from the private form.
    */
-  private buildPreviewLines(width: number, maxLines: number): string[] {
+  public buildPreviewLines(width: number, maxLines: number): string[] {
     if (maxLines <= 0 || width < 1) return [];
 
     const mdTheme = safeMarkdownTheme();
@@ -886,6 +1053,7 @@ class MultiSelectList implements Component {
         optionIndex: this.selectedIndex,
         cache,
         theme: this.theme,
+        maxLines,
       });
       if (lines.length <= maxLines) return lines;
       if (maxLines === 1) {
@@ -916,8 +1084,6 @@ class MultiSelectList implements Component {
         md += `## ${selected.title}\n\n`;
         if (selected.description?.trim()) {
           md += `${selected.description}\n`;
-          md +=
-            "\n---\n\nPress `Space` to toggle an option, `Enter` to submit.\n";
         } else {
           md += "*No additional details provided for this option.*\n";
         }
@@ -1057,6 +1223,37 @@ class MultiSelectList implements Component {
     this.cachedLines = lines;
     return lines;
   }
+
+  /**
+   * Two-column-body hook: does ANY focused-able row carry a preview body?
+   *
+   * `AskComponent.render` uses this to decide whether to engage the
+   * full-right-side two-column layout: the preview pane is only worth a column
+   * when at least one option carries a description OR a synthetic row
+   * (comment-toggle / freeform) is present (those always render a body even
+   * with no option descriptions). Mirrors the per-focus `hasUsablePreview`
+   * check in `render` but OR'd across all items, not just the focused one.
+   */
+  public hasAnyPreview(): boolean {
+    if (this.allowComment || this.allowFreeform) return true;
+    if (this.previewCache?.hasAnyPreview()) return true;
+    return this.options.some((o) => !!o.description?.trim());
+  }
+
+  /**
+   * Two-column-body hook: render ONLY the option-list rows (no internal
+   * split-pane / stacked preview composition). `AskComponent.render` calls
+   * this for the left column of the two-column body and composes the preview
+   * itself via `buildPreviewLines`.
+   *
+   * Equivalent to `buildListLines(width, true)` (descriptions hidden — the
+   * preview column already shows the focused option's description, so the left
+   * column must not duplicate them inline). The `maxVisibleRows` windowing is
+   * applied by `buildListLines` itself.
+   */
+  public renderListOnly(width: number): string[] {
+    return this.buildListLines(width, true);
+  }
 }
 
 class WrappedSingleSelectList implements Component {
@@ -1071,6 +1268,9 @@ class WrappedSingleSelectList implements Component {
   private searchQuery = "";
   private commentEnabled = false;
   private maxVisibleRows = 6;
+  // Inline freeform input state (issue #3) — mirrors MultiSelectList.
+  private inlineFreeformText = "";
+  private inlineFreeformActive = false;
   private cachedWidth?: number;
   private cachedLines?: string[];
   // #3 — per-option markdown render cache. Created lazily once a markdown
@@ -1105,7 +1305,6 @@ class WrappedSingleSelectList implements Component {
         this.options,
         this.theme,
         mdTheme,
-        "Press `Enter` to select this option.",
       );
     }
   }
@@ -1126,6 +1325,55 @@ class WrappedSingleSelectList implements Component {
     this.cachedWidth = undefined;
     this.cachedLines = undefined;
     this.previewCache?.invalidate();
+  }
+
+  /**
+   * Handle printable/erase input for the inline freeform field (issue #3).
+   * Unlike MultiSelectList, the single-select list also feeds printable input
+   * to its search filter — so this is only consulted when the freeform row is
+   * the focused row AND the field is already active, or the keystroke would
+   * activate it. Returns `true` when the input was consumed.
+   */
+  private handleInlineFreeformInput(data: string): boolean {
+    if (
+      this.keybindings.matches(data, "tui.editor.deleteCharBackward") ||
+      matchesKey(data, Key.backspace)
+    ) {
+      if (this.inlineFreeformActive && this.inlineFreeformText.length > 0) {
+        const chars = [...this.inlineFreeformText];
+        chars.pop();
+        this.inlineFreeformText = chars.join("");
+        this.invalidate();
+      }
+      return true;
+    }
+    if (matchesKey(data, Key.escape)) {
+      if (this.inlineFreeformActive) {
+        this.inlineFreeformActive = false;
+        this.inlineFreeformText = "";
+        this.invalidate();
+      }
+      return true;
+    }
+    const ch = decodeKittyPrintable(data);
+    if (ch !== undefined) {
+      this.inlineFreeformActive = true;
+      this.inlineFreeformText += ch;
+      this.invalidate();
+      return true;
+    }
+    const chars = [...data];
+    if (chars.length === 1) {
+      const code = chars[0]!.charCodeAt(0);
+      if (code >= 32 && code !== 0x7f && (code < 0x80 || code > 0x9f)) {
+        this.inlineFreeformActive = true;
+        this.inlineFreeformText += chars[0]!;
+        this.invalidate();
+        return true;
+      }
+    }
+    if (this.inlineFreeformActive) return true;
+    return false;
   }
 
   private getFilteredOptions(): QuestionOption[] {
@@ -1232,7 +1480,13 @@ class WrappedSingleSelectList implements Component {
     return truncateToWidth(this.theme.fg("text", line), width, "");
   }
 
-  private getSplitPaneWidths(
+  /**
+   * Split-pane widths. Mirrors `MultiSelectList.getSplitPaneWidths`. Made
+   * public so `AskComponent.render` can compute the two-column body's
+   * left/right widths itself (the list no longer owns the split in
+   * two-column mode). Signature unchanged.
+   */
+  public getSplitPaneWidths(
     width: number,
   ): { left: number; right: number } | null {
     if (width < SINGLE_SELECT_SPLIT_PANE_MIN_WIDTH) return null;
@@ -1269,7 +1523,12 @@ class WrappedSingleSelectList implements Component {
     return { left, right };
   }
 
-  private buildListLines(
+  /**
+   * Build the option-list rows (Filter: line + windowed option rows). Made
+   * public so `AskComponent.render` can render the list-only left column of
+   * the two-column body via `renderListOnly`. Signature unchanged.
+   */
+  public buildListLines(
     width: number,
     filteredOptions: QuestionOption[],
     hideDescriptions = false,
@@ -1316,6 +1575,14 @@ class WrappedSingleSelectList implements Component {
       commentEnabled: this.commentEnabled,
       maxRows,
       hideDescriptions,
+      freeformText: this.inlineFreeformText,
+      freeformActive: this.inlineFreeformActive,
+      renderDescription: (text: string, w: number) => {
+        const mdTheme = safeMarkdownTheme();
+        if (!mdTheme) return wrapTextWithAnsi(text, w);
+        const md = new Markdown(text, 0, 0, mdTheme);
+        return md.render(w).filter((l) => l.trim() !== "");
+      },
     });
     const optionLines = optionRows.map((row) =>
       this.styleListLine(row.line, width, row.selected),
@@ -1325,11 +1592,17 @@ class WrappedSingleSelectList implements Component {
     return lines.slice(0, this.maxVisibleRows);
   }
 
-  private buildPreviewLines(
-    width: number,
-    filteredOptions: QuestionOption[],
-    maxLines: number,
-  ): string[] {
+  /**
+   * Build the bordered preview pane for the focused option. Made public so
+   * `AskComponent.render` can compose the preview into the full-right-side
+   * two-column body (the list no longer renders its own preview in
+   * two-column mode). 2-arg signature matches `MultiSelectList.buildPreviewLines`
+   * so `AskComponent.render` can call either list type uniformly; the filtered
+   * options are derived internally via `getFilteredOptions()` (deterministic
+   * within a single synchronous render, so repeating the call is safe).
+   */
+  public buildPreviewLines(width: number, maxLines: number): string[] {
+    const filteredOptions = this.getFilteredOptions();
     if (maxLines <= 0 || width < 1) return [];
 
     const mdTheme = safeMarkdownTheme();
@@ -1365,6 +1638,7 @@ class WrappedSingleSelectList implements Component {
           optionIndex: cacheIndex,
           cache,
           theme: this.theme,
+          maxLines,
         });
         // The box already self-caps to its own budget; honour the caller's
         // maxLines only if it is tighter.
@@ -1400,7 +1674,6 @@ class WrappedSingleSelectList implements Component {
         md += `## ${selected.title}\n\n`;
         if (selected.description?.trim()) {
           md += `${selected.description}\n`;
-          md += `\n---\n\nPress \`Enter\` to select this option.\n`;
         } else {
           hasBody = false;
           md += "*No additional details provided for this option.*\n";
@@ -1463,6 +1736,12 @@ class WrappedSingleSelectList implements Component {
   }
 
   handleInput(data: string): void {
+    if (this.inlineFreeformActive && matchesKey(data, Key.escape)) {
+      this.inlineFreeformActive = false;
+      this.inlineFreeformText = "";
+      this.invalidate();
+      return;
+    }
     if (this.searchQuery && matchesKey(data, Key.escape)) {
       this.setSearchQuery("");
       return;
@@ -1471,6 +1750,32 @@ class WrappedSingleSelectList implements Component {
     if (this.keybindings.matches(data, "tui.select.cancel")) {
       this.onCancel?.();
       return;
+    }
+
+    // Inline freeform (issue #3): when the freeform row is focused, route
+    // printable/erase input to the inline field instead of the search filter.
+    // Space activates (or inserts a space if already active). Navigation
+    // up/down deactivates the field. Enter submits the typed text.
+    const filteredOptions0 = this.getFilteredOptions();
+    const count0 = this.getItemCount(filteredOptions0);
+    if (
+      this.allowFreeform &&
+      count0 > 0 &&
+      this.isFreeformRow(this.selectedIndex, filteredOptions0) &&
+      !this.keybindings.matches(data, "tui.select.confirm")
+    ) {
+      if (matchesKey(data, Key.space)) {
+        if (this.inlineFreeformActive) {
+          this.inlineFreeformText += " ";
+        } else {
+          this.inlineFreeformActive = true;
+        }
+        this.invalidate();
+        return;
+      }
+      if (this.handleInlineFreeformInput(data)) {
+        return;
+      }
     }
 
     if (
@@ -1486,6 +1791,7 @@ class WrappedSingleSelectList implements Component {
     const count = this.getItemCount(filteredOptions);
 
     if (matchesSelectUp(data, this.keybindings) && count > 0) {
+      this.inlineFreeformActive = false;
       this.selectedIndex =
         this.selectedIndex === 0 ? count - 1 : this.selectedIndex - 1;
       this.invalidate();
@@ -1493,6 +1799,7 @@ class WrappedSingleSelectList implements Component {
     }
 
     if (matchesSelectDown(data, this.keybindings) && count > 0) {
+      this.inlineFreeformActive = false;
       this.selectedIndex =
         this.selectedIndex === count - 1 ? 0 : this.selectedIndex + 1;
       this.invalidate();
@@ -1503,6 +1810,7 @@ class WrappedSingleSelectList implements Component {
     if (numMatch && filteredOptions.length > 0) {
       const idx = Number.parseInt(numMatch[0], 10) - 1;
       if (idx >= 0 && idx < filteredOptions.length) {
+        this.inlineFreeformActive = false;
         this.selectedIndex = idx;
         this.invalidate();
         return;
@@ -1524,13 +1832,33 @@ class WrappedSingleSelectList implements Component {
         return;
       }
       if (this.isFreeformRow(this.selectedIndex, filteredOptions)) {
-        this.onEnterFreeform?.();
+        // Enter on the freeform row: submit inline text if any, else activate
+        // the inline field (no editor mode switch).
+        const trimmed = this.inlineFreeformText.trim();
+        if (trimmed) {
+          this.inlineFreeformActive = false;
+          this.onSubmit?.(trimmed);
+        } else {
+          this.inlineFreeformActive = true;
+          this.invalidate();
+        }
         return;
       }
 
       const result = filteredOptions[this.selectedIndex]?.title;
       if (result) this.onSubmit?.(result);
       else this.onCancel?.();
+      return;
+    }
+
+    // When the freeform field is active, swallow backspace (erase) here so it
+    // doesn't pop the search filter — `handleInlineFreeformInput` above
+    // already handled the freeform-focused case, but guard anyway.
+    if (
+      this.inlineFreeformActive &&
+      (this.keybindings.matches(data, "tui.editor.deleteCharBackward") ||
+        matchesKey(data, Key.backspace))
+    ) {
       return;
     }
 
@@ -1589,7 +1917,6 @@ class WrappedSingleSelectList implements Component {
       );
       const previewLines = this.buildPreviewLines(
         splitPane.right,
-        filteredOptions,
         Math.min(MAX_PREVIEW_HEIGHT_SIDE_BY_SIDE, this.maxVisibleRows),
       );
       const rowCount = Math.min(
@@ -1620,7 +1947,6 @@ class WrappedSingleSelectList implements Component {
       const listLines = this.buildListLines(width, filteredOptions);
       const previewLines = this.buildPreviewLines(
         width,
-        filteredOptions,
         Math.min(
           MAX_PREVIEW_HEIGHT_STACKED,
           Math.max(2, Math.floor(this.maxVisibleRows / 2)),
@@ -1640,6 +1966,37 @@ class WrappedSingleSelectList implements Component {
     this.cachedWidth = width;
     this.cachedLines = lines;
     return lines;
+  }
+
+  /**
+   * Two-column-body hook: does ANY focused-able row carry a preview body?
+   *
+   * `AskComponent.render` uses this to decide whether to engage the
+   * full-right-side two-column layout: the preview pane is only worth a
+   * column when at least one option carries a description OR a synthetic row
+   * (comment-toggle / freeform) is present (those always render a body even
+   * with no option descriptions). Mirrors the per-focus `hasUsablePreview`
+   * check in `render` but OR'd across all items, not just the focused one.
+   */
+  public hasAnyPreview(): boolean {
+    if (this.allowComment || this.allowFreeform) return true;
+    if (this.previewCache?.hasAnyPreview()) return true;
+    return this.options.some((o) => !!o.description?.trim());
+  }
+
+  /**
+   * Two-column-body hook: render ONLY the option-list rows (no internal
+   * split-pane / stacked preview composition). `AskComponent.render` calls
+   * this for the left column of the two-column body and composes the preview
+   * itself via `buildPreviewLines`.
+   *
+   * Equivalent to `buildListLines(width, getFilteredOptions(), true)`
+   * (descriptions hidden — the preview column already shows the focused
+   * option's description, so the left column must not duplicate them inline).
+   * The `maxVisibleRows` windowing is applied by `buildListLines` itself.
+   */
+  public renderListOnly(width: number): string[] {
+    return this.buildListLines(width, this.getFilteredOptions(), true);
   }
 }
 
@@ -1662,6 +2019,13 @@ class AskComponent extends Container {
   private onDone: (result: AskUIResult | null) => void;
 
   private mode: AskMode = "select";
+  /**
+   * Last inner content width seen in `render` (terminal width minus side
+   * borders). Stashed so `updateStaticText` / `computeChromeBudget` can clamp
+   * the question / context text at the same width the chrome actually
+   * renders at — keeping clamped line counts in lockstep with rendered rows.
+   */
+  private lastInnerWidth = 80;
   private pendingSelections: string[] = [];
   private freeformDraft = "";
   private commentDraft = "";
@@ -1803,14 +2167,33 @@ class AskComponent extends Container {
 
   override render(width: number): string[] {
     const innerWidth = Math.max(1, width - BOX_BORDER_OVERHEAD);
+    this.lastInnerWidth = innerWidth;
 
-    // Height budget applies to ALL modes so the modal never exceeds ~1/4 of
-    // terminal rows. The option lists window internally (scroll-to-focus)
-    // within `availableOptionRows`; the editor (freeform/comment) has no row
-    // cap API, so it relies on the safety slice below as a fallback.
-    const overlayMaxHeight = Math.max(
+    // Height budget. The modal starts at the ratio floor but grows to fit
+    // content (preview body + option list + chrome) up to ~85% of the
+    // terminal — so a tall description renders in full instead of being
+    // clipped with `\u2702 N lines hidden` while the terminal has space.
+    // `availableOptionRows` is derived from this after measuring chrome; the
+    // editor (freeform/comment) has no row-cap API and relies on the safety
+    // slice below as a fallback.
+    const terminalRows = this.tui.terminal.rows ?? 24;
+    const ratioFloor = Math.max(
       12,
-      Math.floor(this.tui.terminal.rows * ASK_OVERLAY_MAX_HEIGHT_RATIO),
+      Math.floor(terminalRows * ASK_OVERLAY_MAX_HEIGHT_RATIO),
+    );
+    const terminalCeiling = Math.max(
+      ratioFloor,
+      Math.floor(terminalRows * 0.85),
+    );
+    // Content-driven growth: measure the content we'd actually render so the
+    // modal grows to fit instead of clipping. The preview body is the usual
+    // limiting factor; budget for the tallest option's body (capped at the
+    // terminal ceiling). This is a measurement pass — the real render happens
+    // below via super.render / renderTwoColumnBody.
+    const measuredContentRows = this.measureContentRows(innerWidth);
+    const overlayMaxHeight = Math.min(
+      terminalCeiling,
+      Math.max(ratioFloor, measuredContentRows),
     );
     const chromeBudget = this.computeChromeBudget(innerWidth, overlayMaxHeight);
     this.applyChromeBudget(chromeBudget);
@@ -1824,8 +2207,54 @@ class AskComponent extends Container {
       this.ensureMultiSelectList().setMaxVisibleRows(availableOptionRows);
     }
 
-    // Render children at the inner width (excluding side border characters)
-    let rawLines = super.render(innerWidth);
+    // Render children at the inner width (excluding side border characters).
+    //
+    // Two-column body path: when the modal is wide enough to split the body
+    // into two columns (terminal ≥84 cols AND decideLayout picks
+    // side-by-side, i.e. terminal ≥100 cols) AND at least one option carries
+    // a preview body, render a TWO-COLUMN body: the LEFT column stacks the
+    // chrome (title + question + context + mode spacer) on top of the option
+    // list (rendered list-only, no internal split/preview), and the RIGHT
+    // column runs the preview pane for the focused option down the FULL body
+    // height — aligned with the question at the top instead of starting only
+    // at the option-list row. The top decorative spacer is rendered ABOVE
+    // the body (full-width) and the help row + bottom decorative spacer are
+    // rendered BELOW the body (full-width); only the body itself is zipped.
+    //
+    // In every other case (narrow terminal, no descriptions, stacked layout,
+    // or a non-select mode using the editor), fall through to the flat path:
+    // `super.render(innerWidth)` renders the whole vertical stack full-width
+    // and lets the list do its own flat/stacked/split composition as before.
+    const activeList: MultiSelectList | WrappedSingleSelectList | undefined =
+      this.mode === "select"
+        ? this.allowMultiple
+          ? this.multiSelectList
+          : this.singleSelectList
+        : undefined;
+    const splitPane = activeList
+      ? activeList.getSplitPaneWidths(innerWidth)
+      : null;
+    const layout: PreviewLayoutMode | undefined = activeList
+      ? decideLayout(this.tui.terminal.columns ?? innerWidth, innerWidth)
+      : undefined;
+    const engageTwoColumn =
+      !!activeList &&
+      !!splitPane &&
+      layout === "side-by-side" &&
+      activeList.hasAnyPreview();
+
+    let rawLines: string[];
+    if (engageTwoColumn && splitPane) {
+      rawLines = this.renderTwoColumnBody(
+        innerWidth,
+        splitPane.left,
+        splitPane.right,
+        overlayMaxHeight,
+        activeList,
+      );
+    } else {
+      rawLines = super.render(innerWidth);
+    }
 
     // Safety slice — belt-and-suspenders for editor content (freeform/comment
     // modes have no row-cap API) and pathological tiny-terminal cases. In
@@ -1842,7 +2271,8 @@ class AskComponent extends Container {
     }
 
     // First and last lines are the top/bottom box borders — pass through at full width.
-    // All inner lines get wrapped with side borders.
+    // Inner lines render at full innerWidth with no side borders (lateral
+    // borders removed per request — only top + bottom frame the modal).
     const borderColor = (s: string) => this.theme.fg("accent", s);
     const titleColor = (s: string) => this.theme.fg("dim", this.theme.bold(s));
     return rawLines.map((line, index) => {
@@ -1858,13 +2288,250 @@ class AskComponent extends Container {
           (s: string) => this.theme.fg("dim", s),
         ).render(width)[0];
       }
-      const padded = truncateToWidth(line, innerWidth, "", true);
-      return `${borderColor(BOX_BORDER_LEFT)}${padded}${borderColor(BOX_BORDER_RIGHT)}`;
+      // No side borders — just pad/truncate to innerWidth.
+      return truncateToWidth(line, innerWidth, "", true);
     });
+  }
+
+  /**
+   * Compose the two-column body for `render`'s wide-terminal path.
+   *
+   * Layout (top → bottom):
+   *   ┌─ BoxBorderTop        (full innerWidth; the caller's side-border loop
+   *   │                        re-renders it at full `width`, so the line here
+   *   │                        is just a placeholder so index 0 is the border)
+   *   ├─ topSpacer            (full innerWidth — decorative padding ABOVE body)
+   *   ├─┬ BODY (two columns, spans full innerWidth = left + sep + right):
+   *   │ │   LEFT col  = title + titleSpacer + question + [contextSpacer +
+   *   │ │               contextComponent] + modeSpacer + option list
+   *   │ │               (rendered list-only via `list.renderListOnly`, no
+   *   │ │               internal split/preview), all at `leftWidth`
+   *   │ │   RIGHT col = preview pane for the focused option
+   *   │ │               (`list.buildPreviewLines`) at `rightWidth`, padded with
+   *   │ │               blanks to the body height — so the preview runs the FULL
+   *   │ │               body height and aligns with the question at the top
+   *   ├─ helpSpacer + helpText (full innerWidth — help stays full-width,
+   *   │                          below the body)
+   *   ├─ bottomSpacer        (full innerWidth)
+   *   └─ BoxBorderBottom      (placeholder; re-rendered at full `width` by caller)
+   *
+   * `leftWidth + separator.length + rightWidth === innerWidth` (guaranteed by
+   * `getSplitPaneWidths`), so each zipped body line already spans `innerWidth`
+   * exactly and the caller's side-border wrapping is a no-op on body rows. The
+   * ╭╮╰╯ corner borders + side │ are applied uniformly by the caller on the
+   * returned `rawLines`.
+   *
+   * The preview's max height budget = the body height (chrome lines + list
+   * rows). `renderPreviewBlock` internally caps the bordered box at
+   * `MAX_PREVIEW_HEIGHT_SIDE_BY_SIDE` (20); `buildPreviewLines` then trims with
+   * a `…` indicator if the caller's maxLines is tighter. Passing the full body
+   * height lets the preview fill all available rows.
+   */
+  private renderTwoColumnBody(
+    innerWidth: number,
+    leftWidth: number,
+    rightWidth: number,
+    bodyBudget: number,
+    list: MultiSelectList | WrappedSingleSelectList,
+  ): string[] {
+    const theme = this.theme;
+    const borderColor = (s: string) => theme.fg("accent", s);
+    const titleColor = (s: string) => theme.fg("dim", theme.bold(s));
+    const bottomLabelColor = (s: string) => theme.fg("dim", s);
+    const separator = theme.fg("dim", SINGLE_SELECT_SPLIT_PANE_SEPARATOR);
+
+    // Chrome + list rendered at `leftWidth` so they wrap into the left column.
+    // Spacers render width-agnostic empty strings; Text/Markdown wrap to the
+    // given width. The list is rendered list-ONLY (no internal split/preview) —
+    // this is the whole point of the restructure.
+    const chromeLines: string[] = [];
+    if (this.titleText) chromeLines.push(...this.titleText.render(leftWidth));
+    if (this.titleSpacer)
+      chromeLines.push(...this.titleSpacer.render(leftWidth));
+    if (this.questionText)
+      chromeLines.push(...this.questionText.render(leftWidth));
+    if (this.context) {
+      if (this.contextSpacer)
+        chromeLines.push(...this.contextSpacer.render(leftWidth));
+      if (this.contextComponent)
+        chromeLines.push(...this.contextComponent.render(leftWidth));
+    }
+    if (this.modeSpacer) chromeLines.push(...this.modeSpacer.render(leftWidth));
+
+    const listLines = list.renderListOnly(leftWidth);
+    const leftColumnLines = [...chromeLines, ...listLines];
+
+    // Preview for the focused option, allowed to fill the BODY region height
+    // — NOT capped at the left column's content length. The body region is the
+    // rows between the top border/spacer and the help spacer/text/bottom
+    // border. This lets the preview grow tall even when the left column is
+    // short (few options + terse chrome) — fixing the `✂ N lines hidden`
+    // that fired while the right column still had physical space. The left
+    // column pads blank below the list when the preview is taller.
+    const nonBodyRows =
+      2 +
+      /* borders */ 1 +
+      /* topSpacer */ 1 +
+      /* helpSpacer */ 1 +
+      /* helpText */ 1; /* bottomSpacer */
+    const bodyRegionRows = Math.max(0, bodyBudget - nonBodyRows);
+    const maxPreviewLines = bodyRegionRows;
+    const previewLines = list.buildPreviewLines(
+      rightWidth,
+      Math.max(0, maxPreviewLines),
+    );
+
+    const bodyHeight = Math.max(leftColumnLines.length, previewLines.length);
+    const bodyLines: string[] = [];
+    for (let i = 0; i < bodyHeight; i++) {
+      const left = truncateToWidth(
+        leftColumnLines[i] ?? "",
+        leftWidth,
+        "",
+        true,
+      );
+      const right = truncateToWidth(
+        previewLines[i] ?? "",
+        rightWidth,
+        "",
+        true,
+      );
+      bodyLines.push(`${left}${separator}${right}`);
+    }
+
+    // Help row + spacers render full-width (innerWidth) — they sit ABOVE and
+    // BELOW the two-column body, not inside it. Spacer.render returns empty
+    // strings which the caller's side-border pad fills to innerWidth.
+    const helpLines: string[] = [];
+    if (this.helpSpacer) helpLines.push(...this.helpSpacer.render(innerWidth));
+    if (this.helpText) helpLines.push(...this.helpText.render(innerWidth));
+    const topSpacerLines = this.topSpacer
+      ? this.topSpacer.render(innerWidth)
+      : [];
+    const bottomSpacerLines = this.bottomSpacer
+      ? this.bottomSpacer.render(innerWidth)
+      : [];
+
+    // Borders are placeholders at innerWidth; the caller re-renders index 0
+    // and the last line as full `width` corner borders (identical to the flat
+    // path), so their content here is irrelevant as long as each is a single
+    // line.
+    const boxTopLine = new BoxBorderTop(
+      borderColor,
+      "ask_user",
+      titleColor,
+    ).render(innerWidth)[0];
+    const boxBottomLine = new BoxBorderBottom(
+      borderColor,
+      `v${ASK_USER_VERSION}`,
+      bottomLabelColor,
+    ).render(innerWidth)[0];
+
+    return [
+      boxTopLine,
+      ...topSpacerLines,
+      ...bodyLines,
+      ...helpLines,
+      ...bottomSpacerLines,
+      boxBottomLine,
+    ];
   }
 
   private countWrappedLines(text: string, width: number): number {
     return Math.max(1, wrapTextWithAnsi(text, Math.max(10, width - 2)).length);
+  }
+
+  /**
+   * Clamp prose to `maxLines` rows at `width` cols, appending `…` to the
+   * last visible line when truncation occurs. Used for the question and
+   * context text so a verbose LLM call can't crowd the option list / editor
+   * out of the small (1/4-screen) modal. Rendered text and the chrome-budget
+   * count share this clamp, so the budget math stays in lockstep with what's
+   * actually drawn (no divergence between reserved rows and rendered rows).
+   */
+  private clampTextToLines(
+    text: string,
+    width: number,
+    maxLines: number,
+  ): string {
+    const wrapWidth = Math.max(10, width - 2);
+    const wrapped = wrapTextWithAnsi(text, wrapWidth);
+    if (wrapped.length <= maxLines) return text;
+    const kept = wrapped.slice(0, maxLines);
+    // Replace the last kept line's content with itself + an ellipsis, trimmed
+    // to the wrap width so the `…` always renders without wrapping.
+    const lastIdx = kept.length - 1;
+    kept[lastIdx] = truncateToWidth(`${kept[lastIdx]}…`, wrapWidth, "");
+    return kept.join("\n");
+  }
+
+  /**
+   * Line count of `clampTextToLines(text, width, maxLines)` — the budget
+   * counterpart. Must mirror `clampTextToLines` exactly so `computeChromeBudget`
+   * reserves the same number of rows `updateStaticText` actually renders.
+   */
+  private countClampedLines(
+    text: string,
+    width: number,
+    maxLines: number,
+  ): number {
+    return Math.min(maxLines, this.countWrappedLines(text, width));
+  }
+
+  /**
+   * Measurement pass for content-driven modal height (issue #2): estimate
+   * how many rows the select-mode body will actually need so `render` can
+   * grow `overlayMaxHeight` past the ratio floor to fit a tall preview or a
+   * long option list, instead of clipping with `\u2702 N lines hidden`.
+   *
+   * Counts: chrome (using the unbounded budget so nothing compresses) + the
+   * larger of (a) the option-list windowed rows and (b) the focused/max
+   * preview body rows. The preview body is measured via the list's
+   * `buildPreviewLines` against the right-pane width the two-column path
+   * would use; for the flat path we measure against full innerWidth. This is
+   * a best-effort estimate — the real render still has the safety slice.
+   */
+  private measureContentRows(innerWidth: number): number {
+    if (this.mode !== "select") {
+      // Editor (freeform/comment) modes: hard to predict line count; let the
+      // ratio floor + safety slice handle it.
+      return 0;
+    }
+    const chrome = this.computeChromeBudget(
+      innerWidth,
+      Number.POSITIVE_INFINITY,
+    ).staticLineCount;
+
+    const list = this.allowMultiple
+      ? this.multiSelectList
+      : this.singleSelectList;
+    if (!list) return chrome + 4;
+
+    // Option-list rows: window to a generous number (cap at total items) —
+    // the list windows internally, but for sizing we want the natural count
+    // so long lists can scroll rather than forcing the modal tall.
+    const itemCount =
+      list instanceof MultiSelectList
+        ? ((list as any).getItemCount?.() ?? this.options.length)
+        : this.options.length;
+    const listRows = Math.min(itemCount, 12);
+
+    // Preview body estimation: measure the focused option's body at the pane
+    // width the two-column path would use. Falls back to innerWidth.
+    const splitPane = list.getSplitPaneWidths(innerWidth);
+    const previewWidth = splitPane?.right ?? innerWidth;
+    let maxPreviewRows = 0;
+    try {
+      maxPreviewRows = list.buildPreviewLines(
+        previewWidth,
+        Number.POSITIVE_INFINITY,
+      ).length;
+    } catch {
+      maxPreviewRows = 0;
+    }
+
+    const body = Math.max(listRows, maxPreviewRows);
+    return chrome + body;
   }
 
   private countStaticLines(width: number): number {
@@ -1900,9 +2567,16 @@ class AskComponent extends Container {
     width: number,
     availableHeight: number,
   ): ChromeBudget {
-    const questionLines = this.countWrappedLines(this.question, width);
+    // Mirror `updateStaticText`'s clamp exactly — the budget must reserve the
+    // same number of rows that actually get rendered, or the list region drifts
+    // out of sync with the chrome above it.
+    const questionLines = this.countClampedLines(
+      this.question,
+      width,
+      QUESTION_MAX_LINES,
+    );
     const contextLines = this.context
-      ? 1 + this.countWrappedLines(this.context, width)
+      ? 1 + this.countClampedLines(this.context, width, CONTEXT_MAX_LINES)
       : 0;
     const borderLines = 2;
     const helpLines = 1;
@@ -1992,15 +2666,30 @@ class AskComponent extends Container {
     const theme = this.theme;
     const title = this.mode === "comment" ? "Optional comment" : "Question";
     this.titleText.setText(theme.fg("accent", theme.bold(title)));
-    this.questionText.setText(theme.fg("text", theme.bold(this.question)));
+    // Clamp the question (2 lines) and context (3 lines) so a verbose LLM
+    // call can't crowd the option list / editor out of the small modal.
+    // `computeChromeBudget` uses the matching line counts so budget↔render
+    // stay in lockstep. Width is the inner content width minus side borders.
+    const innerW = this.lastInnerWidth;
+    const clampedQuestion = this.clampTextToLines(
+      this.question,
+      innerW,
+      QUESTION_MAX_LINES,
+    );
+    this.questionText.setText(theme.fg("text", theme.bold(clampedQuestion)));
     if (this.contextComponent && this.context) {
+      const clampedContext = this.clampTextToLines(
+        this.context,
+        innerW,
+        CONTEXT_MAX_LINES,
+      );
       if (this.contextComponent instanceof Markdown) {
         (this.contextComponent as Markdown).setText(
-          `**Context:**\n${this.context}`,
+          `**Context:**\n${clampedContext}`,
         );
       } else {
         (this.contextComponent as Text).setText(
-          `${theme.fg("accent", theme.bold("Context:"))}\n${theme.fg("dim", this.context)}`,
+          `${theme.fg("accent", theme.bold("Context:"))}\n${theme.fg("dim", clampedContext)}`,
         );
       }
     }
