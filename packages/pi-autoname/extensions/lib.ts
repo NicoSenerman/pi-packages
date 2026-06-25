@@ -60,7 +60,12 @@ export interface AutonameConfig {
 
 export const DEFAULT_CONFIG: Required<AutonameConfig> = {
   enabled: true,
-  model: "",
+  /**
+   * Default naming model. Resolves (via ctx.modelRegistry.find / getModel)
+   * to the `ollama-cloud` provider entry in ~/.pi/agent/models.json, which
+   * points at https://ollama.com/v1 (openai-completions API).
+   */
+  model: "ollama-cloud/deepseek-v4-flash",
   fallbackModels: [],
   cooldownMinutes: 10,
   debug: false,
@@ -264,4 +269,142 @@ export function getRecentDialogue(branch: any[], maxMessages = 6) {
     }
   }
   return items.slice(-maxMessages);
+}
+
+/** Collapse whitespace in a command/string to a single line. */
+function oneLiner(s: string): string {
+  return String(s).replace(/\s+/g, " ").trim();
+}
+
+/** Strip home/project prefixes so tool-call markers stay short. */
+function shortPath(p: string): string {
+  return String(p)
+    .replace(/^.*\/Documents\//, "")
+    .replace(/^.*\/Projects\//, "");
+}
+
+/**
+ * Summarize a single tool call into a short inline marker token like
+ * `read src/foo.ts`, `run: git status`, `delegate→researcher`. Keeps the
+ * naming prompt compact while still telling the model what was DONE.
+ */
+function summarizeToolCall(name: string, args: any): string {
+  if (!args || typeof args !== "object") return name;
+  const a = args as Record<string, unknown>;
+  const path = typeof a.path === "string" ? (a.path as string) : undefined;
+  switch (name) {
+    case "read":
+    case "write":
+    case "edit":
+      return path ? `${name} ${shortPath(path)}` : name;
+    case "bash":
+      return typeof a.command === "string"
+        ? `run: ${oneLiner(a.command).slice(0, 80)}`
+        : "bash";
+    case "grep":
+      return typeof a.pattern === "string"
+        ? `grep "${String(a.pattern).slice(0, 30)}"`
+        : "grep";
+    case "find":
+      return typeof a.pattern === "string" ? `find ${a.pattern}` : "find";
+    case "subagent":
+      // Accept either `agent` (current) or `subagent_type` (older/generic).
+      return typeof a.agent === "string" || typeof a.subagent_type === "string"
+        ? `delegate→${(a.agent as string) || (a.subagent_type as string)}`
+        : "delegate";
+    case "todo":
+      return "todo";
+    default:
+      return name;
+  }
+}
+
+/**
+ * Extract a rich dialogue transcript including tool calls, so the naming
+ * model can see what was actually DONE (files touched, commands run),
+ * not just greetings. Assistant messages include their tool calls inline
+ * as `[→ edit src/foo.ts]`, `[→ run: git status]`, `[→ delegate→worker]`.
+ * Thinking blocks are skipped (internal, not a work signal).
+ *
+ * Returns: the FIRST user message (the intent) + the LAST `maxAssistantTurns`
+ * assistant turns. A user-only session (no assistant reply yet) still
+ * returns `[firstUser]` so first-dialogue naming can name it — v1 skipped
+ * these entirely.
+ */
+export function getRichDialogue(
+  branch: any[],
+  maxAssistantTurns = 12,
+): Array<{ role: string; text: string }> {
+  let firstUser: { role: string; text: string } | undefined;
+  const assistantTurns: Array<{ role: string; text: string }> = [];
+
+  for (const entry of branch) {
+    if (entry?.type !== "message" || !entry.message) continue;
+    const role: string = entry.message.role;
+    const content = entry.message.content;
+
+    // toolResult role messages are noise (tool output piped back to the
+    // assistant) — skip them entirely so the transcript stays clean.
+    if (role === "toolResult" || (role !== "user" && role !== "assistant")) {
+      continue;
+    }
+
+    if (typeof content === "string") {
+      const text = content.trim();
+      if (!text) continue;
+      if (role === "user" && !firstUser) {
+        firstUser = { role: "user", text };
+      } else if (role === "assistant") {
+        assistantTurns.push({ role: "assistant", text });
+      }
+      continue;
+    }
+
+    if (!Array.isArray(content)) continue;
+
+    if (role === "user") {
+      // For user messages, collect text blocks only — tool results are
+      // noisy and the user's intent is in the text. (Tool-result
+      // content typically arrives as role=toolResult anyway.)
+      const text = content
+        .filter((b: any) => b?.type === "text" && typeof b.text === "string")
+        .map((b: any) => b.text)
+        .join(" ")
+        .trim();
+      if (text && !firstUser) {
+        firstUser = { role: "user", text };
+      }
+      continue;
+    }
+
+    // role === "assistant": collect text blocks + summarize each toolCall
+    // inline as a readable marker.
+    const segments: string[] = [];
+    for (const block of content) {
+      if (!block || typeof block !== "object") continue;
+      if (block.type === "text" && typeof block.text === "string") {
+        const t = block.text.trim();
+        if (t) segments.push(t);
+      } else if (block.type === "toolCall") {
+        const marker = summarizeToolCall(
+          typeof block.name === "string" ? block.name : "tool",
+          block.arguments,
+        );
+        segments.push(`[→ ${marker}]`);
+      }
+      // skip thinking blocks — internal reasoning, not a work signal.
+    }
+    const text = segments.join(" ").trim();
+    if (text) {
+      assistantTurns.push({ role: "assistant", text });
+    }
+  }
+
+  const result: Array<{ role: string; text: string }> = [];
+  if (firstUser) result.push(firstUser);
+  // Keep the most recent maxAssistantTurns so the prompt reflects
+  // the latest work, not stale early turns.
+  const recent = assistantTurns.slice(-maxAssistantTurns);
+  result.push(...recent);
+  return result;
 }

@@ -40,3 +40,7 @@ minimumReleaseAgeExclude:
   - '@fallow-cli/win32-x64-msvc@2.91.0'
   - fallow@2.91.0
   - '@gotgenes/pi-subagents@16.4.0'
+  - '@earendil-works/pi-agent-core@0.80.2'
+  - '@earendil-works/pi-ai@0.80.2'
+  - '@earendil-works/pi-coding-agent@0.80.2'
+  - '@earendil-works/pi-tui@0.80.2'

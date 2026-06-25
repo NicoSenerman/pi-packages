@@ -25,8 +25,9 @@ import {
   redactSensitiveText,
   isHighQualityName,
   smartFallbackName,
-  getFirstDialogue,
-  getRecentDialogue,
+  getRichDialogue,
+  MIN_NAME_LENGTH,
+  MAX_NAME_LENGTH,
   parseRenameMarker,
   DEFAULT_CONFIG,
   type AutonameConfig,
@@ -231,17 +232,18 @@ function buildNamingPrompt(
   const promptParts = [
     `${langHint}.`,
     "",
-    "Generate a concise session name (5-15 characters/words) for this AI coding conversation.",
-    "Reflect the real project/task being worked on, not the literal first sentence.",
-    "Output ONLY the name string, nothing else. No punctuation, no quotes, no explanation.",
+    "Generate a concise session name (3-8 words) for this AI coding session.",
+    "Reflect the REAL work done: the task, the project, the files/areas touched, or the bug fixed.",
+    "Do NOT name it after a greeting or acknowledgment. Name it after what was actually accomplished or investigated.",
+    "Output ONLY the name string. No punctuation, no quotes, no explanation.",
     "",
     "CRITICAL RULES:",
-    "- NEVER copy or repeat any part of the conversation verbatim.",
-    "- The name must be a short topic label, NOT a sentence or response.",
-    "- Do NOT end with punctuation (。！？.!?).",
+    "- A short topic label, NOT a sentence. No trailing punctuation.",
     "- Do NOT include commas or multiple clauses.",
-    "- Examples of GOOD names: API重构, 部署脚本调试, 数据库迁移, Session naming fix",
-    "- Examples of BAD names: 好的我来帮你做, Let me help you with that, 已经完成了配置",
+    "- Examples of GOOD names: Fix AMP theme override, Dooiu whitelabel deploy, pi-autoname import fix, Resume picker mtime restore, Subagent filter in picker",
+    "- Examples of BAD names: New session greeting, Hello there, Let me help you, Investigating the issue",
+    "",
+    "The session transcript (user intent + what the assistant did, with tool calls in [→ ...] markers):",
   ];
 
   for (const part of parts) {
@@ -382,7 +384,20 @@ function extractCleanName(response: any): string | undefined {
     .replace(/[^\w\u4e00-\u9fff\s\-_/.#+]/g, "")
     .trim();
 
-  if (!cleaned || !isHighQualityName(cleaned)) {
+  if (!cleaned || cleaned.length < MIN_NAME_LENGTH) return undefined;
+
+  // Truncate to MAX_NAME_LENGTH on a word boundary BEFORE the quality
+  // check. The model often returns ~32-char names (e.g.
+  // "Neuralwatt MCR Extension Install") that the old path rejected
+  // outright (>30), yielding an empty name. Cutting on a word keeps a
+  // valid short name instead.
+  if (cleaned.length > MAX_NAME_LENGTH) {
+    let cut = cleaned.lastIndexOf(" ", MAX_NAME_LENGTH);
+    if (cut < MIN_NAME_LENGTH) cut = MAX_NAME_LENGTH; // no good break → hard cut
+    return cleaned.slice(0, cut).trim();
+  }
+
+  if (!isHighQualityName(cleaned)) {
     debugLog(
       "AI name rejected by quality check:",
       cleaned,
@@ -466,27 +481,18 @@ function extractDialogueParts(
   branch: any[],
   mode: "first-dialogue" | "manual",
 ): Array<{ role: string; text: string }> | undefined {
-  if (mode === "first-dialogue") {
-    const { firstUser, firstAssistant } = getFirstDialogue(branch);
-    if (!firstUser || !firstAssistant) {
-      debugLog(
-        "first-dialogue missing: firstUser=",
-        !!firstUser,
-        "firstAssistant=",
-        !!firstAssistant,
-      );
-      return undefined;
-    }
-    return [
-      { role: "user", text: firstUser },
-      { role: "assistant", text: firstAssistant },
-    ];
-  }
-  const parts = getRecentDialogue(branch);
+  // Both modes use the rich transcript (first user intent + recent
+  // assistant turns with tool-call markers). getRichDialogue returns
+  // [firstUser] for user-only sessions, so first-dialogue mode now
+  // names those too (v1 skipped them). The `mode` arg is retained for
+  // call-site stability and potential future divergence.
+  void mode;
+  const parts = getRichDialogue(branch);
   if (parts.length === 0) {
-    debugLog("manual: getRecentDialogue returned empty");
+    debugLog(`${mode}: getRichDialogue returned empty`);
+    return undefined;
   }
-  return parts.length > 0 ? parts : undefined;
+  return parts;
 }
 
 /**
