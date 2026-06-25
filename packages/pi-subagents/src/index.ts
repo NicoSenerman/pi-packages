@@ -58,10 +58,12 @@ import { AgentTool } from "#src/tools/agent-tool";
 import { GetResultTool } from "#src/tools/get-result-tool";
 import { SteerTool } from "#src/tools/steer-tool";
 import { AgentWidget } from "#src/ui/agent-widget";
+import { mlog } from "#src/ui/monitor-debug";
 import { SessionNavigatorHandler } from "#src/ui/session-navigator";
 import { SubagentsSettingsHandler } from "#src/ui/subagents-settings";
 
 export default function (pi: ExtensionAPI) {
+  mlog("factory", "pi-subagents extension factory entered");
   // ---- Register custom notification renderer ----
   pi.registerMessageRenderer<NotificationDetails>(
     "subagent-notification",
@@ -226,29 +228,55 @@ export default function (pi: ExtensionAPI) {
   // registerShortcut is a real Pi API but isn't stubbed in the upstream test
   // harness. Guard so absence doesn't crash factory wiring tests.
   if (typeof pi.registerShortcut === "function") {
-    pi.registerShortcut("ctrl+alt+a", {
-      description: "Open agent monitor",
-      handler: async (ctx) => {
-        try {
-          const { openAgentMonitor } = await import("./ui/agent-monitor");
-          await openAgentMonitor(
-            ctx,
-            manager,
-            registry,
-            settings,
-            new FsAgentFileOps(),
-            join(getAgentDir(), "agents"),
-            join(process.cwd(), ".pi", "agents"),
-          );
-        } catch (err) {
-          // Defense in depth: if openAgentMonitor (or the dynamic import) throws,
-          // swallow it here so the error doesn't propagate unhandled and leave
-          // Pi in a broken state. The factory-level try/catch in agent-monitor.ts
-          // handles construction failures; this catches anything that escapes it.
-          const msg = err instanceof Error ? err.message : String(err);
-          console.error(`[pi-subagents] agent monitor open failed: ${msg}`);
-        }
-      },
+    try {
+      pi.registerShortcut("ctrl+alt+a", {
+        description: "Open agent monitor",
+        handler: async (ctx) => {
+          // Fires on every Ctrl+Alt+A press. If this line never appears in the
+          // debug log for a session where the shortcut "does nothing", the
+          // handler wasn't invoked → registration failed or was overwritten.
+          mlog("shortcut-handler", "ctrl+alt+a handler fired");
+          try {
+            const { openAgentMonitor } = await import("./ui/agent-monitor");
+            await openAgentMonitor(
+              ctx,
+              manager,
+              registry,
+              settings,
+              new FsAgentFileOps(),
+              join(getAgentDir(), "agents"),
+              join(process.cwd(), ".pi", "agents"),
+            );
+          } catch (err) {
+            // Defense in depth: if openAgentMonitor (or the dynamic import) throws,
+            // swallow it here so the error doesn't propagate unhandled and leave
+            // Pi in a broken state. The factory-level try/catch in agent-monitor.ts
+            // handles construction failures; this catches anything that escapes it.
+            const msg = err instanceof Error ? err.message : String(err);
+            mlog("shortcut-handler", "open failed", {
+              error: msg,
+              stack: err instanceof Error ? err.stack : undefined,
+            });
+            console.error(`[pi-subagents] agent monitor open failed: ${msg}`);
+          }
+        },
+      });
+      mlog("register", "ctrl+alt+a shortcut registered successfully");
+    } catch (err) {
+      // registerShortcut itself threw at registration time — the shortcut will
+      // not work in this session. Log so we can spot this in a "dead" session.
+      mlog("register", "registerShortcut THREW", {
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+    }
+  } else {
+    // pi.registerShortcut is unavailable in this session — the shortcut will
+    // do nothing. This case is expected in the test harness but NOT in a real
+    // Pi session; if it appears in a live session, that's the root cause of
+    // "Ctrl+Alt+A does nothing".
+    mlog("register", "registerShortcut UNAVAILABLE (typeof !== function)", {
+      typeof: typeof (pi as { registerShortcut?: unknown }).registerShortcut,
     });
   }
 }
