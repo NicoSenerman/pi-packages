@@ -5,6 +5,9 @@
  * Set PI_SUBAGENTS_DEBUG=0 to explicitly disable if it ever gets noisy.
  * Writes to ~/.pi/agent/logs/monitor-debug.log.
  * All entries are timestamped (date + time) and include the source location.
+ * Every line is tagged with [pid:<PID>] so cross-session correlation in the
+ * shared log file is unambiguous — each Pi process is its own pid, so the tag
+ * cleanly attributes each line to the session that produced it.
  *
  * Retention: on stream open (once per session), the existing log file is
  * trimmed to keep only entries from the last 24 hours. This bounds the file
@@ -102,9 +105,13 @@ export function mlog(
   // Full ISO timestamp (date + time, UTC) so the log is self-describing for
   // age-based trimming and for cross-session correlation.
   const ts = new Date().toISOString().slice(0, 23); // YYYY-MM-DDTHH:mm:ss.SSS
+  // Tag with pid so each line is unambiguously attributable to the Pi process
+  // (and therefore the session) that wrote it, since the log file is shared
+  // across all concurrent Pi windows on the same machine.
+  const pidTag = `[pid:${process.pid}]`;
   const line = data
-    ? `[${ts}] [${source}] ${msg} ${JSON.stringify(data)}\n`
-    : `[${ts}] [${source}] ${msg}\n`;
+    ? `[${ts}] ${pidTag} [${source}] ${msg} ${JSON.stringify(data)}\n`
+    : `[${ts}] ${pidTag} [${source}] ${msg}\n`;
   try {
     getStream().write(line);
   } catch {
