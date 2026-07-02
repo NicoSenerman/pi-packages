@@ -223,6 +223,40 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
+  // ---- /subagents:monitor command ----
+  // A command-path entry to the agent monitor that bypasses the terminal
+  // keybinding layer entirely. Exists partly for accessibility (users who
+  // can't press ctrl+alt+a) and partly as a diagnostic: if the monitor opens
+  // via this command but NOT via ctrl+alt+a in a given terminal, the failure
+  // is in pi-tui's matchesKey (terminal-encoding mismatch), not in the
+  // monitor/openAgentMonitor code. See monitor-debug.log [shortcut-handler]
+  // vs [open] sources to compare.
+  pi.registerCommand("subagents:monitor", {
+    description: "Open the agent monitor overlay (same as ctrl+alt+a)",
+    handler: async (_args, ctx) => {
+      mlog("command", "/subagents:monitor invoked");
+      try {
+        const { openAgentMonitor } = await import("./ui/agent-monitor");
+        await openAgentMonitor(
+          ctx,
+          manager,
+          registry,
+          settings,
+          new FsAgentFileOps(),
+          join(getAgentDir(), "agents"),
+          join(process.cwd(), ".pi", "agents"),
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        mlog("command", "open failed", {
+          error: msg,
+          stack: err instanceof Error ? err.stack : undefined,
+        });
+        console.error(`[pi-subagents] agent monitor open failed: ${msg}`);
+      }
+    },
+  });
+
   // ---- ctrl+alt+a agent monitor ----
 
   // registerShortcut is a real Pi API but isn't stubbed in the upstream test
