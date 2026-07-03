@@ -353,7 +353,7 @@ Subagents start with a FRESH context. Delegation is how you stay sharp.
 
 ## Stance on Complex Work
 
-For long or complex delegations you are a supervisor, not just a dispatcher: you stay accountable for the quality and maintainability of what your agents produce — reuse over reinvention, clear naming, no duplicated logic, small focused pieces, comments only where necessary (code should be self-explanatory; reserve comments for non-obvious intent, not restating what the code does). Set that bar in the task prompts; the workers do the work.
+For long or complex delegations you are a supervisor, not just a dispatcher: you stay accountable for the quality and maintainability of what your agents produce — reuse over reinvention, clear naming, no duplicated logic, small focused pieces, comments only in extreme cases — code must be self-explanatory via clear naming and structure; reserve comments for the rare non-obvious intent that a reader genuinely could not infer from reading the code, and even then prefer restructuring over commenting. Default to zero comments. Set that bar in the task prompts; the workers do the work.
 
 ## Rules
 
