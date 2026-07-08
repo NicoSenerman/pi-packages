@@ -22,11 +22,23 @@ import type { ChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { SubagentSession } from "#src/lifecycle/subagent-session";
 import type { EnvInfo } from "#src/session/env";
-import { type AssemblerIO, assembleSessionConfig } from "#src/session/session-config";
-import type { ParentSessionInfo, ShellExec, SubagentType, ThinkingLevel } from "#src/types";
+import {
+  type AssemblerIO,
+  assembleSessionConfig,
+} from "#src/session/session-config";
+import type {
+  ParentSessionInfo,
+  ShellExec,
+  SubagentType,
+  ThinkingLevel,
+} from "#src/types";
 
 /** Names of tools registered by this extension that subagents must NOT inherit. */
-const EXCLUDED_TOOL_NAMES = ["subagent", "get_subagent_result", "steer_subagent"];
+const EXCLUDED_TOOL_NAMES = [
+  "subagent",
+  "get_subagent_result",
+  "steer_subagent",
+];
 
 /**
  * Apply the recursion guard: remove this extension's dispatch tools from the
@@ -88,7 +100,10 @@ export interface CreateSessionOptions {
 export interface EnvironmentIO {
   detectEnv: (exec: ShellExec, cwd: string) => Promise<EnvInfo>;
   getAgentDir: () => string;
-  deriveSessionDir: (parentSessionFile: string | undefined, effectiveCwd: string) => string;
+  deriveSessionDir: (
+    parentSessionFile: string | undefined,
+    effectiveCwd: string,
+  ) => string;
 }
 
 /**
@@ -101,7 +116,9 @@ export interface SessionFactoryIO {
   createResourceLoader: (opts: ResourceLoaderOptions) => ResourceLoaderLike;
   createSessionManager: (cwd: string, sessionDir: string) => SessionManagerLike;
   createSettingsManager: (cwd: string, agentDir: string) => SettingsManager;
-  createSession: (opts: CreateSessionOptions) => Promise<{ session: AgentSession }>;
+  createSession: (
+    opts: CreateSessionOptions,
+  ) => Promise<{ session: AgentSession }>;
   assemblerIO: AssemblerIO;
 }
 
@@ -194,9 +211,17 @@ export async function createSubagentSession(
   // Create a persisted SessionManager so transcripts are written in Pi's
   // official JSONL format. Falls back to a temp directory when the parent
   // session is not persisted (e.g. headless/API mode).
-  const sessionDir = deps.io.deriveSessionDir(params.parentSession?.parentSessionFile, cfg.effectiveCwd);
-  const sessionManager = deps.io.createSessionManager(cfg.effectiveCwd, sessionDir);
-  sessionManager.newSession({ parentSession: params.parentSession?.parentSessionId });
+  const sessionDir = deps.io.deriveSessionDir(
+    params.parentSession?.parentSessionFile,
+    cfg.effectiveCwd,
+  );
+  const sessionManager = deps.io.createSessionManager(
+    cfg.effectiveCwd,
+    sessionDir,
+  );
+  sessionManager.newSession({
+    parentSession: params.parentSession?.parentSessionId,
+  });
   const sessionId = sessionManager.getSessionId();
 
   const { session } = await deps.io.createSession({
@@ -229,8 +254,23 @@ export async function createSubagentSession(
   deps.lifecycle.sessionCreated({ sessionId, parentSessionId });
 
   try {
-    // Bind extensions so that session_start fires and extensions can initialize.
-    await session.bindExtensions({});
+    // Mark child sessions so parent-only extensions (e.g. pi-fff) can skip
+    // heavy native init / tool override. Without this, every child under
+    // PI_FFF_MODE=override opens its own FileFinder on the shared LMDB DBs
+    // and races/locks with the parent and sibling kids. Extensions that
+    // should stay parent-only check PI_SUBAGENT_SESSION=1 at load time.
+    const prevSubagentSession = process.env.PI_SUBAGENT_SESSION;
+    process.env.PI_SUBAGENT_SESSION = "1";
+    try {
+      // Bind extensions so that session_start fires and extensions can initialize.
+      await session.bindExtensions({});
+    } finally {
+      if (prevSubagentSession === undefined) {
+        delete process.env.PI_SUBAGENT_SESSION;
+      } else {
+        process.env.PI_SUBAGENT_SESSION = prevSubagentSession;
+      }
+    }
     // Apply recursion guard after bindExtensions so extension-registered tools
     // are included in the post-bind active set.
     applyRecursionGuard(session);
