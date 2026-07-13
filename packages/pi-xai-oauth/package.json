@@ -1,0 +1,46 @@
+{
+  "name": "pi-xai-oauth",
+  "version": "1.3.3",
+  "description": "One-command installer for xAI OAuth provider + Grok 4.5, Grok Build, and Composer models in pi",
+  "keywords": [
+    "pi-package",
+    "xai",
+    "grok",
+    "oauth"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BlockedPath/pi-xai-oauth.git"
+  },
+  "homepage": "https://github.com/BlockedPath/pi-xai-oauth#readme",
+  "bugs": {
+    "url": "https://github.com/BlockedPath/pi-xai-oauth/issues"
+  },
+  "license": "MIT",
+  "bin": {
+    "pi-xai-oauth": "bin/setup.js"
+  },
+  "scripts": {
+    "scaffold": "node bin/setup.js --scaffold",
+    "setup": "node bin/setup.js",
+    "test": "node scripts/verify-extension.js && node scripts/verify-setup.js",
+    "typecheck": "npx tsc --noEmit"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ],
+    "image": "https://raw.githubusercontent.com/BlockedPath/pi-xai-oauth/main/preview.jpeg"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "^0.80.3",
+    "@earendil-works/pi-coding-agent": "^0.80.3",
+    "@types/node": "^26.0.0",
+    "jiti": "^2.7.0",
+    "typescript": "^6.0.3"
+  }
+}
