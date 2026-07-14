@@ -1,0 +1,84 @@
+[
+  {
+    "id": "neuralwatt/glm-5-long",
+    "name": "GLM-5 Long (MCR 1M)",
+    "reasoning": true,
+    "input": [
+      "text"
+    ],
+    "cost": {
+      "input": 1.1,
+      "output": 3.6,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    },
+    "contextWindow": 1048576,
+    "maxTokens": 16384,
+    "thinkingLevelMap": {
+      "minimal": null,
+      "low": "low",
+      "medium": "medium",
+      "high": "high",
+      "xhigh": null,
+      "max": null
+    },
+    "compat": {
+      "supportsDeveloperRole": false,
+      "maxTokensField": "max_tokens",
+      "requiresReasoningContentOnAssistantMessages": true
+    }
+  },
+  {
+    "id": "neuralwatt/glm-5.1-fast-long",
+    "name": "GLM-5.1 Fast Long (MCR 1M)",
+    "reasoning": false,
+    "input": [
+      "text"
+    ],
+    "cost": {
+      "input": 1.1,
+      "output": 3.6,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    },
+    "contextWindow": 1048576,
+    "maxTokens": 16384,
+    "compat": {
+      "supportsDeveloperRole": false,
+      "maxTokensField": "max_tokens"
+    }
+  },
+  {
+    "id": "neuralwatt/kimi-k2.5-long",
+    "name": "Kimi K2.5 Long (MCR 1M)",
+    "reasoning": true,
+    "input": [
+      "text",
+      "image"
+    ],
+    "cost": {
+      "input": 0.52,
+      "output": 2.59,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    },
+    "contextWindow": 1048576,
+    "maxTokens": 16384,
+    "thinkingLevelMap": {
+      "minimal": null,
+      "low": "low",
+      "medium": "medium",
+      "high": "high",
+      "xhigh": null,
+      "max": null
+    },
+    "compat": {
+      "supportsDeveloperRole": false,
+      "maxTokensField": "max_tokens",
+      "requiresReasoningContentOnAssistantMessages": true
+    },
+    "vision": {
+      "maxImagesPerRequest": 20
+    }
+  }
+]

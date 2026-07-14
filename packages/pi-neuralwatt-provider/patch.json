@@ -1,0 +1,85 @@
+{
+  "glm-5.2": {
+    "thinkingLevelMap": {
+      "off": "minimal",
+      "minimal": null,
+      "low": null,
+      "medium": null,
+      "high": "high",
+      "max": "max"
+    },
+    "compat": {
+      "chatTemplateKwargs": {
+        "clear_thinking": false
+      }
+    }
+  },
+  "glm-5.2-fast": {
+    "compat": {
+      "maxTokensField": "max_tokens"
+    }
+  },
+  "glm-5.2-short": {
+    "thinkingLevelMap": {
+      "off": "minimal",
+      "minimal": null,
+      "low": null,
+      "medium": null,
+      "high": "high",
+      "max": "max"
+    },
+    "compat": {
+      "chatTemplateKwargs": {
+        "clear_thinking": false
+      }
+    }
+  },
+  "kimi-k2.6": {
+    "thinkingLevelMap": {
+      "minimal": null,
+      "low": "low",
+      "medium": "medium",
+      "high": "high",
+      "xhigh": null,
+      "max": null
+    },
+    "compat": {
+      "maxTokensField": "max_tokens",
+      "requiresReasoningContentOnAssistantMessages": true,
+      "chatTemplateKwargs": {
+        "preserve_thinking": true
+      }
+    }
+  },
+  "kimi-k2.6-fast": {
+    "compat": {
+      "maxTokensField": "max_tokens"
+    }
+  },
+  "kimi-k2.7-code": {
+    "thinkingLevelMap": {
+      "minimal": null,
+      "low": "low",
+      "medium": "medium",
+      "high": "high",
+      "max": "high"
+    },
+    "compat": {
+      "maxTokensField": "max_tokens",
+      "requiresReasoningContentOnAssistantMessages": true,
+      "chatTemplateKwargs": {
+        "preserve_thinking": true
+      }
+    }
+  },
+  "qwen3.5-397b-fast": {
+    "compat": {
+      "maxTokensField": "max_tokens"
+    }
+  },
+  "qwen3.6-35b-fast": {
+    "compat": {
+      "maxTokensField": "max_tokens"
+    }
+  }
+}
