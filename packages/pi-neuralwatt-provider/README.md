@@ -29,29 +29,25 @@ _Kimi, GLM, Qwen, DeepSeek — with real-time ⚡ energy/cost per session for [p
 
 ## Available Models
 
-| Model | Context | Vision | Reasoning | Input $/M | Output $/M |
-|-------|---------|--------|-----------|-----------|------------|
-| GLM-5.2 | 1.0M | ❌ | ✅ | $1.45 | $4.50 |
-| GLM-5.2 (fast) | 1.0M | ❌ | ❌ | $1.45 | $4.50 |
-| GLM-5.2 (flex) | 1.0M | ❌ | ✅ | $1.45 | $4.50 |
-| GLM-5.2 (short, fast, flex) | 200K | ❌ | ❌ | $1.45 | $4.50 |
-| GLM-5.2 (short, fast) | 200K | ❌ | ❌ | $1.45 | $4.50 |
-| GLM-5.2 (short, flex) | 200K | ❌ | ✅ | $1.45 | $4.50 |
-| GLM-5.2 (short) | 200K | ❌ | ✅ | $1.45 | $4.50 |
-| Kimi K2.6 | 262K | ✅ | ✅ | $0.69 | $3.22 |
-| Kimi K2.6 (flex) | 262K | ✅ | ✅ | $0.69 | $3.22 |
-| Kimi K2.6 Fast | 262K | ✅ | ❌ | $0.69 | $3.22 |
-| Kimi K2.6 Long (Virtual Context) | 1.0M | ✅ | ✅ | $0.69 | $3.22 |
-| Kimi K2.7 Code | 262K | ✅ | ✅ | $0.95 | $4.00 |
-| Kimi K2.7 Code (flex) | 262K | ✅ | ✅ | $0.95 | $4.00 |
-| Nemotron-3-Nano (MCR) | 66K | ❌ | ❌ | $0.00 | $0.00 |
-| Qwen3.5 397B | 262K | ❌ | ✅ | $0.69 | $4.14 |
-| Qwen3.5 397B Fast | 262K | ❌ | ❌ | $0.69 | $4.14 |
-| Qwen3.6 35B | 131K | ✅ | ✅ | $0.29 | $1.15 |
-| Qwen3.6 35B Fast | 131K | ✅ | ❌ | $0.29 | $1.15 |
-| GLM-5 Long (MCR 1M) | 1.0M | ❌ | ✅ | $1.10 | $3.60 |
-| GLM-5.1 Fast Long (MCR 1M) | 1.0M | ❌ | ❌ | $1.10 | $3.60 |
-| Kimi K2.5 Long (MCR 1M) | 1.0M | ✅ | ✅ | $0.52 | $2.59 |
+| Model                            | Context | Vision | Reasoning | Input $/M | Output $/M |
+| -------------------------------- | ------- | ------ | --------- | --------- | ---------- |
+| GLM-5.2                          | 1.0M    | ❌     | ✅        | $1.45     | $4.50      |
+| GLM-5.2 (fast)                   | 1.0M    | ❌     | ❌        | $1.45     | $4.50      |
+| GLM-5.2 (flex)                   | 1.0M    | ❌     | ✅        | $1.45     | $4.50      |
+| GLM-5.2 (short, fast, flex)      | 200K    | ❌     | ❌        | $1.45     | $4.50      |
+| GLM-5.2 (short, fast)            | 200K    | ❌     | ❌        | $1.45     | $4.50      |
+| GLM-5.2 (short, flex)            | 200K    | ❌     | ✅        | $1.45     | $4.50      |
+| GLM-5.2 (short)                  | 200K    | ❌     | ✅        | $1.45     | $4.50      |
+| Kimi K2.6                        | 262K    | ✅     | ✅        | $0.69     | $3.22      |
+| Kimi K2.6 (flex)                 | 262K    | ✅     | ✅        | $0.69     | $3.22      |
+| Kimi K2.6 Fast                   | 262K    | ✅     | ❌        | $0.69     | $3.22      |
+| Kimi K2.6 Long (Virtual Context) | 1.0M    | ✅     | ✅        | $0.69     | $3.22      |
+| Kimi K2.7 Code                   | 262K    | ✅     | ✅        | $0.95     | $4.00      |
+| Kimi K2.7 Code (flex)            | 262K    | ✅     | ✅        | $0.95     | $4.00      |
+| Qwen3.5 397B                     | 262K    | ❌     | ✅        | $0.69     | $4.14      |
+| Qwen3.5 397B Fast                | 262K    | ❌     | ❌        | $0.69     | $4.14      |
+| Qwen3.6 35B                      | 131K    | ✅     | ✅        | $0.29     | $1.15      |
+| Qwen3.6 35B Fast                 | 131K    | ✅     | ❌        | $0.29     | $1.15      |
 
 ## Authentication
 
@@ -94,6 +90,7 @@ npm install npm:pi-neuralwatt-provider
 ### Option 3: Manual Clone
 
 Then authenticate and run pi:
+
 ```bash
 # Recommended: add to auth.json
 # See Authentication section below
@@ -105,12 +102,14 @@ pi
 ```
 
 1. Clone this repository:
+
    ```bash
    git clone git@github.com:monotykamary/pi-neuralwatt-provider.git
    cd pi-neuralwatt-provider
    ```
 
 2. Configure your Neuralwatt API key:
+
    ```bash
    # Recommended: add to auth.json
    # See Authentication section below
@@ -126,9 +125,9 @@ pi
 
 ## Environment Variables
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `NEURALWATT_API_KEY` | No | Your Neuralwatt API key (fallback if not in auth.json) |
+| Variable             | Required | Description                                            |
+| -------------------- | -------- | ------------------------------------------------------ |
+| `NEURALWATT_API_KEY` | No       | Your Neuralwatt API key (fallback if not in auth.json) |
 
 ## Configuration
 
@@ -158,9 +157,7 @@ Add to your pi configuration for automatic loading:
 
 ```json
 {
-  "extensions": [
-    "/path/to/pi-neuralwatt-provider"
-  ]
+  "extensions": ["/path/to/pi-neuralwatt-provider"]
 }
 ```
 
@@ -194,28 +191,26 @@ Energy and quota are independently configurable. Create `~/.pi/agent/extensions/
 {
   "energy": "widget",
   "quota": "widget",
-  "mcr": "widget",
   "carbon": "widget"
 }
 ```
 
 The file is auto-populated with defaults on first run.
 
-| Key | Values | Default | Description |
-|-----|--------|---------|-------------|
-| `energy` | `"widget"`, `"statusbar"`, `"off"` | `"widget"` | Energy/cost display mode |
-| `quota` | `"widget"`, `"statusbar"`, `"off"` | `"widget"` | Quota display mode |
-| `mcr` | `"widget"`, `"statusbar"`, `"off"` | `"widget"` | MCR (context-reuse) display mode |
-| `carbon` | `"widget"`, `"statusbar"`, `"off"` | `"widget"` | Carbon (session CO₂ + fleet grid/region badge) display mode |
-| `hideOnOtherProvider` | `true`, `false` | `false` | Hide all Neuralwatt display when a non-Neuralwatt model is active |
+| Key                   | Values                             | Default    | Description                                                       |
+| --------------------- | ---------------------------------- | ---------- | ----------------------------------------------------------------- |
+| `energy`              | `"widget"`, `"statusbar"`, `"off"` | `"widget"` | Energy/cost display mode                                          |
+| `quota`               | `"widget"`, `"statusbar"`, `"off"` | `"widget"` | Quota display mode                                                |
+| `carbon`              | `"widget"`, `"statusbar"`, `"off"` | `"widget"` | Carbon (session CO₂ + fleet grid/region badge) display mode       |
+| `hideOnOtherProvider` | `true`, `false`                    | `false`    | Hide all Neuralwatt display when a non-Neuralwatt model is active |
 
 **Display modes:**
 
 - **`"widget"`** — Shown in the dedicated below-editor status line. Energy on the left, quota on the right, padded to terminal width.
-- **`"statusbar"`** — Shown in the built-in pi status bar. When both are set to `"statusbar"`, they're combined with a ` | ` separator: `⚡X J $Y | plan ● kWh ∙ $bal`.
+- **`"statusbar"`** — Shown in the built-in pi status bar. When both are set to `"statusbar"`, they're combined with a `|` separator: `⚡X J $Y | plan ● kWh ∙ $bal`.
 - **`"off"`** — Hidden entirely. For `"quota": "off"`, the `/v1/quota` API fetch is also skipped (saving a network round-trip). Energy data is still parsed from the SSE stream and persisted to the session even when `"off"`.
 
-`mcr` and `carbon` follow the same three modes. `carbon` adds two segments: **session CO₂** (`🌱X g CO₂`, on the energy line — cumulative, like energy) and a **fleet grid/region badge** (on the quota line — the latest request's electricity grid, e.g. `🇺🇸 PJM 416`). The badge compresses flag → intensity → balancing-authority tag as the terminal narrows, and a `~` marks intensities from a fallback carbon source. The badge also renders **standalone** (on its own) when `quota` is `off`, so the fleet location still shows.
+`carbon` follows the same three modes and adds two segments: **session CO₂** (`🌱X g CO₂`, on the energy line — cumulative, like energy) and a **fleet grid/region badge** (on the quota line — the latest request's electricity grid, e.g. `🇺🇸 PJM 416`). The badge compresses flag → intensity → balancing-authority tag as the terminal narrows, and a `~` marks intensities from a fallback carbon source. The badge also renders **standalone** (on its own) when `quota` is `off`, so the fleet location still shows.
 
 **Example — custom quota footer:** If you use your own unified quota footer extension, disable the built-in quota display to avoid duplication:
 
@@ -234,17 +229,21 @@ The file is auto-populated with defaults on first run.
 {
   "energy": "widget",
   "quota": "widget",
-  "mcr": "widget",
   "carbon": "widget",
   "hideOnOtherProvider": false,
   "modelOverrides": {
     // Disable full-history reasoning for kimi-k2.6 (e.g. to save tokens):
-    "kimi-k2.6":      { "compat": { "chatTemplateKwargs": { "preserve_thinking": false } } },
+    "kimi-k2.6": {
+      "compat": { "chatTemplateKwargs": { "preserve_thinking": false } },
+    },
     // Override a single thinking level without redeclaring the map:
-    "glm-5.2":        { "thinkingLevelMap": { "high": "max" }, "compat": { "chatTemplateKwargs": { "clear_thinking": true } } },
+    "glm-5.2": {
+      "thinkingLevelMap": { "high": "max" },
+      "compat": { "chatTemplateKwargs": { "clear_thinking": true } },
+    },
     // Force a smaller image cap:
-    "kimi-k2.7-code": { "vision": { "maxImagesPerRequest": 4 } }
-  }
+    "kimi-k2.7-code": { "vision": { "maxImagesPerRequest": 4 } },
+  },
 }
 ```
 
@@ -255,7 +254,7 @@ The full set of overridable fields matches the model schema (`compat`, `thinking
 `/neuralwatt-settings` opens an interactive settings panel (mirrors pi core's `/settings` — bordered `SettingsList`, Esc to go back) to configure Neuralwatt without editing JSON by hand:
 
 - **Preserved thinking** (nested submenu, one row per model) — toggles `clear_thinking` (GLM-5.2 family) / `preserve_thinking` (Kimi K2.6/K2.7) in `modelOverrides` between **Preserve Thinking** (keep full reasoning history across turns; the default, `clear_thinking: false`) and **Clear Thinking** (let the template drop older reasoning; saves tokens, but can degrade multi-turn recall / cause overthinking).
-- **Energy / Quota / MCR / Carbon display** (`widget` / `statusbar` / `off`) and **Hide on other provider** — the same fields as [Display Configuration](#display-configuration), editable live.
+- **Energy / Quota / Carbon display** (`widget` / `statusbar` / `off`) and **Hide on other provider** — the same fields as [Display Configuration](#display-configuration), editable live.
 
 Changes write to `~/.pi/agent/extensions/neuralwatt.json` (raw read-modify-write, so unrelated fields survive), refresh the in-memory config, and re-register the provider, so they take effect immediately — no restart needed.
 
@@ -265,17 +264,17 @@ When you switch to — or start pi on — a Neuralwatt model that carries a pres
 
 Neuralwatt provides real-time energy consumption data with every API response. This extension captures it and displays a running total in a dedicated status widget between the editor and the pi footer:
 
-| Segment | Meaning |
-|---------|----------|
-| `⚡0.8mWh` | Cumulative session energy consumption (auto-scaled: J → mWh → Wh → kWh) |
-| `$0.003952` | Cumulative session actual billed cost from Neuralwatt |
-| `🌱1.24 g CO₂` | Cumulative session CO₂ emissions (auto-scaled: mg → g → kg); on the energy line when `carbon` is on |
-| `pro` | Your Neuralwatt subscription plan |
-| `●` | Subscription status indicator (● = active, ⊘ = past due/paused) |
-| `31.7/33.0 kWh` | kWh remaining / kWh included in your plan |
-| `∙ $64.55` | Credits remaining on your account |
-| `🔑 .../.../mo` | Key allowance usage (if set on your API key) |
-| `🇺🇸 PJM 416` | Fleet grid/region badge (latest request's electricity grid + its carbon intensity, g/kWh); on the quota line when `carbon` is on. A `~` marks fallback intensities |
+| Segment         | Meaning                                                                                                                                                            |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `⚡0.8mWh`      | Cumulative session energy consumption (auto-scaled: J → mWh → Wh → kWh)                                                                                            |
+| `$0.003952`     | Cumulative session actual billed cost from Neuralwatt                                                                                                              |
+| `🌱1.24 g CO₂`  | Cumulative session CO₂ emissions (auto-scaled: mg → g → kg); on the energy line when `carbon` is on                                                                |
+| `pro`           | Your Neuralwatt subscription plan                                                                                                                                  |
+| `●`             | Subscription status indicator (● = active, ⊘ = past due/paused)                                                                                                    |
+| `31.7/33.0 kWh` | kWh remaining / kWh included in your plan                                                                                                                          |
+| `∙ $64.55`      | Credits remaining on your account                                                                                                                                  |
+| `🔑 .../.../mo` | Key allowance usage (if set on your API key)                                                                                                                       |
+| `🇺🇸 PJM 416`    | Fleet grid/region badge (latest request's electricity grid + its carbon intensity, g/kWh); on the quota line when `carbon` is on. A `~` marks fallback intensities |
 
 The energy and cost data comes from Neuralwatt's SSE stream comments (`: energy` and `: cost`), which the standard OpenAI SDK discards. This extension uses a custom stream handler that parses raw SSE to capture them.
 
@@ -295,14 +294,13 @@ Energy, cost, carbon, and grid data are persisted per-request as custom session 
 
 After every Neuralwatt turn (in the `turn_end` handler, once the SSE tee has drained), the extension emits a `neuralwatt:turn-energy` event on pi's shared event bus so other extensions can surface the energy-billed cost without re-parsing the session. The payload:
 
-| Field           | Type     | Description                                                                         |
-| --------------- | -------- | ----------------------------------------------------------------------------------- |
-| `costUsd`       | `number` | Actual billed cost for this request (USD)                                           |
-| `energyJoules` | `number` | Energy consumed for this request (Joules)                                           |
-| `turnIndex`     | `number \| null` | pi's turn index for correlation. `null` if the event didn't carry one.       |
+| Field          | Type             | Description                                                            |
+| -------------- | ---------------- | ---------------------------------------------------------------------- |
+| `costUsd`      | `number`         | Actual billed cost for this request (USD)                              |
+| `energyJoules` | `number`         | Energy consumed for this request (Joules)                              |
+| `turnIndex`    | `number \| null` | pi's turn index for correlation. `null` if the event didn't carry one. |
 
 The event is only emitted for turns with Neuralwatt activity (the `pending*` state is per-request), so non-Neuralwatt turns never produce a spurious zero-cost signal. Consumers should correlate on `turnIndex` and treat a missing/`null` index defensively.
-
 
 ## API Documentation
 

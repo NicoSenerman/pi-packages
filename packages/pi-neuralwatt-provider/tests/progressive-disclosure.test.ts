@@ -21,8 +21,18 @@ function termVisWidth(str: string): number {
       const next = str.charCodeAt(i + 1);
       if (next === 0x5b) {
         i += 2;
-        while (i < str.length && str.charCodeAt(i) >= 0x20 && str.charCodeAt(i) <= 0x3f) i++;
-        while (i < str.length && str.charCodeAt(i) >= 0x30 && str.charCodeAt(i) <= 0x3f) i++;
+        while (
+          i < str.length &&
+          str.charCodeAt(i) >= 0x20 &&
+          str.charCodeAt(i) <= 0x3f
+        )
+          i++;
+        while (
+          i < str.length &&
+          str.charCodeAt(i) >= 0x30 &&
+          str.charCodeAt(i) <= 0x3f
+        )
+          i++;
         if (i < str.length) i++;
         continue;
       }
@@ -73,8 +83,10 @@ function formatEnergyCompact(joules: number): string {
 function formatCost(usd: number): string {
   if (usd === 0) return "$0";
   if (usd < 0.000001) return `$${usd.toExponential(1)}`;
-  if (usd < 0.01) return `$${usd.toFixed(6).replace(/0+$/, "").replace(/\.$/, "")}`;
-  if (usd < 1) return `$${usd.toFixed(4).replace(/0+$/, "").replace(/\.$/, "")}`;
+  if (usd < 0.01)
+    return `$${usd.toFixed(6).replace(/0+$/, "").replace(/\.$/, "")}`;
+  if (usd < 1)
+    return `$${usd.toFixed(4).replace(/0+$/, "").replace(/\.$/, "")}`;
   return `$${usd.toFixed(2)}`;
 }
 
@@ -110,12 +122,12 @@ function formatCarbonCompact(grams: number): string {
 
 describe("energy progressive disclosure levels", () => {
   const testCases = [
-    { joules: 2772, costUsd: 0.003829 },   // 0.77 mWh range
-    { joules: 0, costUsd: 5.50 },           // no energy, only cost
-    { joules: 500, costUsd: 0 },            // only energy (J range)
-    { joules: 360000, costUsd: 0.01 },      // 100 mWh range
-    { joules: 3600000, costUsd: 1.50 },     // 1 Wh range
-    { joules: 36000000, costUsd: 99.99 },   // 10 Wh / kWh range
+    { joules: 2772, costUsd: 0.003829 }, // 0.77 mWh range
+    { joules: 0, costUsd: 5.5 }, // no energy, only cost
+    { joules: 500, costUsd: 0 }, // only energy (J range)
+    { joules: 360000, costUsd: 0.01 }, // 100 mWh range
+    { joules: 3600000, costUsd: 1.5 }, // 1 Wh range
+    { joules: 36000000, costUsd: 99.99 }, // 10 Wh / kWh range
   ];
 
   for (const { joules, costUsd } of testCases) {
@@ -145,7 +157,9 @@ describe("energy progressive disclosure levels", () => {
   }
 
   it("compact format is always ≤ spaced format in visible width", () => {
-    const testJoules = [0, 1, 100, 2772, 36000, 360000, 3600000, 36000000, 100000000];
+    const testJoules = [
+      0, 1, 100, 2772, 36000, 360000, 3600000, 36000000, 100000000,
+    ];
     for (const j of testJoules) {
       const spaced = formatEnergy(j);
       const compact = formatEnergyCompact(j);
@@ -202,17 +216,86 @@ describe("quota progressive disclosure levels", () => {
     const allowance = "∙ ⚷ $0.12/$1.00/d";
 
     const levels = [
-      buildQuotaSubParts(plan, true, false, true, 28.0, 33.0, false, true, true, credits, allowance),  // full
-      buildQuotaSubParts(plan, true, false, true, 28.0, 33.0, false, true, true, credits),               // drop allowance
-      buildQuotaSubParts(plan, true, false, true, 28.0, 33.0, false, false, true, credits),               // merge kWh unit
-      buildQuotaSubParts(plan, true, false, true, 28.0, null, false, false, true, credits),              // drop "/total"
-      buildQuotaSubParts(plan, true, false, false, null, null, false, false, true, credits),              // drop kWh
-      buildQuotaSubParts(plan, true, false, false, null, null, false, false, false, credits),             // drop status dot
-      plan,                                                                                                // plan only
+      buildQuotaSubParts(
+        plan,
+        true,
+        false,
+        true,
+        28.0,
+        33.0,
+        false,
+        true,
+        true,
+        credits,
+        allowance,
+      ), // full
+      buildQuotaSubParts(
+        plan,
+        true,
+        false,
+        true,
+        28.0,
+        33.0,
+        false,
+        true,
+        true,
+        credits,
+      ), // drop allowance
+      buildQuotaSubParts(
+        plan,
+        true,
+        false,
+        true,
+        28.0,
+        33.0,
+        false,
+        false,
+        true,
+        credits,
+      ), // merge kWh unit
+      buildQuotaSubParts(
+        plan,
+        true,
+        false,
+        true,
+        28.0,
+        null,
+        false,
+        false,
+        true,
+        credits,
+      ), // drop "/total"
+      buildQuotaSubParts(
+        plan,
+        true,
+        false,
+        false,
+        null,
+        null,
+        false,
+        false,
+        true,
+        credits,
+      ), // drop kWh
+      buildQuotaSubParts(
+        plan,
+        true,
+        false,
+        false,
+        null,
+        null,
+        false,
+        false,
+        false,
+        credits,
+      ), // drop status dot
+      plan, // plan only
     ];
 
     for (let i = 1; i < levels.length; i++) {
-      expect(termVisWidth(levels[i])).toBeLessThanOrEqual(termVisWidth(levels[i - 1]));
+      expect(termVisWidth(levels[i])).toBeLessThanOrEqual(
+        termVisWidth(levels[i - 1]),
+      );
     }
 
     // Last level (plan only) must be positive width
@@ -224,16 +307,73 @@ describe("quota progressive disclosure levels", () => {
     const credits = formatCost(74.62);
 
     const levels = [
-      buildQuotaSubParts(plan, true, false, true, 28.0, 33.0, false, true, true, credits),     // full
-      buildQuotaSubParts(plan, true, false, true, 28.0, 33.0, false, false, true, credits),    // merge kWh unit
-      buildQuotaSubParts(plan, true, false, true, 28.0, null, false, false, true, credits),    // drop "/total"
-      buildQuotaSubParts(plan, true, false, false, null, null, false, false, true, credits),  // drop kWh
-      buildQuotaSubParts(plan, true, false, false, null, null, false, false, false, credits),  // drop status dot
-      plan,                                                                                       // plan only
+      buildQuotaSubParts(
+        plan,
+        true,
+        false,
+        true,
+        28.0,
+        33.0,
+        false,
+        true,
+        true,
+        credits,
+      ), // full
+      buildQuotaSubParts(
+        plan,
+        true,
+        false,
+        true,
+        28.0,
+        33.0,
+        false,
+        false,
+        true,
+        credits,
+      ), // merge kWh unit
+      buildQuotaSubParts(
+        plan,
+        true,
+        false,
+        true,
+        28.0,
+        null,
+        false,
+        false,
+        true,
+        credits,
+      ), // drop "/total"
+      buildQuotaSubParts(
+        plan,
+        true,
+        false,
+        false,
+        null,
+        null,
+        false,
+        false,
+        true,
+        credits,
+      ), // drop kWh
+      buildQuotaSubParts(
+        plan,
+        true,
+        false,
+        false,
+        null,
+        null,
+        false,
+        false,
+        false,
+        credits,
+      ), // drop status dot
+      plan, // plan only
     ];
 
     for (let i = 1; i < levels.length; i++) {
-      expect(termVisWidth(levels[i])).toBeLessThanOrEqual(termVisWidth(levels[i - 1]));
+      expect(termVisWidth(levels[i])).toBeLessThanOrEqual(
+        termVisWidth(levels[i - 1]),
+      );
     }
   });
 
@@ -242,12 +382,79 @@ describe("quota progressive disclosure levels", () => {
     const credits = "$74.62";
     const allowance = "∙ ⚷ $0.12/$1.00/d";
 
-    const full = buildQuotaSubParts(plan, true, false, true, 28.0, 33.0, false, true, true, credits, allowance);
-    const noAllowance = buildQuotaSubParts(plan, true, false, true, 28.0, 33.0, false, true, true, credits);
-    const mergedUnit = buildQuotaSubParts(plan, true, false, true, 28.0, 33.0, false, false, true, credits);
-    const noTotal = buildQuotaSubParts(plan, true, false, true, 28.0, null, false, false, true, credits);
-    const noKwh = buildQuotaSubParts(plan, true, false, false, null, null, false, false, true, credits);
-    const noDot = buildQuotaSubParts(plan, true, false, false, null, null, false, false, false, credits);
+    const full = buildQuotaSubParts(
+      plan,
+      true,
+      false,
+      true,
+      28.0,
+      33.0,
+      false,
+      true,
+      true,
+      credits,
+      allowance,
+    );
+    const noAllowance = buildQuotaSubParts(
+      plan,
+      true,
+      false,
+      true,
+      28.0,
+      33.0,
+      false,
+      true,
+      true,
+      credits,
+    );
+    const mergedUnit = buildQuotaSubParts(
+      plan,
+      true,
+      false,
+      true,
+      28.0,
+      33.0,
+      false,
+      false,
+      true,
+      credits,
+    );
+    const noTotal = buildQuotaSubParts(
+      plan,
+      true,
+      false,
+      true,
+      28.0,
+      null,
+      false,
+      false,
+      true,
+      credits,
+    );
+    const noKwh = buildQuotaSubParts(
+      plan,
+      true,
+      false,
+      false,
+      null,
+      null,
+      false,
+      false,
+      true,
+      credits,
+    );
+    const noDot = buildQuotaSubParts(
+      plan,
+      true,
+      false,
+      false,
+      null,
+      null,
+      false,
+      false,
+      false,
+      credits,
+    );
 
     // Verify the compression semantics
     expect(mergedUnit).toContain("kWh");
@@ -263,7 +470,7 @@ describe("quota progressive disclosure levels", () => {
   });
 
   it("handles pay-as-you-go with progressive levels", () => {
-    const credits = formatCost(12.50);
+    const credits = formatCost(12.5);
     const allowance = "∙ ⚷ $0.50/$2.00/wk";
 
     const levels = [
@@ -273,7 +480,9 @@ describe("quota progressive disclosure levels", () => {
     ];
 
     for (let i = 1; i < levels.length; i++) {
-      expect(termVisWidth(levels[i])).toBeLessThanOrEqual(termVisWidth(levels[i - 1]));
+      expect(termVisWidth(levels[i])).toBeLessThanOrEqual(
+        termVisWidth(levels[i - 1]),
+      );
     }
   });
 });
@@ -338,31 +547,38 @@ describe("termVisWidth non-BMP (flag emoji, 🌱)", () => {
 // ── Carbon progressive disclosure ─────────────────────────────────────────
 
 describe("carbon progressive disclosure levels", () => {
-  const carbonStr = formatCarbon(1.24);        // "1.24 g"
+  const carbonStr = formatCarbon(1.24); // "1.24 g"
   const carbonCompact = formatCarbonCompact(1.24); // "1.24g"
 
   it("carbon tiers are monotonically non-increasing in width", () => {
-    const tiers = [`🌱${carbonStr} CO₂`, `🌱${carbonStr}`, `🌱${carbonCompact}`, ""];
+    const tiers = [
+      `🌱${carbonStr} CO₂`,
+      `🌱${carbonStr}`,
+      `🌱${carbonCompact}`,
+      "",
+    ];
     for (let i = 1; i < tiers.length; i++) {
-      expect(termVisWidth(tiers[i])).toBeLessThanOrEqual(termVisWidth(tiers[i - 1]));
+      expect(termVisWidth(tiers[i])).toBeLessThanOrEqual(
+        termVisWidth(tiers[i - 1]),
+      );
     }
   });
 
-  it("carbon inserted between cost and MCR keeps levels monotonic", () => {
+  it("carbon inserted between cost and drop keeps levels monotonic", () => {
     const core = `⚡${formatEnergy(2772)} ${formatCost(0.003829)}`; // ⚡0.77 mWh $0.003829
     const carbonFull = `🌱${carbonStr} CO₂`;
-    const mcrFull = "MCR 3bb342a0 drop<5 APC 85% compact 45%";
     const levels = [
-      `${core} ${carbonFull}  ${mcrFull}`, // full
-      `${core} ${carbonFull}`,             // drop MCR
-      `${core} 🌱${carbonStr}`,            // drop "CO₂" suffix
-      `${core} 🌱${carbonCompact}`,        // compact carbon
-      core,                                // drop carbon
+      `${core} ${carbonFull}`, // full: core + carbon
+      `${core} 🌱${carbonStr}`, // drop "CO₂" suffix
+      `${core} 🌱${carbonCompact}`, // compact carbon
+      core, // drop carbon
       `⚡${formatEnergyCompact(2772)} ${formatCost(0.003829)}`, // compress + cost
-      `⚡${formatEnergyCompact(2772)}`,   // compressed only
+      `⚡${formatEnergyCompact(2772)}`, // compressed only
     ];
     for (let i = 1; i < levels.length; i++) {
-      expect(termVisWidth(levels[i])).toBeLessThanOrEqual(termVisWidth(levels[i - 1]));
+      expect(termVisWidth(levels[i])).toBeLessThanOrEqual(
+        termVisWidth(levels[i - 1]),
+      );
     }
   });
 });
@@ -373,14 +589,18 @@ describe("region badge progressive disclosure levels", () => {
   it("region tiers (flag→intensity→short→dropped) are monotonic", () => {
     const tiers = ["🇺🇸 PJM 416", "PJM 416", "PJM", ""];
     for (let i = 1; i < tiers.length; i++) {
-      expect(termVisWidth(tiers[i])).toBeLessThanOrEqual(termVisWidth(tiers[i - 1]));
+      expect(termVisWidth(tiers[i])).toBeLessThanOrEqual(
+        termVisWidth(tiers[i - 1]),
+      );
     }
   });
 
   it("fallback intensities carry a ~ marker (still monotonic)", () => {
     const tiers = ["🇺🇸 DUK 378~", "DUK 378~", "DUK", ""];
     for (let i = 1; i < tiers.length; i++) {
-      expect(termVisWidth(tiers[i])).toBeLessThanOrEqual(termVisWidth(tiers[i - 1]));
+      expect(termVisWidth(tiers[i])).toBeLessThanOrEqual(
+        termVisWidth(tiers[i - 1]),
+      );
     }
   });
 
@@ -395,7 +615,9 @@ describe("region badge progressive disclosure levels", () => {
       "pro", // drop badge
     ];
     for (let i = 1; i < levels.length; i++) {
-      expect(termVisWidth(levels[i])).toBeLessThanOrEqual(termVisWidth(levels[i - 1]));
+      expect(termVisWidth(levels[i])).toBeLessThanOrEqual(
+        termVisWidth(levels[i - 1]),
+      );
     }
   });
 });
@@ -436,19 +658,36 @@ describe("buildRegionText (standalone region compressor)", () => {
 // Replica of the updateEnergyStatus widget-assembly decision: where does the
 // region badge go when the quota line is off but carbon is on?
 function assembleRegion(opts: {
-  energyWidget: boolean; quotaWidget: boolean; carbonWidget: boolean; regionText?: string;
+  energyWidget: boolean;
+  quotaWidget: boolean;
+  carbonWidget: boolean;
+  regionText?: string;
 }) {
   const { energyWidget, quotaWidget, carbonWidget, regionText } = opts;
   const regionCarriedByQuota = quotaWidget;
-  const regionStandaloneText = carbonWidget && !!regionText && !regionCarriedByQuota ? regionText : undefined;
-  const showWidget = !!(energyWidget || quotaWidget || (carbonWidget && regionStandaloneText));
-  const rightRaw = energyWidget && quotaWidget ? "QUOTA"
-    : energyWidget && regionStandaloneText ? regionStandaloneText
-    : undefined;
-  const leftOnlyRaw = !energyWidget && quotaWidget ? "QUOTA"
-    : !energyWidget && regionStandaloneText ? regionStandaloneText
-    : undefined;
-  const compressRight = !!rightRaw && rightRaw === regionStandaloneText ? "REGION" : undefined;
+  const regionStandaloneText =
+    carbonWidget && !!regionText && !regionCarriedByQuota
+      ? regionText
+      : undefined;
+  const showWidget = !!(
+    energyWidget ||
+    quotaWidget ||
+    (carbonWidget && regionStandaloneText)
+  );
+  const rightRaw =
+    energyWidget && quotaWidget
+      ? "QUOTA"
+      : energyWidget && regionStandaloneText
+        ? regionStandaloneText
+        : undefined;
+  const leftOnlyRaw =
+    !energyWidget && quotaWidget
+      ? "QUOTA"
+      : !energyWidget && regionStandaloneText
+        ? regionStandaloneText
+        : undefined;
+  const compressRight =
+    !!rightRaw && rightRaw === regionStandaloneText ? "REGION" : undefined;
   return { showWidget, rightRaw, leftOnlyRaw, compressRight };
 }
 
@@ -456,7 +695,12 @@ describe("standalone region widget assembly", () => {
   const REGION = "🇺🇸 PJM 416";
 
   it("renders the region on the right when energy shows but quota is off", () => {
-    const r = assembleRegion({ energyWidget: true, quotaWidget: false, carbonWidget: true, regionText: REGION });
+    const r = assembleRegion({
+      energyWidget: true,
+      quotaWidget: false,
+      carbonWidget: true,
+      regionText: REGION,
+    });
     expect(r.showWidget).toBe(true);
     expect(r.rightRaw).toBe(REGION);
     expect(r.leftOnlyRaw).toBeUndefined();
@@ -464,26 +708,45 @@ describe("standalone region widget assembly", () => {
   });
 
   it("renders the region standalone (left-only) when both energy and quota are off", () => {
-    const r = assembleRegion({ energyWidget: false, quotaWidget: false, carbonWidget: true, regionText: REGION });
+    const r = assembleRegion({
+      energyWidget: false,
+      quotaWidget: false,
+      carbonWidget: true,
+      regionText: REGION,
+    });
     expect(r.showWidget).toBe(true);
     expect(r.leftOnlyRaw).toBe(REGION);
     expect(r.rightRaw).toBeUndefined();
   });
 
   it("shows no region when carbon is off", () => {
-    const r = assembleRegion({ energyWidget: false, quotaWidget: false, carbonWidget: false, regionText: REGION });
+    const r = assembleRegion({
+      energyWidget: false,
+      quotaWidget: false,
+      carbonWidget: false,
+      regionText: REGION,
+    });
     expect(r.showWidget).toBe(false);
   });
 
   it("does not render a standalone region when quota carries it", () => {
-    const r = assembleRegion({ energyWidget: true, quotaWidget: true, carbonWidget: true, regionText: REGION });
+    const r = assembleRegion({
+      energyWidget: true,
+      quotaWidget: true,
+      carbonWidget: true,
+      regionText: REGION,
+    });
     expect(r.rightRaw).toBe("QUOTA"); // region rides the quota line
     expect(r.compressRight).toBeUndefined(); // quota compressor
     expect(r.leftOnlyRaw).toBeUndefined();
   });
 
   it("falls back to quota left-only when energy is off but quota is on", () => {
-    const r = assembleRegion({ energyWidget: false, quotaWidget: true, carbonWidget: false });
+    const r = assembleRegion({
+      energyWidget: false,
+      quotaWidget: true,
+      carbonWidget: false,
+    });
     expect(r.showWidget).toBe(true);
     expect(r.leftOnlyRaw).toBe("QUOTA");
     expect(r.rightRaw).toBeUndefined();

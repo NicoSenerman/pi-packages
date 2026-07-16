@@ -18,14 +18,14 @@ type DisplayMode = "widget" | "statusbar" | "off";
 const VALID_DISPLAY_MODES = new Set<string>(["widget", "statusbar", "off"]);
 
 function parseDisplayMode(value: unknown, fallback: DisplayMode): DisplayMode {
-  if (typeof value === "string" && VALID_DISPLAY_MODES.has(value)) return value as DisplayMode;
+  if (typeof value === "string" && VALID_DISPLAY_MODES.has(value))
+    return value as DisplayMode;
   return fallback;
 }
 
 interface NeuralwattConfig {
   energy: DisplayMode;
   quota: DisplayMode;
-  mcr: DisplayMode;
   carbon: DisplayMode;
 }
 
@@ -33,10 +33,15 @@ function parseConfig(raw: any): NeuralwattConfig {
   return {
     energy: parseDisplayMode(raw.energy, "widget"),
     quota: parseDisplayMode(raw.quota, "widget"),
-    mcr: parseDisplayMode(raw.mcr, "widget"),
     carbon: parseDisplayMode(raw.carbon, "widget"),
   };
 }
+
+const DEFAULT_CONFIG: NeuralwattConfig = {
+  energy: "widget",
+  quota: "widget",
+  carbon: "widget",
+};
 
 describe("parseDisplayMode", () => {
   it("accepts valid display modes", () => {
@@ -66,14 +71,13 @@ describe("parseDisplayMode", () => {
 
 describe("parseConfig", () => {
   it("returns defaults for empty object", () => {
-    expect(parseConfig({})).toEqual({ energy: "widget", quota: "widget", mcr: "widget", carbon: "widget" });
+    expect(parseConfig({})).toEqual(DEFAULT_CONFIG);
   });
 
   it("parses valid config", () => {
     expect(parseConfig({ energy: "statusbar", quota: "off" })).toEqual({
       energy: "statusbar",
       quota: "off",
-      mcr: "widget",
       carbon: "widget",
     });
   });
@@ -82,13 +86,11 @@ describe("parseConfig", () => {
     expect(parseConfig({ energy: "bad", quota: "statusbar" })).toEqual({
       energy: "widget",
       quota: "statusbar",
-      mcr: "widget",
       carbon: "widget",
     });
     expect(parseConfig({ energy: "widget", quota: 123 })).toEqual({
       energy: "widget",
       quota: "widget",
-      mcr: "widget",
       carbon: "widget",
     });
   });
@@ -103,7 +105,6 @@ describe("parseConfig", () => {
     expect(parseConfig({ energy: "off", quota: "off" })).toEqual({
       energy: "off",
       quota: "off",
-      mcr: "widget",
       carbon: "widget",
     });
   });
@@ -112,7 +113,6 @@ describe("parseConfig", () => {
     expect(parseConfig({ energy: "statusbar", quota: "statusbar" })).toEqual({
       energy: "statusbar",
       quota: "statusbar",
-      mcr: "widget",
       carbon: "widget",
     });
   });
@@ -121,13 +121,11 @@ describe("parseConfig", () => {
     expect(parseConfig({ energy: "off", quota: "statusbar" })).toEqual({
       energy: "off",
       quota: "statusbar",
-      mcr: "widget",
       carbon: "widget",
     });
     expect(parseConfig({ energy: "statusbar", quota: "widget" })).toEqual({
       energy: "statusbar",
       quota: "widget",
-      mcr: "widget",
       carbon: "widget",
     });
   });
@@ -136,7 +134,6 @@ describe("parseConfig", () => {
     expect(parseConfig({ carbon: "statusbar" })).toEqual({
       energy: "widget",
       quota: "widget",
-      mcr: "widget",
       carbon: "statusbar",
     });
     expect(parseConfig({ carbon: "off" }).carbon).toBe("off");
@@ -167,11 +164,11 @@ describe("config file loading", () => {
         const raw = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
         return parseConfig(raw);
       } catch {
-        return { energy: "widget", quota: "widget", mcr: "widget", carbon: "widget" };
+        return { ...DEFAULT_CONFIG };
       }
     }
 
-    expect(loadConfig()).toEqual({ energy: "widget", quota: "widget", mcr: "widget", carbon: "widget" });
+    expect(loadConfig()).toEqual(DEFAULT_CONFIG);
   });
 
   it("populates the config file with defaults when it does not exist", () => {
@@ -181,8 +178,6 @@ describe("config file loading", () => {
       throw new Error("ENOENT");
     });
 
-    const defaultConfig = { energy: "widget", quota: "widget", mcr: "widget", carbon: "widget" };
-
     function loadConfigWithPopulate(): NeuralwattConfig {
       try {
         const raw = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
@@ -190,20 +185,25 @@ describe("config file loading", () => {
       } catch {
         try {
           fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
-          fs.writeFileSync(CONFIG_PATH, JSON.stringify(defaultConfig, null, 2) + "\n");
+          fs.writeFileSync(
+            CONFIG_PATH,
+            JSON.stringify(DEFAULT_CONFIG, null, 2) + "\n",
+          );
         } catch {
           // Write failure is non-fatal
         }
-        return { ...defaultConfig };
+        return { ...DEFAULT_CONFIG };
       }
     }
 
     const result = loadConfigWithPopulate();
-    expect(result).toEqual({ energy: "widget", quota: "widget", mcr: "widget", carbon: "widget" });
-    expect(mkdirMock).toHaveBeenCalledWith(path.dirname(CONFIG_PATH), { recursive: true });
+    expect(result).toEqual(DEFAULT_CONFIG);
+    expect(mkdirMock).toHaveBeenCalledWith(path.dirname(CONFIG_PATH), {
+      recursive: true,
+    });
     expect(writeMock).toHaveBeenCalledWith(
       CONFIG_PATH,
-      JSON.stringify(defaultConfig, null, 2) + "\n",
+      JSON.stringify(DEFAULT_CONFIG, null, 2) + "\n",
     );
   });
 
@@ -218,8 +218,6 @@ describe("config file loading", () => {
       throw new Error("ENOENT");
     });
 
-    const defaultConfig = { energy: "widget", quota: "widget", mcr: "widget", carbon: "widget" };
-
     function loadConfigWithPopulate(): NeuralwattConfig {
       try {
         const raw = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
@@ -227,15 +225,18 @@ describe("config file loading", () => {
       } catch {
         try {
           fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
-          fs.writeFileSync(CONFIG_PATH, JSON.stringify(defaultConfig, null, 2) + "\n");
+          fs.writeFileSync(
+            CONFIG_PATH,
+            JSON.stringify(DEFAULT_CONFIG, null, 2) + "\n",
+          );
         } catch {
           // Write failure is non-fatal
         }
-        return { ...defaultConfig };
+        return { ...DEFAULT_CONFIG };
       }
     }
 
-    expect(loadConfigWithPopulate()).toEqual({ energy: "widget", quota: "widget", mcr: "widget", carbon: "widget" });
+    expect(loadConfigWithPopulate()).toEqual(DEFAULT_CONFIG);
   });
 
   it("returns defaults when config file has invalid JSON", () => {
@@ -246,11 +247,11 @@ describe("config file loading", () => {
         const raw = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
         return parseConfig(raw);
       } catch {
-        return { energy: "widget", quota: "widget", mcr: "widget", carbon: "widget" };
+        return { ...DEFAULT_CONFIG };
       }
     }
 
-    expect(loadConfig()).toEqual({ energy: "widget", quota: "widget", mcr: "widget", carbon: "widget" });
+    expect(loadConfig()).toEqual(DEFAULT_CONFIG);
   });
 
   it("loads a valid config file", () => {
@@ -263,11 +264,15 @@ describe("config file loading", () => {
         const raw = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
         return parseConfig(raw);
       } catch {
-        return { energy: "widget", quota: "widget", mcr: "widget", carbon: "widget" };
+        return { ...DEFAULT_CONFIG };
       }
     }
 
-    expect(loadConfig()).toEqual({ energy: "statusbar", quota: "off", mcr: "widget", carbon: "widget" });
+    expect(loadConfig()).toEqual({
+      energy: "statusbar",
+      quota: "off",
+      carbon: "widget",
+    });
   });
 
   it("ignores unknown keys in the config file", () => {
@@ -280,11 +285,15 @@ describe("config file loading", () => {
         const raw = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
         return parseConfig(raw);
       } catch {
-        return { energy: "widget", quota: "widget", mcr: "widget", carbon: "widget" };
+        return { ...DEFAULT_CONFIG };
       }
     }
 
-    expect(loadConfig()).toEqual({ energy: "off", quota: "statusbar", mcr: "widget", carbon: "widget" });
+    expect(loadConfig()).toEqual({
+      energy: "off",
+      quota: "statusbar",
+      carbon: "widget",
+    });
   });
 });
 

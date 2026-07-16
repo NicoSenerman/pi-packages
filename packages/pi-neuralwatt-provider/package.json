@@ -1,6 +1,6 @@
 {
   "name": "pi-neuralwatt-provider",
-  "version": "1.7.3",
+  "version": "1.7.4",
   "description": "Neuralwatt provider extension for pi - Access Kimi, GLM, Qwen, GPT-OSS, Devstral, and MiniMax models through the Neuralwatt API",
   "type": "module",
   "main": "index.ts",
@@ -14,8 +14,7 @@
     "probe:image-limit": "node scripts/test-image-limit.mjs",
     "probe:image-limit-stream": "node scripts/test-image-limit-stream.mjs",
     "probe:vision-models": "node scripts/probe-vision-models.mjs",
-    "update-models": "node scripts/update-models.js",
-    "sync-mcr": "curl -sL https://raw.githubusercontent.com/neuralwatt/neuralwatt-tools/refs/heads/main/plugins/pi/extensions/neuralwatt-mcr.ts -o chad-mcr-upstream.ts"
+    "update-models": "node scripts/update-models.js"
   },
   "keywords": [
     "pi",
@@ -42,8 +41,7 @@
   },
   "pi": {
     "extensions": [
-      "./index.ts",
-      "./neuralwatt-mcr.ts"
+      "./index.ts"
     ]
   },
   "packageManager": "pnpm@11.6.0"

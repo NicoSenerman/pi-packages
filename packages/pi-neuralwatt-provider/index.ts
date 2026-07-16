@@ -34,7 +34,6 @@
  *   {
  *     "energy": "widget",         // "widget" | "statusbar" | "off"
  *     "quota": "widget",          // "widget" | "statusbar" | "off"
- *     "mcr": "widget",            // "widget" | "statusbar" | "off"
  *     "carbon": "widget",         // "widget" | "statusbar" | "off"
  *     "hideOnOtherProvider": false  // hide display when a non-Neuralwatt model is active
  *   }
@@ -64,9 +63,19 @@
  * @see https://neuralwatt.com
  */
 
-import type { SimpleStreamOptions, AssistantMessageEventStream } from "@earendil-works/pi-ai/compat";
-import { clampThinkingLevel, streamOpenAICompletions } from "@earendil-works/pi-ai/compat";
-import { getAgentDir, type ExtensionAPI, type ModelRegistry } from "@earendil-works/pi-coding-agent";
+import type {
+  SimpleStreamOptions,
+  AssistantMessageEventStream,
+} from "@earendil-works/pi-ai/compat";
+import {
+  clampThinkingLevel,
+  streamOpenAICompletions,
+} from "@earendil-works/pi-ai/compat";
+import {
+  getAgentDir,
+  type ExtensionAPI,
+  type ModelRegistry,
+} from "@earendil-works/pi-coding-agent";
 import modelsData from "./models.json" with { type: "json" };
 import customModelsData from "./custom-models.json" with { type: "json" };
 import patchesData from "./patch.json" with { type: "json" };
@@ -81,12 +90,11 @@ type DisplayMode = "widget" | "statusbar" | "off";
 interface NeuralwattConfig {
   energy: DisplayMode;
   quota: DisplayMode;
-  mcr: DisplayMode;
   // Where carbon emissions (session CO₂) + the fleet grid/region badge are
   // shown. CO₂ augments the energy line; the grid badge augments the quota
   // line. "off" hides both. See README "Display Configuration".
   carbon: DisplayMode;
-  // When true, hide energy/quota/MCR display if the active model's provider
+  // When true, hide energy/quota display if the active model's provider
   // is not "neuralwatt". Prevents stale display after switching providers.
   hideOnOtherProvider: boolean;
   // Per-model overrides applied ON TOP of patch.json + custom-models.json, keyed
@@ -107,11 +115,17 @@ const CONFIG_PATH = path.join(getAgentDir(), "extensions", "neuralwatt.json");
 const VALID_DISPLAY_MODES = new Set<string>(["widget", "statusbar", "off"]);
 
 function parseDisplayMode(value: unknown, fallback: DisplayMode): DisplayMode {
-  if (typeof value === "string" && VALID_DISPLAY_MODES.has(value)) return value as DisplayMode;
+  if (typeof value === "string" && VALID_DISPLAY_MODES.has(value))
+    return value as DisplayMode;
   return fallback;
 }
 
-const DEFAULT_CONFIG: NeuralwattConfig = { energy: "widget", quota: "widget", mcr: "widget", carbon: "widget", hideOnOtherProvider: false };
+const DEFAULT_CONFIG: NeuralwattConfig = {
+  energy: "widget",
+  quota: "widget",
+  carbon: "widget",
+  hideOnOtherProvider: false,
+};
 
 function loadConfig(): NeuralwattConfig {
   try {
@@ -119,16 +133,21 @@ function loadConfig(): NeuralwattConfig {
     return {
       energy: parseDisplayMode(raw.energy, "widget"),
       quota: parseDisplayMode(raw.quota, "widget"),
-      mcr: parseDisplayMode(raw.mcr, "widget"),
       carbon: parseDisplayMode(raw.carbon, "widget"),
-      hideOnOtherProvider: typeof raw.hideOnOtherProvider === "boolean" ? raw.hideOnOtherProvider : false,
+      hideOnOtherProvider:
+        typeof raw.hideOnOtherProvider === "boolean"
+          ? raw.hideOnOtherProvider
+          : false,
       modelOverrides: parseModelOverrides(raw.modelOverrides),
     };
   } catch {
     // Config file missing or invalid — populate with defaults so the user can discover it
     try {
       fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
-      fs.writeFileSync(CONFIG_PATH, JSON.stringify(DEFAULT_CONFIG, null, 2) + "\n");
+      fs.writeFileSync(
+        CONFIG_PATH,
+        JSON.stringify(DEFAULT_CONFIG, null, 2) + "\n",
+      );
     } catch {
       // Write failure is non-fatal — defaults still work in memory
     }
@@ -138,22 +157,34 @@ function loadConfig(): NeuralwattConfig {
 
 // Validate user-supplied modelOverrides from the config file. Non-object / non-string
 // ids are dropped silently so a malformed file doesn't crash model registration.
-function parseModelOverrides(raw: unknown): Record<string, ModelOverride> | undefined {
+function parseModelOverrides(
+  raw: unknown,
+): Record<string, ModelOverride> | undefined {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
   const result: Record<string, ModelOverride> = {};
   for (const [id, override] of Object.entries(raw as Record<string, unknown>)) {
-    if (typeof id !== "string" || !override || typeof override !== "object" || Array.isArray(override)) continue;
+    if (
+      typeof id !== "string" ||
+      !override ||
+      typeof override !== "object" ||
+      Array.isArray(override)
+    )
+      continue;
     const o = override as Record<string, unknown>;
     const parsed: ModelOverride = {};
     if (o.thinkingLevelMap && typeof o.thinkingLevelMap === "object") {
       const m: Record<string, string | null> = {};
-      for (const [k, v] of Object.entries(o.thinkingLevelMap as Record<string, unknown>)) {
+      for (const [k, v] of Object.entries(
+        o.thinkingLevelMap as Record<string, unknown>,
+      )) {
         if (v === null || typeof v === "string") m[k] = v;
       }
       if (Object.keys(m).length > 0) parsed.thinkingLevelMap = m;
     }
-    if (o.compat && typeof o.compat === "object") parsed.compat = o.compat as Record<string, any>;
-    if (o.vision && typeof o.vision === "object") parsed.vision = o.vision as { maxImagesPerRequest?: number };
+    if (o.compat && typeof o.compat === "object")
+      parsed.compat = o.compat as Record<string, any>;
+    if (o.vision && typeof o.vision === "object")
+      parsed.vision = o.vision as { maxImagesPerRequest?: number };
     if (Object.keys(parsed).length > 0) result[id] = parsed;
   }
   return Object.keys(result).length > 0 ? result : undefined;
@@ -209,7 +240,8 @@ interface NeuralwattModel {
     supportsDeveloperRole?: boolean;
     supportsStore?: boolean;
     maxTokensField?: "max_completion_tokens" | "max_tokens";
-    thinkingFormat?: "openai" | "openrouter" | "zai" | "qwen" | "qwen-chat-template";
+    thinkingFormat?:
+      "openai" | "openrouter" | "zai" | "qwen" | "qwen-chat-template";
     supportsReasoningEffort?: boolean;
     requiresAssistantAfterToolResult?: boolean;
     requiresReasoningContentOnAssistantMessages?: boolean;
@@ -232,11 +264,19 @@ interface NeuralwattModel {
 
 // ─── Patch & Custom Model Merging ─────────────────────────────────────────────
 
-function applyPatch(model: NeuralwattModel, patch: Record<string, any>): NeuralwattModel {
+function applyPatch(
+  model: NeuralwattModel,
+  patch: Record<string, any>,
+): NeuralwattModel {
   const result = { ...model };
   const NESTED_KEYS = new Set(["compat", "vision", "cost"]);
   for (const [key, value] of Object.entries(patch)) {
-    if (NESTED_KEYS.has(key) && typeof value === "object" && value !== null && typeof (result as any)[key] === "object") {
+    if (
+      NESTED_KEYS.has(key) &&
+      typeof value === "object" &&
+      value !== null &&
+      typeof (result as any)[key] === "object"
+    ) {
       (result as any)[key] = { ...(result as any)[key], ...value };
     } else {
       (result as any)[key] = value;
@@ -259,11 +299,19 @@ function applyPatch(model: NeuralwattModel, patch: Record<string, any>): Neuralw
 // thinkingLevelMap (so a user can override a single thinking level without
 // redeclaring the whole map). Scalars are replaced. No reasoning-cleanup
 // (unlike applyPatch) — the user's override is authoritative.
-function applyModelOverride(model: NeuralwattModel, override: ModelOverride): NeuralwattModel {
+function applyModelOverride(
+  model: NeuralwattModel,
+  override: ModelOverride,
+): NeuralwattModel {
   const result = { ...model };
   const NESTED_KEYS = new Set(["compat", "vision", "cost", "thinkingLevelMap"]);
   for (const [key, value] of Object.entries(override)) {
-    if (NESTED_KEYS.has(key) && typeof value === "object" && value !== null && typeof (result as any)[key] === "object") {
+    if (
+      NESTED_KEYS.has(key) &&
+      typeof value === "object" &&
+      value !== null &&
+      typeof (result as any)[key] === "object"
+    ) {
       (result as any)[key] = { ...(result as any)[key], ...value };
     } else {
       (result as any)[key] = value;
@@ -356,6 +404,14 @@ const LIVE_FETCH_TIMEOUT_MS = 8000;
 
 /** Transform a model from the Neuralwatt /v1/models API using metadata. */
 function transformApiModel(apiModel: any): NeuralwattModel | null {
+  // Drop long-context (1M-token) variants — ids ending in "-long"
+  // (e.g. neuralwatt/kimi-k2.6-long). These are served by the live API but
+  // belong to the memory/context-reuse subsystem that has been removed from
+  // this extension. Returning null here lets the .filter(m => m !== null) at
+  // the call site drop them.
+  if (typeof apiModel?.id === "string" && apiModel.id.endsWith("-long")) {
+    return null;
+  }
   const meta = apiModel.metadata || {};
   const pricing = meta.pricing || {};
   const caps = meta.capabilities || {};
@@ -369,7 +425,8 @@ function transformApiModel(apiModel: any): NeuralwattModel | null {
     inputTypes.push("image");
   }
 
-  const contextWindow = limits.max_context_length || apiModel.max_model_len || 131072;
+  const contextWindow =
+    limits.max_context_length || apiModel.max_model_len || 131072;
   const maxTokens = limits.max_output_tokens || contextWindow;
 
   const model: NeuralwattModel = {
@@ -405,17 +462,24 @@ function transformApiModel(apiModel: any): NeuralwattModel | null {
   return model;
 }
 
-async function fetchLiveModels(apiKey: string, signal?: AbortSignal): Promise<NeuralwattModel[] | null> {
+async function fetchLiveModels(
+  apiKey: string,
+  signal?: AbortSignal,
+): Promise<NeuralwattModel[] | null> {
   try {
     const response = await fetch(MODELS_URL, {
       headers: { Authorization: `Bearer ${apiKey}` },
-      signal: signal ? AbortSignal.any([AbortSignal.timeout(LIVE_FETCH_TIMEOUT_MS), signal]) : AbortSignal.timeout(LIVE_FETCH_TIMEOUT_MS),
+      signal: signal
+        ? AbortSignal.any([AbortSignal.timeout(LIVE_FETCH_TIMEOUT_MS), signal])
+        : AbortSignal.timeout(LIVE_FETCH_TIMEOUT_MS),
     });
     if (!response.ok) return null;
     const data = await response.json();
-    const apiModels = Array.isArray(data) ? data : (data.data || []);
+    const apiModels = Array.isArray(data) ? data : data.data || [];
     if (!Array.isArray(apiModels) || apiModels.length === 0) return null;
-    return apiModels.map(transformApiModel).filter((m): m is NeuralwattModel => m !== null);
+    return apiModels
+      .map(transformApiModel)
+      .filter((m): m is NeuralwattModel => m !== null);
   } catch {
     return null;
   }
@@ -439,8 +503,11 @@ function cacheModels(models: NeuralwattModel[]): void {
   }
 }
 
-function mergeWithEmbedded(liveModels: NeuralwattModel[], embeddedModels: NeuralwattModel[]): NeuralwattModel[] {
-  const embeddedMap = new Map(embeddedModels.map(m => [m.id, m]));
+function mergeWithEmbedded(
+  liveModels: NeuralwattModel[],
+  embeddedModels: NeuralwattModel[],
+): NeuralwattModel[] {
+  const embeddedMap = new Map(embeddedModels.map((m) => [m.id, m]));
   const seen = new Set<string>();
   const result: NeuralwattModel[] = [];
   for (const liveModel of liveModels) {
@@ -481,7 +548,7 @@ function loadStaleModels(embeddedModels: NeuralwattModel[]): NeuralwattModel[] {
   if (!cached || cached.length === 0) return embeddedModels;
 
   // Merge embedded models that are missing from cache (newly added models)
-  const cachedMap = new Map(cached.map(m => [m.id, m]));
+  const cachedMap = new Map(cached.map((m) => [m.id, m]));
   for (const em of embeddedModels) {
     if (!cachedMap.has(em.id)) {
       cached.push(em);
@@ -490,7 +557,11 @@ function loadStaleModels(embeddedModels: NeuralwattModel[]): NeuralwattModel[] {
   return cached;
 }
 
-async function revalidateModels(apiKey: string | undefined, embeddedModels: NeuralwattModel[], signal?: AbortSignal): Promise<NeuralwattModel[] | null> {
+async function revalidateModels(
+  apiKey: string | undefined,
+  embeddedModels: NeuralwattModel[],
+  signal?: AbortSignal,
+): Promise<NeuralwattModel[] | null> {
   if (!apiKey) return null;
   const liveModels = await fetchLiveModels(apiKey, signal);
   if (!liveModels || liveModels.length === 0) return null;
@@ -505,7 +576,8 @@ let cachedApiKey: string | undefined;
 let revalidateAbort: AbortController | null = null;
 
 async function resolveApiKey(modelRegistry: ModelRegistry): Promise<void> {
-  cachedApiKey = await modelRegistry.getApiKeyForProvider("neuralwatt") ?? undefined;
+  cachedApiKey =
+    (await modelRegistry.getApiKeyForProvider("neuralwatt")) ?? undefined;
 }
 
 // ─── Session State (event-sourced via pi.appendEntry) ─────────────────────────
@@ -514,28 +586,22 @@ interface EnergyEvent {
   energy_joules: number;
   cost_usd: number;
   // Raw SSE comment payloads, stored verbatim. These are the source of
-  // truth for MCR replay — future upstream fields flow through without
-  // code changes. Not used for energy/cost replay (those are cumulative
+  // truth for carbon/grid replay (latest-wins fields flow through without
+  // code changes). Not used for energy/cost replay (those are cumulative
   // sums from the explicit fields above).
   sse_energy_raw?: Record<string, unknown>;
-  sse_mcr_session_raw?: Record<string, unknown>;
   sse_cost_raw?: Record<string, unknown>;
 }
 
 const ENERGY_ENTRY_TYPE = "neuralwatt-energy";
 const STATUS_KEY_ENERGY = "neuralwatt-energy";
 const STATUS_KEY_QUOTA = "neuralwatt-quota";
-const STATUS_KEY_MCR = "neuralwatt-mcr";
 
 let sessionEnergyJoules = 0;
 let sessionCostUsd = 0;
-let sessionMcrFp: string | null = null;
-let sessionSafeDropBefore = 0;
-let sessionApcHitRate: number | undefined;
-let sessionCompactRatio: number | undefined;
 // Carbon/grid (from sse_energy_raw). Carbon is cumulative (like energy);
-// grid_id/intensity/carbon_source are latest-wins (like MCR fp) — the fleet
-// routes per-request, so the most recent request's grid is the "current" one.
+// grid_id/intensity/carbon_source are latest-wins — the fleet routes
+// per-request, so the most recent request's grid is the "current" one.
 let sessionCarbonGrams = 0;
 let sessionGridId: string | null = null;
 let sessionGridIntensity: number | undefined;
@@ -543,66 +609,23 @@ let sessionGridCarbonSource: string | undefined;
 let pendingEnergyJoules = 0;
 let pendingCostUsd = 0;
 let pendingEnergyRaw: Record<string, unknown> | null = null;
-let pendingMcrSessionRaw: Record<string, unknown> | null = null;
 let pendingCostRaw: Record<string, unknown> | null = null;
 let teeReader: Promise<void> | undefined;
 
-// Shared bridge for raw SSE comment payloads parsed from the stream tee.
-// Uses globalThis so the neuralwatt-mcr.ts extension (a separate ESM
-// module loaded by Pi) can consume the data regardless of whether Pi
-// shares the same module instance for index.ts. If two import() calls
-// resolve to different module instances, module-level variables are
-// NOT shared — but globalThis always is (same JS process). Index.ts
-// publishes to the bridge in its turn_end handler after awaiting the
-// tee reader; neuralwatt-mcr.ts consumes from the bridge in its own
-// turn_end handler.
-const NW_MCR_BRIDGE = Symbol.for("pi-neuralwatt-provider.mcr-bridge");
-
-interface NWMCRRidge {
-  energyRaw: Record<string, unknown> | null;
-  mcrSessionRaw: Record<string, unknown> | null;
-  costRaw: Record<string, unknown> | null;
-}
-
-function getMCRRidge(): NWMCRRidge {
-  if (!(globalThis as any)[NW_MCR_BRIDGE]) {
-    (globalThis as any)[NW_MCR_BRIDGE] = { energyRaw: null, mcrSessionRaw: null, costRaw: null };
-  }
-  return (globalThis as any)[NW_MCR_BRIDGE];
-}
-
-export function publishMCRRidge(): void {
-  const bridge = getMCRRidge();
-  bridge.energyRaw = pendingEnergyRaw;
-  bridge.mcrSessionRaw = pendingMcrSessionRaw;
-  bridge.costRaw = pendingCostRaw;
-}
-
-export function consumePendingMCR(): NWMCRRidge {
-  const bridge = getMCRRidge();
-  const result = {
-    energyRaw: bridge.energyRaw,
-    mcrSessionRaw: bridge.mcrSessionRaw,
-    costRaw: bridge.costRaw,
-  };
-  bridge.energyRaw = null;
-  bridge.mcrSessionRaw = null;
-  bridge.costRaw = null;
-  return result;
-}
-
 // Exposed for testing
 export function getPendingState() {
-  return { pendingEnergyJoules, pendingCostUsd, teeReader, pendingEnergyRaw, pendingMcrSessionRaw, pendingCostRaw };
+  return {
+    pendingEnergyJoules,
+    pendingCostUsd,
+    teeReader,
+    pendingEnergyRaw,
+    pendingCostRaw,
+  };
 }
 
 export function resetSessionState() {
   sessionEnergyJoules = 0;
   sessionCostUsd = 0;
-  sessionMcrFp = null;
-  sessionSafeDropBefore = 0;
-  sessionApcHitRate = undefined;
-  sessionCompactRatio = undefined;
   sessionCarbonGrams = 0;
   sessionGridId = null;
   sessionGridIntensity = undefined;
@@ -610,52 +633,27 @@ export function resetSessionState() {
   pendingEnergyJoules = 0;
   pendingCostUsd = 0;
   pendingEnergyRaw = null;
-  pendingMcrSessionRaw = null;
   pendingCostRaw = null;
-  // Also clear the bridge so stale data doesn't leak across tests
-  const bridge = (globalThis as any)[NW_MCR_BRIDGE];
-  if (bridge) {
-    bridge.energyRaw = null;
-    bridge.mcrSessionRaw = null;
-    bridge.costRaw = null;
-  }
 }
 
 function replayEnergyEvents(ctx: any): void {
   sessionEnergyJoules = 0;
   sessionCostUsd = 0;
-  sessionMcrFp = null;
-  sessionSafeDropBefore = 0;
-  sessionApcHitRate = undefined;
-  sessionCompactRatio = undefined;
   sessionCarbonGrams = 0;
   sessionGridId = null;
   sessionGridIntensity = undefined;
   sessionGridCarbonSource = undefined;
   for (const entry of ctx.sessionManager.getBranch()) {
-    if (entry.type === "custom" && entry.customType === ENERGY_ENTRY_TYPE && entry.data) {
+    if (
+      entry.type === "custom" &&
+      entry.customType === ENERGY_ENTRY_TYPE &&
+      entry.data
+    ) {
       sessionEnergyJoules += entry.data.energy_joules || 0;
       sessionCostUsd += entry.data.cost_usd || 0;
-      // MCR state from raw SSE payloads (latest-wins, not cumulative).
-      // Reads from the verbatim payloads so new upstream MCR fields
-      // automatically flow through without interface or code changes.
-      const mcrSession = entry.data.sse_mcr_session_raw as Record<string, unknown> | undefined;
-      if (mcrSession && typeof mcrSession.session_fp === "string") {
-        sessionMcrFp = mcrSession.session_fp;
-        sessionSafeDropBefore =
-          typeof mcrSession.safe_drop_before === "number"
-            ? mcrSession.safe_drop_before
-            : 0;
-      }
-      const energyRaw = entry.data.sse_energy_raw as Record<string, unknown> | undefined;
+      const energyRaw = entry.data.sse_energy_raw as
+        Record<string, unknown> | undefined;
       if (energyRaw) {
-        const mcr = energyRaw.mcr as Record<string, unknown> | undefined;
-        if (mcr && typeof mcr === "object") {
-          if (typeof mcr.apc_hit_rate === "number") sessionApcHitRate = mcr.apc_hit_rate;
-          if (typeof mcr.mcr_compacted_tokens === "number" && typeof mcr.mcr_original_tokens === "number") {
-            sessionCompactRatio = mcr.mcr_compacted_tokens / mcr.mcr_original_tokens;
-          }
-        }
         // Carbon (cumulative) + grid (latest-wins) from the verbatim payload.
         const co2 = energyRaw.carbon_g_co2eq;
         if (typeof co2 === "number") sessionCarbonGrams += co2;
@@ -673,25 +671,11 @@ function replayEnergyEvents(ctx: any): void {
 // Progressive-disclosure energy text. Returns the highest-fidelity string that
 // fits within maxCols visible columns, or undefined if nothing meaningful fits.
 //
-// Levels (each progressively more compressed):
-//   ⚡0.77 mWh $0.003829   full: value (spaced unit) + cost
-//   ⚡0.77mWh $0.003829    compressed: value (merged unit) + cost
-//   ⚡0.77mWh              compressed value only (cost dropped)
-// Progressive-disclosure energy + MCR text. Returns the highest-fidelity
-// string that fits within maxCols visible columns, or undefined if nothing
-// meaningful fits.
+// Carbon (🌱 session CO₂) is inserted between cost and the end. Carbon is
+// dropped before energy itself compresses: the "CO₂" suffix drops first, then
+// the carbon value (compact), then energy compresses.
 //
-// MCR parts are appended after energy and are progressively dropped (compact
-// → APC → drop → fp) before energy itself compresses. This keeps energy
-// visible even when MCR detail doesn't fit.
-//
-// Levels (most → least detail), with carbon (🌱 session CO₂) inserted between
-// cost and MCR — carbon is more core than MCR detail, so MCR drops first, then
-// the "CO₂" suffix, then the carbon value (compact), then energy compresses:
-//   ⚡0.77 mWh $0.003829 🌱1.24 g CO₂  MCR 3bb342a0 drop<5 APC 85% compact 45%
-//   ⚡0.77 mWh $0.003829 🌱1.24 g CO₂  MCR 3bb342a0 drop<5 APC 85%
-//   ⚡0.77 mWh $0.003829 🌱1.24 g CO₂  MCR 3bb342a0 drop<5
-//   ⚡0.77 mWh $0.003829 🌱1.24 g CO₂  MCR 3bb342a0
+// Levels (most → least detail):
 //   ⚡0.77 mWh $0.003829 🌱1.24 g CO₂
 //   ⚡0.77 mWh $0.003829 🌱1.24 g                          drop "CO₂" suffix
 //   ⚡0.77 mWh $0.003829 🌱1.24g                          compact carbon
@@ -700,10 +684,9 @@ function replayEnergyEvents(ctx: any): void {
 //   ⚡0.77mWh                                            compressed only
 function buildEnergyText(maxCols: number): string | undefined {
   const hasEnergy = sessionEnergyJoules > 0 || sessionCostUsd > 0;
-  const hasMCR = config.mcr !== "off" && sessionMcrFp !== null;
   const hasCarbon = config.carbon !== "off" && sessionCarbonGrams > 0;
 
-  if (!hasEnergy && !hasMCR) return undefined;
+  if (!hasEnergy) return undefined;
 
   // Energy string levels
   const energyStr = formatEnergy(sessionEnergyJoules);
@@ -713,68 +696,37 @@ function buildEnergyText(maxCols: number): string | undefined {
   const coreCompressedCost = `⚡${compactStr} ${costStr}`;
   const coreCompressedOnly = `⚡${compactStr}`;
 
-  // MCR parts in priority order (least important dropped first)
-  // compact → APC → drop< → fp → "MCR" prefix
-  const mcrParts: string[] = [];
-  if (sessionMcrFp) mcrParts.push(`MCR ${sessionMcrFp.slice(0, 8)}`);
-  if (sessionSafeDropBefore > 0) mcrParts.push(`drop<${sessionSafeDropBefore}`);
-  if (sessionApcHitRate !== undefined) mcrParts.push(`APC ${(sessionApcHitRate * 100).toFixed(0)}%`);
-  if (sessionCompactRatio !== undefined) mcrParts.push(`compact ${(sessionCompactRatio * 100).toFixed(0)}%`);
-
-  // MCR tiers: full join → drop parts from the end → "" (MCR dropped). Carbon
-  // (below) is more core than MCR detail, so MCR drops before carbon does.
-  const mcrTiers: string[] = [];
-  if (hasMCR) {
-    mcrTiers.push(mcrParts.join(" "));
-    for (let drop = 1; drop <= mcrParts.length; drop++) {
-      const t = mcrParts.slice(0, mcrParts.length - drop).join(" ");
-      if (t !== mcrTiers[mcrTiers.length - 1]) mcrTiers.push(t);
-    }
-    if (mcrTiers[mcrTiers.length - 1] !== "") mcrTiers.push("");
-  } else {
-    mcrTiers.push("");
-  }
-
   // Carbon tiers: "🌱X g CO₂" → "🌱X g" → "🌱Xg" → "" (dropped).
   const carbonTiers: string[] = [];
   if (hasCarbon) {
     const carbonStr = formatCarbon(sessionCarbonGrams);
     const carbonCompact = formatCarbonCompact(sessionCarbonGrams);
-    carbonTiers.push(`🌱${carbonStr} CO₂`, `🌱${carbonStr}`, `🌱${carbonCompact}`, "");
+    carbonTiers.push(
+      `🌱${carbonStr} CO₂`,
+      `🌱${carbonStr}`,
+      `🌱${carbonCompact}`,
+      "",
+    );
   } else {
     carbonTiers.push("");
   }
 
-  // left = energy core + (carbon segment if any). Single space: carbon is part
-  // of the energy core, not a separate panel like MCR (which uses two spaces).
-  const leftWith = (carbonText: string) => (carbonText ? `${coreFull} ${carbonText}` : coreFull);
+  // left = energy core + (carbon segment if any).
+  const leftWith = (carbonText: string) =>
+    carbonText ? `${coreFull} ${carbonText}` : coreFull;
 
   const candidates: string[] = [];
-  const carbonFull = carbonTiers[0];
 
-  if (hasEnergy) {
-    // Phase 1: drop MCR parts (carbon full, core full).
-    for (const mcrText of mcrTiers) {
-      const left = leftWith(carbonFull);
-      const c = mcrText ? `${left}  ${mcrText}` : left;
-      if (c !== candidates[candidates.length - 1]) candidates.push(c);
-    }
-    // Phase 2: MCR dropped — drop carbon tiers (core full).
-    for (const carbonText of carbonTiers.slice(1)) {
-      const c = leftWith(carbonText);
-      if (c !== candidates[candidates.length - 1]) candidates.push(c);
-    }
-    // Phase 3: compress energy core (carbon & MCR dropped).
-    if (candidates[candidates.length - 1] !== coreCompressedCost) candidates.push(coreCompressedCost);
-    if (candidates[candidates.length - 1] !== coreCompressedOnly) candidates.push(coreCompressedOnly);
-  } else {
-    // MCR only, no energy (and thus no carbon — carbon requires energy).
-    candidates.push(mcrParts.join(" "));
-    for (let drop = 1; drop < mcrParts.length; drop++) {
-      candidates.push(mcrParts.slice(0, mcrParts.length - drop).join(" "));
-    }
-    candidates.push(mcrParts[0]);
+  // Phase 1: drop carbon tiers (core full).
+  for (const carbonText of carbonTiers) {
+    const c = leftWith(carbonText);
+    if (c !== candidates[candidates.length - 1]) candidates.push(c);
   }
+  // Phase 2: compress energy core (carbon dropped).
+  if (candidates[candidates.length - 1] !== coreCompressedCost)
+    candidates.push(coreCompressedCost);
+  if (candidates[candidates.length - 1] !== coreCompressedOnly)
+    candidates.push(coreCompressedOnly);
 
   for (const text of candidates) {
     if (termVisWidth(text) <= maxCols) return text;
@@ -829,14 +781,22 @@ interface GridDisplay {
 function countryFlag(cc: string | null): string {
   if (!cc || cc.length !== 2 || !/^[A-Za-z]{2}$/.test(cc)) return "";
   const a = cc.toUpperCase();
-  return String.fromCodePoint(0x1f1e6 + a.charCodeAt(0) - 65, 0x1f1e6 + a.charCodeAt(1) - 65);
+  return String.fromCodePoint(
+    0x1f1e6 + a.charCodeAt(0) - 65,
+    0x1f1e6 + a.charCodeAt(1) - 65,
+  );
 }
 
 export function parseGridId(gridId: string): GridDisplay {
   const parts = gridId.split("-");
   if (parts.length === 1) {
     // bare country code (e.g. "FI", "FR")
-    return { country: gridId, flag: countryFlag(gridId), short: gridId, name: gridId };
+    return {
+      country: gridId,
+      flag: countryFlag(gridId),
+      short: gridId,
+      name: gridId,
+    };
   }
   // "CC-SUBREGION-BA" (e.g. "US-MIDA-PJM"): country = first segment,
   // short = last segment (the balancing-authority id).
@@ -876,9 +836,12 @@ function buildRegionTiers(): string[] {
   if (config.carbon === "off" || !sessionGridId) return [""];
   const g = parseGridId(sessionGridId);
   const fallback =
-    sessionGridCarbonSource === "regional_fallback" || sessionGridCarbonSource === "static_fallback";
+    sessionGridCarbonSource === "regional_fallback" ||
+    sessionGridCarbonSource === "static_fallback";
   const intensity =
-    sessionGridIntensity != null ? `${Math.round(sessionGridIntensity)}${fallback ? "~" : ""}` : "";
+    sessionGridIntensity != null
+      ? `${Math.round(sessionGridIntensity)}${fallback ? "~" : ""}`
+      : "";
   const t1 = [g.flag, g.short, intensity].filter(Boolean).join(" ");
   const t2 = [g.short, intensity].filter(Boolean).join(" ");
   const t3 = g.short;
@@ -897,8 +860,18 @@ interface QuotaResponse {
     accounting_method: string;
   };
   usage: {
-    lifetime: { cost_usd: number; requests: number; tokens: number; energy_kwh: number };
-    current_month: { cost_usd: number; requests: number; tokens: number; energy_kwh: number };
+    lifetime: {
+      cost_usd: number;
+      requests: number;
+      tokens: number;
+      energy_kwh: number;
+    };
+    current_month: {
+      cost_usd: number;
+      requests: number;
+      tokens: number;
+      energy_kwh: number;
+    };
   };
   limits: {
     overage_limit_usd: number | null;
@@ -930,14 +903,19 @@ interface QuotaResponse {
 
 let cachedQuota: QuotaResponse | null = null;
 
-async function fetchQuota(apiKey: string, signal?: AbortSignal): Promise<QuotaResponse | null> {
+async function fetchQuota(
+  apiKey: string,
+  signal?: AbortSignal,
+): Promise<QuotaResponse | null> {
   try {
     const response = await fetch(`${BASE_URL}/quota`, {
       headers: { Authorization: `Bearer ${apiKey}` },
-      signal: signal ? AbortSignal.any([AbortSignal.timeout(LIVE_FETCH_TIMEOUT_MS), signal]) : AbortSignal.timeout(LIVE_FETCH_TIMEOUT_MS),
+      signal: signal
+        ? AbortSignal.any([AbortSignal.timeout(LIVE_FETCH_TIMEOUT_MS), signal])
+        : AbortSignal.timeout(LIVE_FETCH_TIMEOUT_MS),
     });
     if (!response.ok) return null;
-    return await response.json() as QuotaResponse;
+    return (await response.json()) as QuotaResponse;
   } catch {
     return null;
   }
@@ -966,7 +944,11 @@ async function fetchQuota(apiKey: string, signal?: AbortSignal): Promise<QuotaRe
 // (badge held full), then the badge compresses while the quota is at its
 // minimum. When there is no grid (carbon off or no data yet) regionTiers is
 // [""], which makes this a passthrough over the quota tiers.
-function combineQuotaRegion(quotaTiers: string[], regionTiers: string[], maxCols: number): string {
+function combineQuotaRegion(
+  quotaTiers: string[],
+  regionTiers: string[],
+  maxCols: number,
+): string {
   const regionFull = regionTiers[0];
   const last = quotaTiers[quotaTiers.length - 1];
   const candidates: string[] = [];
@@ -1003,7 +985,9 @@ function buildQuotaText(maxCols: number): string | undefined {
   if (q.subscription) {
     const plan = q.subscription.plan;
     const active = q.subscription.status === "active";
-    const pastDue = q.subscription.status === "past_due" || q.subscription.status === "paused";
+    const pastDue =
+      q.subscription.status === "past_due" ||
+      q.subscription.status === "paused";
     const kwhIncl = q.subscription.kwh_included;
     const kwhRem = q.subscription.kwh_remaining;
     const hasKwh = kwhIncl != null && kwhRem != null;
@@ -1013,12 +997,94 @@ function buildQuotaText(maxCols: number): string | undefined {
 
     // Quota tiers from most to least detailed
     const quotaTiers: string[] = [];
-    quotaTiers.push(buildQuotaSubParts(plan, active, pastDue, hasKwh, kwhRem, kwhIncl, overage, true, true, credits, allowance));
-    if (allowance) quotaTiers.push(buildQuotaSubParts(plan, active, pastDue, hasKwh, kwhRem, kwhIncl, overage, true, true, credits));
-    if (hasKwh) quotaTiers.push(buildQuotaSubParts(plan, active, pastDue, true, kwhRem, kwhIncl, overage, false, true, credits));
-    if (hasKwh) quotaTiers.push(buildQuotaSubParts(plan, active, pastDue, true, kwhRem, null, overage, false, true, credits));
-    quotaTiers.push(buildQuotaSubParts(plan, active, pastDue, false, null, null, overage, false, true, credits));
-    quotaTiers.push(buildQuotaSubParts(plan, active, pastDue, false, null, null, overage, false, false, credits));
+    quotaTiers.push(
+      buildQuotaSubParts(
+        plan,
+        active,
+        pastDue,
+        hasKwh,
+        kwhRem,
+        kwhIncl,
+        overage,
+        true,
+        true,
+        credits,
+        allowance,
+      ),
+    );
+    if (allowance)
+      quotaTiers.push(
+        buildQuotaSubParts(
+          plan,
+          active,
+          pastDue,
+          hasKwh,
+          kwhRem,
+          kwhIncl,
+          overage,
+          true,
+          true,
+          credits,
+        ),
+      );
+    if (hasKwh)
+      quotaTiers.push(
+        buildQuotaSubParts(
+          plan,
+          active,
+          pastDue,
+          true,
+          kwhRem,
+          kwhIncl,
+          overage,
+          false,
+          true,
+          credits,
+        ),
+      );
+    if (hasKwh)
+      quotaTiers.push(
+        buildQuotaSubParts(
+          plan,
+          active,
+          pastDue,
+          true,
+          kwhRem,
+          null,
+          overage,
+          false,
+          true,
+          credits,
+        ),
+      );
+    quotaTiers.push(
+      buildQuotaSubParts(
+        plan,
+        active,
+        pastDue,
+        false,
+        null,
+        null,
+        overage,
+        false,
+        true,
+        credits,
+      ),
+    );
+    quotaTiers.push(
+      buildQuotaSubParts(
+        plan,
+        active,
+        pastDue,
+        false,
+        null,
+        null,
+        overage,
+        false,
+        false,
+        credits,
+      ),
+    );
     quotaTiers.push(plan);
 
     return combineQuotaRegion(quotaTiers, regionTiers, maxCols);
@@ -1028,7 +1094,9 @@ function buildQuotaText(maxCols: number): string | undefined {
     const allowance = buildAllowancePart(q);
 
     const quotaTiers: string[] = [];
-    quotaTiers.push(["payg", `∙ ${credits}`, allowance].filter(Boolean).join(" "));
+    quotaTiers.push(
+      ["payg", `∙ ${credits}`, allowance].filter(Boolean).join(" "),
+    );
     quotaTiers.push(["payg", `∙ ${credits}`].join(" "));
     quotaTiers.push("payg");
 
@@ -1040,7 +1108,8 @@ function buildAllowancePart(q: QuotaResponse): string | undefined {
   if (!q.key.allowance) return undefined;
   const a = q.key.allowance;
   const spent = a.limit_usd - a.remaining_usd;
-  const periodLabel = { daily: "d", weekly: "wk", monthly: "mo" }[a.period] ?? a.period;
+  const periodLabel =
+    { daily: "d", weekly: "wk", monthly: "mo" }[a.period] ?? a.period;
   let part = `∙ ⚷ ${formatCost(spent)}/${formatCost(a.limit_usd)}/${periodLabel}`;
   if (a.blocked) part += " ⊘";
   return part;
@@ -1116,10 +1185,21 @@ function termVisWidth(str: string): number {
     // ANSI escape
     if (code === 0x1b && i + 1 < str.length) {
       const next = str.charCodeAt(i + 1);
-      if (next === 0x5b) { // CSI: \x1b[
+      if (next === 0x5b) {
+        // CSI: \x1b[
         i += 2;
-        while (i < str.length && str.charCodeAt(i) >= 0x20 && str.charCodeAt(i) <= 0x3f) i++;
-        while (i < str.length && str.charCodeAt(i) >= 0x30 && str.charCodeAt(i) <= 0x3f) i++;
+        while (
+          i < str.length &&
+          str.charCodeAt(i) >= 0x20 &&
+          str.charCodeAt(i) <= 0x3f
+        )
+          i++;
+        while (
+          i < str.length &&
+          str.charCodeAt(i) >= 0x30 &&
+          str.charCodeAt(i) <= 0x3f
+        )
+          i++;
         if (i < str.length) i++;
         continue;
       }
@@ -1165,8 +1245,18 @@ function truncateAnsi(str: string, maxCols: number): string {
     if (code === 0x1b && i + 1 < str.length && str.charCodeAt(i + 1) === 0x5b) {
       const start = i;
       i += 2;
-      while (i < str.length && str.charCodeAt(i) >= 0x20 && str.charCodeAt(i) <= 0x3f) i++;
-      while (i < str.length && str.charCodeAt(i) >= 0x30 && str.charCodeAt(i) <= 0x3f) i++;
+      while (
+        i < str.length &&
+        str.charCodeAt(i) >= 0x20 &&
+        str.charCodeAt(i) <= 0x3f
+      )
+        i++;
+      while (
+        i < str.length &&
+        str.charCodeAt(i) >= 0x30 &&
+        str.charCodeAt(i) <= 0x3f
+      )
+        i++;
       if (i < str.length) i++;
       result += str.slice(start, i);
       continue;
@@ -1210,7 +1300,12 @@ class StatusLineWidget {
   private compressRight: ((budget: number) => string | undefined) | undefined;
   private theme: any;
 
-  constructor(theme: any, leftRaw: string, rightRaw?: string, compressRight?: (budget: number) => string | undefined) {
+  constructor(
+    theme: any,
+    leftRaw: string,
+    rightRaw?: string,
+    compressRight?: (budget: number) => string | undefined,
+  ) {
     this.theme = theme;
     this.leftRaw = leftRaw;
     this.rightRaw = rightRaw;
@@ -1270,7 +1365,11 @@ function updateEnergyStatus(ctx: any): void {
   // different provider, and prevents the quota from appearing before any
   // turn has completed (quota is pre-fetched eagerly so it's ready to display
   // as soon as the first turn ends, alongside the energy data).
-  const hasNeuralwattSession = sessionEnergyJoules > 0 || sessionCostUsd > 0 || sessionMcrFp !== null || sessionCarbonGrams > 0 || sessionGridId !== null;
+  const hasNeuralwattSession =
+    sessionEnergyJoules > 0 ||
+    sessionCostUsd > 0 ||
+    sessionCarbonGrams > 0 ||
+    sessionGridId !== null;
 
   // When hideOnOtherProvider is enabled, suppress display if the active
   // model is from a different provider. This prevents stale energy/quota
@@ -1282,42 +1381,44 @@ function updateEnergyStatus(ctx: any): void {
   } catch {
     currentProvider = undefined;
   }
-  const hiddenByOtherProvider = config.hideOnOtherProvider && currentProvider !== undefined && currentProvider !== PROVIDER_ID;
+  const hiddenByOtherProvider =
+    config.hideOnOtherProvider &&
+    currentProvider !== undefined &&
+    currentProvider !== PROVIDER_ID;
 
   // When hideOnOtherProvider suppresses display, clear everything.
   if (hiddenByOtherProvider) {
     ctx.ui.setStatus(STATUS_KEY_ENERGY, undefined);
     ctx.ui.setStatus(STATUS_KEY_QUOTA, undefined);
-    ctx.ui.setStatus(STATUS_KEY_MCR, undefined);
     ctx.ui.setWidget("neuralwatt", undefined);
     return;
   }
 
   // Statusbar uses full-fidelity text (no width constraint)
-  // MCR is embedded in the energy text when config.mcr is "widget";
-  // for statusbar mode, MCR gets its own status key.
-  const energyFull = hasNeuralwattSession ? buildEnergyText(Infinity) : undefined;
-  const mcrFull = hasNeuralwattSession && config.mcr === "statusbar" && sessionMcrFp
-    ? [`MCR ${sessionMcrFp.slice(0, 8)}`, sessionSafeDropBefore > 0 ? `drop<${sessionSafeDropBefore}` : undefined, sessionApcHitRate !== undefined ? `APC ${(sessionApcHitRate * 100).toFixed(0)}%` : undefined, sessionCompactRatio !== undefined ? `compact ${(sessionCompactRatio * 100).toFixed(0)}%` : undefined].filter(Boolean).join(" ")
+  const energyFull = hasNeuralwattSession
+    ? buildEnergyText(Infinity)
     : undefined;
   const quotaFull = hasNeuralwattSession ? buildQuotaText(Infinity) : undefined;
 
   // ─── Status bar ─────────────────────────────────────────────────────────
   const energyStatusbar = config.energy === "statusbar" && energyFull;
   const quotaStatusbar = config.quota === "statusbar" && quotaFull;
-  const mcrStatusbar = config.mcr === "statusbar" && mcrFull;
 
   // Widget flags (also used by the standalone-region logic below).
-  const showEnergyWidget = (config.energy === "widget" || config.mcr === "widget") && (energyFull || (config.mcr === "widget" && sessionMcrFp));
+  const showEnergyWidget = config.energy === "widget" && energyFull;
   const showQuotaWidget = config.quota === "widget" && quotaFull;
 
   // Region badge: rides the quota line when quota renders. When the quota line
   // is off / not rendering but carbon is on and we have a grid, render the badge
   // standalone so "where is the fleet" still shows. Placement then follows the
   // carbon mode (widget → below-editor widget; statusbar → quota status key).
-  const hasGridForBadge = config.carbon !== "off" && hasNeuralwattSession && sessionGridId != null;
+  const hasGridForBadge =
+    config.carbon !== "off" && hasNeuralwattSession && sessionGridId != null;
   const regionCarriedByQuota = showQuotaWidget || quotaStatusbar;
-  const regionStandaloneText = hasGridForBadge && !regionCarriedByQuota ? buildRegionText(Infinity) : undefined;
+  const regionStandaloneText =
+    hasGridForBadge && !regionCarriedByQuota
+      ? buildRegionText(Infinity)
+      : undefined;
   const regionStatusbar = config.carbon === "statusbar" && regionStandaloneText;
 
   if (energyStatusbar && quotaStatusbar) {
@@ -1333,15 +1434,13 @@ function updateEnergyStatus(ctx: any): void {
     if (quotaStatusbar) {
       ctx.ui.setStatus(STATUS_KEY_QUOTA, ctx.ui.theme.fg("dim", quotaFull!));
     } else if (regionStatusbar) {
-      ctx.ui.setStatus(STATUS_KEY_QUOTA, ctx.ui.theme.fg("dim", regionStandaloneText!));
+      ctx.ui.setStatus(
+        STATUS_KEY_QUOTA,
+        ctx.ui.theme.fg("dim", regionStandaloneText!),
+      );
     } else {
       ctx.ui.setStatus(STATUS_KEY_QUOTA, undefined);
     }
-  }
-  if (mcrStatusbar) {
-    ctx.ui.setStatus(STATUS_KEY_MCR, ctx.ui.theme.fg("dim", mcrFull!));
-  } else {
-    ctx.ui.setStatus(STATUS_KEY_MCR, undefined);
   }
 
   // ─── Widget assembly ─────────────────────────────────────────────────────
@@ -1349,20 +1448,29 @@ function updateEnergyStatus(ctx: any): void {
   // side at render time when the terminal is narrow. The right side is either
   // the quota line (buildQuotaText) or, when quota is off but carbon is on, the
   // standalone region badge (buildRegionText).
-  // When config.mcr is "widget", MCR data is embedded in the energy text
-  // (left side) via buildEnergyText; when "statusbar" or "off", it's excluded.
-  if (showEnergyWidget || showQuotaWidget || (config.carbon === "widget" && regionStandaloneText)) {
+  if (
+    showEnergyWidget ||
+    showQuotaWidget ||
+    (config.carbon === "widget" && regionStandaloneText)
+  ) {
     const leftRaw = energyFull ?? "";
     // Right side: quota line if it renders; else the standalone region when
     // there's a left (energy) side to pair it with.
-    const rightRaw = showEnergyWidget && showQuotaWidget ? quotaFull!
-      : showEnergyWidget && regionStandaloneText ? regionStandaloneText
-      : undefined;
-    const leftOnlyRaw = !showEnergyWidget && showQuotaWidget ? quotaFull!
-      : !showEnergyWidget && regionStandaloneText ? regionStandaloneText
-      : undefined;
+    const rightRaw =
+      showEnergyWidget && showQuotaWidget
+        ? quotaFull!
+        : showEnergyWidget && regionStandaloneText
+          ? regionStandaloneText
+          : undefined;
+    const leftOnlyRaw =
+      !showEnergyWidget && showQuotaWidget
+        ? quotaFull!
+        : !showEnergyWidget && regionStandaloneText
+          ? regionStandaloneText
+          : undefined;
     // Re-compress with buildRegionText when the right side is region-only.
-    const rightIsRegionStandalone = !!rightRaw && rightRaw === regionStandaloneText;
+    const rightIsRegionStandalone =
+      !!rightRaw && rightRaw === regionStandaloneText;
     const compressRight = rightIsRegionStandalone ? buildRegionText : undefined;
     if (leftOnlyRaw) {
       ctx.ui.setWidget(
@@ -1373,7 +1481,8 @@ function updateEnergyStatus(ctx: any): void {
     } else {
       ctx.ui.setWidget(
         "neuralwatt",
-        (_ui: any, theme: any) => new StatusLineWidget(theme, leftRaw, rightRaw, compressRight),
+        (_ui: any, theme: any) =>
+          new StatusLineWidget(theme, leftRaw, rightRaw, compressRight),
         { placement: "belowEditor" },
       );
     }
@@ -1404,14 +1513,18 @@ function formatEnergy(joules: number): string {
 function formatCost(usd: number): string {
   if (usd === 0) return "$0";
   if (usd < 0.000001) return `$${usd.toExponential(1)}`;
-  if (usd < 0.01) return `$${usd.toFixed(6).replace(/0+$/, "").replace(/\.$/, "")}`;
-  if (usd < 1) return `$${usd.toFixed(4).replace(/0+$/, "").replace(/\.$/, "")}`;
+  if (usd < 0.01)
+    return `$${usd.toFixed(6).replace(/0+$/, "").replace(/\.$/, "")}`;
+  if (usd < 1)
+    return `$${usd.toFixed(4).replace(/0+$/, "").replace(/\.$/, "")}`;
   return `$${usd.toFixed(2)}`;
 }
 
 // ─── SSE Comment Reader ──────────────────────────────────────────────────────
 
-export async function readEnergyFromTee(body: ReadableStream<Uint8Array>): Promise<void> {
+export async function readEnergyFromTee(
+  body: ReadableStream<Uint8Array>,
+): Promise<void> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -1425,13 +1538,6 @@ export async function readEnergyFromTee(body: ReadableStream<Uint8Array>): Promi
         pendingEnergyRaw = energy;
       } catch {
         // Malformed energy comment, ignore
-      }
-    } else if (trimmed.startsWith(": mcr-session ")) {
-      try {
-        const mcr = JSON.parse(trimmed.slice(14));
-        pendingMcrSessionRaw = mcr;
-      } catch {
-        // Malformed mcr-session comment, ignore
       }
     } else if (trimmed.startsWith(": cost ")) {
       try {
@@ -1486,14 +1592,18 @@ export function streamNeuralwatt(
   if (!apiKey) {
     throw new Error(
       `No API key for Neuralwatt. Add it to ~/.pi/agent/auth.json, ` +
-      `set NEURALWATT_API_KEY env var, or use --api-key.`,
+        `set NEURALWATT_API_KEY env var, or use --api-key.`,
     );
   }
 
   const maxImages = model.vision?.maxImagesPerRequest as number | undefined;
   const transformedContext = transformContextForImageLimit(context, maxImages);
 
-  const neuralwattModel = { ...model, api: "openai-completions", baseUrl: model.baseUrl || BASE_URL };
+  const neuralwattModel = {
+    ...model,
+    api: "openai-completions",
+    baseUrl: model.baseUrl || BASE_URL,
+  };
 
   // pi hands the user's thinking selection to streamSimple providers as
   // `options.reasoning` (a raw ThinkingLevel). The raw streamOpenAICompletions
@@ -1501,8 +1611,11 @@ export function streamNeuralwatt(
   // pi-ai's streamSimpleOpenAICompletions wrapper does — otherwise reasoning_effort
   // never reaches the request body and thinking levels silently do nothing
   // (off/high/xhigh all vanish from the payload for every Neuralwatt reasoning model).
-  const clampedReasoning = options?.reasoning ? clampThinkingLevel(neuralwattModel, options.reasoning) : undefined;
-  const reasoningEffort = clampedReasoning === "off" ? undefined : clampedReasoning;
+  const clampedReasoning = options?.reasoning
+    ? clampThinkingLevel(neuralwattModel, options.reasoning)
+    : undefined;
+  const reasoningEffort =
+    clampedReasoning === "off" ? undefined : clampedReasoning;
   const { reasoning: _reasoning, ...streamOptions } = options ?? {};
 
   // Preserved thinking (full-history reasoning): when a model opts in via
@@ -1517,47 +1630,63 @@ export function streamNeuralwatt(
   const userOnPayload = streamOptions.onPayload;
   const extraKwargs = neuralwattModel.compat?.chatTemplateKwargs;
   const hasExtraKwargs =
-    !!extraKwargs && typeof extraKwargs === "object" && Object.keys(extraKwargs).length > 0;
-  const onPayload = hasExtraKwargs || userOnPayload
-    ? async (params: any, mdl: any) => {
-      let p = params;
-      if (userOnPayload) {
-        const next = await userOnPayload(p, mdl);
-        if (next !== undefined) p = next;
-      }
-      if (hasExtraKwargs) {
-        p = {
-          ...p,
-          chat_template_kwargs: {
-            ...(p?.chat_template_kwargs ?? {}),
-            ...extraKwargs,
-          },
-        };
-      }
-      return p;
-    }
-    : undefined;
+    !!extraKwargs &&
+    typeof extraKwargs === "object" &&
+    Object.keys(extraKwargs).length > 0;
+  const onPayload =
+    hasExtraKwargs || userOnPayload
+      ? async (params: any, mdl: any) => {
+          let p = params;
+          if (userOnPayload) {
+            const next = await userOnPayload(p, mdl);
+            if (next !== undefined) p = next;
+          }
+          if (hasExtraKwargs) {
+            p = {
+              ...p,
+              chat_template_kwargs: {
+                ...(p?.chat_template_kwargs ?? {}),
+                ...extraKwargs,
+              },
+            };
+          }
+          return p;
+        }
+      : undefined;
 
   const originalFetch = globalThis.fetch;
 
   globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const response = await originalFetch(input, init);
-    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
     if (response.body && url.includes("/chat/completions")) {
       const [bodyForSdk, bodyForEnergy] = response.body.tee();
       teeReader = readEnergyFromTee(bodyForEnergy);
-      return new Response(bodyForSdk, { headers: response.headers, status: response.status, statusText: response.statusText });
+      return new Response(bodyForSdk, {
+        headers: response.headers,
+        status: response.status,
+        statusText: response.statusText,
+      });
     }
     return response;
   };
 
   try {
-    const stream = streamOpenAICompletions(neuralwattModel, transformedContext, {
-      ...streamOptions,
-      reasoningEffort,
-      apiKey,
-      ...(onPayload ? { onPayload } : {}),
-    });
+    const stream = streamOpenAICompletions(
+      neuralwattModel,
+      transformedContext,
+      {
+        ...streamOptions,
+        reasoningEffort,
+        apiKey,
+        ...(onPayload ? { onPayload } : {}),
+      },
+    );
 
     const originalEnd = stream.end.bind(stream);
     stream.end = (result?: any) => {
@@ -1577,8 +1706,8 @@ export function streamNeuralwatt(
 
 // ─── Extension Entry Point ────────────────────────────────────────────────────
 
-// Build the stale model list at module scope so neuralwatt-mcr.ts can import it
-// for re-registration. This is idempotent — the same data index.ts uses.
+// Build the stale model list at module scope (cached). Used by
+// makeProviderConfig's default models argument.
 let _staleModelsCache: NeuralwattModel[] | null = null;
 export function getStaleModels(): NeuralwattModel[] {
   if (!_staleModelsCache) {
@@ -1586,24 +1715,26 @@ export function getStaleModels(): NeuralwattModel[] {
     const custom = customModelsData as NeuralwattModel[];
     const patches = patchesData as Record<string, any>;
     const staleBase = loadStaleModels(embedded);
-    _staleModelsCache = buildModels(staleBase, custom, patches, config.modelOverrides);
+    _staleModelsCache = buildModels(
+      staleBase,
+      custom,
+      patches,
+      config.modelOverrides,
+    );
   }
   return _staleModelsCache;
 }
 
-// Build the standard provider config object. Used by index.ts and neuralwatt-mcr.ts
-// to ensure the same provider identity (api, streamSimple, headers) everywhere.
-export function makeProviderConfig(models: NeuralwattModel[] = getStaleModels()) {
+// Build the standard provider config object.
+export function makeProviderConfig(
+  models: NeuralwattModel[] = getStaleModels(),
+) {
   return {
     baseUrl: BASE_URL,
     apiKey: "$NEURALWATT_API_KEY",
     api: "neuralwatt" as const,
     models,
     streamSimple: streamNeuralwatt,
-    headers: {
-      "X-NW-Conversation-ID": "$X_NW_CONVERSATION_ID",
-      "X-NW-MCR-Ext-Version": "$X_NW_MCR_EXT_VERSION",
-    },
   };
 }
 
@@ -1626,14 +1757,19 @@ export default function (pi: ExtensionAPI) {
     if (!model || model.provider !== PROVIDER_ID) return;
     const entry = collectPreserveState().find((e: any) => e.id === model.id);
     if (!entry) return;
-    const flagValue = entry.flag === "clear_thinking" ? !entry.preserved : entry.preserved;
+    const flagValue =
+      entry.flag === "clear_thinking" ? !entry.preserved : entry.preserved;
     const msg = entry.preserved
       ? `Preserved thinking ON for ${entry.name} (${entry.flag}: ${flagValue}) — suited for coding, but not for prose. Open /neuralwatt-settings to change.`
       : `Preserved thinking OFF for ${entry.name} (${entry.flag}: ${flagValue}) — reasoning trimmed each turn (lighter; better for prose). Open /neuralwatt-settings to change.`;
     if (modelSelectNotifyTimer) clearTimeout(modelSelectNotifyTimer);
     modelSelectNotifyTimer = setTimeout(() => {
       modelSelectNotifyTimer = null;
-      try { ctx.ui.notify(msg, "info"); } catch { /* notify is a no-op without a UI runner */ }
+      try {
+        ctx.ui.notify(msg, "info");
+      } catch {
+        /* notify is a no-op without a UI runner */
+      }
     }, MODEL_SELECT_NOTIFY_DELAY_MS);
   }
 
@@ -1673,17 +1809,32 @@ export default function (pi: ExtensionAPI) {
           }
         });
       }
-      revalidateModels(cachedApiKey, embeddedModels, signal).then((freshBase) => {
-        if (freshBase && !signal.aborted) {
-          pi.registerProvider("neuralwatt", makeProviderConfig(buildModels(freshBase, customModels, patches, config.modelOverrides)));
-        }
-      });
+      revalidateModels(cachedApiKey, embeddedModels, signal).then(
+        (freshBase) => {
+          if (freshBase && !signal.aborted) {
+            pi.registerProvider(
+              "neuralwatt",
+              makeProviderConfig(
+                buildModels(
+                  freshBase,
+                  customModels,
+                  patches,
+                  config.modelOverrides,
+                ),
+              ),
+            );
+          }
+        },
+      );
     });
   });
 
   pi.on("agent_end", async (_event, ctx) => {
     // Fetch quota once after the agent loop finishes to reflect updated balance
-    if (config.quota !== "off" && (sessionEnergyJoules > 0 || sessionCostUsd > 0)) {
+    if (
+      config.quota !== "off" &&
+      (sessionEnergyJoules > 0 || sessionCostUsd > 0)
+    ) {
       const quota = await fetchQuota(cachedApiKey || "");
       if (quota) {
         cachedQuota = quota;
@@ -1694,13 +1845,15 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_shutdown", async (_event, ctx) => {
     revalidateAbort?.abort();
-    if (modelSelectNotifyTimer) { clearTimeout(modelSelectNotifyTimer); modelSelectNotifyTimer = null; }
+    if (modelSelectNotifyTimer) {
+      clearTimeout(modelSelectNotifyTimer);
+      modelSelectNotifyTimer = null;
+    }
     cachedQuota = null;
-    // Clear any status bar entries from energy/quota/MCR display modes.
+    // Clear any status bar entries from energy/quota display modes.
     // (widget cleanup is handled by the extension runtime teardown)
     ctx.ui.setStatus(STATUS_KEY_ENERGY, undefined);
     ctx.ui.setStatus(STATUS_KEY_QUOTA, undefined);
-    ctx.ui.setStatus(STATUS_KEY_MCR, undefined);
   });
 
   pi.on("turn_end", async (event, ctx) => {
@@ -1714,26 +1867,7 @@ export default function (pi: ExtensionAPI) {
       teeReader = undefined;
     }
 
-    // Publish MCR data to the globalThis bridge so neuralwatt-mcr.ts can
-    // read it regardless of ESM module instance identity.
-    publishMCRRidge();
-
-    // Extract MCR state from SSE payloads before clearing pending data
-    if (pendingMcrSessionRaw && typeof pendingMcrSessionRaw.session_fp === "string") {
-      sessionMcrFp = pendingMcrSessionRaw.session_fp as string;
-      sessionSafeDropBefore =
-        typeof pendingMcrSessionRaw.safe_drop_before === "number"
-          ? (pendingMcrSessionRaw.safe_drop_before as number)
-          : 0;
-    }
     if (pendingEnergyRaw) {
-      const mcr = pendingEnergyRaw.mcr as Record<string, unknown> | undefined;
-      if (mcr && typeof mcr === "object") {
-        if (typeof mcr.apc_hit_rate === "number") sessionApcHitRate = mcr.apc_hit_rate as number;
-        if (typeof mcr.mcr_compacted_tokens === "number" && typeof mcr.mcr_original_tokens === "number") {
-          sessionCompactRatio = (mcr.mcr_compacted_tokens as number) / (mcr.mcr_original_tokens as number);
-        }
-      }
       // Carbon (cumulative) + grid (latest-wins) from this turn's energy payload.
       const co2 = pendingEnergyRaw.carbon_g_co2eq;
       if (typeof co2 === "number") sessionCarbonGrams += co2;
@@ -1745,13 +1879,17 @@ export default function (pi: ExtensionAPI) {
       if (typeof csrc === "string") sessionGridCarbonSource = csrc;
     }
 
-    if (pendingEnergyJoules > 0 || pendingCostUsd > 0 || pendingEnergyRaw || pendingMcrSessionRaw || pendingCostRaw) {
+    if (
+      pendingEnergyJoules > 0 ||
+      pendingCostUsd > 0 ||
+      pendingEnergyRaw ||
+      pendingCostRaw
+    ) {
       const entry: EnergyEvent = {
         energy_joules: pendingEnergyJoules,
         cost_usd: pendingCostUsd,
       };
       if (pendingEnergyRaw) entry.sse_energy_raw = pendingEnergyRaw;
-      if (pendingMcrSessionRaw) entry.sse_mcr_session_raw = pendingMcrSessionRaw;
       if (pendingCostRaw) entry.sse_cost_raw = pendingCostRaw;
       pi.appendEntry(ENERGY_ENTRY_TYPE, entry);
       sessionEnergyJoules += pendingEnergyJoules;
@@ -1766,7 +1904,10 @@ export default function (pi: ExtensionAPI) {
       // it misses this one turn and falls back to the list-price rate. No emit
       // for turns without Neuralwatt activity (pending* is per-request), so
       // non-Neuralwatt turns never produce a spurious zero-cost signal.
-      const turnIndex = typeof (event as any)?.turnIndex === "number" ? (event as any).turnIndex : null;
+      const turnIndex =
+        typeof (event as any)?.turnIndex === "number"
+          ? (event as any).turnIndex
+          : null;
       pi.events?.emit("neuralwatt:turn-energy", {
         costUsd: pendingCostUsd,
         energyJoules: pendingEnergyJoules,
@@ -1776,12 +1917,15 @@ export default function (pi: ExtensionAPI) {
       pendingEnergyJoules = 0;
       pendingCostUsd = 0;
       pendingEnergyRaw = null;
-      pendingMcrSessionRaw = null;
       pendingCostRaw = null;
     }
     // If the session_start quota fetch hasn't landed yet (race), fetch now
     // so the very first turn always shows plan/allowance data.
-    if (config.quota !== "off" && !cachedQuota && (sessionEnergyJoules > 0 || sessionCostUsd > 0)) {
+    if (
+      config.quota !== "off" &&
+      !cachedQuota &&
+      (sessionEnergyJoules > 0 || sessionCostUsd > 0)
+    ) {
       const quota = await fetchQuota(cachedApiKey || "");
       if (quota) {
         cachedQuota = quota;
@@ -1795,7 +1939,10 @@ export default function (pi: ExtensionAPI) {
     updateEnergyStatus(ctx);
 
     // Fetch quota if there was neuralwatt usage in the replayed tree
-    if (config.quota !== "off" && (sessionEnergyJoules > 0 || sessionCostUsd > 0)) {
+    if (
+      config.quota !== "off" &&
+      (sessionEnergyJoules > 0 || sessionCostUsd > 0)
+    ) {
       fetchQuota(cachedApiKey || "").then((quota) => {
         if (quota) {
           cachedQuota = quota;
@@ -1810,43 +1957,74 @@ export default function (pi: ExtensionAPI) {
   // write to ~/.pi/agent/extensions/neuralwatt.json (raw read-modify-write so
   // unrelated fields survive), refresh the in-memory config, bust the stale-model
   // cache, and re-register the provider so the change takes effect immediately.
-  function collectPreserveState(): Array<{ id: string; name: string; flag: "clear_thinking" | "preserve_thinking"; preserved: boolean }> {
-    const resolved = buildModels(loadStaleModels(embeddedModels), customModels, patches, config.modelOverrides);
-    const out: Array<{ id: string; name: string; flag: "clear_thinking" | "preserve_thinking"; preserved: boolean }> = [];
+  function collectPreserveState(): Array<{
+    id: string;
+    name: string;
+    flag: "clear_thinking" | "preserve_thinking";
+    preserved: boolean;
+  }> {
+    const resolved = buildModels(
+      loadStaleModels(embeddedModels),
+      customModels,
+      patches,
+      config.modelOverrides,
+    );
+    const out: Array<{
+      id: string;
+      name: string;
+      flag: "clear_thinking" | "preserve_thinking";
+      preserved: boolean;
+    }> = [];
     for (const m of resolved) {
       const kwargs = (m as any).compat?.chatTemplateKwargs;
       if (!kwargs || typeof kwargs !== "object") continue;
       if (typeof kwargs.clear_thinking === "boolean") {
-        out.push({ id: m.id, name: (m as any).name || m.id, flag: "clear_thinking", preserved: kwargs.clear_thinking === false });
+        out.push({
+          id: m.id,
+          name: (m as any).name || m.id,
+          flag: "clear_thinking",
+          preserved: kwargs.clear_thinking === false,
+        });
       } else if (typeof kwargs.preserve_thinking === "boolean") {
-        out.push({ id: m.id, name: (m as any).name || m.id, flag: "preserve_thinking", preserved: kwargs.preserve_thinking === true });
+        out.push({
+          id: m.id,
+          name: (m as any).name || m.id,
+          flag: "preserve_thinking",
+          preserved: kwargs.preserve_thinking === true,
+        });
       }
     }
     return out;
   }
 
   pi.registerCommand("neuralwatt-settings", {
-    description: "Configure Neuralwatt: preserved thinking per model + energy/quota/MCR/carbon display",
+    description:
+      "Configure Neuralwatt: preserved thinking per model + energy/quota/carbon display",
     async handler(_args, ctx) {
       if (ctx.mode !== "tui") {
         ctx.ui.notify("/neuralwatt-settings requires TUI mode.", "error");
         return;
       }
-      const { SettingsList, Container } = await import("@earendil-works/pi-tui");
-      const { getSettingsListTheme, DynamicBorder } = await import("@earendil-works/pi-coding-agent");
+      const { SettingsList, Container } =
+        await import("@earendil-works/pi-tui");
+      const { getSettingsListTheme, DynamicBorder } =
+        await import("@earendil-works/pi-coding-agent");
 
       await ctx.ui.custom((_tui, theme, _kb, done) => {
-        const border = () => new DynamicBorder((s: string) => theme.fg("border", s));
+        const border = () =>
+          new DynamicBorder((s: string) => theme.fg("border", s));
         // SettingsList left-aligns the value column after the widest label (capped
         // at 30 cols). A label wider than 30 shifts that row's value out of
         // alignment, so cap model-name labels.
-        const truncateLabel = (s: string) => (s.length > 30 ? s.slice(0, 27) + "..." : s);
+        const truncateLabel = (s: string) =>
+          s.length > 30 ? s.slice(0, 27) + "..." : s;
 
         const items: any[] = [
           {
             id: "preserved-thinking",
             label: "Preserved thinking ›",
-            description: "Per-model Preserve Thinking / Clear Thinking (full-history reasoning). Preserve Thinking keeps all turns' reasoning; Clear Thinking lets the template drop older reasoning (saves tokens, can hurt multi-turn recall / cause overthinking).",
+            description:
+              "Per-model Preserve Thinking / Clear Thinking (full-history reasoning). Preserve Thinking keeps all turns' reasoning; Clear Thinking lets the template drop older reasoning (saves tokens, can hurt multi-turn recall / cause overthinking).",
             currentValue: "configure",
             submenu: (_currentValue: string, subDone: (v?: string) => void) => {
               // Re-read state on each open so toggles from a previous visit (which
@@ -1857,7 +2035,9 @@ export default function (pi: ExtensionAPI) {
                 id: `preserve:${e.id}`,
                 label: truncateLabel(e.name),
                 description: `${e.id} — Preserve Thinking keeps full reasoning history across turns; Clear Thinking lets the template drop older reasoning (saves tokens, can hurt multi-turn recall / cause overthinking).`,
-                currentValue: e.preserved ? "Preserve Thinking" : "Clear Thinking",
+                currentValue: e.preserved
+                  ? "Preserve Thinking"
+                  : "Clear Thinking",
                 values: ["Preserve Thinking", "Clear Thinking"],
               }));
               const subList = new SettingsList(
@@ -1869,18 +2049,37 @@ export default function (pi: ExtensionAPI) {
                   const entry = fresh.find((p) => p.id === modelId);
                   if (!entry) return;
                   const preservedOn = newValue === "Preserve Thinking";
-                  const flagValue = entry.flag === "clear_thinking" ? !preservedOn : preservedOn;
+                  const flagValue =
+                    entry.flag === "clear_thinking"
+                      ? !preservedOn
+                      : preservedOn;
                   const raw = readRawNeuralwattConfig();
-                  const overrides = raw.modelOverrides ?? (raw.modelOverrides = {});
+                  const overrides =
+                    raw.modelOverrides ?? (raw.modelOverrides = {});
                   const ov = overrides[modelId] ?? (overrides[modelId] = {});
                   const compat = ov.compat ?? (ov.compat = {});
-                  const kwargs = compat.chatTemplateKwargs ?? (compat.chatTemplateKwargs = {});
+                  const kwargs =
+                    compat.chatTemplateKwargs ??
+                    (compat.chatTemplateKwargs = {});
                   kwargs[entry.flag] = flagValue;
                   writeRawNeuralwattConfig(raw);
                   config = loadConfig();
                   _staleModelsCache = null;
-                  pi.registerProvider("neuralwatt", makeProviderConfig(buildModels(loadStaleModels(embeddedModels), customModels, patches, config.modelOverrides)));
-                  ctx.ui.notify(`Preserved thinking ${preservedOn ? "on" : "off"} for ${entry.name} — takes effect now.`, "info");
+                  pi.registerProvider(
+                    "neuralwatt",
+                    makeProviderConfig(
+                      buildModels(
+                        loadStaleModels(embeddedModels),
+                        customModels,
+                        patches,
+                        config.modelOverrides,
+                      ),
+                    ),
+                  );
+                  ctx.ui.notify(
+                    `Preserved thinking ${preservedOn ? "on" : "off"} for ${entry.name} — takes effect now.`,
+                    "info",
+                  );
                 },
                 () => subDone(),
                 { enableSearch: true },
@@ -1893,35 +2092,32 @@ export default function (pi: ExtensionAPI) {
           {
             id: "energy",
             label: "Energy display",
-            description: "Where energy/cost is shown: dedicated below-editor line, status bar, or hidden",
+            description:
+              "Where energy/cost is shown: dedicated below-editor line, status bar, or hidden",
             currentValue: config.energy,
             values: ["widget", "statusbar", "off"],
           },
           {
             id: "quota",
             label: "Quota display",
-            description: "Where plan/quota is shown. 'off' also skips the /v1/quota fetch",
+            description:
+              "Where plan/quota is shown. 'off' also skips the /v1/quota fetch",
             currentValue: config.quota,
-            values: ["widget", "statusbar", "off"],
-          },
-          {
-            id: "mcr",
-            label: "MCR display",
-            description: "Where MCR (context-reuse) info is shown",
-            currentValue: config.mcr,
             values: ["widget", "statusbar", "off"],
           },
           {
             id: "carbon",
             label: "Carbon display",
-            description: "Where session CO₂ emissions (energy line) and the fleet grid/region badge (quota line) are shown",
+            description:
+              "Where session CO₂ emissions (energy line) and the fleet grid/region badge (quota line) are shown",
             currentValue: config.carbon,
             values: ["widget", "statusbar", "off"],
           },
           {
             id: "hideOnOtherProvider",
             label: "Hide on other provider",
-            description: "Hide all Neuralwatt display when a non-Neuralwatt model is active",
+            description:
+              "Hide all Neuralwatt display when a non-Neuralwatt model is active",
             currentValue: config.hideOnOtherProvider ? "true" : "false",
             values: ["true", "false"],
           },
@@ -1935,7 +2131,7 @@ export default function (pi: ExtensionAPI) {
           Math.min(items.length + 2, 15),
           getSettingsListTheme(),
           (id: string, newValue: string) => {
-            if (id === "energy" || id === "quota" || id === "mcr" || id === "carbon") {
+            if (id === "energy" || id === "quota" || id === "carbon") {
               const raw = readRawNeuralwattConfig();
               raw[id] = newValue;
               writeRawNeuralwattConfig(raw);
