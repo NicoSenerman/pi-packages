@@ -34,6 +34,7 @@ import type {
   ExtensionContext,
   ModelRegistry,
 } from "@earendil-works/pi-coding-agent";
+import { Box, Text } from "@earendil-works/pi-tui";
 import type {
   Api,
   ImageContent,
@@ -220,6 +221,32 @@ export default function (pi: ExtensionAPI) {
       // never break the describer on emit failure
     }
   };
+
+  // Render each persisted usage record as a compact themed card in the
+  // transcript. Custom entries are display-only — they never enter LLM
+  // context, so this surfaces per-call token/energy telemetry without the
+  // bloat of a message renderer. Matches the green `vis` footer aesthetic.
+  pi.registerEntryRenderer<VisionHandoffUsageRecord>(
+    USAGE_ENTRY_TYPE,
+    (entry, _options, theme) => {
+      const r = entry.data;
+      if (!r) return undefined;
+      const model = r.responseModel || r.model;
+      const tok = r.usage;
+      const energy =
+        r.energyJoules !== undefined
+          ? `  ${theme.fg("dim", "energy")} ${r.energyJoules.toFixed(1)}J` +
+            (r.costUsd !== undefined ? ` ($${r.costUsd.toFixed(5)})` : "")
+          : "";
+      const line =
+        `${theme.fg("success", "vis")} ${theme.fg("dim", model)} ` +
+        `${theme.fg("muted", "tok")} ${tok.input}↑ ${tok.output}↓` +
+        energy;
+      const box = new Box(0, 0);
+      box.addChild(new Text(line, 0, 0));
+      return box;
+    },
+  );
 
   pi.on("session_start", async () => {
     // Reload in case the user edited the config on disk from another session.
