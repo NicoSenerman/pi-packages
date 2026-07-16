@@ -20,6 +20,7 @@ import {
   SettingsManager as SdkSettingsManager,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
+import { Box, Text } from "@earendil-works/pi-tui";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { loadCustomAgents } from "#src/config/custom-agents";
 import { FsAgentFileOps } from "#src/ui/agent-file-ops";
@@ -62,12 +63,50 @@ import { mlog } from "#src/ui/monitor-debug";
 import { SessionNavigatorHandler } from "#src/ui/session-navigator";
 import { SubagentsSettingsHandler } from "#src/ui/subagents-settings";
 
+/** Shape of the record persisted by SubagentEventsObserver via
+ *  pi.appendEntry("subagents:record", {...}). Kept narrow (not the full
+ *  Subagent class) so the entry renderer depends only on the persisted fields. */
+interface SubagentRecordEntry {
+  id: string;
+  type: string;
+  description: string;
+  status: string;
+  result?: string;
+  error?: string;
+  startedAt: number;
+  completedAt?: number;
+}
+
 export default function (pi: ExtensionAPI) {
   mlog("factory", "pi-subagents extension factory entered");
   // ---- Register custom notification renderer ----
   pi.registerMessageRenderer<NotificationDetails>(
     "subagent-notification",
     createNotificationRenderer(),
+  );
+
+  // ---- Register entry renderer for completion records ----
+  // subagent-events-observer persists each completed subagent via
+  // pi.appendEntry("subagents:record", {...}). Custom entries are display-only
+  // (never enter LLM context), so this renders the history in-transcript WITHOUT
+  // the LLM-context bloat that the message-renderer path incurs. The two
+  // renderers serve different purposes and coexist.
+  pi.registerEntryRenderer<SubagentRecordEntry>(
+    "subagents:record",
+    (entry, _options, theme) => {
+      const r = entry.data;
+      if (!r) return undefined;
+      const isError =
+        r.status === "error" ||
+        r.status === "stopped" ||
+        r.status === "aborted";
+      const mark = isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
+      const bullet = theme.fg("dim", "●");
+      const line = `${bullet} ${theme.fg("text", r.type)} — ${r.description} ${mark}`;
+      const box = new Box(0, 0);
+      box.addChild(new Text(line, 0, 0));
+      return box;
+    },
   );
 
   const registry = new AgentTypeRegistry(() => loadCustomAgents(process.cwd()));
