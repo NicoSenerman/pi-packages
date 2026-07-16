@@ -4,7 +4,7 @@
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
+import { CONFIG_DIR_NAME, getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import { BUILTIN_TOOL_NAMES } from "#src/config/agent-types";
 import { debugLog } from "#src/debug";
 import type { AgentConfig, ThinkingLevel } from "#src/types";
@@ -20,7 +20,7 @@ import type { AgentConfig, ThinkingLevel } from "#src/types";
  */
 export function loadCustomAgents(cwd: string): Map<string, AgentConfig> {
   const globalDir = join(getAgentDir(), "agents");
-  const projectDir = join(cwd, ".pi", "agents");
+  const projectDir = join(cwd, CONFIG_DIR_NAME, "agents");
 
   const agents = new Map<string, AgentConfig>();
   loadFromDir(globalDir, agents, "global");   // lower priority

@@ -7,6 +7,7 @@ import {
   win32 as winPath,
 } from "node:path";
 
+import { CONFIG_DIR_NAME } from "@earendil-works/pi-coding-agent";
 import { canonicalizePath } from "./canonicalize-path";
 import { getNonEmptyString, toRecord } from "./common";
 import { expandHomePath } from "./expand-home";
@@ -342,8 +343,8 @@ export function isPiInfrastructureRead(
   }
 
   // Project-local Pi packages — checked fresh every call so CWD changes work.
-  const projectNpmDir = join(cwd, ".pi", "npm");
-  const projectGitDir = join(cwd, ".pi", "git");
+  const projectNpmDir = join(cwd, CONFIG_DIR_NAME, "npm");
+  const projectGitDir = join(cwd, CONFIG_DIR_NAME, "git");
   if (isPathWithinDirectory(normalizedPath, projectNpmDir, platform)) {
     return true;
   }

@@ -42,6 +42,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { CONFIG_DIR_NAME } from "@earendil-works/pi-coding-agent";
 
 /**
  * Parameters for one layered settings load: describes where the files live,
@@ -84,7 +85,7 @@ export interface LayeredSettingsSource<T> {
 export function loadLayeredSettings<T>(source: LayeredSettingsSource<T>): Partial<T> {
   const { agentDir, cwd, filename, sanitize, warnLabel } = source;
   const global = readLayer(join(agentDir, filename), sanitize, warnLabel);
-  const project = readLayer(join(cwd, ".pi", filename), sanitize, warnLabel);
+  const project = readLayer(join(cwd, CONFIG_DIR_NAME, filename), sanitize, warnLabel);
   return { ...global, ...project };
 }
 

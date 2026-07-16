@@ -13,6 +13,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  CONFIG_DIR_NAME,
   createAgentSession,
   DefaultResourceLoader,
   type ExtensionAPI,
@@ -283,7 +284,7 @@ export default function (pi: ExtensionAPI) {
           settings,
           new FsAgentFileOps(),
           join(getAgentDir(), "agents"),
-          join(process.cwd(), ".pi", "agents"),
+          join(process.cwd(), CONFIG_DIR_NAME, "agents"),
         );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -318,7 +319,7 @@ export default function (pi: ExtensionAPI) {
               settings,
               new FsAgentFileOps(),
               join(getAgentDir(), "agents"),
-              join(process.cwd(), ".pi", "agents"),
+              join(process.cwd(), CONFIG_DIR_NAME, "agents"),
             );
           } catch (err) {
             // Defense in depth: if openAgentMonitor (or the dynamic import) throws,
