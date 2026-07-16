@@ -1,7 +1,7 @@
 /**
  * pi-autoname — AI-powered session naming for Pi
  *
- * Reads config from ~/.pi/agent/pi-autoname.json.
+ * Reads config from the pi agent dir (pi-autoname.json under getAgentDir()).
  * Automatically names the session once after the first complete dialogue
  * (first user message + first assistant reply), and provides /autoname for manual renaming.
  */
@@ -9,6 +9,7 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { complete, getModel } from "@earendil-works/pi-ai/compat";
 import {
   readFileSync,
@@ -18,7 +19,6 @@ import {
   statSync,
 } from "fs";
 import { join, dirname } from "path";
-import { homedir } from "os";
 
 import {
   normalizeConfig,
@@ -34,7 +34,7 @@ import {
   type RenameMarker,
 } from "./lib.js";
 
-const CONFIG_PATH = join(homedir(), ".pi", "agent", "pi-autoname.json");
+const CONFIG_PATH = join(getAgentDir(), "pi-autoname.json");
 
 /** Max time to wait for AI naming response (ms) */
 const AI_TIMEOUT_MS = 30_000;
@@ -213,6 +213,15 @@ const SYSTEM_PROMPT =
   "You are a session namer for an AI coding assistant. Generate a concise, meaningful session name based on the conversation context.";
 
 let namingSequence = 0;
+
+/**
+ * The session name this extension last set or observed. Module-scoped (not
+ * closure-scoped) so maybeAutoname's applyName can update it BEFORE calling
+ * pi.setSessionName — that way the session_info_changed handler sees
+ * lastGeneratedName === event.name for our own renames and does not
+ * misclassify them as user renames. Reset in the session_start handler.
+ */
+let lastGeneratedName: string | undefined;
 
 /**
  * Build the naming prompt with locale-aware instructions and redacted dialogue.
@@ -593,6 +602,11 @@ async function maybeAutoname(
       return false;
     }
     const trimmed = name.trim();
+    // Set lastGeneratedName BEFORE setSessionName so the session_info_changed
+    // handler (which fires synchronously off setSessionName) sees our own
+    // rename as lastGeneratedName === event.name and skips user-rename
+    // detection. The agent_end handler still owns cooldown for self-renames.
+    lastGeneratedName = trimmed;
     pi.setSessionName(trimmed);
     rememberGeneratedName(pi, trimmed, source);
     return true;
@@ -622,7 +636,6 @@ export default function extension(pi: ExtensionAPI) {
 
   /** Last rename timestamp */
   let lastRenameTime = 0;
-  let lastGeneratedName: string | undefined;
 
   loadConfig();
 
@@ -683,6 +696,43 @@ export default function extension(pi: ExtensionAPI) {
     if (lastRenameTime === 0) lastRenameTime = Date.now();
   });
 
+  // ── User-rename detection (immediate) ───────────────────────────────
+  // Replaces the polling-based detection that used to run inside agent_end.
+  // session_info_changed fires on /name, RPC, or pi.setSessionName(). By
+  // setting lastGeneratedName BEFORE our own setSessionName calls (see
+  // applyName in maybeAutoname), self-renames arrive here with
+  // lastGeneratedName === event.name and are skipped. A user/external
+  // rename (name diverged from lastGeneratedName) resets the cooldown so
+  // the next periodic rename gives the user a full cooldownMinutes grace
+  // period, and logs a user_rename marker — exactly the old semantics.
+  pi.on("session_info_changed", async (event, _ctx) => {
+    const newName = event.name;
+    if (!newName) {
+      // Name cleared — drop our tracking so the next set name is detectable.
+      lastGeneratedName = undefined;
+      return;
+    }
+    if (lastGeneratedName === newName) {
+      // Our own rename (applyName set lastGeneratedName first) or a no-op.
+      return;
+    }
+    const now = Date.now();
+    debugLog(
+      "session_info_changed: user rename detected:",
+      lastGeneratedName,
+      "→",
+      newName,
+      "→ resetting cooldown",
+    );
+    lastRenameTime = now;
+    pi.appendEntry(STATE_ENTRY_TYPE, {
+      event: "user_rename",
+      name: newName,
+      timestamp: now,
+    });
+    lastGeneratedName = newName;
+  });
+
   pi.on("agent_end", async (_event, ctx) => {
     const now = Date.now();
     const currentConfig = loadConfig();
@@ -694,37 +744,10 @@ export default function extension(pi: ExtensionAPI) {
       ? readSessionFileDiagnostics(ctx.sessionManager.getSessionFile?.())
       : undefined;
 
-    // ── User-rename detection ────────────────────────────────────────────
-    // If the session name has changed since we last saw it AND we didn't
-    // change it ourselves, the user must have run `/name` (or the
-    // session-selector rename UI). Reset the cooldown so the next
-    // periodic rename gives the user a full `cooldownMinutes` grace
-    // period before considering overwriting their choice.
+    // User-rename DETECTION now lives in the session_info_changed handler
+    // (immediate, not deferred to next agent_end). `currentName` is still
+    // read here for the periodic-rename comparison below.
     const currentName = pi.getSessionName();
-    if (
-      currentName &&
-      lastGeneratedName !== undefined &&
-      currentName !== lastGeneratedName
-    ) {
-      debugLog(
-        "user rename detected:",
-        lastGeneratedName,
-        "→",
-        currentName,
-        "→ resetting cooldown",
-      );
-      lastRenameTime = now;
-      pi.appendEntry(STATE_ENTRY_TYPE, {
-        event: "user_rename",
-        name: currentName,
-        timestamp: now,
-      });
-      lastGeneratedName = currentName;
-    } else if (currentName) {
-      // Track the name we just observed so a future change is detectable
-      // even if `lastGeneratedName` was undefined at session_start.
-      lastGeneratedName = currentName;
-    }
 
     const timeSinceLastRename = now - lastRenameTime;
     debugLog(
