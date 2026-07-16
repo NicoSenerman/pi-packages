@@ -91,7 +91,22 @@ export default function (pi: ExtensionAPI) {
 	registerTodoTool(pi);
 	registerTodosCommand(pi);
 
-	pi.on("session_start", async (_event, ctx) => {
+	pi.on("session_start", async (event, ctx) => {
+		// `/new` is a new conversation — wipe todos + the host snapshot. Do not
+		// carry unfinished work from the previous chat (file fallback is only for
+		// resume/fork/reload/startup when branch replay is empty, e.g. BACH kids).
+		if (event.reason === "new") {
+			clearState();
+			replaceState(EMPTY_STATE);
+			if (ctx.hasUI) {
+				todoOverlay ??= new TodoOverlay();
+				todoOverlay.setUICtx(ctx.ui);
+				todoOverlay.resetCompletedDisplayState();
+				todoOverlay.update();
+			}
+			return;
+		}
+
 		let resolved = resolveState(replayFromBranch(ctx));
 		// Feature 4: auto-clear when every non-deleted task is completed — gives a
 		// clean slate when resuming a session whose work is all done. Must run
