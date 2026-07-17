@@ -11,6 +11,7 @@ import { type Static, Type } from "typebox";
 export const TOOL_NAME = "todo";
 export const TOOL_LABEL = "Todo";
 export const COMMAND_NAME = "todos";
+export const CLEAN_COMMAND_NAME = "clean-todo";
 
 // ---------------------------------------------------------------------------
 // User-facing strings (kept stable for /todos UX parity).
@@ -18,6 +19,9 @@ export const COMMAND_NAME = "todos";
 
 export const ERR_REQUIRES_INTERACTIVE = "/todos requires interactive mode";
 export const MSG_NO_TODOS = "No todos yet. Ask the agent to add some!";
+export const MSG_CLEAN_CONFIRM = "Clear all todos for this session?";
+export const MSG_CLEAN_DONE = "Cleared this session's todos.";
+export const MSG_CLEAN_EMPTY = "No todos to clear for this session.";
 
 // ---------------------------------------------------------------------------
 // Public domain types

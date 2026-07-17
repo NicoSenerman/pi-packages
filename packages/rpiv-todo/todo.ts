@@ -15,21 +15,35 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadConfig, validateGuidanceFields } from "./config.js";
 import { formatStatusLabel, t } from "./state/i18n-bridge.js";
+import { clearState } from "./state/persistence.js";
 import { replayFromBranch } from "./state/replay.js";
-import { selectTasksByStatus, selectTodoCounts, selectVisibleTasks } from "./state/selectors.js";
+import {
+	selectTasksByStatus,
+	selectTodoCounts,
+	selectVisibleTasks,
+} from "./state/selectors.js";
 import { applyTaskMutation } from "./state/state-reducer.js";
+import { EMPTY_STATE } from "./state/state.js";
 import { commitState, getState, replaceState } from "./state/store.js";
 import { buildToolResult } from "./tool/response-envelope.js";
 import {
+	CLEAN_COMMAND_NAME,
 	COMMAND_NAME,
 	ERR_REQUIRES_INTERACTIVE,
+	MSG_CLEAN_CONFIRM,
+	MSG_CLEAN_DONE,
+	MSG_CLEAN_EMPTY,
 	MSG_NO_TODOS,
 	type TaskMutationParams,
 	TOOL_LABEL,
 	TOOL_NAME,
 	TodoParamsSchema,
 } from "./tool/types.js";
-import { formatCommandTaskLine, renderTodoCall, renderTodoResult } from "./view/format.js";
+import {
+	formatCommandTaskLine,
+	renderTodoCall,
+	renderTodoResult,
+} from "./view/format.js";
 
 // English fallbacks for localized /todos section headers — the box-drawing
 // decoration is part of the localized string so translators can adjust spacing.
@@ -46,7 +60,12 @@ export { isTransitionValid } from "./state/invariants.js";
 export { applyTaskMutation } from "./state/state-reducer.js";
 export { __resetState, getNextId, getTodos } from "./state/store.js";
 export { deriveBlocks, detectCycle } from "./state/task-graph.js";
-export type { Task, TaskAction, TaskDetails, TaskStatus } from "./tool/types.js";
+export type {
+	Task,
+	TaskAction,
+	TaskDetails,
+	TaskStatus,
+} from "./tool/types.js";
 export { TOOL_NAME } from "./tool/types.js";
 
 /**
@@ -54,7 +73,9 @@ export { TOOL_NAME } from "./tool/types.js";
  * mutated module state directly; the new replay seam (`state/replay.ts`)
  * returns a `TaskState` and the caller commits via `replaceState`.
  */
-export function reconstructTodoState(ctx: Parameters<typeof replayFromBranch>[0]): void {
+export function reconstructTodoState(
+	ctx: Parameters<typeof replayFromBranch>[0],
+): void {
 	replaceState(replayFromBranch(ctx));
 }
 
@@ -62,7 +83,8 @@ export function reconstructTodoState(ctx: Parameters<typeof replayFromBranch>[0]
 // Tool registration
 // ---------------------------------------------------------------------------
 
-export const DEFAULT_PROMPT_SNIPPET = "Manage a task list to track multi-step progress";
+export const DEFAULT_PROMPT_SNIPPET =
+	"Manage a task list to track multi-step progress";
 export const DEFAULT_PROMPT_GUIDELINES: string[] = [
 	"Use `todo` for complex work with 3+ steps, when the user gives you a list of tasks, or immediately after receiving new instructions to capture requirements. Skip it for single trivial tasks and purely conversational requests.",
 	"When starting any task, mark it in_progress BEFORE beginning work. Mark it completed IMMEDIATELY when done — never batch completions. Exactly one task should be in_progress at a time.",
@@ -85,10 +107,20 @@ export function registerTodoTool(pi: ExtensionAPI): void {
 		promptGuidelines: guidance.promptGuidelines ?? DEFAULT_PROMPT_GUIDELINES,
 		parameters: TodoParamsSchema,
 
-		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-			const result = applyTaskMutation(getState(), params.action, params as TaskMutationParams);
-			commitState(result.state);
-			return buildToolResult(params.action, params as TaskMutationParams, result.state, result.op);
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const sessionId = ctx.sessionManager.getSessionId();
+			const result = applyTaskMutation(
+				getState(),
+				params.action,
+				params as TaskMutationParams,
+			);
+			commitState(sessionId, result.state);
+			return buildToolResult(
+				params.action,
+				params as TaskMutationParams,
+				result.state,
+				result.op,
+			);
 		},
 
 		renderCall(args, theme, _context) {
@@ -101,16 +133,74 @@ export function registerTodoTool(pi: ExtensionAPI): void {
 	});
 }
 
-// ---------------------------------------------------------------------------
-// /todos slash command
-// ---------------------------------------------------------------------------
+//
+// Re-export so existing importers (todo-overlay.ts, index.ts, tests) keep
+// resolving `EMPTY_STATE`/`TaskState` from `./todo.js`.
+//
+export { EMPTY_STATE } from "./state/state.js";
+export type { TaskState } from "./state/state.js";
+
+// --- /clean-todo command -----------------------------------------------------
+
+/**
+ * Optional post-clean hook — set by index.ts to refresh the overlay after a
+ * manual `/clean-todo`. Kept as a setter (not a direct TodoOverlay import)
+ * so todo.ts stays free of TUI dependencies; the overlay is owned by index.ts.
+ */
+let onCleanCallback: (() => void) | undefined;
+
+/** index.ts installs the overlay-refresh hook after constructing the overlay. */
+export function setOnCleanTodosHook(fn: (() => void) | undefined): void {
+	onCleanCallback = fn;
+}
+
+/**
+ * `/clean-todo` — manually wipe THIS session's todo list + persistence file.
+ * Confirms interactively first. Clears only the current session's file
+ * (per-session isolation) so sibling/parent/child sessions are untouched.
+ * No-op (with a notice) when the list is already empty.
+ */
+export function registerCleanTodoCommand(pi: ExtensionAPI): void {
+	pi.registerCommand(CLEAN_COMMAND_NAME, {
+		description: "Clear all todos for the current session",
+		handler: async (_args, ctx) => {
+			if (!ctx.hasUI) {
+				ctx.ui.notify(
+					t("command.requires_interactive", ERR_REQUIRES_INTERACTIVE),
+					"error",
+				);
+				return;
+			}
+			const visible = selectVisibleTasks(getState());
+			if (visible.length === 0) {
+				ctx.ui.notify(t("command.clean_empty", MSG_CLEAN_EMPTY), "info");
+				return;
+			}
+			const ok = await ctx.ui.confirm(
+				"Clean todos",
+				t("command.clean_confirm", MSG_CLEAN_CONFIRM),
+			);
+			if (!ok) return;
+			clearState(ctx.sessionManager.getSessionId());
+			replaceState({
+				tasks: [...EMPTY_STATE.tasks],
+				nextId: EMPTY_STATE.nextId,
+			});
+			onCleanCallback?.();
+			ctx.ui.notify(t("command.clean_done", MSG_CLEAN_DONE), "info");
+		},
+	});
+}
 
 export function registerTodosCommand(pi: ExtensionAPI): void {
 	pi.registerCommand(COMMAND_NAME, {
 		description: "Show all todos on the current branch, grouped by status",
 		handler: async (_args, ctx) => {
 			if (!ctx.hasUI) {
-				ctx.ui.notify(t("command.requires_interactive", ERR_REQUIRES_INTERACTIVE), "error");
+				ctx.ui.notify(
+					t("command.requires_interactive", ERR_REQUIRES_INTERACTIVE),
+					"error",
+				);
 				return;
 			}
 			const state = getState();
@@ -123,22 +213,30 @@ export function registerTodosCommand(pi: ExtensionAPI): void {
 			const counts = selectTodoCounts(state);
 
 			const header: string[] = [];
-			if (counts.completed > 0) header.push(`${counts.completed}/${counts.total} ${formatStatusLabel("completed")}`);
-			if (counts.inProgress > 0) header.push(`${counts.inProgress} ${formatStatusLabel("in_progress")}`);
-			if (counts.pending > 0) header.push(`${counts.pending} ${formatStatusLabel("pending")}`);
+			if (counts.completed > 0)
+				header.push(
+					`${counts.completed}/${counts.total} ${formatStatusLabel("completed")}`,
+				);
+			if (counts.inProgress > 0)
+				header.push(`${counts.inProgress} ${formatStatusLabel("in_progress")}`);
+			if (counts.pending > 0)
+				header.push(`${counts.pending} ${formatStatusLabel("pending")}`);
 
 			const lines: string[] = [header.join(" · ")];
 			if (groups.pending.length > 0) {
 				lines.push(t("command.section.pending", SECTION_PENDING));
-				for (const task of groups.pending) lines.push(formatCommandTaskLine(task, "○"));
+				for (const task of groups.pending)
+					lines.push(formatCommandTaskLine(task, "○"));
 			}
 			if (groups.inProgress.length > 0) {
 				lines.push(t("command.section.in_progress", SECTION_IN_PROGRESS));
-				for (const task of groups.inProgress) lines.push(formatCommandTaskLine(task, "◐"));
+				for (const task of groups.inProgress)
+					lines.push(formatCommandTaskLine(task, "◐"));
 			}
 			if (groups.completed.length > 0) {
 				lines.push(t("command.section.completed", SECTION_COMPLETED));
-				for (const task of groups.completed) lines.push(formatCommandTaskLine(task, "✓"));
+				for (const task of groups.completed)
+					lines.push(formatCommandTaskLine(task, "✓"));
 			}
 
 			ctx.ui.notify(lines.join("\n"), "info");

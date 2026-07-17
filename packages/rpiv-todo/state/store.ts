@@ -7,7 +7,10 @@ import { EMPTY_STATE, type TaskState } from "./state.js";
  * `nextId` consts in `todo.ts`; centralizing here keeps the store as the
  * single mutation seam and lets the reducer remain pure.
  */
-let state: TaskState = { tasks: [...EMPTY_STATE.tasks], nextId: EMPTY_STATE.nextId };
+let state: TaskState = {
+	tasks: [...EMPTY_STATE.tasks],
+	nextId: EMPTY_STATE.nextId,
+};
 
 /**
  * Live tasks accessor. Returned `readonly Task[]` so callers (overlay render
@@ -39,16 +42,20 @@ export function replaceState(next: TaskState): void {
 /**
  * Post-reducer commit seam. Tool execute() calls this with the reducer's
  * `state` output to publish the new canonical state to live readers (overlay,
- * `/todos`, renderCall) and to snapshot it to the per-session persistence
- * file. The disk write is fire-and-forget and wrapped so a persistence failure
- * never breaks a tool call — the session must not crash over persistence.
+ * `/todos`, renderCall) and to snapshot it to the calling session's own
+ * persistence file (scoped by `sessionId` so concurrent sessions — incl.
+ * in-process BACH subagents — never share a file). The disk write is
+ * fire-and-forget and wrapped so a persistence failure never breaks a tool
+ * call — the session must not crash over persistence.
  */
-export function commitState(next: TaskState): void {
+export function commitState(sessionId: string, next: TaskState): void {
 	state = next;
 	try {
-		writeState(next);
+		writeState(sessionId, next);
 	} catch (e) {
-		process.stderr.write(`rpiv-todo persistence: commitState write failed: ${String(e)}\n`);
+		process.stderr.write(
+			`rpiv-todo persistence: commitState write failed: ${String(e)}\n`,
+		);
 	}
 }
 
