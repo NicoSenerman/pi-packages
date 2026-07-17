@@ -22,12 +22,13 @@ import {
 	selectTodoCounts,
 	selectVisibleTasks,
 } from "./state/selectors.js";
-import { applyTaskMutation } from "./state/state-reducer.js";
 import { EMPTY_STATE } from "./state/state.js";
+import { applyTaskMutation } from "./state/state-reducer.js";
 import { commitState, getState, replaceState } from "./state/store.js";
 import { buildToolResult } from "./tool/response-envelope.js";
 import {
 	CLEAN_COMMAND_NAME,
+	CLEAR_MARKER_CUSTOM_TYPE,
 	COMMAND_NAME,
 	ERR_REQUIRES_INTERACTIVE,
 	MSG_CLEAN_CONFIRM,
@@ -133,12 +134,12 @@ export function registerTodoTool(pi: ExtensionAPI): void {
 	});
 }
 
+export type { TaskState } from "./state/state.js";
 //
 // Re-export so existing importers (todo-overlay.ts, index.ts, tests) keep
 // resolving `EMPTY_STATE`/`TaskState` from `./todo.js`.
 //
 export { EMPTY_STATE } from "./state/state.js";
-export type { TaskState } from "./state/state.js";
 
 // --- /clean-todo command -----------------------------------------------------
 
@@ -155,9 +156,13 @@ export function setOnCleanTodosHook(fn: (() => void) | undefined): void {
 }
 
 /**
- * `/clean-todo` — manually wipe THIS session's todo list + persistence file.
- * Confirms interactively first. Clears only the current session's file
- * (per-session isolation) so sibling/parent/child sessions are untouched.
+ * `/clean-todo` — manually wipe THIS session's todo list. Clears (1) the
+ * in-memory state, (2) this session's persistence file (per-session isolation
+ * so sibling/parent/child sessions are untouched), and (3) appends a durable
+ * `rpiv-todo-cleared` marker to the session branch via `pi.appendEntry` so
+ * the clear survives `/reload`, compaction, and forks — `replayFromBranch`
+ * honors it as last-write-wins over any prior todo toolResult. Without the
+ * marker, todos stored in the conversation history would reappear on reload.
  * No-op (with a notice) when the list is already empty.
  */
 export function registerCleanTodoCommand(pi: ExtensionAPI): void {
@@ -185,6 +190,11 @@ export function registerCleanTodoCommand(pi: ExtensionAPI): void {
 			replaceState({
 				tasks: [...EMPTY_STATE.tasks],
 				nextId: EMPTY_STATE.nextId,
+			});
+			// Durable marker in the session branch so the clear survives reload /
+			// compaction / fork. `replayFromBranch` treats it as last-write-wins.
+			pi.appendEntry(CLEAR_MARKER_CUSTOM_TYPE, {
+				at: new Date().toISOString(),
 			});
 			onCleanCallback?.();
 			ctx.ui.notify(t("command.clean_done", MSG_CLEAN_DONE), "info");

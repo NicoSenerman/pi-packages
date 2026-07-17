@@ -11,24 +11,31 @@
  * module is imported dynamically AFTER `RPIV_TODO_STATE_DIR` is set so the
  * STATE_DIR const binds to the temp dir.
  */
-import { rmSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+
+import assert from "node:assert/strict";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import assert from "node:assert/strict";
 
 // Must be set before importing persistence.js (the const binds at import).
 const TMP = join(tmpdir(), `rpiv-todo-test-${process.pid}-${Date.now()}`);
 process.env.RPIV_TODO_STATE_DIR = TMP;
 
-const { writeState, readState, clearState, persistPathFor, orphanLegacyState } = await import(
-	"../state/persistence.ts",
-);
+const { writeState, readState, clearState, persistPathFor, orphanLegacyState } =
+	await import("../state/persistence.ts");
 // Note: persistence.ts is the bug locus (the old fixed-path file). store.ts
 // merely calls into it, so testing persistence.ts in isolation fully covers
 // the cross-session isolation fix. It has no relative runtime imports (only
 // a type-only ./state import, elided by type-stripping), so it loads
 // standalone under node --experimental-strip-types.
+//
+// The /clean-todo durable clear-marker logic (state/replay.ts) is NOT runtime-
+// tested here: replay.ts imports ./state.js (a value import of EMPTY_STATE)
+// and ../tool/types.js, which node's type-stripper cannot resolve to .ts
+// (the package uses .js specifiers resolved by pi's TS loader). Its types are
+// covered by tsc --noEmit, and its end-to-end behavior is verified live after
+// restart.
 
 function setup() {
 	mkdirSync(TMP, { recursive: true });
@@ -51,7 +58,9 @@ function stateOne() {
 /** Build a minimal TaskState with one pending task, distinct from stateOne. */
 function stateTwo() {
 	return {
-		tasks: [{ id: 1, subject: "session B task", status: "pending", priority: 0 }],
+		tasks: [
+			{ id: 1, subject: "session B task", status: "pending", priority: 0 },
+		],
 		nextId: 2,
 	};
 }
@@ -67,9 +76,21 @@ test("each session reads only its own file", () => {
 		const ra = readState(a);
 		const rb = readState(b);
 
-		assert.equal(ra?.tasks[0].subject, "session A task", "session A reads its own task");
-		assert.equal(rb?.tasks[0].subject, "session B task", "session B reads its own task");
-		assert.notEqual(ra?.tasks[0].subject, rb?.tasks[0].subject, "no cross-session bleed");
+		assert.equal(
+			ra?.tasks[0].subject,
+			"session A task",
+			"session A reads its own task",
+		);
+		assert.equal(
+			rb?.tasks[0].subject,
+			"session B task",
+			"session B reads its own task",
+		);
+		assert.notEqual(
+			ra?.tasks[0].subject,
+			rb?.tasks[0].subject,
+			"no cross-session bleed",
+		);
 	} finally {
 		teardown();
 	}
@@ -83,7 +104,11 @@ test("a fresh child session finds no file and starts empty", () => {
 		writeState(parent, stateOne());
 
 		// Child never wrote a file → readState returns null (empty slate).
-		assert.equal(readState(child), null, "child starts with no todos of its own");
+		assert.equal(
+			readState(child),
+			null,
+			"child starts with no todos of its own",
+		);
 		assert.equal(existsSync(persistPathFor(child)), false, "child has no file");
 	} finally {
 		teardown();
@@ -99,11 +124,24 @@ test("interleaved commits across two sessions never clobber each other", () => {
 		// Simulate concurrent BACH subagent + parent each calling todo.
 		writeState(a, stateOne());
 		writeState(b, stateTwo());
-		writeState(a, { tasks: [{ id: 1, subject: "A updated", status: "completed", priority: 0 }], nextId: 2 });
+		writeState(a, {
+			tasks: [
+				{ id: 1, subject: "A updated", status: "completed", priority: 0 },
+			],
+			nextId: 2,
+		});
 		writeState(b, stateTwo());
 
-		assert.equal(readState(a)?.tasks[0].subject, "A updated", "A kept its own update");
-		assert.equal(readState(b)?.tasks[0].subject, "session B task", "B unaffected by A's writes");
+		assert.equal(
+			readState(a)?.tasks[0].subject,
+			"A updated",
+			"A kept its own update",
+		);
+		assert.equal(
+			readState(b)?.tasks[0].subject,
+			"session B task",
+			"B unaffected by A's writes",
+		);
 	} finally {
 		teardown();
 	}
@@ -120,7 +158,11 @@ test("clearState only deletes the current session's file", () => {
 		clearState(a);
 
 		assert.equal(readState(a), null, "A cleared");
-		assert.equal(readState(b)?.tasks[0].subject, "session B task", "B survives A's clear");
+		assert.equal(
+			readState(b)?.tasks[0].subject,
+			"session B task",
+			"B survives A's clear",
+		);
 	} finally {
 		teardown();
 	}
@@ -136,7 +178,11 @@ test("commitState-writes-to-session-own-file", () => {
 		writeState("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", stateTwo()); // sibling commit
 
 		// A's file is untouched — last-writer-wins no longer applies globally.
-		assert.equal(readState(a)?.tasks[0].subject, "session A task", "A's file survived B's commit");
+		assert.equal(
+			readState(a)?.tasks[0].subject,
+			"session A task",
+			"A's file survived B's commit",
+		);
 	} finally {
 		teardown();
 	}
@@ -146,12 +192,20 @@ test("orphanLegacyState quarantines a legacy global file", async () => {
 	setup();
 	try {
 		const legacyPath = join(TMP, "rpiv-todo-state.json");
-		writeFileSync(legacyPath, JSON.stringify({ tasks: [], nextId: 1, version: 1 }), { mode: 0o600 });
+		writeFileSync(
+			legacyPath,
+			JSON.stringify({ tasks: [], nextId: 1, version: 1 }),
+			{ mode: 0o600 },
+		);
 
 		const orphaned = orphanLegacyState();
 
 		assert.equal(orphaned, true, "legacy file was orphaned");
-		assert.equal(existsSync(legacyPath), false, "legacy file gone from its original path");
+		assert.equal(
+			existsSync(legacyPath),
+			false,
+			"legacy file gone from its original path",
+		);
 		// Calling again is a no-op.
 		assert.equal(orphanLegacyState(), false, "second call is a no-op");
 	} finally {

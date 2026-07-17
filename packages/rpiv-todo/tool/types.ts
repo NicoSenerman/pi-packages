@@ -12,6 +12,14 @@ export const TOOL_NAME = "todo";
 export const TOOL_LABEL = "Todo";
 export const COMMAND_NAME = "todos";
 export const CLEAN_COMMAND_NAME = "clean-todo";
+/**
+ * `custom` entry type written by `/clean-todo` into the session branch (via
+ * `pi.appendEntry`) so the clear survives `/reload`, compaction, and forks.
+ * `replayFromBranch` honors it as last-write-wins over any prior todo
+ * toolResult. Distinct from the persistence file, which only covers a single
+ * live session.
+ */
+export const CLEAR_MARKER_CUSTOM_TYPE = "rpiv-todo-cleared";
 
 // ---------------------------------------------------------------------------
 // User-facing strings (kept stable for /todos UX parity).
@@ -29,7 +37,14 @@ export const MSG_CLEAN_EMPTY = "No todos to clear for this session.";
 
 export type TaskStatus = "pending" | "in_progress" | "completed" | "deleted";
 
-export type TaskAction = "create" | "update" | "list" | "get" | "delete" | "clear" | "next_task";
+export type TaskAction =
+	| "create"
+	| "update"
+	| "list"
+	| "get"
+	| "delete"
+	| "clear"
+	| "next_task";
 
 export interface Task {
 	id: number;
@@ -85,12 +100,25 @@ export interface TaskMutationParams {
 // ---------------------------------------------------------------------------
 
 export const TodoParamsSchema = Type.Object({
-	action: StringEnum(["create", "update", "list", "get", "delete", "clear", "next_task"] as const),
-	subject: Type.Optional(Type.String({ description: "Task subject line (required for create)" })),
-	description: Type.Optional(Type.String({ description: "Long-form task description" })),
+	action: StringEnum([
+		"create",
+		"update",
+		"list",
+		"get",
+		"delete",
+		"clear",
+		"next_task",
+	] as const),
+	subject: Type.Optional(
+		Type.String({ description: "Task subject line (required for create)" }),
+	),
+	description: Type.Optional(
+		Type.String({ description: "Long-form task description" }),
+	),
 	activeForm: Type.Optional(
 		Type.String({
-			description: "Present-continuous spinner label shown while status is in_progress (e.g. 'writing tests')",
+			description:
+				"Present-continuous spinner label shown while status is in_progress (e.g. 'writing tests')",
 		}),
 	),
 	status: Type.Optional(
@@ -110,18 +138,23 @@ export const TodoParamsSchema = Type.Object({
 	),
 	removeBlockedBy: Type.Optional(
 		Type.Array(Type.Number(), {
-			description: "Task ids to remove from blockedBy (update only, additive merge)",
+			description:
+				"Task ids to remove from blockedBy (update only, additive merge)",
 		}),
 	),
-	owner: Type.Optional(Type.String({ description: "Agent/owner assigned to this task" })),
+	owner: Type.Optional(
+		Type.String({ description: "Agent/owner assigned to this task" }),
+	),
 	metadata: Type.Optional(
 		Type.Record(Type.String(), Type.Unknown(), {
-			description: "Arbitrary metadata; pass null value for a key to delete that key on update",
+			description:
+				"Arbitrary metadata; pass null value for a key to delete that key on update",
 		}),
 	),
 	priority: Type.Optional(
 		Type.Number({
-			description: "Task priority (higher = more urgent; default 0). Affects next_task and system-prompt ordering.",
+			description:
+				"Task priority (higher = more urgent; default 0). Affects next_task and system-prompt ordering.",
 		}),
 	),
 	id: Type.Optional(
@@ -131,7 +164,8 @@ export const TodoParamsSchema = Type.Object({
 	),
 	includeDeleted: Type.Optional(
 		Type.Boolean({
-			description: "If true, list action returns deleted (tombstoned) tasks as well. Default: false.",
+			description:
+				"If true, list action returns deleted (tombstoned) tasks as well. Default: false.",
 		}),
 	),
 });
