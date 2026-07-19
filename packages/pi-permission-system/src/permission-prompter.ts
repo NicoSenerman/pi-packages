@@ -11,6 +11,21 @@ import { requiresBachPrompt } from "./bach-gate";
 import type { ReviewLogger } from "./session-logger";
 import { isBachMode, shouldAutoApprovePermissionState } from "./yolo-mode";
 
+/**
+ * Resolve the full bash program string the BACH destructiveness gate must see.
+ *
+ * `details.command` carries the single most-restrictive *unit* a chained bash
+ * program decomposed into (e.g. just `cd /repo` when every unit resolved to
+ * `allow` under a permissive default config). The BACH gate is a whole-command
+ * destructiveness check — it must inspect the entire program so a
+ * `wrangler deploy` on any line is caught — so prefer {@link PromptPermissionDetails.fullCommand}
+ * (the original `input.command` string) and fall back to `details.command` only
+ * when the full string is unavailable (e.g. MCP/path tools, forwarded prompts).
+ */
+function bachGateCommand(details: PromptPermissionDetails): string | undefined {
+  return details.fullCommand ?? details.command;
+}
+
 export type PermissionReviewSource = "tool_call" | "skill_input" | "skill_read";
 
 /** Details passed when prompting the user for a permission decision. */
@@ -26,6 +41,17 @@ export interface PromptPermissionDetails {
   command?: string;
   target?: string;
   toolInputPreview?: string;
+  /**
+   * The full, original tool input string the BACH gate must inspect as a whole.
+   *
+   * For `bash` this is the entire (possibly multi-line, chained) program from
+   * `input.command` — distinct from `command`, which is the single
+   * most-restrictive unit a chained program decomposed into and which can hide
+   * a destructive op on a later line (e.g. a `wrangler deploy` after a leading
+   * `cd`). The BACH destructiveness check reads this; everything else reads
+   * `command` for display/logging that scopes to the policy-matched unit.
+   */
+  fullCommand?: string;
   /** Override label for the "for this session" dialog option. */
   sessionLabel?: string;
 }
@@ -75,12 +101,15 @@ export class PermissionPrompter implements PermissionPrompterApi {
     details: PromptPermissionDetails,
   ): Promise<PermissionPromptDecision> {
     // BACH gate: auto-approve most operations, but force-prompt for
-    // destructive commands and external network access.
+    // destructive commands and external network access. Inspect the *full*
+    // bash program (`fullCommand`), not the single per-unit `command`, so a
+    // destructive op on any line (e.g. `wrangler deploy` after a leading
+    // `cd`) still trips the gate (#<issue>).
     if (
       shouldAutoApprovePermissionState("ask", this.deps.config.current()) &&
       !(
         isBachMode() &&
-        requiresBachPrompt(details.toolName ?? "", details.command)
+        requiresBachPrompt(details.toolName ?? "", bachGateCommand(details))
       )
     ) {
       this.writeReviewEntry("permission_request.auto_approved", details);

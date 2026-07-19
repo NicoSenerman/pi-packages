@@ -7,6 +7,7 @@ import { suggestSessionPattern } from "#src/pattern-suggest";
 import { formatAskPrompt } from "#src/permission-prompts";
 import { SessionApproval } from "#src/session-approval";
 import type { ToolPreviewFormatter } from "#src/tool-preview-formatter";
+import { getNonEmptyString, toRecord } from "#src/common";
 import type { PermissionCheckResult } from "#src/types";
 import type { GateDescriptor } from "./descriptor";
 import { deriveDecisionValue } from "./helpers";
@@ -48,6 +49,15 @@ export function describeToolGate(
     PATH_BEARING_TOOLS,
   );
 
+  // The full, original bash program string (possibly multi-line/chained).
+  // The BACH destructiveness gate inspects this as a whole so a destructive
+  // op on any unit (not just the policy-matched one) trips the gate; `check.command`
+  // alone is the single most-restrictive unit and can hide a later `wrangler deploy`.
+  const fullBashCommand =
+    tcc.toolName === "bash"
+      ? (getNonEmptyString(toRecord(tcc.input).command) ?? undefined)
+      : undefined;
+
   // Compute session approval suggestion for the "for this session" option.
   const suggestion = suggestSessionPattern(
     tcc.toolName,
@@ -81,6 +91,9 @@ export function describeToolGate(
       toolCallId: tcc.toolCallId,
       toolName: tcc.toolName,
       sessionLabel: suggestion.label,
+      ...(fullBashCommand === undefined
+        ? {}
+        : { fullCommand: fullBashCommand }),
       ...permissionLogContext,
     },
     logContext: {

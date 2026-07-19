@@ -136,6 +136,46 @@ describe("requiresBachPrompt — non-wrangler destructive patterns", () => {
   });
 });
 
+describe("requiresBachPrompt — multi-line and chained programs", () => {
+  // The BACH destructiveness gate must inspect the *whole* bash program, not
+  // just a single decomposed unit, so a destructive op on any line still
+  // trips it. These lock the regex contract against the multi-line regression
+  // where a `wrangler deploy` after a leading `cd` slipped through because the
+  // gate was fed only the leading unit.
+  const cases: Array<[string, boolean]> = [
+    // newline-separated programs — the regression's exact shape
+    [
+      'cd /home/sparkik/Documents/Projects/gyg-modern-app\ngit add packages/api/src/scrapers/dequienes-gyg/CONTEXT.md\ngit commit -m "docs: skip dead source"\ncd packages/api\nnpx wrangler deploy --name scrapers --env production',
+      true,
+    ],
+    ["cd /repo\necho hi\nwrangler deploy", true],
+    ["cd /repo\nwrangler secret put KEY", true],
+    ["cd /repo\nwrangler d1 execute db --command 'SELECT 1'", true],
+    ["cd /repo\nwrangler versions upload", true],
+    ["cd /repo\nwrangler kv namespace delete my-ns", true],
+    ["cd /repo\nwrangler r2 object put bucket/key --file ./x", true],
+    // read-only subcommands on later lines stay auto-approved
+    ["cd /repo\nwrangler tail", false],
+    ["cd /repo\nwrangler secret list", false],
+    ["cd /repo\nwrangler deployments list", false],
+    ["cd /repo\nwrangler d1 list", false],
+    ["cd /repo\nwrangler whoami", false],
+    // non-wrangler destructive ops later in a multi-line program
+    ["cd /repo\ngit add .\ngit commit -m x\ngit push", true],
+    ["cd /repo\nrm -rf node_modules", true],
+    ["cd /repo\nsudo apt-get update", true],
+    // deploy wrapped in a trailing pipe (the audit command's actual tail)
+    ["cd /repo\nnpx wrangler deploy 2>&1 | tail -8", true],
+    // benign multi-line program — must NOT trip
+    ["cd /repo\nls -la\necho done\ngit status", false],
+    ["echo step 1\necho step 2\nnpm install", false],
+  ];
+
+  it.each(cases)("%s → requiresBachPrompt=%s", (command, expected) => {
+    expect(requiresBachPrompt("bash", command)).toBe(expected);
+  });
+});
+
 describe("requiresBachPrompt — edge cases", () => {
   it("returns false when toolName is not 'bash'", () => {
     expect(requiresBachPrompt("read", "rm -rf /")).toBe(false);

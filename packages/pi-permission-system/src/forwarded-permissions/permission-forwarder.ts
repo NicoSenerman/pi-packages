@@ -500,6 +500,14 @@ export class PermissionForwarder implements ApprovalRequester, InboxProcessor {
     // Adapted: upstream now owns the auto-approve check here (config-based),
     // but we add BACH gate logic to force-prompt for destructive commands
     // even when auto-approve is active.
+    //
+    // NOTE: `request.value` is the persisted display value — for bash it is
+    // the single most-restrictive *unit* the child decomposed the program
+    // into, not the full multi-line command. The child-side prompter inspects
+    // the *full* program (`details.fullCommand`) and force-prompts before
+    // forwarding, so a destructive bash command never reaches this parent-side
+    // auto-approve path; this check is a defense-in-depth backstop against
+    // already-non-destructive forwarded requests regressing here.
     const autoApproveBase = shouldAutoApprovePermissionState(
       "ask",
       this.config.current(),
