@@ -3022,8 +3022,7 @@ async function askViaDialogs(
   if (allowFreeform) selectOptions.push(FREEFORM_SENTINEL);
 
   const selected = (await ui.select(prompt, selectOptions, dialogOpts)) as
-    | string
-    | undefined;
+    string | undefined;
   if (isCancelledInput(selected)) return null;
 
   if (selected === FREEFORM_SENTINEL) {
@@ -3108,12 +3107,6 @@ export default function (pi: ExtensionAPI) {
             "Collect an optional comment after selecting one or more options. Default: false",
         }),
       ),
-      displayMode: Type.Optional(
-        StringEnum(["overlay", "inline"] as const, {
-          description:
-            "UI rendering mode. 'overlay' shows a centered modal, 'inline' renders in-place. Default: PI_ASK_USER_DISPLAY_MODE env var if set, otherwise 'overlay'. Omit to respect the user's configured preference.",
-        }),
-      ),
       overlayToggleKey: Type.Optional(
         Type.String({
           description:
@@ -3154,16 +3147,13 @@ export default function (pi: ExtensionAPI) {
         allowMultiple = false,
         allowFreeform = true,
         allowComment = false,
-        displayMode,
         overlayToggleKey,
         commentToggleKey,
         timeout,
       } = params as AskParams;
       const envMode = process.env.PI_ASK_USER_DISPLAY_MODE;
-      const envDisplayMode: AskDisplayMode | undefined =
-        envMode === "overlay" || envMode === "inline" ? envMode : undefined;
       const effectiveDisplayMode: AskDisplayMode =
-        displayMode ?? envDisplayMode ?? "overlay";
+        envMode === "overlay" || envMode === "inline" ? envMode : "inline";
       const shortcuts: ResolvedAskShortcuts = {
         overlayToggle: resolveShortcut(
           overlayToggleKey,
@@ -3477,8 +3467,7 @@ export default function (pi: ExtensionAPI) {
 
     renderResult(result, options, theme) {
       const details = result.details as
-        | (AskToolDetails & { error?: string })
-        | undefined;
+        (AskToolDetails & { error?: string }) | undefined;
 
       if (details?.error) {
         return new Text(theme.fg("error", `✗ ${details.error}`), 0, 0);

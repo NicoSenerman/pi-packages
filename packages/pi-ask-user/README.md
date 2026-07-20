@@ -65,7 +65,6 @@ The registered tool name is:
 | `allowMultiple` | `boolean?` | `false` | Enable multi-select mode |
 | `allowFreeform` | `boolean?` | `true` | Add a "Type something" freeform option |
 | `allowComment` | `boolean?` | `false` | Expose a user-toggleable extra-context option in the custom UI (`ctrl+g` or the toggle row) and collect an optional comment in fallback dialogs |
-| `displayMode` | `"overlay" \| "inline"?` | env var or `"overlay"` | Controls custom UI rendering: `overlay` shows the centered modal (current behavior), `inline` renders without overlay framing |
 | `overlayToggleKey` | `string?` | env var or `"alt+o"` | Shortcut for hiding/showing the overlay popup (overlay mode only). Pi-TUI key spec, e.g. `"alt+o"`, `"ctrl+shift+h"`. Pass `"off"` to disable. |
 | `commentToggleKey` | `string?` | env var or `"ctrl+g"` | Shortcut for toggling the optional comment/extra-context row when `allowComment: true`. Pass `"off"` to disable. |
 | `timeout` | `number?` | — | Auto-dismiss after N ms and return `null` if the prompt times out |
@@ -82,12 +81,11 @@ The registered tool name is:
   ],
   "allowMultiple": false,
   "allowFreeform": true,
-  "allowComment": true,
-  "displayMode": "inline"
+  "allowComment": true
 }
 ```
 
-`displayMode: "inline"` uses the same interaction logic but skips overlay mode when calling `ctx.ui.custom(...)`. RPC/headless fallback behavior is unchanged.
+Display mode is **not** a tool parameter. It is resolved exclusively from the `PI_ASK_USER_DISPLAY_MODE` env var (`"overlay"` or `"inline"`), defaulting to `"inline"` when unset. This is intentional: the agent cannot override the user's configured preference. RPC/headless fallback behavior is unchanged.
 
 ## Personal preferences via environment variables
 
@@ -103,11 +101,10 @@ export PI_ASK_USER_COMMENT_TOGGLE_KEY=alt+c
 
 Effective order:
 
-1. Per-call `displayMode` parameter (if provided)
-2. `PI_ASK_USER_DISPLAY_MODE` (if set to `"overlay"` or `"inline"`)
-3. Fallback default: `"overlay"`
+1. `PI_ASK_USER_DISPLAY_MODE` env var (if set to `"overlay"` or `"inline"`)
+2. Fallback default: `"inline"`
 
-Unrecognised values are silently ignored and fall back to `"overlay"`.
+Unrecognised env values are silently ignored and fall back to `"inline"`. The agent **cannot** override this — there is no `displayMode` tool parameter by design, so the model can never force the modal.
 
 ### Shortcuts
 
@@ -131,7 +128,7 @@ While an `ask_user` prompt is open:
 | `esc` | Clear the search filter, exit freeform/comment mode, or cancel the prompt. |
 | `↑` / `↓`, `ctrl+k` / `ctrl+j` | Navigate options. `ctrl+k` / `ctrl+j` (vim-style) work while typing in searchable prompts without disturbing the filter. |
 
-If you prefer never to see the overlay, set `displayMode: "inline"` per call or `PI_ASK_USER_DISPLAY_MODE=inline` globally.
+If you prefer never to see the overlay, set `PI_ASK_USER_DISPLAY_MODE=inline` globally (this is the default when unset).
 
 ## Result details
 
