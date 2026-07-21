@@ -19,6 +19,7 @@ export type Op =
 	| { kind: "list"; statusFilter?: TaskStatus; includeDeleted: boolean }
 	| { kind: "get"; task: Task }
 	| { kind: "clear"; count: number }
+	| { kind: "nochange"; id: number }
 	| { kind: "error"; message: string };
 
 export interface ApplyResult {
@@ -89,7 +90,7 @@ export function applyTaskMutation(state: TaskState, action: TaskAction, params: 
 				params.priority !== undefined ||
 				(params.addBlockedBy && params.addBlockedBy.length > 0) ||
 				(params.removeBlockedBy && params.removeBlockedBy.length > 0);
-			if (!hasMutation) return errorResult(state, "update requires at least one mutable field");
+			if (!hasMutation) return { state, op: { kind: "nochange", id: current.id } };
 
 			let newStatus = current.status;
 			if (params.status !== undefined) {

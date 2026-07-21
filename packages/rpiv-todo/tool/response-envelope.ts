@@ -54,6 +54,8 @@ export function formatContent(op: Op, state: TaskState): string {
 		}
 		case "delete":
 			return `Deleted #${op.id}: ${op.subject}`;
+		case "nochange":
+			return `No change`;
 		case "clear":
 			return `Cleared ${op.count} tasks`;
 		case "list": {
