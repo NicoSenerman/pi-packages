@@ -151,6 +151,16 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("session_start", async (event, ctx) => {
+		// BACH subagents are in-process child sessions sharing this module's
+		// `store.ts` singleton via pi's process-global extension cache.
+		// Replaying/mutating the shared singleton here would write EMPTY_STATE
+		// (the child's branch has no todo toolResults) and clobber the parent's
+		// in-memory list. The child's open todos reach it via the
+		// `before_agent_start` `## Open TODOs` system-prompt block — the intended
+		// cross-session channel — never via the shared store. So a child session
+		// touches neither the singleton nor the overlay here.
+		if (isChildSession()) return;
+
 		// One-time cut-over: orphan the legacy process-wide state file so a stale
 		// global snapshot can never be mis-attributed to a session after the move
 		// to per-session isolation.
@@ -192,6 +202,9 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("session_compact", async (_event, ctx) => {
+		// In-process BACH child: never mutate the shared parent singleton (see
+		// the session_start guard for the full rationale).
+		if (isChildSession()) return;
 		// Auto-compaction races session disposal: pi-core invalidates the
 		// extension runner while still emitting session_compact, so `ctx` may be
 		// a dead proxy whose getters throw the stale error. The compacting session
@@ -208,6 +221,9 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("session_tree", async (_event, ctx) => {
+		// In-process BACH child: never mutate the shared parent singleton (see
+		// the session_start guard for the full rationale).
+		if (isChildSession()) return;
 		try {
 			replaceState(resolveState(ctx.sessionManager.getSessionId(), replayFromBranch(ctx)));
 		} catch (e) {
