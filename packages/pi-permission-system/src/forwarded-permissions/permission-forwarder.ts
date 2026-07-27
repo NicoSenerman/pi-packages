@@ -5,6 +5,7 @@ import {
   getActiveAgentNameFromSystemPrompt,
   type SessionEntryView,
 } from "#src/active-agent";
+import { requiresBachPrompt } from "#src/bach-gate";
 import { toRecord } from "#src/common";
 import type { ConfigReader } from "#src/config-store";
 import type {
@@ -32,7 +33,6 @@ import type { DebugReviewLogger } from "#src/session-logger";
 import { isSubagentExecutionContext } from "#src/subagent-context";
 import type { SubagentSessionRegistry } from "#src/subagent-registry";
 import { isBachMode, shouldAutoApprovePermissionState } from "#src/yolo-mode";
-import { requiresBachPrompt } from "#src/bach-gate";
 
 import {
   cleanupPermissionForwardingLocationIfEmpty,
@@ -493,10 +493,6 @@ export class PermissionForwarder implements ApprovalRequester, InboxProcessor {
       requestPath,
     };
 
-    let decision: PermissionPromptDecision = {
-      approved: false,
-      state: "denied",
-    };
     // Adapted: upstream now owns the auto-approve check here (config-based),
     // but we add BACH gate logic to force-prompt for destructive commands
     // even when auto-approve is active.
@@ -514,48 +510,117 @@ export class PermissionForwarder implements ApprovalRequester, InboxProcessor {
     );
     const bachBlocked =
       isBachMode() && requiresBachPrompt("bash", request.value ?? undefined);
+
     if (autoApproveBase && !bachBlocked) {
+      // Fast path: no user interaction needed. Resolve synchronously so the
+      // inbox drain (and the ForwardingManager poller's `processing` lock)
+      // is not held across any await.
       this.logger.review(
         "forwarded_permission.auto_approved",
         forwardedPermissionLogDetails,
       );
-      decision = { approved: true, state: "approved" };
-    } else {
-      this.logger.review(
-        "forwarded_permission.prompted",
-        forwardedPermissionLogDetails,
+      this.writeForwardedResponse(location, request, currentSessionId, {
+        approved: true,
+        state: "approved",
+      });
+      safeDeleteFile(
+        this.logger,
+        requestPath,
+        `${location.label} forwarded permission request`,
       );
-      try {
-        const forwardedMessage = formatForwardedPermissionPrompt(request);
-        if (this.events) {
-          emitUiPromptEvent(
-            this.events,
-            buildForwardedUiPrompt({
-              requestId: request.id,
-              message: forwardedMessage,
-              requesterAgentName: request.requesterAgentName || null,
-              requesterSessionId: request.requesterSessionId || null,
-              source: request.source ?? null,
-              surface: request.surface ?? null,
-              value: request.value ?? null,
-            }),
-          );
-        }
-        decision = await this.requestPermissionDecisionFromUi(
-          ctx.ui,
-          "Permission Required (Subagent)",
-          forwardedMessage,
-        );
-      } catch (error) {
-        logPermissionForwardingError(
-          this.logger,
-          "Failed to show forwarded permission confirmation dialog",
-          error,
-        );
-        decision = { approved: false, state: "denied" };
-      }
+      return;
     }
 
+    // Manual prompt path. The UI dialog (ui.select) may hang indefinitely
+    // when raised from the ForwardingManager setInterval while the agent
+    // loop is busy — awaiting it inline would hold the poller's `processing`
+    // lock forever and starve every later forwarded request (the
+    // "forwarded_permission.prompted" then nothing, 10-min timeout, bug seen
+    // in production session 019fa3d8). Instead, claim the request file
+    // immediately (delete so a later drain can't re-pick it) and run the
+    // dialog + response-write detached. The inbox drain returns at once; the
+    // poller stays free to drain later, independently-resolvable requests.
+    this.logger.review(
+      "forwarded_permission.prompted",
+      forwardedPermissionLogDetails,
+    );
+    safeDeleteFile(
+      this.logger,
+      requestPath,
+      `${location.label} forwarded permission request`,
+    );
+    void this.runForwardedManualPrompt(
+      ctx,
+      request,
+      location,
+      currentSessionId,
+    );
+  }
+
+  /**
+   * Detached manual-prompt for a single forwarded request.
+   *
+   * Runs the UI dialog and writes the response file when it resolves. Never
+   * throws to the caller — errors are logged and a `denied` response is
+   * written so the polling child unblocks instead of hitting the 10-min
+   * timeout. Safe to run concurrently with later inbox drains: the request
+   * file was already deleted by the caller (claim), and the response file
+   * is named by request id and written atomically.
+   */
+  private async runForwardedManualPrompt(
+    ctx: ForwarderContext,
+    request: ForwardedPermissionRequest,
+    location: PermissionForwardingLocation,
+    currentSessionId: string,
+  ): Promise<void> {
+    let decision: PermissionPromptDecision = {
+      approved: false,
+      state: "denied",
+    };
+    try {
+      const forwardedMessage = formatForwardedPermissionPrompt(request);
+      if (this.events) {
+        emitUiPromptEvent(
+          this.events,
+          buildForwardedUiPrompt({
+            requestId: request.id,
+            message: forwardedMessage,
+            requesterAgentName: request.requesterAgentName || null,
+            requesterSessionId: request.requesterSessionId || null,
+            source: request.source ?? null,
+            surface: request.surface ?? null,
+            value: request.value ?? null,
+          }),
+        );
+      }
+      decision = await this.requestPermissionDecisionFromUi(
+        ctx.ui,
+        "Permission Required (Subagent)",
+        forwardedMessage,
+      );
+    } catch (error) {
+      logPermissionForwardingError(
+        this.logger,
+        "Failed to show forwarded permission confirmation dialog",
+        error,
+      );
+      decision = { approved: false, state: "denied" };
+    }
+    this.writeForwardedResponse(location, request, currentSessionId, decision);
+  }
+
+  /**
+   * Persist a forwarded-permission response and log the resolution.
+   *
+   * Shared by the auto-approve fast path and the detached manual prompt.
+   * Writing the response file is what unblocks the polling child.
+   */
+  private writeForwardedResponse(
+    location: PermissionForwardingLocation,
+    request: ForwardedPermissionRequest,
+    currentSessionId: string,
+    decision: PermissionPromptDecision,
+  ): void {
     const responsePath = join(location.responsesDir, `${request.id}.json`);
     this.logger.review(
       decision.approved
@@ -588,11 +653,6 @@ export class PermissionForwarder implements ApprovalRequester, InboxProcessor {
       );
       return;
     }
-
-    safeDeleteFile(
-      this.logger,
-      requestPath,
-      `${location.label} forwarded permission request`,
-    );
+    cleanupPermissionForwardingLocationIfEmpty(this.logger, location);
   }
 }
