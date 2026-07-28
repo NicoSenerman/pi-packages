@@ -62,7 +62,12 @@ export class SnapshotEmitter {
     this.emit();
   }
 
-  onSubagentCompleted(record: Subagent): void {
+  onSubagentCompleted(_record: Subagent): void {
+    if (!this.enabled) return;
+    this.emit();
+  }
+
+  onSubagentFinished(record: Subagent): void {
     if (!this.enabled) return;
     this.detach(record.id);
     this.emit();

@@ -12,13 +12,25 @@ import { debugLog } from "#src/debug";
 import type { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
-import { Subagent, type SubagentLifecycleObserver } from "#src/lifecycle/subagent";
+import {
+  Subagent,
+  type SubagentLifecycleObserver,
+} from "#src/lifecycle/subagent";
 import type { SubagentSession } from "#src/lifecycle/subagent-session";
-import { SubagentState, type SubagentStatus } from "#src/lifecycle/subagent-state";
+import {
+  SubagentState,
+  type SubagentStatus,
+} from "#src/lifecycle/subagent-state";
 import type { WorkspaceProvider } from "#src/lifecycle/workspace";
 
 import type { RunConfig } from "#src/runtime";
-import type { AgentInvocation, CompactionInfo, ParentSessionInfo, SubagentType, ThinkingLevel } from "#src/types";
+import type {
+  AgentInvocation,
+  CompactionInfo,
+  ParentSessionInfo,
+  SubagentType,
+  ThinkingLevel,
+} from "#src/types";
 
 /**
  * A lightweight snapshot of a subagent evicted by the 10-minute cleanup sweep.
@@ -46,11 +58,15 @@ export interface SubagentManagerObserver {
   onSubagentCompacted(record: Subagent, info: CompactionInfo): void;
   /** Fires synchronously after a background agent record is created (before run). */
   onSubagentCreated(record: Subagent): void;
+  /** Fires for every agent that finishes a run (foreground and background). */
+  onSubagentFinished?(record: Subagent): void;
 }
 
 export interface SubagentManagerOptions {
   /** Assembly factory that produces a born-complete SubagentSession per spawn. */
-  createSubagentSession: (params: CreateSubagentSessionParams) => Promise<SubagentSession>;
+  createSubagentSession: (
+    params: CreateSubagentSessionParams,
+  ) => Promise<SubagentSession>;
   /** Concurrency limiter — schedules background run thunks FIFO against the limit. */
   limiter: ConcurrencyLimiter;
   /** Base working directory handed to a workspace provider (the parent cwd). */
@@ -88,7 +104,9 @@ export class SubagentManager {
   private readonly evicted = new Map<string, EvictedSubagent>();
   private cleanupInterval: ReturnType<typeof setInterval>;
   private readonly observer?: SubagentManagerObserver;
-  private readonly createSubagentSession: (params: CreateSubagentSessionParams) => Promise<SubagentSession>;
+  private readonly createSubagentSession: (
+    params: CreateSubagentSessionParams,
+  ) => Promise<SubagentSession>;
   private readonly limiter: ConcurrencyLimiter;
   private readonly baseCwd: string;
   private getRunConfig?: () => RunConfig;
@@ -123,7 +141,8 @@ export class SubagentManager {
     }
     this._workspaceProvider = provider;
     return () => {
-      if (this._workspaceProvider === provider) this._workspaceProvider = undefined;
+      if (this._workspaceProvider === provider)
+        this._workspaceProvider = undefined;
     };
   }
 
@@ -138,7 +157,16 @@ export class SubagentManager {
         : undefined,
       onRunFinished: (agent) => {
         if (options.isBackground) {
-          try { this.observer?.onSubagentCompleted(agent); } catch (err) { debugLog("onSubagentCompleted observer", err); }
+          try {
+            this.observer?.onSubagentCompleted(agent);
+          } catch (err) {
+            debugLog("onSubagentCompleted observer", err);
+          }
+        }
+        try {
+          this.observer?.onSubagentFinished?.(agent);
+        } catch (err) {
+          debugLog("onSubagentFinished observer", err);
         }
       },
       onCompacted: (agent, info) => {
@@ -210,7 +238,10 @@ export class SubagentManager {
     prompt: string,
     options: Omit<AgentSpawnConfig, "isBackground">,
   ): Promise<Subagent> {
-    const id = this.spawn(snapshot, type, prompt, { ...options, isBackground: false });
+    const id = this.spawn(snapshot, type, prompt, {
+      ...options,
+      isBackground: false,
+    });
     const record = this.agents.get(id)!;
     await record.promise;
     return record;
@@ -236,9 +267,7 @@ export class SubagentManager {
   }
 
   listAgents(): Subagent[] {
-    return [...this.agents.values()].sort(
-      (a, b) => b.startedAt - a.startedAt,
-    );
+    return [...this.agents.values()].sort((a, b) => b.startedAt - a.startedAt);
   }
 
   /** Descriptors of agents evicted by the cleanup sweep, most recent first. */
@@ -273,7 +302,8 @@ export class SubagentManager {
       if ((record.completedAt ?? 0) >= cutoff) continue;
       // Retain a navigable descriptor before freeing the heavy session. Only an
       // agent with a persisted file can be sourced from disk after eviction.
-      if (record.outputFile) this.evicted.set(id, toEvictedSubagent(record, record.outputFile));
+      if (record.outputFile)
+        this.evicted.set(id, toEvictedSubagent(record, record.outputFile));
       this.removeRecord(id, record);
     }
   }
@@ -295,7 +325,7 @@ export class SubagentManager {
   // fallow-ignore-next-line unused-class-member
   hasRunning(): boolean {
     return [...this.agents.values()].some(
-      r => r.status === "running" || r.status === "queued",
+      (r) => r.status === "running" || r.status === "queued",
     );
   }
 
@@ -332,8 +362,8 @@ export class SubagentManager {
   /** Promises of all running/queued agents that have one. */
   private pendingPromises(): Promise<void>[] {
     return [...this.agents.values()]
-      .filter(r => r.status === "running" || r.status === "queued")
-      .map(r => r.promise)
+      .filter((r) => r.status === "running" || r.status === "queued")
+      .map((r) => r.promise)
       .filter((p): p is Promise<void> => p != null);
   }
 
@@ -350,7 +380,10 @@ export class SubagentManager {
 }
 
 /** Capture an evicted agent's navigable fields from its record. */
-function toEvictedSubagent(record: Subagent, outputFile: string): EvictedSubagent {
+function toEvictedSubagent(
+  record: Subagent,
+  outputFile: string,
+): EvictedSubagent {
   return {
     id: record.id,
     type: record.type,

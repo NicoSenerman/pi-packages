@@ -72,13 +72,13 @@ describe("SnapshotEmitter", () => {
     expect(payload.agents.map((a) => a.id)).toEqual(["a1"]);
   });
 
-  it("subscribes on start and unsubscribes on completed", () => {
+  it("subscribes on start (unsubscribes on finished, not completed)", () => {
     const agent = createTestSubagent({ id: "a1", status: "running" });
     const sub = wireSubscription(agent);
     const { emitter } = makeEmitter([agent]);
     emitter.onSubagentStarted(agent);
     expect(sub.isSubscribed()).toBe(true);
-    emitter.onSubagentCompleted(agent);
+    emitter.onSubagentFinished(agent);
     expect(sub.unsub).toHaveBeenCalled();
   });
 
@@ -100,23 +100,35 @@ describe("SnapshotEmitter", () => {
     expect(appendEntry).toHaveBeenCalledTimes(1);
   });
 
-  it("detaches on completed (background completion path)", () => {
+  it("detaches on finished (foreground + background completion path)", () => {
     const agent = createTestSubagent({ id: "a1", status: "running" });
     const sub = wireSubscription(agent);
     const { emitter } = makeEmitter([agent]);
     emitter.onSubagentStarted(agent);
     expect(sub.isSubscribed()).toBe(true);
-    emitter.onSubagentCompleted(agent);
+    emitter.onSubagentFinished(agent);
     expect(sub.unsub).toHaveBeenCalled();
   });
 
-  it("emits the current state on completed (completed agents remain visible; pitui clears on SessionStart)", () => {
+  it("onSubagentCompleted emits but does not detach (detach is onSubagentFinished)", () => {
+    const agent = createTestSubagent({ id: "a1", status: "running" });
+    const sub = wireSubscription(agent);
+    const { emitter, appendEntry } = makeEmitter([agent]);
+    emitter.onSubagentStarted(agent);
+    appendEntry.mockClear();
+    emitter.onSubagentCompleted(agent);
+    expect(appendEntry).toHaveBeenCalledTimes(1);
+    expect(sub.unsub).not.toHaveBeenCalled();
+    expect(sub.isSubscribed()).toBe(true);
+  });
+
+  it("emits the current state on finished (completed agents remain visible; pitui clears on SessionStart)", () => {
     const agent = createTestSubagent({ id: "a1", status: "completed" });
     wireSubscription(agent);
     const { emitter, appendEntry } = makeEmitter([agent]);
     emitter.onSubagentStarted(agent);
     appendEntry.mockClear();
-    emitter.onSubagentCompleted(agent);
+    emitter.onSubagentFinished(agent);
     const last = appendEntry.mock.calls.at(-1)?.[1] as {
       agents: { id: string; status: string }[];
     };
