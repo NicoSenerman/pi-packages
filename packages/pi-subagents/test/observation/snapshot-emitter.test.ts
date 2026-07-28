@@ -136,6 +136,39 @@ describe("SnapshotEmitter", () => {
     expect(last.agents[0].status).toBe("completed");
   });
 
+  it("emits an empty snapshot after the fade grace period once no agents are active", () => {
+    const agent = createTestSubagent({ id: "a1", status: "completed" });
+    wireSubscription(agent);
+    const { emitter, appendEntry } = makeEmitter([agent]);
+    emitter.onSubagentStarted(agent);
+    appendEntry.mockClear();
+    emitter.onSubagentFinished(agent); // immediate full emit (shows completed agent)
+    expect(appendEntry).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(3000);
+    expect(appendEntry).toHaveBeenCalledTimes(2);
+    const last = appendEntry.mock.calls.at(-1)?.[1] as { agents: unknown[] };
+    expect(last.agents).toEqual([]);
+  });
+
+  it("cancels the fade-out if a new agent starts during the grace period", () => {
+    const a1 = createTestSubagent({ id: "a1", status: "completed" });
+    const a2 = createTestSubagent({ id: "a2", status: "running" });
+    wireSubscription(a1);
+    wireSubscription(a2);
+    const { emitter, appendEntry } = makeEmitter([a1, a2]);
+    emitter.onSubagentStarted(a1);
+    appendEntry.mockClear();
+    emitter.onSubagentFinished(a1); // finishes a1 → schedules fade…
+    // …but a2 starts before FADE_MS fires — the panel must stay alive.
+    emitter.onSubagentStarted(a2);
+    vi.advanceTimersByTime(3000);
+    // No empty snapshot must be emitted — every snapshot contains a2.
+    for (const call of appendEntry.mock.calls) {
+      const payload = call[1] as { agents: unknown[] };
+      expect(payload.agents).not.toEqual([]);
+    }
+  });
+
   it("does not emit a clear while agents are still active", () => {
     const a1 = createTestSubagent({ id: "a1", status: "completed" });
     const a2 = createTestSubagent({ id: "a2", status: "running" });

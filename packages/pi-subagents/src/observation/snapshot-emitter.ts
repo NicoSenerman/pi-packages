@@ -30,6 +30,15 @@ export interface SnapshotEmitterDeps {
 
 /** Coalesce session-event bursts into one snapshot within this window (ms). */
 const DEBOUNCE_MS = 120;
+const ACTIVE_STATUSES = new Set(["queued", "running", "steered"]);
+
+/**
+ * Grace period before the panel fades out after the last agent finishes.
+ * pi's native widget keeps completed agents for 1 turn; we approximate that
+ * with a timed fade so the user sees the terminal state briefly, then the
+ * panel clears to an empty snapshot (pitui renders {} by hiding the widget).
+ */
+const FADE_MS = 3_000;
 const TERMINAL_STATUSES = new Set(["completed", "error", "stopped", "aborted"]);
 
 export class SnapshotEmitter {
@@ -40,6 +49,8 @@ export class SnapshotEmitter {
   private readonly subscriptions = new Map<string, () => void>();
   /** Pending debounced emit timer. */
   private pending: ReturnType<typeof setTimeout> | undefined;
+  /** Pending fade-out timer, cancelled if a new agent starts. */
+  private fadeTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(deps: SnapshotEmitterDeps) {
     this.manager = deps.manager;
@@ -58,6 +69,7 @@ export class SnapshotEmitter {
 
   onSubagentStarted(record: Subagent): void {
     if (!this.enabled) return;
+    this.cancelFade();
     this.attach(record);
     this.emit();
   }
@@ -71,6 +83,7 @@ export class SnapshotEmitter {
     if (!this.enabled) return;
     this.detach(record.id);
     this.emit();
+    this.scheduleFadeIfIdle();
   }
 
   onSubagentCompacted(_record: Subagent, _info: unknown): void {
@@ -101,6 +114,35 @@ export class SnapshotEmitter {
     this.scheduleEmit();
   }
 
+  /**
+   * If no agents are active, schedule a fade-out: emit an empty snapshot after
+   * FADE_MS so the panel clears. Cancelled if a new agent starts before then.
+   */
+  private scheduleFadeIfIdle(): void {
+    const anyActive = this.manager
+      .listAgents()
+      .some((a) => ACTIVE_STATUSES.has(a.status));
+    if (anyActive) return;
+    if (this.fadeTimer) return;
+    this.fadeTimer = setTimeout(() => {
+      this.fadeTimer = undefined;
+      if (this.manager.listAgents().some((a) => ACTIVE_STATUSES.has(a.status)))
+        return;
+      try {
+        this.appendEntry("pitui:subagents:snapshot", { agents: [] });
+      } catch (err) {
+        debugLog("SnapshotEmitter.fade", err);
+      }
+    }, FADE_MS);
+  }
+
+  private cancelFade(): void {
+    if (this.fadeTimer) {
+      clearTimeout(this.fadeTimer);
+      this.fadeTimer = undefined;
+    }
+  }
+
   private scheduleEmit(): void {
     if (this.pending) return;
     this.pending = setTimeout(() => {
@@ -129,6 +171,7 @@ export class SnapshotEmitter {
       clearTimeout(this.pending);
       this.pending = undefined;
     }
+    this.cancelFade();
     for (const id of [...this.subscriptions.keys()]) this.detach(id);
   }
 }
