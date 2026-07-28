@@ -11,8 +11,14 @@ import type { Subagent } from "#src/lifecycle/subagent";
  * pay zero overhead and the snapshot entries are never written. Over RPC, pitui
  * sets PITUI_BRIDGE=1 when spawning the daemon.
  *
- * The snapshot is a full list (all agents, foreground + background) emitted on
- * a timer while any agent is active, plus immediate emits on lifecycle changes.
+ * Event-driven, not timer-driven: each running subagent subscribes to its own
+ * session event stream on start, and a debounced emit coalesces a burst of
+ * session events (tool starts/ends, message deltas, turn ends, compactions) into
+ * a single snapshot. This replaces the previous 250ms blind tick, which wrote
+ * thousands of durable entries per session (one observed session had 3,799 /
+ * 3.4MB). Lifecycle transitions (created/completed) emit immediately so the
+ * panel reflects spawns and terminal states without waiting for the next event.
+ *
  * Unknown-customType appendEntry calls are a no-op in pi's interactive renderer
  * (addCustomEntryToChat returns when no renderer is registered), so even if the
  * gate is off in a host that doesn't set the env var, nothing breaks.
@@ -22,14 +28,18 @@ export interface SnapshotEmitterDeps {
   appendEntry: (customType: string, data: unknown) => void;
 }
 
-const TICK_MS = 250;
-const ACTIVE_STATUSES = new Set(["queued", "running", "steered"]);
+/** Coalesce session-event bursts into one snapshot within this window (ms). */
+const DEBOUNCE_MS = 120;
+const TERMINAL_STATUSES = new Set(["completed", "error", "stopped", "aborted"]);
 
 export class SnapshotEmitter {
   private readonly manager: SubagentManager;
   private readonly appendEntry: SnapshotEmitterDeps["appendEntry"];
   private readonly enabled: boolean;
-  private timer: ReturnType<typeof setInterval> | undefined;
+  /** Per-agent unsubscribe handles, keyed by agent id. */
+  private readonly subscriptions = new Map<string, () => void>();
+  /** Pending debounced emit timer. */
+  private pending: ReturnType<typeof setTimeout> | undefined;
 
   constructor(deps: SnapshotEmitterDeps) {
     this.manager = deps.manager;
@@ -46,28 +56,60 @@ export class SnapshotEmitter {
     if (this.enabled) this.emit();
   }
 
-  onSubagentStarted(_record: Subagent): void {
-    if (this.enabled) {
-      this.ensureTimer();
-      this.emit();
-    }
+  onSubagentStarted(record: Subagent): void {
+    if (!this.enabled) return;
+    this.attach(record);
+    this.emit();
   }
 
-  onSubagentCompleted(_record: Subagent): void {
-    if (this.enabled) this.emit();
+  onSubagentCompleted(record: Subagent): void {
+    if (!this.enabled) return;
+    this.detach(record.id);
+    this.emit();
   }
 
   onSubagentCompacted(_record: Subagent, _info: unknown): void {
-    if (this.enabled) this.emit();
+    if (this.enabled) this.scheduleEmit();
   }
 
-  private ensureTimer(): void {
-    if (this.timer) return;
-    this.timer = setInterval(() => this.emit(), TICK_MS);
+  /** Subscribe to the agent's live session events; debounced re-snapshot. */
+  private attach(agent: Subagent): void {
+    this.detach(agent.id);
+    const unsub = agent.subscribeToUpdates(() => this.onAgentEvent(agent));
+    if (unsub) this.subscriptions.set(agent.id, unsub);
+  }
+
+  private detach(id: string): void {
+    const unsub = this.subscriptions.get(id);
+    if (unsub) {
+      try {
+        unsub();
+      } catch (err) {
+        debugLog("SnapshotEmitter.detach", err);
+      }
+      this.subscriptions.delete(id);
+    }
+  }
+
+  /** Per-agent session event: coalesce into a debounced snapshot. */
+  private onAgentEvent(_agent: Subagent): void {
+    this.scheduleEmit();
+  }
+
+  private scheduleEmit(): void {
+    if (this.pending) return;
+    this.pending = setTimeout(() => {
+      this.pending = undefined;
+      this.emit();
+    }, DEBOUNCE_MS);
   }
 
   private emit(): void {
     if (!this.enabled) return;
+    if (this.pending) {
+      clearTimeout(this.pending);
+      this.pending = undefined;
+    }
     const agents = this.manager.listAgents();
     const snapshot = agents.map(snapshotAgent);
     try {
@@ -75,18 +117,14 @@ export class SnapshotEmitter {
     } catch (err) {
       debugLog("SnapshotEmitter.emit", err);
     }
-    const anyActive = agents.some((a) => ACTIVE_STATUSES.has(a.status));
-    if (!anyActive && this.timer) {
-      clearInterval(this.timer);
-      this.timer = undefined;
-    }
   }
 
   dispose(): void {
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = undefined;
+    if (this.pending) {
+      clearTimeout(this.pending);
+      this.pending = undefined;
     }
+    for (const id of [...this.subscriptions.keys()]) this.detach(id);
   }
 }
 
