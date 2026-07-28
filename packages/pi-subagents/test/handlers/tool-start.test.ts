@@ -19,18 +19,18 @@ describe("ToolStartHandler", () => {
   });
 
   describe("handleToolExecutionStart", () => {
-    it("calls setUICtx with the context's ui", () => {
+    it("calls setUICtx with the context's ui and mode", () => {
       const ui = { setStatus: vi.fn(), setWidget: vi.fn() };
 
-      handler.handleToolExecutionStart({}, { ui });
+      handler.handleToolExecutionStart({}, { ui, mode: "tui" });
 
-      expect(widget.setUICtx).toHaveBeenCalledWith(ui);
+      expect(widget.setUICtx).toHaveBeenCalledWith(ui, "tui");
     });
 
     it("calls onTurnStart", () => {
       const ui = { setStatus: vi.fn(), setWidget: vi.fn() };
 
-      handler.handleToolExecutionStart({}, { ui });
+      handler.handleToolExecutionStart({}, { ui, mode: "tui" });
 
       expect(widget.onTurnStart).toHaveBeenCalled();
     });
@@ -45,9 +45,17 @@ describe("ToolStartHandler", () => {
       });
 
       const ui = { setStatus: vi.fn(), setWidget: vi.fn() };
-      handler.handleToolExecutionStart({}, { ui });
+      handler.handleToolExecutionStart({}, { ui, mode: "tui" });
 
       expect(callOrder).toEqual(["setUICtx", "onTurnStart"]);
+    });
+
+    it("forwards non-tui modes unchanged", () => {
+      const ui = { setStatus: vi.fn(), setWidget: vi.fn() };
+
+      handler.handleToolExecutionStart({}, { ui, mode: "rpc" });
+
+      expect(widget.setUICtx).toHaveBeenCalledWith(ui, "rpc");
     });
   });
 });

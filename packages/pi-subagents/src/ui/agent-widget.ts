@@ -7,8 +7,12 @@
  */
 
 import { AgentTypeRegistry } from "#src/config/agent-types";
+import type { ExtensionMode } from "#src/handlers/tool-start";
 import type { Subagent } from "#src/lifecycle/subagent";
-import type { SubagentManager, SubagentManagerObserver } from "#src/lifecycle/subagent-manager";
+import type {
+  SubagentManager,
+  SubagentManagerObserver,
+} from "#src/lifecycle/subagent-manager";
 import type { CompactionInfo } from "#src/types";
 import { ERROR_STATUSES, type Theme } from "#src/ui/display";
 import { renderWidgetLines, type WidgetAgent } from "#src/ui/widget-renderer";
@@ -43,9 +47,13 @@ export function assembleWidgetState(
   let queuedCount = 0;
   let hasFinished = false;
   for (const a of agents) {
-    if (a.status === "running") { runningCount++; }
-    else if (a.status === "queued") { queuedCount++; }
-    else if (a.completedAt && shouldShowFinished(a.id, a.status)) { hasFinished = true; }
+    if (a.status === "running") {
+      runningCount++;
+    } else if (a.status === "queued") {
+      queuedCount++;
+    } else if (a.completedAt && shouldShowFinished(a.id, a.status)) {
+      hasFinished = true;
+    }
   }
   const hasActive = runningCount > 0 || queuedCount > 0;
   return { runningCount, queuedCount, hasFinished, hasActive };
@@ -55,15 +63,27 @@ export type UICtx = {
   setStatus(key: string, text: string | undefined): void;
   setWidget(
     key: string,
-    content: undefined | ((tui: any, theme: Theme) => { render(): string[]; invalidate(): void }),
+    content:
+      | undefined
+      | string[]
+      | ((
+          tui: any,
+          theme: Theme,
+        ) => { render(): string[]; invalidate(): void }),
     options?: { placement?: "aboveEditor" | "belowEditor" },
   ): void;
+  /** Real pi interactive theme. In RPC mode this is the same theme object rpc-mode.js imports, so pre-rendered lines come out correctly ANSI-themed. */
+  readonly theme: Theme;
 };
 
 // ---- Widget manager ----
 
 export class AgentWidget implements SubagentManagerObserver {
   private uiCtx: UICtx | undefined;
+  /** pi UI mode captured from the tool_execution_start ctx; undefined until the first tool run. */
+  private mode: ExtensionMode | undefined;
+  /** Fixed terminal width used to render widget lines in RPC mode — there is no `tui.terminal.columns` there. */
+  private static readonly RPC_TERMINAL_WIDTH = 100;
   private widgetFrame = 0;
   private widgetInterval: ReturnType<typeof setInterval> | undefined;
   /** Tracks how many turns each finished agent has survived. Key: agent ID, Value: turns since finished. */
@@ -83,12 +103,18 @@ export class AgentWidget implements SubagentManagerObserver {
     private registry: AgentTypeRegistry,
   ) {}
 
-  /** Set the UI context (grabbed from first tool execution). */
-  setUICtx(ctx: UICtx) {
-    if (ctx !== this.uiCtx) {
-      // UICtx changed — the widget registered on the old context is gone.
+  /**
+   * Set the UI context and active mode (grabbed from first tool execution).
+   * The mode selects the emit path: interactive mode registers a factory
+   * callback (animated, layout-aware); RPC mode emits a pre-rendered string[]
+   * that pi's RPC bridge forwards verbatim to the external TUI host.
+   */
+  setUICtx(ctx: UICtx, mode: ExtensionMode) {
+    if (ctx !== this.uiCtx || mode !== this.mode) {
+      // UICtx or mode changed — the widget registered on the old context is gone.
       // Force re-registration on next update().
       this.uiCtx = ctx;
+      this.mode = mode;
       this.widgetRegistered = false;
       this.tui = undefined;
       this.lastStatusText = undefined;
@@ -144,7 +170,9 @@ export class AgentWidget implements SubagentManagerObserver {
   /** Check if a finished agent should still be shown in the widget. */
   private shouldShowFinished(agentId: string, status: string): boolean {
     const age = this.finishedTurnAge.get(agentId) ?? 0;
-    const maxAge = ERROR_STATUSES.has(status) ? AgentWidget.ERROR_LINGER_TURNS : 1;
+    const maxAge = ERROR_STATUSES.has(status)
+      ? AgentWidget.ERROR_LINGER_TURNS
+      : 1;
     return age < maxAge;
   }
 
@@ -155,7 +183,9 @@ export class AgentWidget implements SubagentManagerObserver {
    * background predicate exactly once at the source.
    */
   private listBackgroundAgents(): Subagent[] {
-    return this.manager.listAgents().filter(record => record.invocation?.runInBackground === true);
+    return this.manager
+      .listAgents()
+      .filter((record) => record.invocation?.runInBackground === true);
   }
 
   /** Project a live Subagent record onto a pure-data WidgetAgent snapshot. */
@@ -182,13 +212,37 @@ export class AgentWidget implements SubagentManagerObserver {
   /** Delegate rendering to the pure widget-renderer module. */
   private renderWidget(tui: any, theme: Theme): string[] {
     return renderWidgetLines({
-      agents: this.listBackgroundAgents().map(r => this.toWidgetAgent(r)),
+      agents: this.listBackgroundAgents().map((r) => this.toWidgetAgent(r)),
       registry: this.registry,
       spinnerFrame: this.widgetFrame,
       terminalWidth: tui.terminal.columns,
       theme,
       shouldShowFinished: (id, status) => this.shouldShowFinished(id, status),
     });
+  }
+
+  /**
+   * Pre-render the widget to a string[] in RPC mode and push it to the host via
+   * the string-array form of setWidget. RPC mode has no `tui` object, so the
+   * fixed terminal width fallback is used. `ctx.ui.theme` is the real
+   * interactive theme in RPC mode, so lines come out correctly ANSI-themed.
+   */
+  private emitRpcWidget(): void {
+    const theme = this.uiCtx!.theme;
+    const lines = renderWidgetLines({
+      agents: this.listBackgroundAgents().map((r) => this.toWidgetAgent(r)),
+      registry: this.registry,
+      spinnerFrame: this.widgetFrame,
+      terminalWidth: AgentWidget.RPC_TERMINAL_WIDTH,
+      theme,
+      shouldShowFinished: (id, status) => this.shouldShowFinished(id, status),
+    });
+    this.uiCtx!.setWidget("agents", lines.length ? lines : undefined, {
+      placement: "aboveEditor",
+    });
+    // Mark registered so clearWidget() knows to tear down on idle.
+    this.widgetRegistered = true;
+    this.tui = undefined;
   }
 
   /**
@@ -206,9 +260,13 @@ export class AgentWidget implements SubagentManagerObserver {
       this.uiCtx!.setStatus("subagents", undefined);
       this.lastStatusText = undefined;
     }
-    if (this.widgetInterval) { clearInterval(this.widgetInterval); this.widgetInterval = undefined; }
+    if (this.widgetInterval) {
+      clearInterval(this.widgetInterval);
+      this.widgetInterval = undefined;
+    }
     for (const [id] of this.finishedTurnAge) {
-      if (!backgroundAgents.some(a => a.id === id)) this.finishedTurnAge.delete(id);
+      if (!backgroundAgents.some((a) => a.id === id))
+        this.finishedTurnAge.delete(id);
     }
   }
 
@@ -220,8 +278,10 @@ export class AgentWidget implements SubagentManagerObserver {
     let newStatusText: string | undefined;
     if (state.hasActive) {
       const statusParts: string[] = [];
-      if (state.runningCount > 0) statusParts.push(`${state.runningCount} running`);
-      if (state.queuedCount > 0) statusParts.push(`${state.queuedCount} queued`);
+      if (state.runningCount > 0)
+        statusParts.push(`${state.runningCount} running`);
+      if (state.queuedCount > 0)
+        statusParts.push(`${state.queuedCount} queued`);
       const total = state.runningCount + state.queuedCount;
       newStatusText = `${statusParts.join(", ")} agent${total === 1 ? "" : "s"}`;
     }
@@ -252,7 +312,9 @@ export class AgentWidget implements SubagentManagerObserver {
 
     const backgroundAgents = this.listBackgroundAgents();
     this.seedFinishedAgents(backgroundAgents);
-    const state = assembleWidgetState(backgroundAgents, (id, status) => this.shouldShowFinished(id, status));
+    const state = assembleWidgetState(backgroundAgents, (id, status) =>
+      this.shouldShowFinished(id, status),
+    );
 
     if (!state.hasActive && !state.hasFinished) {
       this.clearWidget(backgroundAgents);
@@ -262,20 +324,36 @@ export class AgentWidget implements SubagentManagerObserver {
     this.updateStatusBar(state);
     this.widgetFrame++;
 
-    // Register widget callback once; subsequent updates use requestRender()
-    // which re-invokes render() without replacing the component (avoids layout thrashing).
+    // Non-TUI modes (rpc, json, print): emit a pre-rendered string[] each tick.
+    // pi's interactive setExtensionWidget is strictly last-write-wins (it deletes
+    // the existing component for a key, then sets the new one), so emitting the
+    // string[] alongside the factory in interactive mode would clobber the richer
+    // factory. The RPC bridge only forwards string[] content (factories are
+    // dropped), so the two paths are mutually exclusive by mode.
+    if (this.mode !== "tui") {
+      this.emitRpcWidget();
+      return;
+    }
+
+    // Interactive mode: register the factory callback once; subsequent updates
+    // use requestRender() which re-invokes render() without replacing the
+    // component (avoids layout thrashing).
     if (!this.widgetRegistered) {
-      this.uiCtx.setWidget("agents", (tui, theme) => {
-        this.tui = tui;
-        return {
-          render: () => this.renderWidget(tui, theme),
-          invalidate: () => {
-            // Theme changed — force re-registration so factory captures fresh theme.
-            this.widgetRegistered = false;
-            this.tui = undefined;
-          },
-        };
-      }, { placement: "aboveEditor" });
+      this.uiCtx.setWidget(
+        "agents",
+        (tui, theme) => {
+          this.tui = tui;
+          return {
+            render: () => this.renderWidget(tui, theme),
+            invalidate: () => {
+              // Theme changed — force re-registration so factory captures fresh theme.
+              this.widgetRegistered = false;
+              this.tui = undefined;
+            },
+          };
+        },
+        { placement: "aboveEditor" },
+      );
       this.widgetRegistered = true;
     } else {
       // Widget already registered — just request a re-render of existing components.
