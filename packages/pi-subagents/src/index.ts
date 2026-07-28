@@ -38,6 +38,7 @@ import {
 } from "#src/lifecycle/create-subagent-session";
 import { SubagentManager } from "#src/lifecycle/subagent-manager";
 import { CompositeSubagentObserver } from "#src/observation/composite-subagent-observer";
+import { SnapshotEmitter } from "#src/observation/snapshot-emitter";
 import {
   type NotificationDetails,
   NotificationManager,
@@ -178,6 +179,14 @@ export default function (pi: ExtensionAPI) {
     limiter,
     getRunConfig: () => settings,
   });
+
+  // pitui bridge: emit structured agent snapshots over RPC. Gated by PITUI_BRIDGE
+  // env var — no-op in native pi. See observation/snapshot-emitter.ts.
+  const snapshotEmitter = new SnapshotEmitter({
+    manager,
+    appendEntry: (customType, data) => pi.appendEntry(customType, data),
+  });
+  observer.add(snapshotEmitter);
 
   // Typed service published via Symbol.for() for cross-extension access.
   // Consumers: const { getSubagentsService } = await import("@gotgenes/pi-subagents");
