@@ -2982,7 +2982,7 @@ class AskComponent extends Container {
  * ctx.ui.custom() returns undefined in RPC mode, so we degrade gracefully.
  */
 async function askViaDialogs(
-  ui: { select: Function; input: Function },
+  ui: { select: Function; input: Function; askUser?: Function },
   question: string,
   context: string | undefined,
   options: QuestionOption[],
@@ -2991,6 +2991,29 @@ async function askViaDialogs(
   allowComment: boolean,
   timeout?: number,
 ): Promise<AskUIResult | null> {
+  // Native fast-path: rich front-ends (e.g. pitui) expose a first-class
+  // `ui.askUser` channel over RPC that renders a multi-select / description /
+  // comment-capable dialog in one round-trip. Translate its result into the
+  // AskUIResult shape; if the front-end has no such method (plain pi rpc-mode,
+  // older pitui) fall through to the classic select()/input() dance below.
+  if (typeof ui.askUser === "function") {
+    const resp = (await ui.askUser(
+      question,
+      context,
+      options.map((o) => ({ title: o.title, description: o.description })),
+      allowMultiple,
+      allowFreeform,
+      allowComment,
+      timeout ? { timeout } : undefined,
+    )) as
+      | { selections: string[]; comment?: string }
+      | string
+      | null;
+    if (resp === null || resp === undefined) return null;
+    if (typeof resp === "string") return createFreeformResponse(resp);
+    return createSelectionResponse(resp.selections, resp.comment);
+  }
+
   const dialogOpts = timeout ? { timeout } : undefined;
   const prompt = context ? `${question}\n\nContext:\n${context}` : question;
 
