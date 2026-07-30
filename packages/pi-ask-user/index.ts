@@ -3018,7 +3018,14 @@ async function askViaDialogs(
     return createSelectionResponse(selections, comment);
   }
 
-  const selectOptions = options.map((o) => o.title);
+  // Structured option objects so rich front-ends (e.g. pitui) can render the
+  // description in a preview pane. value===display===title so the submitted
+  // answer round-trips the option title verbatim (pi returns it unchanged).
+  type SelectOption = { title: string; description?: string } | string;
+  const selectOptions: SelectOption[] = options.map((o) => ({
+    title: o.title,
+    description: o.description,
+  }));
   if (allowFreeform) selectOptions.push(FREEFORM_SENTINEL);
 
   const selected = (await ui.select(prompt, selectOptions, dialogOpts)) as
