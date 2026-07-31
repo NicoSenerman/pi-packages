@@ -3,6 +3,13 @@ import type { SubagentManager } from "#src/lifecycle/subagent-manager";
 import { debugLog } from "#src/debug";
 
 const DEFAULT_COMMAND_FILE = `${process.env.HOME ?? ""}/.pi/agent/pi-rust-tui-bridge.commands.jsonl`;
+
+/** Per-invocation command file set by the pitui-daemon on its pi child so
+ *  parallel `piru` windows don't mix abort commands. Falls back to the shared
+ *  per-user path for older daemons. */
+function defaultCommandFile(): string {
+  return process.env.PITUI_BRIDGE_COMMAND_FILE ?? DEFAULT_COMMAND_FILE;
+}
 const POLL_INTERVAL_MS = 500;
 
 export interface BridgeCommandDeps {
@@ -56,7 +63,7 @@ export class BridgeCommandWatcher {
 
   constructor(deps: BridgeCommandDeps) {
     this.manager = deps.manager;
-    this.path = deps.path ?? DEFAULT_COMMAND_FILE;
+    this.path = deps.path ?? defaultCommandFile();
     this.enabled =
       process.env.PITUI_BRIDGE === "1" || process.env.PITUI_BRIDGE === "true";
   }
@@ -69,15 +76,11 @@ export class BridgeCommandWatcher {
       "BridgeCommandWatcher.start",
       `watching ${this.path} from offset ${this.offset}`,
     );
-    watchFile(
-      this.path,
-      { interval: POLL_INTERVAL_MS },
-      () => {
-        void this.drain().catch((err) =>
-          debugLog("BridgeCommandWatcher.drain", err),
-        );
-      },
-    );
+    watchFile(this.path, { interval: POLL_INTERVAL_MS }, () => {
+      void this.drain().catch((err) =>
+        debugLog("BridgeCommandWatcher.drain", err),
+      );
+    });
   }
 
   stop(): void {

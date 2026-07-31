@@ -76,11 +76,25 @@ export class SnapshotEmitter {
     if (this.enabled) this.scheduleEmit();
   }
 
-  /** Subscribe to the agent's live session events; debounced re-snapshot. */
+  /** Subscribe to the agent's live session events; debounced re-snapshot.
+   *  subagentSession only exists after the async session factory resolves
+   *  mid-run; lifecycle hooks fire earlier and subscribeToUpdates silently
+   *  returns undefined there, so emit() keeps retrying while the agent runs. */
   private attach(agent: Subagent): void {
     this.detach(agent.id);
     const unsub = agent.subscribeToUpdates(() => this.onAgentEvent(agent));
     if (unsub) this.subscriptions.set(agent.id, unsub);
+  }
+
+  private ensureSubscriptions(): void {
+    for (const agent of this.manager.listAgents()) {
+      if (
+        agent.status === "running" &&
+        !this.subscriptions.has(agent.id)
+      ) {
+        this.attach(agent);
+      }
+    }
   }
 
   private detach(id: string): void {
@@ -114,6 +128,7 @@ export class SnapshotEmitter {
       clearTimeout(this.pending);
       this.pending = undefined;
     }
+    this.ensureSubscriptions();
     const agents = this.manager.listAgents();
     const snapshot = agents.map(snapshotAgent);
     try {
