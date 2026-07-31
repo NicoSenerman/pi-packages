@@ -41,6 +41,10 @@ import { CompositeSubagentObserver } from "#src/observation/composite-subagent-o
 import { BridgeCommandWatcher } from "#src/observation/bridge-command-watcher";
 import { SnapshotEmitter } from "#src/observation/snapshot-emitter";
 import {
+  AgentEventConnection,
+  AgentEventObserver,
+} from "#src/observation/agent-event-emitter";
+import {
   type NotificationDetails,
   NotificationManager,
 } from "#src/observation/notification";
@@ -189,6 +193,14 @@ export default function (pi: ExtensionAPI) {
   });
   observer.add(snapshotEmitter);
 
+  // pitui bridge: per-event AgentSessionEvent streaming over Unix socket.
+  // Gated by PITUI_BRIDGE — no-op in native pi. Replaces snapshot polling
+  // for live per-token streaming; snapshot_emitter still provides
+  // lifecycle-state snapshots for the monitor panel header.
+  const agentEventConnection = new AgentEventConnection();
+  const agentEventObserver = new AgentEventObserver(agentEventConnection);
+  observer.add(agentEventObserver);
+
   // pitui bridge: out-of-band command channel so the daemon can ask
   // pi-subagents to abort a specific agent (no pi RPC exists for that).
   // Gated by PITUI_BRIDGE — a no-op watcher in native pi.
@@ -213,6 +225,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_before_switch", () => lifecycle.handleSessionBeforeSwitch());
   pi.on("session_shutdown", () => {
     bridgeWatcher.stop();
+    agentEventObserver.close();
     lifecycle.handleSessionShutdown();
   });
 
