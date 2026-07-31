@@ -27,7 +27,11 @@ const MAX_BUFFER = 200;
 
 /** Path to the daemon's per-event agent streaming socket. */
 function agentSocketPath(): string {
-	const home = process.env.HOME ?? "/tmp";
+	// Preferred: per-invocation path, set by the daemon on its pi child's env
+	// so multiple `piru` windows don't cross agent traffic. Falls back to the
+	// legacy per-user path only when the daemon didn't set it (older daemon,
+	// or pi launched manually outside pitui).
+	if (process.env.PITUI_AGENT_SOCKET) return process.env.PITUI_AGENT_SOCKET;
 	const runtime = process.env.XDG_RUNTIME_DIR ?? "/tmp";
 	return `${runtime}/pitui/agents-${process.env.USER ?? "unknown"}.sock`;
 }
