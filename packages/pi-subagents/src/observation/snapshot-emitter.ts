@@ -200,5 +200,8 @@ function snapshotAgent(a: Subagent) {
     },
     contextPercent: a.getContextPercent(),
     runInBackground: a.invocation?.runInBackground ?? false,
+    // Absolute path to the agent's own JSONL session file; pitui tails this
+    // when the user opens the conversation view.
+    outputFile: a.outputFile ?? null,
   };
 }
