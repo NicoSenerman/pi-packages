@@ -38,6 +38,7 @@ import {
 } from "#src/lifecycle/create-subagent-session";
 import { SubagentManager } from "#src/lifecycle/subagent-manager";
 import { CompositeSubagentObserver } from "#src/observation/composite-subagent-observer";
+import { BridgeCommandWatcher } from "#src/observation/bridge-command-watcher";
 import { SnapshotEmitter } from "#src/observation/snapshot-emitter";
 import {
   type NotificationDetails,
@@ -188,6 +189,12 @@ export default function (pi: ExtensionAPI) {
   });
   observer.add(snapshotEmitter);
 
+  // pitui bridge: out-of-band command channel so the daemon can ask
+  // pi-subagents to abort a specific agent (no pi RPC exists for that).
+  // Gated by PITUI_BRIDGE — a no-op watcher in native pi.
+  const bridgeWatcher = new BridgeCommandWatcher({ manager });
+  bridgeWatcher.start();
+
   // Typed service published via Symbol.for() for cross-extension access.
   // Consumers: const { getSubagentsService } = await import("@gotgenes/pi-subagents");
   const service = new SubagentsServiceAdapter(manager, resolveModel, runtime);
@@ -204,7 +211,10 @@ export default function (pi: ExtensionAPI) {
     lifecycle.handleSessionStart(event, ctx),
   );
   pi.on("session_before_switch", () => lifecycle.handleSessionBeforeSwitch());
-  pi.on("session_shutdown", () => lifecycle.handleSessionShutdown());
+  pi.on("session_shutdown", () => {
+    bridgeWatcher.stop();
+    lifecycle.handleSessionShutdown();
+  });
 
   // Live widget: constructed after the manager (it polls listAgents()) and
   // registered as a lifecycle observer so it self-drives its update timer.
