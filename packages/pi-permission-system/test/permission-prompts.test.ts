@@ -159,7 +159,7 @@ describe("formatAskPrompt", () => {
       makeFormatter(),
     );
     expect(result).toBe(
-      `Current agent requested bash command 'rm -rf .' (full command: 'echo "hello" && rm -rf .'). Allow this command?`,
+      `Current agent requested bash command. Allow this command?\n\n  echo "hello" && rm -rf .`,
     );
   });
 
@@ -172,7 +172,7 @@ describe("formatAskPrompt", () => {
     );
     expect(result).not.toContain("full command:");
     expect(result).toBe(
-      "Current agent requested bash command 'git push'. Allow this command?",
+      "Current agent requested bash command. Allow this command?\n\n  git push",
     );
   });
 
@@ -184,6 +184,9 @@ describe("formatAskPrompt", () => {
       makeFormatter(),
     );
     expect(result).not.toContain("full command:");
+    expect(result).toBe(
+      "Current agent requested bash command. Allow this command?\n\n  git push",
+    );
   });
 
   test("suppresses full-command suffix when input has no command field", () => {
@@ -194,6 +197,9 @@ describe("formatAskPrompt", () => {
       makeFormatter(),
     );
     expect(result).not.toContain("full command:");
+    expect(result).toBe(
+      "Current agent requested bash command. Allow this command?\n\n  git push",
+    );
   });
 
   test("suppresses full-command suffix when input command is empty", () => {
@@ -204,6 +210,9 @@ describe("formatAskPrompt", () => {
       makeFormatter(),
     );
     expect(result).not.toContain("full command:");
+    expect(result).toBe(
+      "Current agent requested bash command. Allow this command?\n\n  git push",
+    );
   });
 
   test("places full-command suffix after the qualifier and before the terminal sentence", () => {
@@ -214,7 +223,7 @@ describe("formatAskPrompt", () => {
       makeFormatter(),
     );
     expect(result).toBe(
-      "Current agent requested bash command 'rm -rf foo' (matched 'rm *') (full command: 'cd /tmp && rm -rf foo'). Allow this command?",
+      "Current agent requested bash command (matched 'rm *'). Allow this command?\n\n  cd /tmp && rm -rf foo",
     );
   });
 
@@ -230,7 +239,7 @@ describe("formatAskPrompt", () => {
       makeFormatter(),
     );
     expect(result).toContain(
-      "bash command 'rm -rf foo' (matched 'rm *', inside command substitution).",
+      "bash command (matched 'rm *', inside command substitution).",
     );
   });
 

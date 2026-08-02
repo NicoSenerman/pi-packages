@@ -45,11 +45,14 @@ export function formatAskPrompt(
     );
     const qualifierInfo = qualifier ? ` ${qualifier}` : "";
     const fullCommand = getNonEmptyString(toRecord(input).command);
-    const fullCommandInfo =
-      fullCommand && fullCommand !== subCommand
-        ? ` (full command: '${fullCommand}')`
-        : "";
-    return `${subject} requested bash command '${subCommand}'${qualifierInfo}${fullCommandInfo}. Allow this command?`;
+    // Place the actual command on its own indented line. The TUI renders
+    // select bodies as plain text, so a blank line before the command and a
+    // 2-space indent make the eye anchor on it instead of losing it inside
+    // the wrapping sentence.
+    if (fullCommand && fullCommand !== subCommand) {
+      return `${subject} requested bash command${qualifierInfo}. Allow this command?\n\n  ${fullCommand}`;
+    }
+    return `${subject} requested bash command${qualifierInfo}. Allow this command?\n\n  ${subCommand}`;
   }
 
   if ((result.source === "mcp" || result.toolName === "mcp") && result.target) {
