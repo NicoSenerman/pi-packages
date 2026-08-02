@@ -163,6 +163,33 @@ describe("formatAskPrompt", () => {
     );
   });
 
+  test("indents every line of a multi-line command (the TUI uses the 2-space indent to detect code blocks)", () => {
+    const result = formatAskPrompt(
+      toolResult("bash", { command: "git status" }),
+      undefined,
+      {
+        command:
+          'cd /tmp && echo before\n./scripts/install.sh 2>&1 | tail -2\ngit commit -m "feat: x"',
+      },
+      makeFormatter(),
+    );
+    expect(result).toBe(
+      'Current agent requested bash command. Allow this command?\n\n  cd /tmp && echo before\n  ./scripts/install.sh 2>&1 | tail -2\n  git commit -m "feat: x"',
+    );
+  });
+
+  test("keeps blank lines inside a multi-line command as blank lines (no indent on empty lines)", () => {
+    const result = formatAskPrompt(
+      toolResult("bash", { command: "git status" }),
+      undefined,
+      { command: "cat <<EOF\nhello\n\nEOF" },
+      makeFormatter(),
+    );
+    expect(result).toBe(
+      "Current agent requested bash command. Allow this command?\n\n  cat <<EOF\n  hello\n\n  EOF",
+    );
+  });
+
   test("suppresses full-command suffix when input command matches the sub-command (no chain)", () => {
     const result = formatAskPrompt(
       toolResult("bash", { command: "git push" }),

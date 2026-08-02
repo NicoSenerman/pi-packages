@@ -50,9 +50,15 @@ export function formatAskPrompt(
     // 2-space indent make the eye anchor on it instead of losing it inside
     // the wrapping sentence.
     if (fullCommand && fullCommand !== subCommand) {
-      return `${subject} requested bash command${qualifierInfo}. Allow this command?\n\n  ${fullCommand}`;
+      return `${subject} requested bash command${qualifierInfo}. Allow this command?\n\n${fullCommand
+        .split("\n")
+        .map((l) => (l.trim() ? `  ${l}` : l))
+        .join("\n")}`;
     }
-    return `${subject} requested bash command${qualifierInfo}. Allow this command?\n\n  ${subCommand}`;
+    return `${subject} requested bash command${qualifierInfo}. Allow this command?\n\n${subCommand
+      .split("\n")
+      .map((l) => (l.trim() ? `  ${l}` : l))
+      .join("\n")}`;
   }
 
   if ((result.source === "mcp" || result.toolName === "mcp") && result.target) {
