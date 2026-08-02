@@ -37,6 +37,11 @@ export class SnapshotEmitter {
   private readonly enabled: boolean;
   /** Per-agent unsubscribe handles, keyed by agent id. */
   private readonly subscriptions = new Map<string, () => void>();
+  /** Per-agent attach-retry timer handles (in-flight only). */
+  private readonly attachRetries = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
   /** Pending debounced emit timer. */
   private pending: ReturnType<typeof setTimeout> | undefined;
 
@@ -69,6 +74,7 @@ export class SnapshotEmitter {
   onSubagentFinished(record: Subagent): void {
     if (!this.enabled) return;
     this.detach(record.id);
+    this.clearAttachRetry(record.id);
     this.emit();
   }
 
@@ -83,7 +89,39 @@ export class SnapshotEmitter {
   private attach(agent: Subagent): void {
     this.detach(agent.id);
     const unsub = agent.subscribeToUpdates(() => this.onAgentEvent(agent));
-    if (unsub) this.subscriptions.set(agent.id, unsub);
+    if (unsub) {
+      this.subscriptions.set(agent.id, unsub);
+      this.clearAttachRetry(agent.id);
+    } else if (agent.status === "running") {
+      this.scheduleAttachRetry(agent);
+    }
+  }
+
+  private scheduleAttachRetry(agent: Subagent): void {
+    if (this.attachRetries.has(agent.id)) return;
+    const t = setTimeout(() => {
+      this.attachRetries.delete(agent.id);
+      if (this.subscriptions.has(agent.id)) return;
+      const cur = this.manager.listAgents().find((a) => a.id === agent.id);
+      if (!cur?.subagentSession && cur) {
+        if (cur.status === "running") this.attach(cur);
+        this.emit();
+        return;
+      }
+      if (cur && cur.status === "running") {
+        this.attach(cur);
+        this.emit();
+      }
+    }, 200);
+    this.attachRetries.set(agent.id, t);
+  }
+
+  private clearAttachRetry(id: string): void {
+    const t = this.attachRetries.get(id);
+    if (t) {
+      clearTimeout(t);
+      this.attachRetries.delete(id);
+    }
   }
 
   private ensureSubscriptions(): void {
@@ -141,6 +179,7 @@ export class SnapshotEmitter {
       this.pending = undefined;
     }
     for (const id of [...this.subscriptions.keys()]) this.detach(id);
+    for (const id of [...this.attachRetries.keys()]) this.clearAttachRetry(id);
   }
 }
 
