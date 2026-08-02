@@ -88,10 +88,7 @@ export class SnapshotEmitter {
 
   private ensureSubscriptions(): void {
     for (const agent of this.manager.listAgents()) {
-      if (
-        agent.status === "running" &&
-        !this.subscriptions.has(agent.id)
-      ) {
+      if (agent.status === "running" && !this.subscriptions.has(agent.id)) {
         this.attach(agent);
       }
     }
@@ -163,6 +160,7 @@ function snapshotAgent(a: Subagent) {
     maxTurns: a.maxTurns,
     activeTools: [...a.activeTools.values()],
     responseText: a.responseText,
+    thinking: a.thinking,
     compactionCount: a.compactionCount,
     lifetimeUsage: {
       input: usage.input,

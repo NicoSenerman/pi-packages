@@ -27,15 +27,29 @@ describe("subscribeSubagentObserver", () => {
 
     session.emit({
       type: "message_end",
-      message: { role: "assistant", usage: { input: 100, output: 50, cacheWrite: 10 } },
+      message: {
+        role: "assistant",
+        usage: { input: 100, output: 50, cacheWrite: 10 },
+      },
     });
-    expect(state.lifetimeUsage).toEqual({ input: 100, output: 50, cacheWrite: 10 });
+    expect(state.lifetimeUsage).toEqual({
+      input: 100,
+      output: 50,
+      cacheWrite: 10,
+    });
 
     session.emit({
       type: "message_end",
-      message: { role: "assistant", usage: { input: 200, output: 80, cacheWrite: 20 } },
+      message: {
+        role: "assistant",
+        usage: { input: 200, output: 80, cacheWrite: 20 },
+      },
     });
-    expect(state.lifetimeUsage).toEqual({ input: 300, output: 130, cacheWrite: 30 });
+    expect(state.lifetimeUsage).toEqual({
+      input: 300,
+      output: 130,
+      cacheWrite: 30,
+    });
   });
 
   it("ignores message_end from non-assistant roles", () => {
@@ -45,7 +59,10 @@ describe("subscribeSubagentObserver", () => {
 
     session.emit({
       type: "message_end",
-      message: { role: "user", usage: { input: 999, output: 999, cacheWrite: 999 } },
+      message: {
+        role: "user",
+        usage: { input: 999, output: 999, cacheWrite: 999 },
+      },
     });
     expect(state.lifetimeUsage).toEqual({ input: 0, output: 0, cacheWrite: 0 });
   });
@@ -193,6 +210,40 @@ describe("subscribeSubagentObserver", () => {
       assistantMessageEvent: { type: "thinking_delta", delta: "pondering..." },
     });
     expect(state.responseText).toBe("");
+  });
+
+  it("appends to thinking on message_update thinking_delta", () => {
+    const session = createMockSession();
+    const state = makeState();
+    subscribeSubagentObserver(session, state);
+
+    session.emit({
+      type: "message_update",
+      assistantMessageEvent: { type: "thinking_delta", delta: "Let me " },
+    });
+    expect(state.thinking).toBe("Let me ");
+
+    session.emit({
+      type: "message_update",
+      assistantMessageEvent: { type: "thinking_delta", delta: "think" },
+    });
+    expect(state.thinking).toBe("Let me think");
+  });
+
+  it("resets thinking on message_start", () => {
+    const session = createMockSession();
+    const state = makeState();
+    subscribeSubagentObserver(session, state);
+
+    session.emit({
+      type: "message_update",
+      assistantMessageEvent: {
+        type: "thinking_delta",
+        delta: "previous thinking",
+      },
+    });
+    session.emit({ type: "message_start" });
+    expect(state.thinking).toBe("");
   });
 
   it("returned function unsubscribes from session", () => {
