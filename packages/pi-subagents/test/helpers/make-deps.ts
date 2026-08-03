@@ -2,9 +2,9 @@ import { vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import {
-	type AgentToolManager,
-	type AgentToolRuntime,
-	type AgentToolSettings,
+  type AgentToolManager,
+  type AgentToolRuntime,
+  type AgentToolSettings,
 } from "#src/tools/agent-tool";
 import { createTestSubagent } from "./make-subagent";
 import { STUB_SNAPSHOT } from "./stub-ctx";
@@ -18,12 +18,12 @@ const defaultRegistry = new AgentTypeRegistry(() => new Map());
  * can construct the class directly or use individual pieces for spawner/runner tests.
  */
 export type AgentToolFixture = {
-	manager: AgentToolManager;
-	/** Mock runtime satisfying `AgentToolRuntime` (context queries). */
-	runtime: AgentToolRuntime;
-	settings: AgentToolSettings;
-	registry: AgentTypeRegistry;
-	agentDir: string;
+  manager: AgentToolManager;
+  /** Mock runtime satisfying `AgentToolRuntime` (context queries). */
+  runtime: AgentToolRuntime;
+  settings: AgentToolSettings;
+  registry: AgentTypeRegistry;
+  agentDir: string;
 };
 
 /**
@@ -36,37 +36,41 @@ export type AgentToolFixture = {
  * ```
  */
 export function createToolDeps(
-	overrides: Partial<AgentToolFixture> = {},
+  overrides: Partial<AgentToolFixture> = {},
 ): AgentToolFixture {
-	const runtime: AgentToolRuntime = {
-		buildSnapshot: vi.fn(
-			(_inheritContext: boolean): ParentSnapshot => STUB_SNAPSHOT,
-		),
-		getModelInfo: vi.fn(() => ({
-			parentModel: { id: "claude-sonnet", name: "Claude Sonnet" },
-			modelRegistry: { getAll: () => [], getAvailable: () => [] },
-		})),
-		getSessionInfo: vi.fn(() => ({
-			parentSessionFile: "/sessions/parent.jsonl",
-			parentSessionId: "session-1",
-		})),
-	};
+  const runtime: AgentToolRuntime = {
+    buildSnapshot: vi.fn(
+      (_inheritContext: boolean): ParentSnapshot => STUB_SNAPSHOT,
+    ),
+    getModelInfo: vi.fn(() => ({
+      parentModel: { id: "claude-sonnet", name: "Claude Sonnet" },
+      modelRegistry: { getAll: () => [], getAvailable: () => [] },
+    })),
+    getSessionInfo: vi.fn(() => ({
+      parentSessionFile: "/sessions/parent.jsonl",
+      parentSessionId: "session-1",
+    })),
+  };
 
-	return {
-		manager: {
-			spawn: vi.fn().mockReturnValue("agent-1"),
-			spawnAndWait: vi.fn().mockResolvedValue(createTestSubagent()),
-			resume: vi.fn().mockResolvedValue(createTestSubagent()),
-			getRecord: vi.fn().mockReturnValue(createTestSubagent()),
-		},
-		runtime,
-		settings: {
-			defaultMaxTurns: undefined as number | undefined,
-			maxConcurrent: 4,
-			agentModelPicker: false,
-		},
-		registry: defaultRegistry,
-		agentDir: "/home/user/.pi",
-		...overrides,
-	};
+  return {
+    manager: {
+      spawn: vi.fn().mockReturnValue("agent-1"),
+      spawnAndWait: vi.fn().mockResolvedValue(createTestSubagent()),
+      resume: vi.fn().mockResolvedValue(createTestSubagent()),
+      getRecord: vi.fn().mockReturnValue(createTestSubagent()),
+    },
+    runtime,
+    settings: {
+      defaultMaxTurns: undefined as number | undefined,
+      maxConcurrent: 4,
+      agentModelPicker: false,
+      agentModelDefault: undefined,
+      setAgentModelDefault: vi.fn(),
+      modelScopeAsked: false,
+      markModelScopeAsked: vi.fn(),
+    },
+    registry: defaultRegistry,
+    agentDir: "/home/user/.pi",
+    ...overrides,
+  };
 }

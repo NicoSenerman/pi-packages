@@ -30,6 +30,10 @@ function depsWithPicker(overrides: Parameters<typeof createToolDeps>[0] = {}) {
       defaultMaxTurns: undefined as number | undefined,
       maxConcurrent: 4,
       agentModelPicker: true,
+      agentModelDefault: undefined,
+      setAgentModelDefault: vi.fn(),
+      modelScopeAsked: false,
+      markModelScopeAsked: vi.fn(),
     },
     ...overrides,
   });
@@ -365,8 +369,9 @@ describe("AgentTool — picker dialog shape", () => {
       const options = (
         ctx.ui.select.mock.calls[0] as [string, { value: string }[]]
       )[1];
-      // after the inherit option: model-b (2000) first, model-a (1000) second, model-c (never) last
-      expect(options.slice(1).map((o) => o.value)).toEqual([
+      // after the inherit option, each model emits one plain row
+      const plain = options.slice(1).map((o) => o.value);
+      expect(plain).toEqual([
         "provB/model-b",
         "provA/model-a",
         "provC/model-c",
@@ -402,7 +407,9 @@ describe("AgentTool — picker dialog shape", () => {
       const options = (
         ctx.ui.select.mock.calls[0] as [string, { value: string }[]]
       )[1];
-      expect(options.slice(1).map((o) => o.value)).toEqual([
+      // malformed MRU → alphabetical, plain pick rows only
+      const plain = options.slice(1).map((o) => o.value);
+      expect(plain).toEqual([
         "provA/model-a",
         "provB/model-b",
         "provC/model-c",

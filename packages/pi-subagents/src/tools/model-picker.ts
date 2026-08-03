@@ -23,7 +23,7 @@ export interface ModelPickerOption {
 
 export type ModelPickOutcome =
   | { kind: "inherit" }
-  | { kind: "picked"; value: string }
+  | { kind: "picked" | "pickedRememberSession"; value: string }
   | { kind: "cancelled" };
 
 interface ModelEntryLike {
@@ -39,7 +39,12 @@ export interface ModelPickerDeps {
   subagentType: string;
   description: string;
   agentConfigModel: string | undefined;
-  settings: { readonly agentModelPicker: boolean };
+  settings: {
+    readonly agentModelPicker: boolean;
+    readonly agentModelDefault?: string | undefined;
+    readonly modelScopeAsked: boolean;
+    markModelScopeAsked(declinedSession: boolean): void;
+  };
   agentDir: string;
   ui: { select?: unknown } | undefined;
 }
@@ -50,9 +55,15 @@ export const MODEL_PICKER_TITLE_PREFIX = "Subagent model — ";
 export function shouldOfferModelPicker(
   params: Record<string, unknown>,
   agentConfigModel: string | undefined,
-  settings: { readonly agentModelPicker: boolean },
+  settings: {
+    readonly agentModelPicker: boolean;
+    readonly agentModelDefault?: string | undefined;
+    readonly modelScopeAsked: boolean;
+    markModelScopeAsked(declinedSession: boolean): void;
+  },
   ui: { select?: unknown } | undefined,
 ): boolean {
+  if (settings.agentModelDefault) return false;
   if (settings.agentModelPicker !== true && params.pick_model !== true)
     return false;
   if (params.resume) return false;
@@ -107,6 +118,35 @@ export async function maybePickAgentModel(
   );
   if (picked === undefined) return { kind: "cancelled" };
   if (picked === "") return { kind: "inherit" };
+
+  // First pick of the session: ask once whether to reuse this model for
+  // every subagent this session. Mark asked BEFORE awaiting so concurrent
+  // parallel spawns skip this — only the first spawn shows it.
+  if (deps.settings.modelScopeAsked) {
+    return { kind: "picked", value: picked };
+  }
+  deps.settings.markModelScopeAsked(false);
+
+  const scope = await select(
+    `Use ${picked} for every subagent this session?`,
+    [
+      {
+        title: "Yes, this session",
+        description: "skip the picker for the rest of this session",
+        value: "session",
+      },
+      {
+        title: "No, ask each time",
+        description: "pick a model on every spawn",
+        value: "once",
+      },
+    ],
+    { timeout: 120000 },
+  );
+  if (scope === undefined) return { kind: "cancelled" };
+  if (scope === "session") {
+    return { kind: "pickedRememberSession", value: picked };
+  }
   return { kind: "picked", value: picked };
 }
 

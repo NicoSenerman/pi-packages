@@ -20,6 +20,8 @@ export interface SubagentsSettings {
   graceTurns?: number;
   /** true = prompt interactively for the subagent model when no explicit model applies. */
   agentModelPicker?: boolean;
+  /** Provider/modelId string that skips the picker once set (session-scoped, or permanent when written). */
+  agentModelDefault?: string;
 }
 
 /** Emit callback — a subset of `pi.events.emit` to keep helpers testable. */
@@ -99,6 +101,35 @@ export class SettingsManager {
     this._agentModelPicker = v;
   }
 
+  // ── agentModelDefault: raw "provider/modelId" string; "use this for every ──
+  //    spawn" sessions without the picker painting. Written by perm remember. ──
+
+  private _agentModelDefault: string | undefined = undefined;
+  private _modelScopeAsked = false;
+  private _modelDeclinedSession = false;
+
+  get agentModelDefault(): string | undefined {
+    return this._agentModelDefault;
+  }
+
+  setAgentModelDefault(value: string): void {
+    this._agentModelDefault = value;
+  }
+
+  /** True once the session-scope question has been asked; subsequent pickers default to "once". */
+  get modelScopeAsked(): boolean {
+    return this._modelScopeAsked;
+  }
+
+  get modelDeclinedSession(): boolean {
+    return this._modelDeclinedSession;
+  }
+
+  markModelScopeAsked(declinedSession: boolean): void {
+    this._modelScopeAsked = true;
+    this._modelDeclinedSession = declinedSession;
+  }
+
   // ── Lifecycle methods ──
 
   /**
@@ -115,6 +146,8 @@ export class SettingsManager {
     if (typeof settings.graceTurns === "number")
       this.graceTurns = settings.graceTurns;
     this.agentModelPicker = settings.agentModelPicker === true;
+    if (typeof settings.agentModelDefault === "string")
+      this.setAgentModelDefault(settings.agentModelDefault);
     this.emit("subagents:settings_loaded", { settings });
     return settings;
   }
@@ -220,6 +253,9 @@ function sanitize(raw: unknown): SubagentsSettings {
   }
   if (typeof r.agentModelPicker === "boolean") {
     out.agentModelPicker = r.agentModelPicker;
+  }
+  if (typeof r.agentModelDefault === "string") {
+    out.agentModelDefault = r.agentModelDefault;
   }
   return out;
 }
