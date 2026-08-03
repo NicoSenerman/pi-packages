@@ -35,6 +35,7 @@ function depsWithPicker(overrides: Parameters<typeof createToolDeps>[0] = {}) {
       modelScopeAsked: false,
       markModelScopeAsked: vi.fn(),
       acquirePickerLock: vi.fn().mockResolvedValue(() => {}),
+      clearSessionModelDefault: vi.fn(),
     },
     ...overrides,
   });

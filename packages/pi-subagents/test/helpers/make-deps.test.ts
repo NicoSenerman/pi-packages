@@ -90,6 +90,7 @@ describe("createToolDeps", () => {
           modelScopeAsked: false,
           markModelScopeAsked: vi.fn(),
           acquirePickerLock: vi.fn().mockResolvedValue(() => {}),
+          clearSessionModelDefault: vi.fn(),
         },
       });
       expect(deps.settings.defaultMaxTurns).toBe(10);

@@ -277,6 +277,19 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
+  // Clear the session-scoped model default so the picker starts asking again.
+  pi.registerCommand("subagents:clear-default-model", {
+    description:
+      "Clear the session-default subagent model so the model picker asks again",
+    handler: async (_args, ctx) => {
+      settings.clearSessionModelDefault();
+      ctx?.ui?.notify?.(
+        "[pi-subagents] Cleared session default model. Picker will ask again.",
+        "info",
+      );
+    },
+  });
+
   // ---- /subagents:sessions command ----
 
   const sessionNavigator = new SessionNavigatorHandler();

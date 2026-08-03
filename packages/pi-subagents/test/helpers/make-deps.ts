@@ -69,6 +69,7 @@ export function createToolDeps(
       modelScopeAsked: false,
       markModelScopeAsked: vi.fn(),
       acquirePickerLock: vi.fn().mockResolvedValue(() => {}),
+      clearSessionModelDefault: vi.fn(),
     },
     registry: defaultRegistry,
     agentDir: "/home/user/.pi",

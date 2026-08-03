@@ -122,6 +122,13 @@ export class SettingsManager {
     this._agentModelDefault = value;
   }
 
+  /** Reset the session-scoped model choice so the picker asks again. */
+  clearSessionModelDefault(): void {
+    this._agentModelDefault = undefined;
+    this._modelScopeAsked = false;
+    this._modelDeclinedSession = false;
+  }
+
   /** True once the session-scope question has been asked; subsequent pickers default to "once". */
   get modelScopeAsked(): boolean {
     return this._modelScopeAsked;
