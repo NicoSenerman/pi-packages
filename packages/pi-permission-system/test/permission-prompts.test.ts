@@ -182,11 +182,23 @@ describe("formatAskPrompt", () => {
     const result = formatAskPrompt(
       toolResult("bash", { command: "git status" }),
       undefined,
+      { command: "cat <<EOF\nhello" },
+      makeFormatter(),
+    );
+    expect(result).toBe(
+      "Current agent requested bash command. Allow this command?\n\n  cat <<EOF\n  hello",
+    );
+  });
+
+  test("truncates long commands to 3 lines with an ellipsis indicator", () => {
+    const result = formatAskPrompt(
+      toolResult("bash", { command: "git status" }),
+      undefined,
       { command: "cat <<EOF\nhello\n\nEOF" },
       makeFormatter(),
     );
     expect(result).toBe(
-      "Current agent requested bash command. Allow this command?\n\n  cat <<EOF\n  hello\n\n  EOF",
+      "Current agent requested bash command. Allow this command?\n\n  cat <<EOF\n  hello\n\n    … (1 more lines)",
     );
   });
 

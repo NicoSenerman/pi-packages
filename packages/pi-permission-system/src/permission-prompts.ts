@@ -37,14 +37,30 @@ export function formatAskPrompt(
 ): string {
   const subject = agentName ? `Agent '${agentName}'` : "Current agent";
 
+  // Long commands (heredocs, embedded python, curl|python scripts) blow the
+  // Confirm dialog out vertically. Cap the body at 3 lines in the modal; the
+  // full command still lives in the audit log and in the tool-call card that
+  // follows.
+  const truncateCommand = (command: string | null): string => {
+    if (!command) return "";
+    // A trailing newline is a terminator, not an extra line — exclude it when
+    // counting so `cat <<EOF\nhello\nEOF` shows 3 lines, not 4.
+    const trailing = command.endsWith("\n") ? 1 : 0;
+    const lines = command.split("\n");
+    const contentLines = lines.length - trailing;
+    if (contentLines <= 3) return command;
+    return `${lines.slice(0, 3).join("\n")}\n  … (${contentLines - 3} more lines)`;
+  };
+
   if (result.toolName === "bash") {
-    const subCommand = result.command ?? "";
+    const subCommand = truncateCommand(result.command ?? "");
     const qualifier = matchQualifier(
       result.matchedPattern,
       result.commandContext,
     );
     const qualifierInfo = qualifier ? ` ${qualifier}` : "";
-    const fullCommand = getNonEmptyString(toRecord(input).command);
+    const fullCommandRaw = getNonEmptyString(toRecord(input).command);
+    const fullCommand = truncateCommand(fullCommandRaw);
     // Place the actual command on its own indented line. The TUI renders
     // select bodies as plain text, so a blank line before the command and a
     // 2-space indent make the eye anchor on it instead of losing it inside
