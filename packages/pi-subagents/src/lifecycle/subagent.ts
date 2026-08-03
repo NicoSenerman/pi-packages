@@ -143,6 +143,11 @@ export class Subagent {
   get maxTurns(): number | undefined {
     return this.execution.maxTurns;
   }
+  /** Model as "provider/modelId" for snapshot consumers; undefined when inheriting. */
+  get modelLabel(): string | undefined {
+    const m = this.execution.model;
+    return m ? `${m.provider}/${m.id}` : undefined;
+  }
 
   readonly abortController: AbortController;
   private _promise?: Promise<void>;

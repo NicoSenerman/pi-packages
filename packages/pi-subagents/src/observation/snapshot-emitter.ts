@@ -190,6 +190,9 @@ function snapshotAgent(a: Subagent) {
     type: a.type,
     description: a.description,
     status: a.status,
+    // "provider/modelId"; null when the agent inherits the parent's model
+    // at run time (Subagent.execution.model unset).
+    model: a.modelLabel ?? null,
     result: a.result,
     error: a.error,
     startedAt: a.startedAt,
