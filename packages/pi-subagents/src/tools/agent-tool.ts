@@ -62,6 +62,7 @@ export type AgentToolSettings = {
   setAgentModelDefault(value: string): void;
   readonly modelScopeAsked: boolean;
   markModelScopeAsked(declinedSession: boolean): void;
+  acquirePickerLock(): Promise<() => void>;
 };
 
 // ---- Class ----

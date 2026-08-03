@@ -34,6 +34,7 @@ function depsWithPicker(overrides: Parameters<typeof createToolDeps>[0] = {}) {
       setAgentModelDefault: vi.fn(),
       modelScopeAsked: false,
       markModelScopeAsked: vi.fn(),
+      acquirePickerLock: vi.fn().mockResolvedValue(() => {}),
     },
     ...overrides,
   });

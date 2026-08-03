@@ -107,6 +107,12 @@ export class SettingsManager {
   private _agentModelDefault: string | undefined = undefined;
   private _modelScopeAsked = false;
   private _modelDeclinedSession = false;
+  // Serialize the model picker across concurrent spawns: a parallel batch of
+  // subagent dispatches all hit maybePickAgentModel at once, but each needs its
+  // own full picker turn (model pick + optional scope ask). Without this lock
+  // the scope ask from spawn #1 lands behind spawn #2's model pick in piru's
+  // FIFO overlay queue, producing a confusing/missing scope ask.
+  private _pickerLock: Promise<unknown> = Promise.resolve();
 
   get agentModelDefault(): string | undefined {
     return this._agentModelDefault;
@@ -128,6 +134,24 @@ export class SettingsManager {
   markModelScopeAsked(declinedSession: boolean): void {
     this._modelScopeAsked = true;
     this._modelDeclinedSession = declinedSession;
+  }
+
+  /**
+   * Serialize the model picker across concurrent spawns: returns a release
+   * function once it's the caller's turn. Concurrent dispatches all hit
+   * maybePickAgentModel at once; without this lock their select() requests
+   * interleave in piru's FIFO overlay queue (scope ask from #1 lands behind
+   * #2's model pick), producing a missing/confusing scope ask.
+   */
+  async acquirePickerLock(): Promise<() => void> {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const prev = this._pickerLock;
+    this._pickerLock = prev.then(() => held);
+    await prev;
+    return release;
   }
 
   // ── Lifecycle methods ──

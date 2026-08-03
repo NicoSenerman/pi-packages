@@ -44,6 +44,7 @@ export interface ModelPickerDeps {
     readonly agentModelDefault?: string | undefined;
     readonly modelScopeAsked: boolean;
     markModelScopeAsked(declinedSession: boolean): void;
+    acquirePickerLock(): Promise<() => void>;
   };
   agentDir: string;
   ui: { select?: unknown } | undefined;
@@ -60,6 +61,7 @@ export function shouldOfferModelPicker(
     readonly agentModelDefault?: string | undefined;
     readonly modelScopeAsked: boolean;
     markModelScopeAsked(declinedSession: boolean): void;
+    acquirePickerLock(): Promise<() => void>;
   },
   ui: { select?: unknown } | undefined,
 ): boolean {
@@ -85,69 +87,83 @@ export async function maybePickAgentModel(
   ) {
     return { kind: "inherit" };
   }
-  const select = deps.ui?.select as (
-    title: string,
-    options: ModelPickerOption[],
-    opts?: { timeout: number },
-  ) => Promise<string | undefined>;
+  // Serialize across concurrent spawns: hold the lock for the whole picker
+  // (model pick + optional scope ask) so siblings don't interleave in piru's
+  // single overlay slot. Re-check the default once held — a prior spawn may
+  // have set it while we waited.
+  const release = await deps.settings.acquirePickerLock();
+  try {
+    if (deps.settings.agentModelDefault) {
+      return { kind: "inherit" };
+    }
+    const select = deps.ui?.select as (
+      title: string,
+      options: ModelPickerOption[],
+      opts?: { timeout: number },
+    ) => Promise<string | undefined>;
+    if (typeof select !== "function") {
+      return { kind: "inherit" };
+    }
+    const parent = deps.parentModel;
+    const parentLabel = parent?.provider
+      ? `${parent.provider}/${parent.id}`
+      : (parent?.id ?? "unknown");
+    const lastUsed = readModelMru(deps.agentDir);
+    const entries = (deps.modelRegistry.getAvailable?.() ??
+      []) as ModelEntryLike[];
+    const options: ModelPickerOption[] = [
+      {
+        title: `inherit parent (${parentLabel})`,
+        description: "use the current session model",
+        value: "",
+      },
+      ...sortByMru(entries, lastUsed).map((m) => ({
+        title: m.id,
+        description: m.provider,
+        value: `${m.provider}/${m.id}`,
+      })),
+    ];
 
-  const parent = deps.parentModel;
-  const parentLabel = parent?.provider
-    ? `${parent.provider}/${parent.id}`
-    : (parent?.id ?? "unknown");
-  const lastUsed = readModelMru(deps.agentDir);
-  const entries = (deps.modelRegistry.getAvailable?.() ??
-    []) as ModelEntryLike[];
-  const options: ModelPickerOption[] = [
-    {
-      title: `inherit parent (${parentLabel})`,
-      description: "use the current session model",
-      value: "",
-    },
-    ...sortByMru(entries, lastUsed).map((m) => ({
-      title: m.id,
-      description: m.provider,
-      value: `${m.provider}/${m.id}`,
-    })),
-  ];
+    const picked = await select(
+      `${MODEL_PICKER_TITLE_PREFIX}${deps.subagentType}: ${deps.description}`,
+      options,
+      { timeout: 120000 },
+    );
+    if (picked === undefined) return { kind: "cancelled" };
+    if (picked === "") return { kind: "inherit" };
 
-  const picked = await select(
-    `${MODEL_PICKER_TITLE_PREFIX}${deps.subagentType}: ${deps.description}`,
-    options,
-    { timeout: 120000 },
-  );
-  if (picked === undefined) return { kind: "cancelled" };
-  if (picked === "") return { kind: "inherit" };
+    // First pick of the session: ask once whether to reuse this model for
+    // every subagent this session. Mark asked BEFORE awaiting so concurrent
+    // parallel spawns skip this — only the first spawn shows it.
+    if (deps.settings.modelScopeAsked) {
+      return { kind: "picked", value: picked };
+    }
+    deps.settings.markModelScopeAsked(false);
 
-  // First pick of the session: ask once whether to reuse this model for
-  // every subagent this session. Mark asked BEFORE awaiting so concurrent
-  // parallel spawns skip this — only the first spawn shows it.
-  if (deps.settings.modelScopeAsked) {
+    const scope = await select(
+      `Use ${picked} for every subagent this session?`,
+      [
+        {
+          title: "Yes, this session",
+          description: "skip the picker for the rest of this session",
+          value: "session",
+        },
+        {
+          title: "No, ask each time",
+          description: "pick a model on every spawn",
+          value: "once",
+        },
+      ],
+      { timeout: 120000 },
+    );
+    if (scope === undefined) return { kind: "cancelled" };
+    if (scope === "session") {
+      return { kind: "pickedRememberSession", value: picked };
+    }
     return { kind: "picked", value: picked };
+  } finally {
+    release();
   }
-  deps.settings.markModelScopeAsked(false);
-
-  const scope = await select(
-    `Use ${picked} for every subagent this session?`,
-    [
-      {
-        title: "Yes, this session",
-        description: "skip the picker for the rest of this session",
-        value: "session",
-      },
-      {
-        title: "No, ask each time",
-        description: "pick a model on every spawn",
-        value: "once",
-      },
-    ],
-    { timeout: 120000 },
-  );
-  if (scope === undefined) return { kind: "cancelled" };
-  if (scope === "session") {
-    return { kind: "pickedRememberSession", value: picked };
-  }
-  return { kind: "picked", value: picked };
 }
 
 export function getAgentConfigModel(
