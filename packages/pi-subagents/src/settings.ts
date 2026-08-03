@@ -5,7 +5,10 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { CONFIG_DIR_NAME } from "@earendil-works/pi-coding-agent";
-import { type LayeredSettingsSource, loadLayeredSettings } from "#src/layered-settings";
+import {
+  type LayeredSettingsSource,
+  loadLayeredSettings,
+} from "#src/layered-settings";
 export interface SubagentsSettings {
   maxConcurrent?: number;
   /**
@@ -15,8 +18,9 @@ export interface SubagentsSettings {
    */
   defaultMaxTurns?: number;
   graceTurns?: number;
+  /** true = prompt interactively for the subagent model when no explicit model applies. */
+  agentModelPicker?: boolean;
 }
-
 
 /** Emit callback — a subset of `pi.events.emit` to keep helpers testable. */
 export type SettingsEmit = (event: string, payload: unknown) => void;
@@ -32,13 +36,19 @@ export class SettingsManager {
   private _defaultMaxTurns: number | undefined = undefined;
   private _graceTurns: number = DEFAULT_GRACE_TURNS;
   private _maxConcurrent: number = DEFAULT_MAX_CONCURRENT;
+  private _agentModelPicker: boolean = false;
 
   private readonly emit: SettingsEmit;
   private readonly cwd: string;
   private readonly agentDir: string;
   private readonly onMaxConcurrentChanged: (() => void) | undefined;
 
-  constructor(deps: { emit: SettingsEmit; cwd: string; agentDir: string; onMaxConcurrentChanged?: () => void }) {
+  constructor(deps: {
+    emit: SettingsEmit;
+    cwd: string;
+    agentDir: string;
+    onMaxConcurrentChanged?: () => void;
+  }) {
     this.emit = deps.emit;
     this.cwd = deps.cwd;
     this.agentDir = deps.agentDir;
@@ -79,6 +89,16 @@ export class SettingsManager {
     this._maxConcurrent = Math.max(1, n);
   }
 
+  // ── agentModelPicker: plain boolean flag ──
+
+  get agentModelPicker(): boolean {
+    return this._agentModelPicker;
+  }
+
+  set agentModelPicker(v: boolean) {
+    this._agentModelPicker = v;
+  }
+
   // ── Lifecycle methods ──
 
   /**
@@ -88,9 +108,13 @@ export class SettingsManager {
    */
   load(): SubagentsSettings {
     const settings = loadSettings(this.agentDir, this.cwd);
-    if (typeof settings.maxConcurrent === "number") this.maxConcurrent = settings.maxConcurrent;
-    if (typeof settings.defaultMaxTurns === "number") this.defaultMaxTurns = settings.defaultMaxTurns;
-    if (typeof settings.graceTurns === "number") this.graceTurns = settings.graceTurns;
+    if (typeof settings.maxConcurrent === "number")
+      this.maxConcurrent = settings.maxConcurrent;
+    if (typeof settings.defaultMaxTurns === "number")
+      this.defaultMaxTurns = settings.defaultMaxTurns;
+    if (typeof settings.graceTurns === "number")
+      this.graceTurns = settings.graceTurns;
+    this.agentModelPicker = settings.agentModelPicker === true;
     this.emit("subagents:settings_loaded", { settings });
     return settings;
   }
@@ -99,7 +123,11 @@ export class SettingsManager {
    * Snapshot current in-memory values for persistence.
    * `defaultMaxTurns` uses 0 as the on-disk marker for unlimited (undefined).
    */
-  snapshot(): { maxConcurrent: number; defaultMaxTurns: number; graceTurns: number } {
+  snapshot(): {
+    maxConcurrent: number;
+    defaultMaxTurns: number;
+    graceTurns: number;
+  } {
     return {
       maxConcurrent: this._maxConcurrent,
       defaultMaxTurns: this._defaultMaxTurns ?? 0,
@@ -111,7 +139,10 @@ export class SettingsManager {
    * Set maxConcurrent, notify interested parties, persist, and return the toast.
    * Owns the full consequence chain so callers just say what they want.
    */
-  applyMaxConcurrent(n: number): { message: string; level: "info" | "warning" } {
+  applyMaxConcurrent(n: number): {
+    message: string;
+    level: "info" | "warning";
+  } {
     this.maxConcurrent = n; // setter normalizes: max(1, n)
     this.onMaxConcurrentChanged?.();
     return this.saveAndNotify(`Max concurrency set to ${this.maxConcurrent}`);
@@ -121,9 +152,13 @@ export class SettingsManager {
    * Set defaultMaxTurns, persist, and return the toast.
    * Pass 0 for unlimited (maps to undefined internally).
    */
-  applyDefaultMaxTurns(n: number): { message: string; level: "info" | "warning" } {
+  applyDefaultMaxTurns(n: number): {
+    message: string;
+    level: "info" | "warning";
+  } {
     this.defaultMaxTurns = n === 0 ? undefined : n; // setter normalizes further
-    const label = this.defaultMaxTurns == null ? "unlimited" : String(this.defaultMaxTurns);
+    const label =
+      this.defaultMaxTurns == null ? "unlimited" : String(this.defaultMaxTurns);
     return this.saveAndNotify(`Default max turns set to ${label}`);
   }
 
@@ -139,7 +174,10 @@ export class SettingsManager {
    * Persist the current snapshot, emit `subagents:settings_changed`,
    * and return the toast the UI should display.
    */
-  saveAndNotify(successMsg: string): { message: string; level: "info" | "warning" } {
+  saveAndNotify(successMsg: string): {
+    message: string;
+    level: "info" | "warning";
+  } {
     const snap = this.snapshot();
     const persisted = saveSettings(snap, this.cwd);
     this.emit("subagents:settings_changed", { settings: snap, persisted });
@@ -180,6 +218,9 @@ function sanitize(raw: unknown): SubagentsSettings {
   ) {
     out.graceTurns = r.graceTurns as number;
   }
+  if (typeof r.agentModelPicker === "boolean") {
+    out.agentModelPicker = r.agentModelPicker;
+  }
   return out;
 }
 
@@ -203,7 +244,10 @@ export function loadSettings(agentDir: string, cwd: string): SubagentsSettings {
  * Returns `true` on success, `false` if the write (or mkdir) failed so the
  * caller can surface a warning — persistence isn't fatal but isn't silent.
  */
-export function saveSettings(s: SubagentsSettings, cwd: string = process.cwd()): boolean {
+export function saveSettings(
+  s: SubagentsSettings,
+  cwd: string = process.cwd(),
+): boolean {
   const path = projectPath(cwd);
   try {
     mkdirSync(dirname(path), { recursive: true });
@@ -225,5 +269,8 @@ export function persistToastFor(
 ): { message: string; level: "info" | "warning" } {
   return persisted
     ? { message: successMsg, level: "info" }
-    : { message: `${successMsg} (session only; failed to persist)`, level: "warning" };
+    : {
+        message: `${successMsg} (session only; failed to persist)`,
+        level: "warning",
+      };
 }

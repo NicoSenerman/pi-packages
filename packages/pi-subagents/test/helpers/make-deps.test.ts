@@ -8,18 +8,31 @@ describe("createToolDeps", () => {
 	describe("manager defaults", () => {
 		it("spawn returns 'agent-1'", () => {
 			const { manager } = createToolDeps();
-			expect(manager.spawn(STUB_SNAPSHOT, "general-purpose", "prompt", { description: "test" })).toBe("agent-1");
+			expect(
+				manager.spawn(STUB_SNAPSHOT, "general-purpose", "prompt", {
+					description: "test",
+				}),
+			).toBe("agent-1");
 		});
 
 		it("spawnAndWait resolves to a completed record", async () => {
 			const { manager } = createToolDeps();
-			const record = await manager.spawnAndWait(STUB_SNAPSHOT, "general-purpose", "prompt", { description: "test" });
+			const record = await manager.spawnAndWait(
+				STUB_SNAPSHOT,
+				"general-purpose",
+				"prompt",
+				{ description: "test" },
+			);
 			expect(record.status).toBe("completed");
 		});
 
 		it("resume resolves to a completed record", async () => {
 			const { manager } = createToolDeps();
-			const record = await manager.resume("id-1", "prompt", new AbortController().signal);
+			const record = await manager.resume(
+				"id-1",
+				"prompt",
+				new AbortController().signal,
+			);
 			expect(record?.status).toBe("completed");
 		});
 
@@ -45,7 +58,9 @@ describe("createToolDeps", () => {
 
 		it("registry accepts agent type lookups without throwing", () => {
 			const { registry } = createToolDeps();
-			expect(() => registry.resolveAgentConfig("general-purpose")).not.toThrow();
+			expect(() =>
+				registry.resolveAgentConfig("general-purpose"),
+			).not.toThrow();
 		});
 	});
 
@@ -65,7 +80,13 @@ describe("createToolDeps", () => {
 		});
 
 		it("replaces settings when overridden", () => {
-			const deps = createToolDeps({ settings: { defaultMaxTurns: 10, maxConcurrent: 2 } });
+			const deps = createToolDeps({
+				settings: {
+					defaultMaxTurns: 10,
+					maxConcurrent: 2,
+					agentModelPicker: false,
+				},
+			});
 			expect(deps.settings.defaultMaxTurns).toBe(10);
 			expect(deps.settings.maxConcurrent).toBe(2);
 		});

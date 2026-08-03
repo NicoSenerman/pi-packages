@@ -35,9 +35,13 @@ export type AgentToolFixture = {
  * createToolDeps({ manager: { ...createToolDeps().manager, spawn: vi.fn().mockReturnValue("x") } })
  * ```
  */
-export function createToolDeps(overrides: Partial<AgentToolFixture> = {}): AgentToolFixture {
+export function createToolDeps(
+	overrides: Partial<AgentToolFixture> = {},
+): AgentToolFixture {
 	const runtime: AgentToolRuntime = {
-		buildSnapshot: vi.fn((_inheritContext: boolean): ParentSnapshot => STUB_SNAPSHOT),
+		buildSnapshot: vi.fn(
+			(_inheritContext: boolean): ParentSnapshot => STUB_SNAPSHOT,
+		),
 		getModelInfo: vi.fn(() => ({
 			parentModel: { id: "claude-sonnet", name: "Claude Sonnet" },
 			modelRegistry: { getAll: () => [], getAvailable: () => [] },
@@ -56,7 +60,11 @@ export function createToolDeps(overrides: Partial<AgentToolFixture> = {}): Agent
 			getRecord: vi.fn().mockReturnValue(createTestSubagent()),
 		},
 		runtime,
-		settings: { defaultMaxTurns: undefined as number | undefined, maxConcurrent: 4 },
+		settings: {
+			defaultMaxTurns: undefined as number | undefined,
+			maxConcurrent: 4,
+			agentModelPicker: false,
+		},
 		registry: defaultRegistry,
 		agentDir: "/home/user/.pi",
 		...overrides,

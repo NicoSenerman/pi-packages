@@ -8,9 +8,17 @@ import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import type { AgentSpawnConfig } from "#src/lifecycle/subagent-manager";
 import { spawnBackground } from "#src/tools/background-spawner";
 import { runForeground } from "#src/tools/foreground-runner";
-import { buildDetails, buildTypeListText, textResult } from "#src/tools/helpers";
+import {
+	buildDetails,
+	buildTypeListText,
+	textResult,
+} from "#src/tools/helpers";
 import { renderAgentResult } from "#src/tools/result-renderer";
 import { type ModelInfo, resolveSpawnConfig } from "#src/tools/spawn-config";
+import {
+	getAgentConfigModel,
+	maybePickAgentModel,
+} from "#src/tools/model-picker";
 import type { ParentSessionInfo, Subagent } from "#src/types";
 import { type AgentDetails, getDisplayName } from "#src/ui/display";
 
@@ -18,9 +26,23 @@ import { type AgentDetails, getDisplayName } from "#src/ui/display";
 
 /** Narrow manager interface — only the methods the Agent tool calls. */
 export interface AgentToolManager {
-	spawn: (snapshot: ParentSnapshot, type: string, prompt: string, opts: AgentSpawnConfig) => string;
-	spawnAndWait: (snapshot: ParentSnapshot, type: string, prompt: string, opts: Omit<AgentSpawnConfig, "isBackground">) => Promise<Subagent>;
-	resume: (id: string, prompt: string, signal: AbortSignal) => Promise<Subagent | undefined>;
+	spawn: (
+		snapshot: ParentSnapshot,
+		type: string,
+		prompt: string,
+		opts: AgentSpawnConfig,
+	) => string;
+	spawnAndWait: (
+		snapshot: ParentSnapshot,
+		type: string,
+		prompt: string,
+		opts: Omit<AgentSpawnConfig, "isBackground">,
+	) => Promise<Subagent>;
+	resume: (
+		id: string,
+		prompt: string,
+		signal: AbortSignal,
+	) => Promise<Subagent | undefined>;
 	getRecord: (id: string) => Subagent | undefined;
 }
 
@@ -35,6 +57,7 @@ export interface AgentToolRuntime {
 export type AgentToolSettings = {
 	readonly defaultMaxTurns: number | undefined;
 	readonly maxConcurrent: number;
+	readonly agentModelPicker: boolean;
 };
 
 // ---- Class ----
@@ -65,18 +88,52 @@ export class AgentTool {
 		this.registry.reload();
 
 		// ---- Config resolution (pure) ----
-		const config = resolveSpawnConfig(
+		const modelInfo = this.runtime.getModelInfo();
+		let config = resolveSpawnConfig(
 			params,
 			this.registry,
-			this.runtime.getModelInfo(),
+			modelInfo,
 			this.settings,
 		);
 		if ("error" in config) return textResult(config.error);
 
+		// ---- Interactive model picker (opt-in; skipped when a model already applies) ----
+		const pick = await maybePickAgentModel({
+			params,
+			modelRegistry: modelInfo.modelRegistry as { getAvailable?(): unknown[] },
+			parentModel: modelInfo.parentModel,
+			subagentType: config.identity.subagentType,
+			description: config.execution.description,
+			agentConfigModel: getAgentConfigModel(params, this.registry),
+			settings: this.settings,
+			agentDir: this.agentDir,
+			ui: _ctx?.ui,
+		});
+		if (pick.kind === "cancelled") {
+			return textResult("Agent spawn cancelled (model picker).");
+		}
+		if (pick.kind === "picked") {
+			params.model = pick.value;
+			config = resolveSpawnConfig(
+				params,
+				this.registry,
+				modelInfo,
+				this.settings,
+			);
+			if ("error" in config) return textResult(config.error);
+		}
+
 		// ---- Boundary extraction (after config so inheritContext is resolved) ----
-		const snapshot = this.runtime.buildSnapshot(config.execution.inheritContext);
-		const { parentSessionFile, parentSessionId } = this.runtime.getSessionInfo();
-		const parentSession: ParentSessionInfo = { parentSessionFile, parentSessionId, toolCallId };
+		const snapshot = this.runtime.buildSnapshot(
+			config.execution.inheritContext,
+		);
+		const { parentSessionFile, parentSessionId } =
+			this.runtime.getSessionInfo();
+		const parentSession: ParentSessionInfo = {
+			parentSessionFile,
+			parentSessionId,
+			toolCallId,
+		};
 
 		// ---- Resume existing agent ----
 		if (params.resume) {
@@ -107,10 +164,12 @@ export class AgentTool {
 
 		// ---- Background execution ----
 		if (config.execution.runInBackground) {
-			return spawnBackground(
-				this.manager,
-				{ config, snapshot, parentSession, settings: this.settings },
-			);
+			return spawnBackground(this.manager, {
+				config,
+				snapshot,
+				parentSession,
+				settings: this.settings,
+			});
 		}
 
 		// ---- Foreground execution — stream progress via onUpdate ----
@@ -131,7 +190,8 @@ export class AgentTool {
 		return defineTool({
 			name: "subagent" as const,
 			label: "Subagent",
-			promptSnippet: "subagent: Launch a specialized agent for complex, multi-step tasks.",
+			promptSnippet:
+				"subagent: Launch a specialized agent for complex, multi-step tasks.",
 			description: `Launch a new agent to handle complex, multi-step tasks autonomously.
 
 The subagent tool launches specialized agents that autonomously handle complex tasks. Each agent type has specific capabilities and tools available to it.
@@ -158,7 +218,8 @@ Guidelines:
 					description: "The task for the agent to perform.",
 				}),
 				description: Type.String({
-					description: "A short (3-5 word) description of the task (shown in UI).",
+					description:
+						"A short (3-5 word) description of the task (shown in UI).",
 				}),
 				subagent_type: Type.String({
 					description: `The type of specialized agent to use. Available types: ${availableTypesText}. Custom agents from .pi/agents/<name>.md (project) or ${agentDir}/agents/<name>.md (global) are also available.`,
@@ -167,6 +228,12 @@ Guidelines:
 					Type.String({
 						description:
 							'Optional model override. Accepts "provider/modelId" or fuzzy name (e.g. "haiku", "sonnet"). Omit to use the agent type\'s default.',
+					}),
+				),
+				pick_model: Type.Optional(
+					Type.Boolean({
+						description:
+							"Prompt interactively to choose the model for this agent before spawning.",
 					}),
 				),
 				thinking: Type.Optional(
@@ -190,7 +257,8 @@ Guidelines:
 				),
 				resume: Type.Optional(
 					Type.String({
-						description: "Optional agent ID to resume from. Continues from previous context.",
+						description:
+							"Optional agent ID to resume from. Continues from previous context.",
 					}),
 				),
 				inherit_context: Type.Optional(
@@ -220,10 +288,12 @@ Guidelines:
 			renderResult(result: any, { expanded, isPartial }: any, theme: any) {
 				const details = result.details as AgentDetails | undefined;
 				if (!details) {
-					const text = result.content[0]?.type === "text" ? result.content[0].text : "";
+					const text =
+						result.content[0]?.type === "text" ? result.content[0].text : "";
 					return new Text(text, 0, 0);
 				}
-				const resultText = result.content[0]?.type === "text" ? result.content[0].text : "";
+				const resultText =
+					result.content[0]?.type === "text" ? result.content[0].text : "";
 				return new Text(
 					renderAgentResult(details, resultText, expanded, isPartial, theme),
 					0,
