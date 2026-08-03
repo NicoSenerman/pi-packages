@@ -59,6 +59,22 @@ export class TodoOverlay {
 			return;
 		}
 
+		// Auto-clear when every visible task is already complete: the overlay has
+		// served its purpose (tracking in-progress work), so wrap it up instead of
+		// lingering with a full "N/N" header and the completed rows.
+		const allCompleted = visible.every((task) => task.status === "completed");
+		if (allCompleted) {
+			if (this.widgetRegistered) {
+				this.uiCtx.setWidget(WIDGET_KEY, undefined);
+				this.widgetRegistered = false;
+				this.tui = undefined;
+			}
+			// Re-queue them for the next turn's hide pass so a new task added later
+			// in the same turn doesn't resurrect a completed-only overlay.
+			this.completedTaskIdsPendingHide = new Set(visible.map((t) => t.id));
+			return;
+		}
+
 		if (!this.widgetRegistered) {
 			this.uiCtx.setWidget(
 				WIDGET_KEY,
