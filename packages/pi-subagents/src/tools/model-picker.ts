@@ -65,7 +65,7 @@ export function shouldOfferModelPicker(
   },
   ui: { select?: unknown } | undefined,
 ): boolean {
-  if (settings.agentModelDefault) return false;
+  if (settings.agentModelDefault !== undefined) return false;
   if (settings.agentModelPicker !== true && params.pick_model !== true)
     return false;
   if (params.resume) return false;
@@ -93,7 +93,7 @@ export async function maybePickAgentModel(
   // have set it while we waited.
   const release = await deps.settings.acquirePickerLock();
   try {
-    if (deps.settings.agentModelDefault) {
+    if (deps.settings.agentModelDefault !== undefined) {
       return { kind: "inherit" };
     }
     const select = deps.ui?.select as (
@@ -130,18 +130,21 @@ export async function maybePickAgentModel(
       { timeout: 120000 },
     );
     if (picked === undefined) return { kind: "cancelled" };
-    if (picked === "") return { kind: "inherit" };
 
-    // First pick of the session: ask once whether to reuse this model for
+    // First pick of the session: ask once whether to reuse this choice for
     // every subagent this session. Mark asked BEFORE awaiting so concurrent
-    // parallel spawns skip this — only the first spawn shows it.
+    // parallel spawns skip this — only the first spawn shows it. Fires for
+    // both a concrete model pick AND the "inherit parent" pick.
     if (deps.settings.modelScopeAsked) {
-      return { kind: "picked", value: picked };
+      return picked === ""
+        ? { kind: "inherit" }
+        : { kind: "picked", value: picked };
     }
     deps.settings.markModelScopeAsked(false);
 
+    const scopePicked = picked === "" ? "inherit parent" : picked;
     const scope = await select(
-      `Use ${picked} for every subagent this session?`,
+      `Use ${scopePicked} for every subagent this session?`,
       [
         {
           title: "Yes, this session",

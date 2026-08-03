@@ -92,7 +92,11 @@ describe("AgentTool — model picker gating", () => {
     deps.manager.getRecord = vi
       .fn()
       .mockReturnValue(createTestSubagent({ status: "running" }));
-    const ctx = makePickCtx(() => "");
+    let call = 0;
+    const ctx = makePickCtx(() => {
+      call++;
+      return call === 1 ? "provA/model-a" : undefined; // cancel scope ask
+    });
     await execute(
       deps,
       {
@@ -103,7 +107,11 @@ describe("AgentTool — model picker gating", () => {
       },
       ctx,
     );
-    expect(ctx.ui.select).toHaveBeenCalledOnce();
+    // First select is the model picker; scope ask may follow on a concrete pick.
+    expect(ctx.ui.select).toHaveBeenCalled();
+    expect(
+      (ctx.ui.select as ReturnType<typeof vi.fn>).mock.calls[0][0],
+    ).toMatch(/^Subagent model — /);
   });
 
   it("fires when params.pick_model is true and setting is off", async () => {
@@ -123,7 +131,11 @@ describe("AgentTool — model picker gating", () => {
     deps.manager.getRecord = vi
       .fn()
       .mockReturnValue(createTestSubagent({ status: "running" }));
-    const ctx = makePickCtx(() => "");
+    let call = 0;
+    const ctx = makePickCtx(() => {
+      call++;
+      return call === 1 ? "provA/model-a" : undefined; // cancel scope ask
+    });
     await execute(
       deps,
       {
@@ -135,7 +147,11 @@ describe("AgentTool — model picker gating", () => {
       },
       ctx,
     );
-    expect(ctx.ui.select).toHaveBeenCalledOnce();
+    // First select is the model picker; scope ask may follow on a concrete pick.
+    expect(ctx.ui.select).toHaveBeenCalled();
+    expect(
+      (ctx.ui.select as ReturnType<typeof vi.fn>).mock.calls[0][0],
+    ).toMatch(/^Subagent model — /);
   });
 
   it("skips when params.model is set explicitly", async () => {

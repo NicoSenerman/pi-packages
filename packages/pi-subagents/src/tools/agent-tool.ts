@@ -119,19 +119,22 @@ export class AgentTool {
       return textResult("Agent spawn cancelled (model picker).");
     }
     if (pick.kind !== "inherit") {
-      params.model = pick.value;
-      config = resolveSpawnConfig(
-        params,
-        this.registry,
-        modelInfo,
-        this.settings,
-      );
-      if ("error" in config) return textResult(config.error);
+      if (pick.value !== "") {
+        params.model = pick.value;
+        config = resolveSpawnConfig(
+          params,
+          this.registry,
+          modelInfo,
+          this.settings,
+        );
+        if ("error" in config) return textResult(config.error);
+      }
 
       if (pick.kind === "pickedRememberSession") {
         this.settings.setAgentModelDefault(pick.value);
+        const label = pick.value === "" ? "inherit parent model" : pick.value;
         _ctx?.ui?.notify?.(
-          `[pi-subagents] Remembering ${pick.value} for this session. Clear via /agents → Settings.`,
+          `[pi-subagents] Remembering ${label} for this session. Clear via /subagents:clear-default-model.`,
           "info",
         );
       }
