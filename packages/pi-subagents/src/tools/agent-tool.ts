@@ -121,14 +121,17 @@ export class AgentTool {
     if (pick.kind !== "inherit") {
       if (pick.value !== "") {
         params.model = pick.value;
-        config = resolveSpawnConfig(
-          params,
-          this.registry,
-          modelInfo,
-          this.settings,
-        );
-        if ("error" in config) return textResult(config.error);
+      } else {
+        // Picker is authoritative: "inherit parent" must override an LLM-supplied model.
+        delete params.model;
       }
+      config = resolveSpawnConfig(
+        params,
+        this.registry,
+        modelInfo,
+        this.settings,
+      );
+      if ("error" in config) return textResult(config.error);
 
       if (pick.kind === "pickedRememberSession") {
         this.settings.setAgentModelDefault(pick.value);
@@ -226,7 +229,7 @@ Guidelines:
 - Use run_in_background for work you don't need immediately. You will be notified when it completes.
 - Use resume with an agent ID to continue a previous agent's work.
 - Use steer_subagent to send mid-run messages to a running background agent.
-- Use model to specify a different model (as "provider/modelId", or fuzzy e.g. "haiku", "sonnet").
+- Prefer omitting model — the user picks the subagent model interactively at spawn. Only set model when the user explicitly requested a specific model.
 - Use thinking to control extended thinking level.
 - Use inherit_context if the agent needs the parent conversation history.
 `,
@@ -244,7 +247,7 @@ Guidelines:
         model: Type.Optional(
           Type.String({
             description:
-              'Optional model override. Accepts "provider/modelId" or fuzzy name (e.g. "haiku", "sonnet"). Omit to use the agent type\'s default.',
+              'Optional model override. The user picks the model interactively at spawn by default — only set this when the user explicitly requested a specific model. Accepts "provider/modelId" or fuzzy name (e.g. "haiku", "sonnet").',
           }),
         ),
         pick_model: Type.Optional(

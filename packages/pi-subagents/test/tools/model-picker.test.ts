@@ -154,10 +154,17 @@ describe("AgentTool — model picker gating", () => {
     ).toMatch(/^Subagent model — /);
   });
 
-  it("skips when params.model is set explicitly", async () => {
+  it("fires when params.model is set and surfaces the suggested model", async () => {
     const deps = depsWithPicker();
-    const ctx = makePickCtx(() => "provA/model-a");
-    const result = await execute(
+    deps.manager.getRecord = vi
+      .fn()
+      .mockReturnValue(createTestSubagent({ status: "running" }));
+    let call = 0;
+    const ctx = makePickCtx(() => {
+      call++;
+      return call === 1 ? "provB/model-b" : "once"; // pick suggested, ask each time
+    });
+    await execute(
       deps,
       {
         prompt: "t",
@@ -168,8 +175,99 @@ describe("AgentTool — model picker gating", () => {
       },
       ctx,
     );
-    expect(ctx.ui.select).not.toHaveBeenCalled();
-    expect(result.content[0].text).toContain("background");
+    // The picker still fires despite params.model — an LLM-supplied model is a suggestion, not a disarm.
+    expect(ctx.ui.select).toHaveBeenCalled();
+    const [title, options] = ctx.ui.select.mock.calls[0] as [
+      string,
+      { title: string; value: string }[],
+    ];
+    expect(title).toMatch(/^Subagent model — /);
+    // The suggested model row is annotated and hoisted to the front (after inherit).
+    expect(options[0]).toEqual({
+      title: "inherit parent (anthropic/claude-sonnet)",
+      description: "use the current session model",
+      value: "",
+    });
+    expect(options[1]).toEqual({
+      title: "model-b (suggested)",
+      description: "provB",
+      value: "provB/model-b",
+    });
+    // The user's pick is applied (overrides the LLM suggestion).
+    const spawnOpts = (deps.manager.spawn as ReturnType<typeof vi.fn>).mock
+      .calls[0][3];
+    expect(spawnOpts.model?.id).toBe("model-b");
+    expect(spawnOpts.model?.provider).toBe("provB");
+  });
+
+  it("fires when params.model is a fuzzy name and surfaces the matched model", async () => {
+    const deps = depsWithPicker();
+    deps.manager.getRecord = vi
+      .fn()
+      .mockReturnValue(createTestSubagent({ status: "running" }));
+    let call = 0;
+    const ctx = makePickCtx(() => {
+      call++;
+      return call === 1 ? "" : "once"; // pick inherit, ask each time
+    });
+    await execute(
+      deps,
+      {
+        prompt: "t",
+        description: "d",
+        subagent_type: "general-purpose",
+        model: "model-a",
+        run_in_background: true,
+      },
+      ctx,
+    );
+    expect(ctx.ui.select).toHaveBeenCalled();
+    const options = (
+      ctx.ui.select.mock.calls[0] as [
+        string,
+        { title: string; value: string }[],
+      ]
+    )[1];
+    expect(options[1]).toEqual({
+      title: "model-a (suggested)",
+      description: "provA",
+      value: "provA/model-a",
+    });
+  });
+
+  it("fires when params.model is a fuzzy name (by model name) and surfaces the matched model", async () => {
+    const deps = depsWithPicker();
+    deps.manager.getRecord = vi
+      .fn()
+      .mockReturnValue(createTestSubagent({ status: "running" }));
+    let call = 0;
+    const ctx = makePickCtx(() => {
+      call++;
+      return call === 1 ? "" : "once"; // pick inherit, ask each time
+    });
+    await execute(
+      deps,
+      {
+        prompt: "t",
+        description: "d",
+        subagent_type: "general-purpose",
+        model: "Model C",
+        run_in_background: true,
+      },
+      ctx,
+    );
+    expect(ctx.ui.select).toHaveBeenCalled();
+    const options = (
+      ctx.ui.select.mock.calls[0] as [
+        string,
+        { title: string; value: string }[],
+      ]
+    )[1];
+    expect(options[1]).toEqual({
+      title: "model-c (suggested)",
+      description: "provC",
+      value: "provC/model-c",
+    });
   });
 
   it("skips when the agent config hardcodes a model", async () => {

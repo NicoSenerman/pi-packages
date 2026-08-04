@@ -2,9 +2,11 @@
 /**
  * model-picker.ts — Interactive model picker for subagent spawns.
  *
- * Gate: (settings.agentModelPicker || params.pick_model) AND no explicit model
- * (params.model absent, agent config has no hardcoded model) AND not a resume.
- * Headless (no ctx.ui.select) silently skips.
+ * Gate: (settings.agentModelPicker || params.pick_model) AND no agent-config
+ * hardcoded model AND not a resume AND no session default. An LLM-supplied
+ * params.model does NOT disarm the picker — it is surfaced as a highlighted
+ * "(suggested)" option so the user can confirm or change it. Headless
+ * (no ctx.ui.select) silently skips.
  *
  * Options are MRU-sorted via pi-model-sort's state file; the leading option
  * inherits the parent session model. "" = inherit, undefined = cancelled.
@@ -69,7 +71,6 @@ export function shouldOfferModelPicker(
   if (settings.agentModelPicker !== true && params.pick_model !== true)
     return false;
   if (params.resume) return false;
-  if (params.model != null) return false;
   if (agentConfigModel != null) return false;
   return typeof ui?.select === "function";
 }
@@ -111,17 +112,18 @@ export async function maybePickAgentModel(
     const lastUsed = readModelMru(deps.agentDir);
     const entries = (deps.modelRegistry.getAvailable?.() ??
       []) as ModelEntryLike[];
+    const suggested = normalizeSuggestedModel(
+      deps.params.model as string | undefined,
+      entries,
+    );
+    const sorted = sortByMru(entries, lastUsed);
     const options: ModelPickerOption[] = [
       {
         title: `inherit parent (${parentLabel})`,
         description: "use the current session model",
         value: "",
       },
-      ...sortByMru(entries, lastUsed).map((m) => ({
-        title: m.id,
-        description: m.provider,
-        value: `${m.provider}/${m.id}`,
-      })),
+      ...buildModelOptions(sorted, suggested),
     ];
 
     const picked = await select(
@@ -208,4 +210,74 @@ function sortByMru(
     if (ta !== tb) return tb - ta;
     return ka.localeCompare(kb);
   });
+}
+
+/**
+ * Resolve an LLM-supplied params.model to a normalized "provider/id" key when
+ * it matches an available model. Accepts "provider/id", a bare id, or a fuzzy
+ * name (matched case-insensitively against id then name), mirroring the
+ * resolver's fuzzy fallback so any model the resolver accepts is surfaced.
+ * Returns undefined when the suggestion doesn't resolve to any available model,
+ * so the picker just shows the plain MRU-sorted list.
+ */
+function normalizeSuggestedModel(
+  suggested: string | undefined,
+  entries: ModelEntryLike[],
+): string | undefined {
+  if (typeof suggested !== "string" || suggested.trim() === "")
+    return undefined;
+  const trimmed = suggested.trim();
+  // Exact "provider/id" match wins outright.
+  if (entries.some((m) => `${m.provider}/${m.id}` === trimmed)) {
+    return trimmed;
+  }
+  // Bare id or fuzzy name: case-insensitive, preferring an exact id hit,
+  // then exact name, then id-contains, then name-contains.
+  const lower = trimmed.toLowerCase();
+  const exactId = entries.find((m) => m.id.toLowerCase() === lower);
+  if (exactId) return `${exactId.provider}/${exactId.id}`;
+  const exactName = entries.find((m) => m.name?.toLowerCase() === lower);
+  if (exactName) return `${exactName.provider}/${exactName.id}`;
+  const idContains = entries.find((m) => m.id.toLowerCase().includes(lower));
+  if (idContains) return `${idContains.provider}/${idContains.id}`;
+  const nameContains = entries.find((m) =>
+    m.name?.toLowerCase().includes(lower),
+  );
+  if (nameContains) return `${nameContains.provider}/${nameContains.id}`;
+  return undefined;
+}
+
+/**
+ * Build the per-model picker rows from MRU-sorted entries. If `suggested`
+ * (a normalized "provider/id" key) resolves to one of the entries, that row
+ * is annotated with " (suggested)" in its title and hoisted to the front so
+ * the user sees the LLM's guess first. piru round-trips `value` unchanged, so
+ * annotating only the title is safe.
+ */
+function buildModelOptions(
+  sorted: ModelEntryLike[],
+  suggested: string | undefined,
+): ModelPickerOption[] {
+  if (suggested === undefined) {
+    return sorted.map((m) => ({
+      title: m.id,
+      description: m.provider,
+      value: `${m.provider}/${m.id}`,
+    }));
+  }
+  const options = sorted.map((m) => {
+    const key = `${m.provider}/${m.id}`;
+    return {
+      title: key === suggested ? `${m.id} (suggested)` : m.id,
+      description: m.provider,
+      value: key,
+    };
+  });
+  // Hoist the suggested row to the front (after the inherit option).
+  const idx = options.findIndex((o) => o.value === suggested);
+  if (idx > 0) {
+    const [hoisted] = options.splice(idx, 1);
+    options.unshift(hoisted);
+  }
+  return options;
 }
