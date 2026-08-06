@@ -45,9 +45,10 @@ describe("formatBashExternalDirectoryAskPrompt", () => {
       "my-agent",
     );
     expect(result).toContain("Agent 'my-agent'");
-    expect(result).toContain("cat /etc/passwd");
+    expect(result).toContain("  cat /etc/passwd");
     expect(result).toContain("/etc/passwd");
     expect(result).toContain("/projects/my-app");
+    expect(result).toMatch(/Allow this external directory access\?\n\n  cat/);
   });
 
   test("uses 'Current agent' when no agent name provided", () => {
@@ -57,5 +58,27 @@ describe("formatBashExternalDirectoryAskPrompt", () => {
       "/projects/my-app",
     );
     expect(result).toContain("Current agent");
+  });
+
+  test("does not inline the command inside single quotes", () => {
+    const result = formatBashExternalDirectoryAskPrompt(
+      "cat /etc/passwd",
+      ["/etc/passwd"],
+      "/projects/my-app",
+    );
+    expect(result).not.toContain("bash command 'cat");
+  });
+
+  test("truncates multi-line commands to 3 lines plus ellipsis", () => {
+    const command = ["line1", "line2", "line3", "line4", "line5"].join("\n");
+    const result = formatBashExternalDirectoryAskPrompt(
+      command,
+      ["/etc/passwd"],
+      "/projects/my-app",
+    );
+    expect(result).toContain("  line1");
+    expect(result).toContain("  line3");
+    expect(result).not.toContain("line4");
+    expect(result).toMatch(/… \(2 more lines\)/);
   });
 });

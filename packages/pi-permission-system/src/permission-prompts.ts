@@ -1,3 +1,4 @@
+import { formatCommandPromptBody } from "./command-prompt-body";
 import { getNonEmptyString, toRecord } from "./common";
 import { matchQualifier } from "./denial-messages";
 import type { SkillPromptEntry } from "./skill-prompt-sanitizer";
@@ -37,44 +38,23 @@ export function formatAskPrompt(
 ): string {
   const subject = agentName ? `Agent '${agentName}'` : "Current agent";
 
-  // Long commands (heredocs, embedded python, curl|python scripts) blow the
-  // Confirm dialog out vertically. Cap the body at 3 lines in the modal; the
-  // full command still lives in the audit log and in the tool-call card that
-  // follows.
-  const truncateCommand = (command: string | null): string => {
-    if (!command) return "";
-    // A trailing newline is a terminator, not an extra line — exclude it when
-    // counting so `cat <<EOF\nhello\nEOF` shows 3 lines, not 4.
-    const trailing = command.endsWith("\n") ? 1 : 0;
-    const lines = command.split("\n");
-    const contentLines = lines.length - trailing;
-    if (contentLines <= 3) return command;
-    return `${lines.slice(0, 3).join("\n")}\n  … (${contentLines - 3} more lines)`;
-  };
-
   if (result.toolName === "bash") {
-    const subCommand = truncateCommand(result.command ?? "");
+    const subCommand = formatCommandPromptBody(result.command ?? "");
     const qualifier = matchQualifier(
       result.matchedPattern,
       result.commandContext,
     );
     const qualifierInfo = qualifier ? ` ${qualifier}` : "";
     const fullCommandRaw = getNonEmptyString(toRecord(input).command);
-    const fullCommand = truncateCommand(fullCommandRaw);
+    const fullCommand = formatCommandPromptBody(fullCommandRaw);
     // Place the actual command on its own indented line. The TUI renders
     // select bodies as plain text, so a blank line before the command and a
     // 2-space indent make the eye anchor on it instead of losing it inside
     // the wrapping sentence.
     if (fullCommand && fullCommand !== subCommand) {
-      return `${subject} requested bash command${qualifierInfo}. Allow this command?\n\n${fullCommand
-        .split("\n")
-        .map((l) => (l.trim() ? `  ${l}` : l))
-        .join("\n")}`;
+      return `${subject} requested bash command${qualifierInfo}. Allow this command?\n\n${fullCommand}`;
     }
-    return `${subject} requested bash command${qualifierInfo}. Allow this command?\n\n${subCommand
-      .split("\n")
-      .map((l) => (l.trim() ? `  ${l}` : l))
-      .join("\n")}`;
+    return `${subject} requested bash command${qualifierInfo}. Allow this command?\n\n${subCommand}`;
   }
 
   if ((result.source === "mcp" || result.toolName === "mcp") && result.target) {

@@ -913,9 +913,10 @@ describe("formatBashExternalDirectoryAskPrompt", () => {
       ["/etc/hosts"],
       "/projects/my-app",
     );
-    expect(result).toContain("cat /etc/hosts");
+    expect(result).toContain("  cat /etc/hosts");
     expect(result).toContain("/etc/hosts");
     expect(result).toContain("/projects/my-app");
+    expect(result).toMatch(/Allow this external directory access\?\n\n  cat/);
   });
 
   test("includes agent name when provided", () => {

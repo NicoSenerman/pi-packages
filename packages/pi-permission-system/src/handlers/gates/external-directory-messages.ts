@@ -1,3 +1,5 @@
+import { formatCommandPromptBody } from "#src/command-prompt-body";
+
 export function formatExternalDirectoryAskPrompt(
   toolName: string,
   pathValue: string,
@@ -16,5 +18,9 @@ export function formatBashExternalDirectoryAskPrompt(
 ): string {
   const subject = agentName ? `Agent '${agentName}'` : "Current agent";
   const pathList = externalPaths.join(", ");
-  return `${subject} requested bash command '${command}' which references path(s) outside working directory '${cwd}': ${pathList}. Allow this external directory access?`;
+  const body = formatCommandPromptBody(command);
+  // Same shape as formatAskPrompt's bash branch: short prose + blank line +
+  // 2-space-indented (and truncated) command. Inlining the full command inside
+  // quotes blows piru/pi permission dialogs on multi-line curl|python scripts.
+  return `${subject} requested bash command which references path(s) outside working directory '${cwd}': ${pathList}. Allow this external directory access?\n\n${body}`;
 }
