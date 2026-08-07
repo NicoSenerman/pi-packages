@@ -140,6 +140,7 @@ export class AgentTool {
           `[pi-subagents] Remembering ${label} for this session. Clear via /subagents:clear-default-model.`,
           "info",
         );
+        setSessionDefaultModelStatus(_ctx?.ui, pick.value);
       }
     }
 
@@ -330,4 +331,35 @@ Guidelines:
       ) => this.execute(toolCallId, params, signal, onUpdate, ctx),
     });
   }
+}
+
+/** Status-bar key for the session-sticky subagent model (piru extension row). */
+export const SESSION_DEFAULT_MODEL_STATUS_KEY = "sub-model";
+
+/**
+ * Show or clear the session-default subagent model chip in the status bar.
+ * Value is self-describing so the user can clear it without leaving the TUI.
+ */
+export function setSessionDefaultModelStatus(
+  ui:
+    { setStatus?: (key: string, text: string | undefined) => void } | undefined,
+  value: string | undefined,
+): void {
+  if (typeof ui?.setStatus !== "function") return;
+  if (value === undefined) {
+    ui.setStatus(SESSION_DEFAULT_MODEL_STATUS_KEY, undefined);
+    return;
+  }
+  const label =
+    value === ""
+      ? "inherit"
+      : value.includes("/")
+        ? (() => {
+            const slash = value.lastIndexOf("/");
+            const provider = value.slice(0, slash);
+            const id = value.slice(slash + 1);
+            return `${id} (${provider})`;
+          })()
+        : value;
+  ui.setStatus(SESSION_DEFAULT_MODEL_STATUS_KEY, `sub: ${label}`);
 }

@@ -38,12 +38,6 @@ import {
 } from "#src/lifecycle/create-subagent-session";
 import { SubagentManager } from "#src/lifecycle/subagent-manager";
 import { CompositeSubagentObserver } from "#src/observation/composite-subagent-observer";
-import { BridgeCommandWatcher } from "#src/observation/bridge-command-watcher";
-import { SnapshotEmitter } from "#src/observation/snapshot-emitter";
-import {
-  AgentEventConnection,
-  AgentEventObserver,
-} from "#src/observation/agent-event-emitter";
 import {
   type NotificationDetails,
   NotificationManager,
@@ -62,7 +56,7 @@ import { resolveModel } from "#src/session/model-resolver";
 import { buildAgentPrompt } from "#src/session/prompts";
 import { deriveSubagentSessionDir } from "#src/session/session-dir";
 import { SettingsManager } from "#src/settings";
-import { AgentTool } from "#src/tools/agent-tool";
+import { AgentTool, setSessionDefaultModelStatus } from "#src/tools/agent-tool";
 import { GetResultTool } from "#src/tools/get-result-tool";
 import { SteerTool } from "#src/tools/steer-tool";
 import { AgentWidget } from "#src/ui/agent-widget";
@@ -185,28 +179,6 @@ export default function (pi: ExtensionAPI) {
     getRunConfig: () => settings,
   });
 
-  // pitui bridge: emit structured agent snapshots over RPC. Gated by PITUI_BRIDGE
-  // env var — no-op in native pi. See observation/snapshot-emitter.ts.
-  const snapshotEmitter = new SnapshotEmitter({
-    manager,
-    appendEntry: (customType, data) => pi.appendEntry(customType, data),
-  });
-  observer.add(snapshotEmitter);
-
-  // pitui bridge: per-event AgentSessionEvent streaming over Unix socket.
-  // Gated by PITUI_BRIDGE — no-op in native pi. Replaces snapshot polling
-  // for live per-token streaming; snapshot_emitter still provides
-  // lifecycle-state snapshots for the monitor panel header.
-  const agentEventConnection = new AgentEventConnection();
-  const agentEventObserver = new AgentEventObserver(agentEventConnection);
-  observer.add(agentEventObserver);
-
-  // pitui bridge: out-of-band command channel so the daemon can ask
-  // pi-subagents to abort a specific agent (no pi RPC exists for that).
-  // Gated by PITUI_BRIDGE — a no-op watcher in native pi.
-  const bridgeWatcher = new BridgeCommandWatcher({ manager });
-  bridgeWatcher.start();
-
   // Typed service published via Symbol.for() for cross-extension access.
   // Consumers: const { getSubagentsService } = await import("@gotgenes/pi-subagents");
   const service = new SubagentsServiceAdapter(manager, resolveModel, runtime);
@@ -224,8 +196,6 @@ export default function (pi: ExtensionAPI) {
   );
   pi.on("session_before_switch", () => lifecycle.handleSessionBeforeSwitch());
   pi.on("session_shutdown", () => {
-    bridgeWatcher.stop();
-    agentEventObserver.close();
     lifecycle.handleSessionShutdown();
   });
 
@@ -283,6 +253,7 @@ export default function (pi: ExtensionAPI) {
       "Clear the session-default subagent model so the model picker asks again",
     handler: async (_args, ctx) => {
       settings.clearSessionModelDefault();
+      setSessionDefaultModelStatus(ctx?.ui, undefined);
       ctx?.ui?.notify?.(
         "[pi-subagents] Cleared session default model. Picker will ask again.",
         "info",
