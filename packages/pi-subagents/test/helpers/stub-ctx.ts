@@ -14,5 +14,5 @@ export const STUB_SNAPSHOT: ParentSnapshot = {
   cwd: "/test",
   systemPrompt: "test prompt",
   model: undefined,
-  modelRegistry: { find: () => undefined },
+  modelRegistry: { find: () => undefined, getAll: () => [] },
 };

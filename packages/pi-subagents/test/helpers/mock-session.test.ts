@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createMockSession } from "./mock-session";
+import { createMockSession, emitResumeUsageAndCompaction } from "./mock-session";
 
 describe("createMockSession", () => {
 	it("broadcasts emit to all active subscribers", () => {
@@ -51,6 +51,19 @@ describe("createMockSession", () => {
 		expect(session.steer).toHaveBeenCalledWith("hello");
 	});
 
+	it("reports that the child has extension handlers by default", () => {
+		const session = createMockSession();
+		expect(session.hasExtensionHandlers("session_shutdown")).toBe(true);
+	});
+
+	it("extensionRunner.emit is a vi.fn stub that resolves to undefined", async () => {
+		const session = createMockSession();
+		const event = { type: "session_shutdown", reason: "quit" };
+		const result = await session.extensionRunner.emit(event);
+		expect(result).toBeUndefined();
+		expect(session.extensionRunner.emit).toHaveBeenCalledWith(event);
+	});
+
 	it("sessionManager.getSessionFile is a vi.fn stub", () => {
 		const session = createMockSession();
 		session.sessionManager.getSessionFile();
@@ -68,5 +81,18 @@ describe("createMockSession", () => {
 	it("accepts overrides that add extra fields", () => {
 		const session = createMockSession({ extra: "value" });
 		expect((session as Record<string, unknown>).extra).toBe("value");
+	});
+});
+
+describe("emitResumeUsageAndCompaction", () => {
+	it("emits a usage message_end then a compaction_end with the standard payloads", () => {
+		const session = createMockSession();
+		const events: unknown[] = [];
+		session.subscribe((e) => events.push(e));
+		emitResumeUsageAndCompaction(session);
+		expect(events).toEqual([
+			{ type: "message_end", message: { role: "assistant", usage: { input: 70, output: 30, cacheWrite: 5 } } },
+			{ type: "compaction_end", aborted: false, result: { tokensBefore: 999 }, reason: "overflow" },
+		]);
 	});
 });

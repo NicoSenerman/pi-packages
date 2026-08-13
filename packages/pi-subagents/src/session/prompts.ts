@@ -5,6 +5,14 @@
 import type { EnvInfo } from "#src/session/env";
 import type { AgentPromptConfig } from "#src/types";
 
+/** The parent session's contribution to a child prompt, plus the cwd that text claims. */
+export interface InheritedPrompt {
+  /** The parent agent's effective system prompt. */
+  systemPrompt: string;
+  /** The parent's working directory — the cwd its prompt footer names. */
+  cwd: string;
+}
+
 /**
  * Build the system prompt for an agent from its config.
  *
@@ -26,13 +34,13 @@ import type { AgentPromptConfig } from "#src/types";
  * per-agent policy inside the child session by parsing the system prompt.
  * The tag follows the cacheable parent prefix in both modes.
  *
- * @param parentSystemPrompt  The parent agent's effective system prompt.
+ * @param inherited  The parent agent's effective system prompt and the cwd it names.
  */
 export function buildAgentPrompt(
   config: AgentPromptConfig,
   cwd: string,
   env: EnvInfo,
-  parentSystemPrompt?: string,
+  inherited?: InheritedPrompt,
 ): string {
   const activeAgentTag = `<active_agent name="${config.name}"/>\n\n`;
 
@@ -41,7 +49,9 @@ Working directory: ${cwd}
 ${env.isGitRepo ? `Git repository: yes\nBranch: ${env.branch}` : "Not a git repository"}
 Platform: ${env.platform}`;
 
-  const identity = parentSystemPrompt ?? genericBase;
+  const identity = inherited
+    ? withoutContradictoryCwdFooter(inherited.systemPrompt, inherited.cwd, cwd)
+    : genericBase;
 
   if (config.promptMode === "append") {
 
@@ -83,6 +93,49 @@ You are operating as a sub-agent invoked to handle a specific task.
   // Unlike append mode, no <sub_agent_context> bridge or <agent_instructions>
   // wrapper is injected — the custom prompt retains full control.
   return identity + "\n\n" + activeAgentTag + envBlock + "\n\n" + config.systemPrompt;
+}
+
+/**
+ * Remove the parent's `Current working directory:` footer from the prompt the
+ * child inherits, when it names a different directory than the child's.
+ *
+ * Pi's `buildSystemPrompt` ends every prompt with that footer and appends a
+ * fresh one — naming the child session's own cwd — after this string. Left in
+ * place, the inherited line gives a workspace-isolated child (e.g. one placed
+ * in a git worktree by a `WorkspaceProvider`) a second, stale claim in the
+ * exact phrasing Pi uses for the authoritative one, and the child follows it
+ * back into the parent's directory (#640).
+ *
+ * A child sharing the parent's directory inherits a footer that agrees with its
+ * own, so the prompt is returned untouched — keeping the inherited prefix
+ * byte-identical to the parent's for prefix-caching providers. Editing it would
+ * cost shared prefix (the parent's trailing extension-appended blocks shift
+ * offset) to delete an accurate duplicate.
+ *
+ * The match is whole-line, so a footer naming a directory that merely shares a
+ * prefix with the parent's survives, and it mirrors the separator normalization
+ * `buildSystemPrompt` applies. An unmatched prompt is returned unchanged.
+ */
+function withoutContradictoryCwdFooter(
+  prompt: string,
+  parentCwd: string,
+  childCwd: string,
+): string {
+  const inheritedClaim = toPromptPath(parentCwd);
+  if (inheritedClaim === toPromptPath(childCwd)) {
+    return prompt;
+  }
+
+  const footerLine = `Current working directory: ${inheritedClaim}`;
+  return prompt
+    .split("\n")
+    .filter((line) => line !== footerLine)
+    .join("\n");
+}
+
+/** Render a path the way `buildSystemPrompt` writes it into a prompt. */
+function toPromptPath(cwd: string): string {
+  return cwd.replaceAll("\\", "/");
 }
 
 /** Fallback base prompt when parent system prompt is unavailable (both modes). */

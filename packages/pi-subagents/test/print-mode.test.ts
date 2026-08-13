@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("#src/lifecycle/create-subagent-session", async () => {
-  const actual = await vi.importActual<typeof import("#src/lifecycle/create-subagent-session")>(
-    "#src/lifecycle/create-subagent-session",
-  );
+  const actual = await vi.importActual<
+    typeof import("#src/lifecycle/create-subagent-session")
+  >("#src/lifecycle/create-subagent-session");
   return {
     ...actual,
     createSubagentSession: vi.fn(),
@@ -12,7 +12,11 @@ vi.mock("#src/lifecycle/create-subagent-session", async () => {
 
 import subagentsExtension from "#src/index";
 import { createSubagentSession } from "#src/lifecycle/create-subagent-session";
-import { createMockSession, createSubagentSessionStub, toSubagentSession } from "./helpers/mock-session";
+import {
+  createMockSession,
+  createSubagentSessionStub,
+  toSubagentSession,
+} from "./helpers/mock-session";
 
 function makePi() {
   const tools = new Map<string, any>();
@@ -22,6 +26,7 @@ function makePi() {
   return {
     pi: {
       registerMessageRenderer: vi.fn(),
+      registerEntryRenderer: vi.fn(),
       registerTool: vi.fn((tool: any) => {
         tools.set(tool.name, tool);
       }),
@@ -76,7 +81,9 @@ describe("print mode background notifications", () => {
 
   it("ignores stale-context errors from delayed completion nudges", async () => {
     vi.mocked(createSubagentSession).mockResolvedValue(
-      toSubagentSession(createSubagentSessionStub(createMockSession(), "/sessions/child.jsonl")),
+      toSubagentSession(
+        createSubagentSessionStub(createMockSession(), "/sessions/child.jsonl"),
+      ),
     );
 
     const { pi, tools, handlers } = makePi();

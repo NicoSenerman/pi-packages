@@ -53,6 +53,7 @@ import { SubagentsServiceAdapter } from "#src/service/service-adapter";
 import { detectEnv } from "#src/session/env";
 
 import { resolveModel } from "#src/session/model-resolver";
+import { createExcludedPackagesStorage } from "#src/session/package-exclusions";
 import { buildAgentPrompt } from "#src/session/prompts";
 import { deriveSubagentSessionDir } from "#src/session/session-dir";
 import { SettingsManager } from "#src/settings";
@@ -65,8 +66,8 @@ import { SessionNavigatorHandler } from "#src/ui/session-navigator";
 import { SubagentsSettingsHandler } from "#src/ui/subagents-settings";
 
 /** Shape of the record persisted by SubagentEventsObserver via
- *  pi.appendEntry("subagents:record", {...}). Kept narrow (not the full
- *  Subagent class) so the entry renderer depends only on the persisted fields. */
+ *  pi.appendEntry("subagents:record", {...}). Kept narrow so the entry
+ *  renderer depends only on the persisted fields. */
 interface SubagentRecordEntry {
   id: string;
   type: string;
@@ -86,12 +87,7 @@ export default function (pi: ExtensionAPI) {
     createNotificationRenderer(),
   );
 
-  // ---- Register entry renderer for completion records ----
-  // subagent-events-observer persists each completed subagent via
-  // pi.appendEntry("subagents:record", {...}). Custom entries are display-only
-  // (never enter LLM context), so this renders the history in-transcript WITHOUT
-  // the LLM-context bloat that the message-renderer path incurs. The two
-  // renderers serve different purposes and coexist.
+  // Custom entries are display-only (never enter LLM context).
   pi.registerEntryRenderer<SubagentRecordEntry>(
     "subagents:record",
     (entry, _options, theme) => {
@@ -100,7 +96,8 @@ export default function (pi: ExtensionAPI) {
       const isError =
         r.status === "error" ||
         r.status === "stopped" ||
-        r.status === "aborted";
+        r.status === "aborted" ||
+        r.status === "interrupted";
       const mark = isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
       const bullet = theme.fg("dim", "●");
       const line = `${bullet} ${theme.fg("text", r.type)} — ${r.description} ${mark}`;
@@ -122,6 +119,13 @@ export default function (pi: ExtensionAPI) {
   const notifications = new NotificationManager((msg, opts) =>
     pi.sendMessage(msg, opts),
   );
+
+  // Gate nudge delivery on the parent's agent run. agent_settled fires exactly
+  // once per run (from a finally block, so it also covers error and abort),
+  // whereas agent_end fires once per run segment — retries, auto-compaction and
+  // followUp continuations each emit one.
+  pi.on("agent_start", () => notifications.onParentAgentStart());
+  pi.on("agent_settled", () => notifications.onParentAgentSettled());
 
   // Settings: owns all three in-memory values and handles load/save/emit.
   // onMaxConcurrentChanged is wired to the limiter directly (closure captures by reference).
@@ -154,6 +158,18 @@ export default function (pi: ExtensionAPI) {
       deriveSessionDir: deriveSubagentSessionDir,
       createSessionManager: (cwd, dir) => SessionManager.create(cwd, dir),
       createSettingsManager: (cwd, dir) => SdkSettingsManager.create(cwd, dir),
+      // The exclusion policy is resolved here, at the composition root, so the
+      // assembly factory stays free of it and gets a ready-made settings view.
+      createLoaderSettingsManager: (parent) => {
+        const excluded = new Set(settings.excludedExtensionPackages);
+        if (excluded.size === 0) return parent;
+        return SdkSettingsManager.fromStorage(
+          createExcludedPackagesStorage(parent, excluded),
+          {
+            projectTrusted: parent.isProjectTrusted(),
+          },
+        );
+      },
       createSession: (opts) => createAgentSession(opts as any),
       assemblerIO: {
         buildAgentPrompt,
@@ -177,6 +193,7 @@ export default function (pi: ExtensionAPI) {
     observer,
     limiter,
     getRunConfig: () => settings,
+    getRetentionPolicy: () => settings,
   });
 
   // Typed service published via Symbol.for() for cross-extension access.
@@ -189,15 +206,14 @@ export default function (pi: ExtensionAPI) {
     manager,
     () => notifications.dispose(),
     unpublishSubagentsService,
+    settings,
   );
 
   pi.on("session_start", (event, ctx) =>
     lifecycle.handleSessionStart(event, ctx),
   );
   pi.on("session_before_switch", () => lifecycle.handleSessionBeforeSwitch());
-  pi.on("session_shutdown", () => {
-    lifecycle.handleSessionShutdown();
-  });
+  pi.on("session_shutdown", () => lifecycle.handleSessionShutdown());
 
   // Live widget: constructed after the manager (it polls listAgents()) and
   // registered as a lifecycle observer so it self-drives its update timer.
@@ -210,8 +226,12 @@ export default function (pi: ExtensionAPI) {
     toolStart.handleToolExecutionStart(event, ctx),
   );
 
-  // Abort all subagents when the parent agent loop is interrupted (ESC).
-  const interrupt = new InterruptHandler(manager);
+  // Abort all subagents when the parent agent loop is interrupted (ESC), unless
+  // the user has turned that policy off. The predicate is read at abort time.
+  const interrupt = new InterruptHandler(
+    manager,
+    () => settings.abortAllOnInterrupt,
+  );
   pi.on("turn_start", (_event, ctx) => interrupt.handleTurnStart(ctx));
 
   // ---- Agent tool ----
@@ -228,9 +248,7 @@ export default function (pi: ExtensionAPI) {
 
   // ---- get_subagent_result tool ----
 
-  pi.registerTool(
-    new GetResultTool(manager, notifications, registry).toToolDefinition(),
-  );
+  pi.registerTool(new GetResultTool(manager, registry).toToolDefinition());
 
   // ---- steer_subagent tool ----
 
@@ -241,18 +259,19 @@ export default function (pi: ExtensionAPI) {
   const subagentsSettings = new SubagentsSettingsHandler(settings);
 
   pi.registerCommand("subagents:settings", {
-    description: "Configure subagent settings (concurrency, turn limits)",
+    description:
+      "Configure subagent settings (concurrency, turn limits, retention, interrupt policy)",
     handler: async (_args, ctx) => {
       await subagentsSettings.handle({ ui: ctx.ui });
     },
   });
 
-  // Clear the session-scoped model default so the picker starts asking again.
   pi.registerCommand("subagents:clear-default-model", {
     description:
       "Clear the session-default subagent model so the model picker asks again",
     handler: async (_args, ctx) => {
-      settings.clearSessionModelDefault();
+      const { parentSessionFile } = runtime.getSessionInfo();
+      settings.clearSessionModelDefault(parentSessionFile);
       setSessionDefaultModelStatus(ctx?.ui, undefined);
       ctx?.ui?.notify?.(
         "[pi-subagents] Cleared session default model. Picker will ask again.",
@@ -271,7 +290,6 @@ export default function (pi: ExtensionAPI) {
       await sessionNavigator.handle({
         ui: ctx.ui,
         agents: manager.listAgents(),
-        evicted: manager.listEvicted(),
         registry,
         cwd: ctx.cwd,
         readFile: (path) => readFileSync(path, "utf8"),
@@ -279,14 +297,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // ---- /subagents:monitor command ----
-  // A command-path entry to the agent monitor that bypasses the terminal
-  // keybinding layer entirely. Exists partly for accessibility (users who
-  // can't press ctrl+alt+a) and partly as a diagnostic: if the monitor opens
-  // via this command but NOT via ctrl+alt+a in a given terminal, the failure
-  // is in pi-tui's matchesKey (terminal-encoding mismatch), not in the
-  // monitor/openAgentMonitor code. See monitor-debug.log [shortcut-handler]
-  // vs [open] sources to compare.
+  // ---- /subagents:monitor command (native-pi overlay; no-op over RPC) ----
   pi.registerCommand("subagents:monitor", {
     description: "Open the agent monitor overlay (same as ctrl+alt+a)",
     handler: async (_args, ctx) => {
@@ -313,18 +324,11 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // ---- ctrl+alt+a agent monitor ----
-
-  // registerShortcut is a real Pi API but isn't stubbed in the upstream test
-  // harness. Guard so absence doesn't crash factory wiring tests.
   if (typeof pi.registerShortcut === "function") {
     try {
       pi.registerShortcut("ctrl+alt+a", {
         description: "Open agent monitor",
         handler: async (ctx) => {
-          // Fires on every Ctrl+Alt+A press. If this line never appears in the
-          // debug log for a session where the shortcut "does nothing", the
-          // handler wasn't invoked → registration failed or was overwritten.
           mlog("shortcut-handler", "ctrl+alt+a handler fired");
           try {
             const { openAgentMonitor } = await import("./ui/agent-monitor");
@@ -338,10 +342,6 @@ export default function (pi: ExtensionAPI) {
               join(process.cwd(), CONFIG_DIR_NAME, "agents"),
             );
           } catch (err) {
-            // Defense in depth: if openAgentMonitor (or the dynamic import) throws,
-            // swallow it here so the error doesn't propagate unhandled and leave
-            // Pi in a broken state. The factory-level try/catch in agent-monitor.ts
-            // handles construction failures; this catches anything that escapes it.
             const msg = err instanceof Error ? err.message : String(err);
             mlog("shortcut-handler", "open failed", {
               error: msg,
@@ -353,18 +353,12 @@ export default function (pi: ExtensionAPI) {
       });
       mlog("register", "ctrl+alt+a shortcut registered successfully");
     } catch (err) {
-      // registerShortcut itself threw at registration time — the shortcut will
-      // not work in this session. Log so we can spot this in a "dead" session.
       mlog("register", "registerShortcut THREW", {
         error: err instanceof Error ? err.message : String(err),
         stack: err instanceof Error ? err.stack : undefined,
       });
     }
   } else {
-    // pi.registerShortcut is unavailable in this session — the shortcut will
-    // do nothing. This case is expected in the test harness but NOT in a real
-    // Pi session; if it appears in a live session, that's the root cause of
-    // "Ctrl+Alt+A does nothing".
     mlog("register", "registerShortcut UNAVAILABLE (typeof !== function)", {
       typeof: typeof (pi as { registerShortcut?: unknown }).registerShortcut,
     });

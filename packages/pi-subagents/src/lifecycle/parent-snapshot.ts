@@ -2,7 +2,9 @@
  * parent-snapshot.ts — Capture parent session state as a plain data snapshot.
  */
 
+import type { Model } from "@earendil-works/pi-ai";
 import { buildParentContext } from "#src/session/context";
+import type { ModelRegistry } from "#src/session/model-resolver";
 import type { SessionContext } from "#src/types";
 
 /**
@@ -15,12 +17,9 @@ export interface ParentSnapshot {
   /** Parent's effective system prompt (for append-mode agents). */
   systemPrompt: string;
   /** Parent's current model instance (fallback when agent config has no model). */
-  model: unknown;
+  model: Model<any> | undefined;
   /** Model registry for resolving config.model strings and creating sessions. */
-  modelRegistry: {
-    find(provider: string, modelId: string): unknown;
-    getAvailable?(): Array<{ provider: string; id: string }>;
-  };
+  modelRegistry: ModelRegistry;
   /** Pre-built parent conversation text (when inheritContext was requested). */
   parentContext?: string;
 }
@@ -40,8 +39,7 @@ export function buildParentSnapshot(
     cwd: ctx.cwd,
     systemPrompt: ctx.getSystemPrompt(),
     model: ctx.model,
-
-    modelRegistry: ctx.modelRegistry!,
+    modelRegistry: ctx.modelRegistry,
     // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- || intentional: converts empty string to undefined as well as null/undefined
     parentContext: parentContext || undefined,
   };

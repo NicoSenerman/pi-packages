@@ -45,7 +45,6 @@ export function subscribeSubagentObserver(
 
     if (event.type === "message_start") {
       state.resetResponseText();
-      state.resetThinking();
     }
 
     if (
@@ -53,13 +52,6 @@ export function subscribeSubagentObserver(
       event.assistantMessageEvent.type === "text_delta"
     ) {
       state.appendResponseText(event.assistantMessageEvent.delta);
-    }
-
-    if (
-      event.type === "message_update" &&
-      event.assistantMessageEvent.type === "thinking_delta"
-    ) {
-      state.appendThinking(event.assistantMessageEvent.delta);
     }
 
     if (event.type === "turn_end") {

@@ -27,28 +27,32 @@ export interface TestSubagentOptions {
 	description?: string;
 	invocation?: AgentInvocation;
 	execution?: SubagentExecution;
-	/** Shorthand to wire a NotificationState via the constructor path. Ignored when execution is supplied. */
+	/** Shorthand to set execution.parentSession.toolCallId. Ignored when execution is supplied. */
 	toolCallId?: string;
 	/** Passive lifecycle state shorthands. */
 	status?: SubagentStatus;
 	result?: string;
 	error?: string;
+	/** Seed the never-started marker (the agent was stopped before it was admitted). */
+	stoppedWhileQueued?: boolean;
 	startedAt?: number;
 	completedAt?: number;
-	/** Set toolUses via incrementToolUses(). */
+	/** Seed the consumed-outcome timestamp (undefined = obligation open). */
+	consumedAt?: number;
+	/** Seed toolUses. */
 	toolUses?: number;
-	/** Set lifetimeUsage via addUsage(). */
+	/** Seed lifetimeUsage. */
 	lifetimeUsage?: { input: number; output: number; cacheWrite: number };
-	/** Set compactionCount via incrementCompactions(). */
+	/** Seed compactionCount. */
 	compactionCount?: number;
 	/**
 	 * Set turnCount. Starts at 1; pass a higher value to simulate multiple turns.
 	 * Ignored when `execution` is supplied (maxTurns lives on the execution, not state).
 	 */
 	turnCount?: number;
-	/** Seed active tools by name — each entry calls addActiveTool(name). */
+	/** Seed active tools by name. */
 	activeTools?: string[];
-	/** Seed responseText via appendResponseText(). */
+	/** Seed responseText. */
 	responseText?: string;
 	/** Thread maxTurns into the stub execution. Ignored when `execution` is supplied. */
 	maxTurns?: number;
@@ -62,9 +66,15 @@ export function createTestSubagent(overrides: TestSubagentOptions = {}): Subagen
 		result: "All done.",
 		startedAt: 1000,
 		completedAt: 2000,
+		toolUses: toolUses ?? 3,
+		lifetimeUsage: lifetimeUsage ?? { input: 500, output: 500, cacheWrite: 0 },
+		...(compactionCount !== undefined ? { compactionCount } : {}),
+		...(turnCount !== undefined ? { turnCount } : {}),
+		...(activeTools !== undefined ? { activeTools } : {}),
+		...(responseText !== undefined ? { responseText } : {}),
 		...stateOverrides,
 	});
-	const record = new Subagent({
+	return new Subagent({
 		id: id ?? "agent-1",
 		type: type ?? "general-purpose",
 		description: description ?? "Test task",
@@ -75,31 +85,4 @@ export function createTestSubagent(overrides: TestSubagentOptions = {}): Subagen
 		}),
 		state,
 	});
-	// Apply stat overrides via mutation methods
-	if (toolUses !== undefined) {
-		for (let i = 0; i < toolUses; i++) record.incrementToolUses();
-	} else {
-		// Factory default: 3 tool uses
-		for (let i = 0; i < 3; i++) record.incrementToolUses();
-	}
-	if (lifetimeUsage !== undefined) {
-		record.addUsage(lifetimeUsage);
-	} else {
-		// Factory default
-		record.addUsage({ input: 500, output: 500, cacheWrite: 0 });
-	}
-	if (compactionCount !== undefined) {
-		for (let i = 0; i < compactionCount; i++) record.incrementCompactions();
-	}
-	// Live-activity shorthands — drive SubagentState directly (not exposed on Subagent)
-	if (turnCount !== undefined && turnCount > 1) {
-		for (let i = 1; i < turnCount; i++) state.incrementTurnCount();
-	}
-	if (activeTools !== undefined) {
-		for (const name of activeTools) state.addActiveTool(name);
-	}
-	if (responseText !== undefined) {
-		state.appendResponseText(responseText);
-	}
-	return record;
 }

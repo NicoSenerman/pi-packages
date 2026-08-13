@@ -6,6 +6,7 @@ import {
   type AgentToolRuntime,
   type AgentToolSettings,
 } from "#src/tools/agent-tool";
+import { makeModel } from "./make-model";
 import { createTestSubagent } from "./make-subagent";
 import { STUB_SNAPSHOT } from "./stub-ctx";
 
@@ -43,8 +44,12 @@ export function createToolDeps(
       (_inheritContext: boolean): ParentSnapshot => STUB_SNAPSHOT,
     ),
     getModelInfo: vi.fn(() => ({
-      parentModel: { id: "claude-sonnet", name: "Claude Sonnet" },
-      modelRegistry: { getAll: () => [], getAvailable: () => [] },
+      parentModel: makeModel({ id: "claude-sonnet", name: "Claude Sonnet" }),
+      modelRegistry: {
+        find: () => undefined,
+        getAll: () => [],
+        getAvailable: () => [],
+      },
     })),
     getSessionInfo: vi.fn(() => ({
       parentSessionFile: "/sessions/parent.jsonl",
@@ -65,14 +70,41 @@ export function createToolDeps(
       maxConcurrent: 4,
       agentModelPicker: false,
       agentModelDefault: undefined,
-      setAgentModelDefault: vi.fn(),
+      setAgentModelDefault: () => {},
       modelScopeAsked: false,
-      markModelScopeAsked: vi.fn(),
-      acquirePickerLock: vi.fn().mockResolvedValue(() => {}),
-      clearSessionModelDefault: vi.fn(),
+      markModelScopeAsked: () => {},
+      acquirePickerLock: async () => () => {},
+      clearSessionModelDefault: () => {},
     },
     registry: defaultRegistry,
     agentDir: "/home/user/.pi",
     ...overrides,
   };
+}
+
+/**
+ * Build a tool fixture whose named built-in default agents are disabled.
+ * Overlays a same-named user config with `enabled: false` onto each default,
+ * so the registry keeps the name but excludes it from the enabled surface.
+ */
+export function createToolDepsWithDisabledBuiltInAgents(
+  ...names: string[]
+): AgentToolFixture {
+  const registry = new AgentTypeRegistry(
+    () =>
+      new Map(
+        names.map((name) => [
+          name,
+          {
+            name,
+            description: "disabled built-in agent",
+            promptMode: "append" as const,
+            systemPrompt: "",
+            isDefault: true,
+            enabled: false,
+          },
+        ]),
+      ),
+  );
+  return createToolDeps({ registry });
 }

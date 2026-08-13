@@ -1,5 +1,8 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-base-to-string, @typescript-eslint/restrict-template-expressions -- Pi SDK types are not fully exported; see upstream Pi SDK for type improvements */
-import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
+import type {
+  AgentToolResult,
+  ExtensionContext,
+  ToolRenderResultOptions,
+} from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
@@ -9,6 +12,7 @@ import type { AgentSpawnConfig } from "#src/lifecycle/subagent-manager";
 import { spawnBackground } from "#src/tools/background-spawner";
 import { runForeground } from "#src/tools/foreground-runner";
 import {
+  buildAgentGuidelines,
   buildDetails,
   buildTypeListText,
   textResult,
@@ -20,7 +24,8 @@ import {
   maybePickAgentModel,
 } from "#src/tools/model-picker";
 import type { ParentSessionInfo, Subagent } from "#src/types";
-import { type AgentDetails, getDisplayName } from "#src/ui/display";
+import { type AgentDetails, getDisplayName, type Theme } from "#src/ui/display";
+import { GLYPHS } from "#src/ui/glyphs";
 
 // ---- Deps interfaces ----
 
@@ -59,11 +64,14 @@ export type AgentToolSettings = {
   readonly maxConcurrent: number;
   readonly agentModelPicker: boolean;
   readonly agentModelDefault: string | undefined;
-  setAgentModelDefault(value: string): void;
+  setAgentModelDefault(
+    value: string,
+    parentSessionFile: string | undefined,
+  ): void;
   readonly modelScopeAsked: boolean;
   markModelScopeAsked(declinedSession: boolean): void;
   acquirePickerLock(): Promise<() => void>;
-  clearSessionModelDefault(): void;
+  clearSessionModelDefault(parentSessionFile: string | undefined): void;
 };
 
 // ---- Class ----
@@ -71,6 +79,7 @@ export type AgentToolSettings = {
 export class AgentTool {
   private readonly typeListText: string;
   private readonly availableTypesText: string;
+  private readonly agentGuidelines: string[];
 
   constructor(
     private readonly manager: AgentToolManager,
@@ -81,14 +90,15 @@ export class AgentTool {
   ) {
     this.typeListText = buildTypeListText(registry, agentDir);
     this.availableTypesText = registry.getAvailableTypes().join(", ");
+    this.agentGuidelines = buildAgentGuidelines(registry);
   }
 
   async execute(
     toolCallId: string,
     params: Record<string, unknown>,
     signal: AbortSignal | undefined,
-    onUpdate: ((update: AgentToolResult<any>) => void) | undefined,
-    _ctx: any,
+    onUpdate: ((update: AgentToolResult<AgentDetails>) => void) | undefined,
+    _ctx: ExtensionContext,
   ) {
     // Reload custom agents so new .pi/agents/*.md files are picked up without restart
     this.registry.reload();
@@ -103,7 +113,6 @@ export class AgentTool {
     );
     if ("error" in config) return textResult(config.error);
 
-    // ---- Interactive model picker (opt-in; skipped when a model already applies) ----
     const pick = await maybePickAgentModel({
       params,
       modelRegistry: modelInfo.modelRegistry as { getAvailable?(): unknown[] },
@@ -122,7 +131,6 @@ export class AgentTool {
       if (pick.value !== "") {
         params.model = pick.value;
       } else {
-        // Picker is authoritative: "inherit parent" must override an LLM-supplied model.
         delete params.model;
       }
       config = resolveSpawnConfig(
@@ -134,7 +142,8 @@ export class AgentTool {
       if ("error" in config) return textResult(config.error);
 
       if (pick.kind === "pickedRememberSession") {
-        this.settings.setAgentModelDefault(pick.value);
+        const { parentSessionFile } = this.runtime.getSessionInfo();
+        this.settings.setAgentModelDefault(pick.value, parentSessionFile);
         const label = pick.value === "" ? "inherit parent model" : pick.value;
         _ctx?.ui?.notify?.(
           `[pi-subagents] Remembering ${label} for this session. Clear via /subagents:clear-default-model.`,
@@ -142,6 +151,23 @@ export class AgentTool {
         );
         setSessionDefaultModelStatus(_ctx?.ui, pick.value);
       }
+    } else if (
+      !params.resume &&
+      this.settings.agentModelDefault !== undefined
+    ) {
+      const sticky = this.settings.agentModelDefault;
+      if (sticky === "") {
+        delete params.model;
+      } else {
+        params.model = sticky;
+      }
+      config = resolveSpawnConfig(
+        params,
+        this.registry,
+        modelInfo,
+        this.settings,
+      );
+      if ("error" in config) return textResult(config.error);
     }
 
     // ---- Boundary extraction (after config so inheritContext is resolved) ----
@@ -161,12 +187,17 @@ export class AgentTool {
       const existing = this.manager.getRecord(params.resume as string);
       if (!existing) {
         return textResult(
-          `Agent not found: "${params.resume}". It may have been cleaned up.`,
+          `Agent not found: "${params.resume as string}". Records are cleared at session start/switch, so it may be from a previous session.`,
         );
       }
       if (!existing.isSessionReady()) {
+        if (existing.sessionReleased) {
+          return textResult(
+            `Agent "${params.resume as string}" had its session released after its retention window; resume is unavailable, but its result is still retrievable via get_subagent_result.`,
+          );
+        }
         return textResult(
-          `Agent "${params.resume}" has no active session to resume.`,
+          `Agent "${params.resume as string}" has no active session to resume.`,
         );
       }
       const record = await this.manager.resume(
@@ -175,8 +206,12 @@ export class AgentTool {
         signal ?? new AbortController().signal,
       );
       if (!record) {
-        return textResult(`Failed to resume agent "${params.resume}".`);
+        return textResult(
+          `Failed to resume agent "${params.resume as string}".`,
+        );
       }
+      // Resume-return delivery edge: the resumed outcome is returned directly.
+      record.markConsumed();
       return textResult(
         record.result?.trim() ?? record.error?.trim() ?? "No output.",
         buildDetails(config.presentation.detailBase, record),
@@ -208,6 +243,19 @@ export class AgentTool {
     const agentDir = this.agentDir;
     const registry = this.registry;
 
+    const guidelines = [
+      "- For parallel work, use run_in_background: true on each agent. Foreground calls run sequentially — only one executes at a time.",
+      ...this.agentGuidelines,
+      "- Provide clear, detailed prompts so the agent can work autonomously.",
+      "- Subagent results are returned as text — summarize them for the user.",
+      "- Use run_in_background for work you don't need immediately. You will be notified when it completes.",
+      "- Use resume with an agent ID to continue a previous agent's work.",
+      "- Use steer_subagent to send mid-run messages to a running background agent.",
+      '- Use model to specify a different model (as "provider/modelId", or fuzzy e.g. "haiku", "sonnet").',
+      "- Use thinking to control extended thinking level.",
+      "- Use inherit_context if the agent needs the parent conversation history.",
+    ].join("\n");
+
     return defineTool({
       name: "subagent" as const,
       label: "Subagent",
@@ -221,18 +269,7 @@ Available agent types:
 ${typeListText}
 
 Guidelines:
-- For parallel work, use run_in_background: true on each agent. Foreground calls run sequentially — only one executes at a time.
-- Use Explore for codebase searches and code understanding.
-- Use Plan for architecture and implementation planning.
-- Use general-purpose for complex tasks that need file editing.
-- Provide clear, detailed prompts so the agent can work autonomously.
-- Subagent results are returned as text — summarize them for the user.
-- Use run_in_background for work you don't need immediately. You will be notified when it completes.
-- Use resume with an agent ID to continue a previous agent's work.
-- Use steer_subagent to send mid-run messages to a running background agent.
-- Prefer omitting model — the user picks the subagent model interactively at spawn. Only set model when the user explicitly requested a specific model.
-- Use thinking to control extended thinking level.
-- Use inherit_context if the agent needs the parent conversation history.
+${guidelines}
 `,
       parameters: Type.Object({
         prompt: Type.String({
@@ -248,13 +285,7 @@ Guidelines:
         model: Type.Optional(
           Type.String({
             description:
-              'Optional model override. The user picks the model interactively at spawn by default — only set this when the user explicitly requested a specific model. Accepts "provider/modelId" or fuzzy name (e.g. "haiku", "sonnet").',
-          }),
-        ),
-        pick_model: Type.Optional(
-          Type.Boolean({
-            description:
-              "Prompt interactively to choose the model for this agent before spawning.",
+              'Optional model override. Accepts "provider/modelId" or fuzzy name (e.g. "haiku", "sonnet"). Omit to use the agent type\'s default.',
           }),
         ),
         thinking: Type.Optional(
@@ -292,13 +323,13 @@ Guidelines:
 
       // ---- Custom rendering: inline subagent results ----
 
-      renderCall(args: Record<string, unknown>, theme: any) {
+      renderCall(args: Record<string, unknown>, theme: Theme) {
         const displayName = args.subagent_type
           ? getDisplayName(args.subagent_type as string, registry)
           : "Subagent";
         const desc = (args.description as string | undefined) ?? "";
         return new Text(
-          "▸ " +
+          `${GLYPHS.toolCall} ` +
             theme.fg("toolTitle", theme.bold(displayName)) +
             (desc ? "  " + theme.fg("muted", desc) : ""),
           0,
@@ -306,8 +337,12 @@ Guidelines:
         );
       },
 
-      renderResult(result: any, { expanded, isPartial }: any, theme: any) {
-        const details = result.details as AgentDetails | undefined;
+      renderResult(
+        result: AgentToolResult<AgentDetails | undefined>,
+        { expanded, isPartial }: ToolRenderResultOptions,
+        theme: Theme,
+      ) {
+        const details = result.details;
         if (!details) {
           const text =
             result.content[0]?.type === "text" ? result.content[0].text : "";
@@ -326,8 +361,8 @@ Guidelines:
         toolCallId: string,
         params: Record<string, unknown>,
         signal: AbortSignal | undefined,
-        onUpdate: ((update: AgentToolResult<any>) => void) | undefined,
-        ctx: any,
+        onUpdate: ((update: AgentToolResult<AgentDetails>) => void) | undefined,
+        ctx: ExtensionContext,
       ) => this.execute(toolCallId, params, signal, onUpdate, ctx),
     });
   }

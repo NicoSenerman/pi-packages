@@ -41,9 +41,9 @@ import {
   formatTurns,
   getDisplayName,
   getPromptModeLabel,
-  SPINNER,
   type Theme,
 } from "#src/ui/display";
+import { SPINNER } from "#src/ui/glyphs";
 import { mlog, mlogClose } from "#src/ui/monitor-debug";
 
 // ─────────────────────────────────────────────────────────────────────────────

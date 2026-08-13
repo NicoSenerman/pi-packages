@@ -1,6 +1,7 @@
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import type { AgentConfigLookup } from "#src/config/agent-types";
+import { type AgentReport, formatAgentReport } from "#src/tools/get-result-report";
 import { formatLifetimeTokens, textResult } from "#src/tools/helpers";
 import type { Subagent } from "#src/types";
 import { formatDuration, getDisplayName } from "#src/ui/display";
@@ -11,79 +12,63 @@ export interface GetResultToolManager {
 	getRecord(id: string): Subagent | undefined;
 }
 
-export interface GetResultToolNotifications {
-	cancelNudge(key: string): void;
-}
-
 // ---- Class ----
 
 export class GetResultTool {
 	constructor(
 		private readonly manager: GetResultToolManager,
-		private readonly notifications: GetResultToolNotifications,
 		private readonly registry: AgentConfigLookup,
 	) {}
 
 	async execute(
 		_toolCallId: string,
 		params: { agent_id: string; wait?: boolean; verbose?: boolean },
-		_signal: AbortSignal,
+		signal: AbortSignal,
 		_onUpdate: unknown,
 		_ctx: unknown,
 	) {
 		const record = this.manager.getRecord(params.agent_id);
 		if (!record) {
-			return textResult(`Agent not found: "${params.agent_id}". It may have been cleaned up.`);
+			return textResult(`Agent not found: "${params.agent_id}". Records are cleared at session start/switch, so it may be from a previous session.`);
 		}
 
-		// Wait for completion if requested.
-		// Pre-mark resultConsumed BEFORE awaiting: onComplete fires inside .then()
-		// (attached earlier at spawn time) and always runs before this await resumes.
-		// Setting the flag here prevents a redundant follow-up notification.
-		if (params.wait && record.status === "running" && record.promise) {
-			// Pre-mark consumed BEFORE awaiting — onComplete fires inside .then() and
-			// always runs before this await resumes. Prevents a redundant notification.
-			record.notification?.markConsumed();
-			this.notifications.cancelNudge(params.agent_id);
-			await record.promise;
+		// Wait for completion if requested. The record owns the decision of whether
+		// it is still awaitable — a queued agent counts, because scheduleVia()
+		// captures its limiter promise at spawn. A parent interrupt ends the wait
+		// without cancelling the agent, leaving the outcome uncollected below.
+		if (params.wait) {
+			await record.waitUntilSettled(signal);
 		}
 
-		const displayName = getDisplayName(record.type, this.registry);
-		const duration = formatDuration(record.startedAt, record.completedAt);
-		const tokens = formatLifetimeTokens(record);
-		const contextPercent = record.getContextPercent();
-		const statsParts = [`Tool uses: ${record.toolUses}`];
-		if (tokens) statsParts.push(tokens);
-		if (contextPercent !== null) statsParts.push(`Context: ${Math.round(contextPercent)}%`);
-		if (record.compactionCount) statsParts.push(`Compactions: ${record.compactionCount}`);
-		statsParts.push(`Duration: ${duration}`);
-
-		let output =
-			`Agent: ${record.id}\n` +
-			`Type: ${displayName} | Status: ${record.status} | ${statsParts.join(" | ")}\n` +
-			`Description: ${record.description}\n\n`;
-
-		if (record.status === "running") {
-			output += "Agent is still running. Use wait: true or check back later.";
-		} else if (record.status === "error") {
-			output += `Error: ${record.error}`;
-		} else {
-			output += record.result?.trim() ?? "No output.";
+		// Pull-delivery edge: the parent is collecting the settled outcome here, so
+		// mark it consumed. The completion nudge scheduled by onSubagentCompleted
+		// re-reads record.consumed at fire time and suppresses itself.
+		if (!record.isActive()) {
+			record.markConsumed();
 		}
 
-		// Mark result as consumed — suppresses the completion notification
-		if (record.status !== "running" && record.status !== "queued") {
-			record.notification?.markConsumed();
-			this.notifications.cancelNudge(params.agent_id);
-		}
+		return textResult(formatAgentReport(this.buildReport(record, params.verbose)));
+	}
 
-		// Verbose: include full conversation
-		const conversation = params.verbose ? record.getConversation() : undefined;
-		if (conversation) {
-			output += `\n\n--- Agent Conversation ---\n${conversation}`;
-		}
-
-		return textResult(output);
+	private buildReport(record: Subagent, verbose?: boolean): AgentReport {
+		return {
+			id: record.id,
+			displayName: getDisplayName(record.type, this.registry),
+			status: record.status,
+			toolUses: record.toolUses,
+			tokens: formatLifetimeTokens(record),
+			contextPercent: record.getContextPercent(),
+			compactionCount: record.compactionCount,
+			duration: formatDuration(record.startedAt, record.completedAt),
+			description: record.description,
+			result: record.result,
+			error: record.error,
+			stoppedWhileQueued: record.stoppedWhileQueued,
+			conversation: verbose ? record.getConversation() : undefined,
+			// Transcript pointer: lets the parent read the full session from disk,
+			// and covers verbose after the live session was released (no conversation).
+			transcriptPath: record.outputFile,
+		};
 	}
 
 	toToolDefinition() {

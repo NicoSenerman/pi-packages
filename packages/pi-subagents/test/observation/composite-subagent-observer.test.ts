@@ -9,6 +9,7 @@ function makeDelegate(): SubagentManagerObserver {
 		onSubagentStarted: vi.fn(),
 		onSubagentCreated: vi.fn(),
 		onSubagentCompleted: vi.fn(),
+		onSubagentResumed: vi.fn(),
 		onSubagentCompacted: vi.fn(),
 	};
 }
@@ -51,6 +52,18 @@ describe("CompositeSubagentObserver", () => {
 
 			expect(a.onSubagentCompleted).toHaveBeenCalledExactlyOnceWith(record);
 			expect(b.onSubagentCompleted).toHaveBeenCalledExactlyOnceWith(record);
+		});
+
+		it("forwards onSubagentResumed to every delegate with the record", () => {
+			const a = makeDelegate();
+			const b = makeDelegate();
+			const composite = new CompositeSubagentObserver([a, b]);
+			const record = createTestSubagent({ id: "agent-3b" });
+
+			composite.onSubagentResumed(record);
+
+			expect(a.onSubagentResumed).toHaveBeenCalledExactlyOnceWith(record);
+			expect(b.onSubagentResumed).toHaveBeenCalledExactlyOnceWith(record);
 		});
 
 		it("forwards onSubagentCompacted to every delegate with record and info", () => {

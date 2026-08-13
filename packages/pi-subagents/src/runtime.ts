@@ -54,7 +54,7 @@ export class SubagentRuntime {
   /** Extract model info from the current session context. */
   getModelInfo(): ModelInfo {
     return {
-      parentModel: this.currentCtx?.model as ModelInfo["parentModel"],
+      parentModel: this.currentCtx?.model,
       modelRegistry: this.currentCtx?.modelRegistry,
     };
   }

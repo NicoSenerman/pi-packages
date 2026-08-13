@@ -117,20 +117,48 @@ export async function maybePickAgentModel(
       entries,
     );
     const sorted = sortByMru(entries, lastUsed);
-    const options: ModelPickerOption[] = [
-      {
-        title: `inherit parent (${parentLabel})`,
-        description: "use the current session model",
-        value: "",
-      },
-      ...buildModelOptions(sorted, suggested),
-    ];
+    const nativePicker = (
+      deps.ui as { subagentModelPicker?: unknown } | undefined
+    )?.subagentModelPicker as
+      | ((
+          agentType: string,
+          description: string,
+          opts?: {
+            parentModel?: string;
+            suggested?: string;
+            models?: { id: string; provider: string; name?: string }[];
+            timeout?: number;
+          },
+        ) => Promise<string | undefined>)
+      | undefined;
 
-    const picked = await select(
-      `${MODEL_PICKER_TITLE_PREFIX}${deps.subagentType}: ${deps.description}`,
-      options,
-      { timeout: 120000 },
-    );
+    let picked: string | undefined;
+    if (typeof nativePicker === "function") {
+      picked = await nativePicker(deps.subagentType, deps.description, {
+        parentModel: parentLabel,
+        suggested,
+        models: sorted.map((m) => ({
+          id: m.id,
+          provider: m.provider,
+          name: m.name,
+        })),
+        timeout: 120000,
+      });
+    } else {
+      const options: ModelPickerOption[] = [
+        {
+          title: `inherit parent (${parentLabel})`,
+          description: "use the current session model",
+          value: "",
+        },
+        ...buildModelOptions(sorted, suggested),
+      ];
+      picked = await select(
+        `${MODEL_PICKER_TITLE_PREFIX}${deps.subagentType}: ${deps.description}`,
+        options,
+        { timeout: 120000 },
+      );
+    }
     if (picked === undefined) return { kind: "cancelled" };
 
     // First pick of the session: ask once whether to reuse this choice for

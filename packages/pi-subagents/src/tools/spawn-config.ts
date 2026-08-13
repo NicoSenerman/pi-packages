@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument -- Pi SDK types are not fully exported; see upstream Pi SDK for type improvements */
 /**
  * spawn-config.ts — Pure config resolution for the Agent tool.
  *
@@ -11,6 +10,7 @@ import type { Model } from "@earendil-works/pi-ai";
 import type { AgentTypeRegistry } from "#src/config/agent-types";
 import { resolveAgentInvocationConfig } from "#src/config/invocation-config";
 import { normalizeMaxTurns } from "#src/lifecycle/turn-limits";
+import type { ModelRegistry } from "#src/session/model-resolver";
 import { resolveInvocationModel } from "#src/session/model-resolver";
 import type { AgentInvocation, SubagentType, ThinkingLevel } from "#src/types";
 import {
@@ -22,8 +22,8 @@ import {
 
 /** Model info extracted from the parent session context. */
 export interface ModelInfo {
-  parentModel: { id: string; name?: string } | undefined;
-  modelRegistry: unknown;
+  parentModel: Model<any> | undefined;
+  modelRegistry: ModelRegistry | undefined;
 }
 
 /** Identity: who is being spawned. */
@@ -99,7 +99,7 @@ export function resolveSpawnConfig(
     modelInfo.parentModel,
     resolvedConfig.modelInput,
     resolvedConfig.modelFromParams,
-    modelInfo.modelRegistry as any,
+    modelInfo.modelRegistry,
   );
   if (resolution.error) return { error: resolution.error };
   const model = resolution.model;
@@ -108,11 +108,13 @@ export function resolveSpawnConfig(
   const inheritContext = resolvedConfig.inheritContext;
   const runInBackground = resolvedConfig.runInBackground;
 
-  // Compute display model name — always show it (even when same as parent)
+  // Compute display model name (only shown when different from parent)
+  const parentModelId = modelInfo.parentModel?.id;
   const effectiveModelId = model?.id;
-  const modelName = effectiveModelId
-    ? (model?.name ?? effectiveModelId).replace(/^Claude\s+/i, "").toLowerCase()
-    : undefined;
+  const modelName =
+    effectiveModelId && effectiveModelId !== parentModelId
+      ? model.name.replace(/^Claude\s+/i, "").toLowerCase()
+      : undefined;
 
   const effectiveMaxTurns = normalizeMaxTurns(
     resolvedConfig.maxTurns ?? settings.defaultMaxTurns,

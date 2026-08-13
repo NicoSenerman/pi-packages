@@ -27,7 +27,7 @@ function makeParams(overrides: Partial<BackgroundParams> = {}): BackgroundParams
 }
 
 describe("spawnBackground", () => {
-  it("passes parentSession.toolCallId to manager.spawn so manager wires NotificationState", () => {
+  it("passes parentSession.toolCallId to manager.spawn", () => {
     const { manager } = createToolDeps();
     spawnBackground(manager, makeParams({ parentSession: { toolCallId: "tc-99" } }));
     const spawnOpts = (manager.spawn as ReturnType<typeof vi.fn>).mock.calls[0][3];

@@ -6,7 +6,7 @@ import { SubagentState, type SubagentStateInit } from "#src/lifecycle/subagent-s
 import type { Workspace, WorkspaceProvider } from "#src/lifecycle/workspace";
 import type { AgentInvocation, CompactionInfo, SubagentType } from "#src/types";
 import { makeStubExecution } from "#test/helpers/make-subagent";
-import { createMockSession, createSubagentSessionStub, toSubagentSession } from "#test/helpers/mock-session";
+import { createMockSession, createSubagentSessionStub, emitResumeUsageAndCompaction, toSubagentSession } from "#test/helpers/mock-session";
 import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 
 type SessionFactory = (params: CreateSubagentSessionParams) => Promise<SubagentSession>;
@@ -44,6 +44,16 @@ function makeSubagent(overrides: MakeSubagentOptions = {}): Subagent {
 	});
 }
 
+/** A Subagent wired to a ready session whose messages hold a single user "hi". */
+function makeReadySubagent(): { agent: Subagent } {
+	const agent = makeSubagent();
+	const session = createMockSession();
+	session.messages.push({ role: "user", content: "hi" });
+	const stub = createSubagentSessionStub(session);
+	agent.subagentSession = toSubagentSession(stub);
+	return { agent };
+}
+
 describe("Subagent — constructor", () => {
 	it("sets required fields from init", () => {
 		const record = makeSubagent({ id: "abc-123", type: "Explore", description: "Find stale TODOs" });
@@ -70,7 +80,6 @@ describe("Subagent — constructor", () => {
 		expect(record.completedAt).toBeUndefined();
 		expect(record.promise).toBeUndefined();
 		expect(record.subagentSession).toBeUndefined();
-		expect(record.notification).toBeUndefined();
 	});
 
 	it("always creates its own AbortController", () => {
@@ -79,23 +88,23 @@ describe("Subagent — constructor", () => {
 		expect(record.abortController.signal.aborted).toBe(false);
 	});
 
-	it("creates NotificationState when execution.parentSession.toolCallId is provided", () => {
+	it("toolCallId reflects execution.parentSession.toolCallId", () => {
 		const record = makeSubagent({ execution: makeStubExecution({ parentSession: { toolCallId: "tc-42" } }) });
-		expect(record.notification).toBeDefined();
-		expect(record.notification!.toolCallId).toBe("tc-42");
+		expect(record.toolCallId).toBe("tc-42");
 	});
 
-	it("does not create NotificationState when toolCallId is absent", () => {
+	it("toolCallId is undefined when parentSession.toolCallId is absent", () => {
 		const record = makeSubagent({
 			execution: makeStubExecution({ parentSession: { parentSessionFile: "/sessions/p.jsonl" } }),
 		});
-		expect(record.notification).toBeUndefined();
+		expect(record.toolCallId).toBeUndefined();
 	});
 
-	it("does not create NotificationState when parentSession is absent", () => {
+	it("toolCallId is undefined when parentSession is absent", () => {
 		const record = makeSubagent();
-		expect(record.notification).toBeUndefined();
+		expect(record.toolCallId).toBeUndefined();
 	});
+
 });
 
 describe("convenience getters", () => {
@@ -148,6 +157,23 @@ describe("convenience getters", () => {
 		});
 	});
 
+	describe("consumption getters", () => {
+		it("consumed defaults to false and consumedAt undefined (delegates to SubagentState)", () => {
+			const record = makeSubagent();
+			expect(record.consumed).toBe(false);
+			expect(record.consumedAt).toBeUndefined();
+		});
+
+		it("markConsumed delegates to SubagentState", () => {
+			const state = new SubagentState({ status: "completed" });
+			const record = new Subagent({ id: "1", type: "general-purpose", description: "test", execution: makeStubExecution(), state });
+			record.markConsumed(5000);
+			expect(record.consumed).toBe(true);
+			expect(record.consumedAt).toBe(5000);
+			expect(state.consumedAt).toBe(5000);
+		});
+	});
+
 	describe("outputFile", () => {
 		it("returns undefined when subagentSession is not set", () => {
 			const record = makeSubagent();
@@ -183,19 +209,32 @@ describe("Subagent — session-encapsulation methods", () => {
 	});
 
 	describe("steer", () => {
-		it("buffers message and returns false when session not ready", async () => {
+		it("rejects with the observed status when the agent is not running", async () => {
 			const agent = makeSubagent();
-			const delivered = await agent.steer("hello");
-			expect(delivered).toBe(false);
+			agent.markCompleted("done");
+			const stub = createSubagentSessionStub();
+			agent.subagentSession = toSubagentSession(stub);
+			const outcome = await agent.steer("hello");
+			expect(outcome).toEqual({ kind: "rejected", status: "completed" });
+			expect(stub.steer).not.toHaveBeenCalled();
+			expect(agent.pendingSteerCount).toBe(0);
+		});
+
+		it("buffers the message and returns a buffered outcome when the session is not ready", async () => {
+			const agent = makeSubagent();
+			agent.markRunning(Date.now());
+			const outcome = await agent.steer("hello");
+			expect(outcome).toEqual({ kind: "buffered" });
 			expect(agent.pendingSteerCount).toBe(1);
 		});
 
-		it("delivers message to session and returns true when session is ready", async () => {
+		it("delivers to the session and returns a delivered outcome when the session is ready", async () => {
 			const agent = makeSubagent();
+			agent.markRunning(Date.now());
 			const stub = createSubagentSessionStub();
 			agent.subagentSession = toSubagentSession(stub);
-			const delivered = await agent.steer("go faster");
-			expect(delivered).toBe(true);
+			const outcome = await agent.steer("go faster");
+			expect(outcome).toEqual({ kind: "delivered" });
 			expect(stub.steer).toHaveBeenCalledWith("go faster");
 			expect(agent.pendingSteerCount).toBe(0);
 		});
@@ -255,11 +294,7 @@ describe("Subagent — session-encapsulation methods", () => {
 		});
 
 		it("delegates to SubagentSession.messages when session is ready", () => {
-			const agent = makeSubagent();
-			const session = createMockSession();
-			session.messages.push({ role: "user", content: "hi" });
-			const stub = createSubagentSessionStub(session);
-			agent.subagentSession = toSubagentSession(stub);
+			const { agent } = makeReadySubagent();
 			expect(agent.messages).toEqual([{ role: "user", content: "hi" }]);
 		});
 	});
@@ -271,11 +306,7 @@ describe("Subagent — session-encapsulation methods", () => {
 		});
 
 		it("delegates to SubagentSession.agentMessages when session is ready", () => {
-			const agent = makeSubagent();
-			const session = createMockSession();
-			session.messages.push({ role: "user", content: "hi" });
-			const stub = createSubagentSessionStub(session);
-			agent.subagentSession = toSubagentSession(stub);
+			const { agent } = makeReadySubagent();
 			expect(agent.agentMessages).toEqual([{ role: "user", content: "hi" }]);
 		});
 	});
@@ -404,18 +435,152 @@ describe("Subagent — failRun", () => {
 
 });
 
+describe("Subagent — stopQueued", () => {
+	function createQueuedAgent(observer?: SubagentLifecycleObserver) {
+		return makeSubagent({
+			status: "queued",
+			execution: makeStubExecution({ observer }),
+		});
+	}
+
+	it("transitions to stopped and records that the agent never started", () => {
+		const record = createQueuedAgent();
+		record.stopQueued();
+		expect(record.status).toBe("stopped");
+		expect(record.stoppedWhileQueued).toBe(true);
+	});
+
+	it("fires observer.onRunFinished once, like every other terminal transition", () => {
+		const onRunFinished = vi.fn();
+		const record = createQueuedAgent({ onRunFinished });
+		record.stopQueued();
+		expect(onRunFinished).toHaveBeenCalledOnce();
+		expect(onRunFinished).toHaveBeenCalledWith(record);
+	});
+
+	it("leaves stoppedWhileQueued false for a running agent aborted mid-run", () => {
+		const record = makeSubagent({ status: "running" });
+		expect(record.abort()).toBe(true);
+		expect(record.status).toBe("stopped");
+		expect(record.stoppedWhileQueued).toBe(false);
+	});
+});
+
 describe("Subagent — disposeSession", () => {
-	it("disposes the wrapped SubagentSession", () => {
+	it("disposes the wrapped SubagentSession", async () => {
 		const record = makeSubagent();
 		const stub = createSubagentSessionStub();
 		record.subagentSession = toSubagentSession(stub);
-		record.disposeSession();
+		await record.disposeSession();
 		expect(stub.dispose).toHaveBeenCalledOnce();
 	});
 
-	it("is a no-op when no session was created", () => {
+	it("resolves only after the child's teardown settles", async () => {
 		const record = makeSubagent();
-		expect(() => record.disposeSession()).not.toThrow();
+		const stub = createSubagentSessionStub();
+		const teardown = Promise.withResolvers<void>(); // eslint-disable-line @typescript-eslint/no-invalid-void-type -- Promise.withResolvers<void> is valid; rule does not allow void in generic fn call type args
+		stub.dispose = vi.fn((): Promise<void> => teardown.promise);
+		record.subagentSession = toSubagentSession(stub);
+
+		let settled = false;
+		const pending = record.disposeSession().then(() => {
+			settled = true;
+		});
+		await Promise.resolve();
+		expect(settled).toBe(false);
+
+		teardown.resolve();
+		await pending;
+		expect(settled).toBe(true);
+	});
+
+	it("swallows a failing teardown so the caller's cleanup continues", async () => {
+		const record = makeSubagent();
+		const stub = createSubagentSessionStub();
+		stub.dispose = vi.fn((): Promise<void> => Promise.reject(new Error("teardown failed")));
+		record.subagentSession = toSubagentSession(stub);
+		await expect(record.disposeSession()).resolves.toBeUndefined();
+	});
+
+	it("is a no-op when no session was created", async () => {
+		const record = makeSubagent();
+		await expect(record.disposeSession()).resolves.toBeUndefined();
+	});
+});
+
+describe("Subagent — releaseSession", () => {
+	it("disposes the wrapped session and clears it (isSessionReady false)", async () => {
+		const record = makeSubagent();
+		const stub = createSubagentSessionStub(createMockSession(), "/path/to/session.jsonl");
+		record.subagentSession = toSubagentSession(stub);
+		await record.releaseSession();
+		expect(stub.dispose).toHaveBeenCalledOnce();
+		expect(record.isSessionReady()).toBe(false);
+	});
+
+	it("captures outputFile so the getter still resolves it after release", async () => {
+		const record = makeSubagent();
+		record.subagentSession = toSubagentSession(createSubagentSessionStub(createMockSession(), "/path/to/session.jsonl"));
+		await record.releaseSession();
+		expect(record.outputFile).toBe("/path/to/session.jsonl");
+	});
+
+	it("sets sessionReleased (default false)", async () => {
+		const record = makeSubagent();
+		expect(record.sessionReleased).toBe(false);
+		record.subagentSession = toSubagentSession(createSubagentSessionStub(createMockSession(), "/path/to/session.jsonl"));
+		await record.releaseSession();
+		expect(record.sessionReleased).toBe(true);
+	});
+
+	it("clears the session before awaiting teardown, so a racing sweep releases once", async () => {
+		const record = makeSubagent();
+		const stub = createSubagentSessionStub(createMockSession(), "/path/to/session.jsonl");
+		const teardown = Promise.withResolvers<void>(); // eslint-disable-line @typescript-eslint/no-invalid-void-type -- Promise.withResolvers<void> is valid; rule does not allow void in generic fn call type args
+		stub.dispose = vi.fn((): Promise<void> => teardown.promise);
+		record.subagentSession = toSubagentSession(stub);
+
+		const first = record.releaseSession();
+		expect(record.isSessionReady()).toBe(false);
+		const second = record.releaseSession();
+
+		teardown.resolve();
+		await Promise.all([first, second]);
+		expect(stub.dispose).toHaveBeenCalledOnce();
+	});
+
+	it("is a no-op on a second release — does not re-dispose, keeps the captured outputFile", async () => {
+		const record = makeSubagent();
+		const stub = createSubagentSessionStub(createMockSession(), "/path/to/session.jsonl");
+		record.subagentSession = toSubagentSession(stub);
+		await record.releaseSession();
+		await record.releaseSession();
+		expect(stub.dispose).toHaveBeenCalledOnce();
+		expect(record.outputFile).toBe("/path/to/session.jsonl");
+	});
+
+	it("disposeSession after release is a no-op (session already cleared)", async () => {
+		const record = makeSubagent();
+		const stub = createSubagentSessionStub(createMockSession(), "/path/to/session.jsonl");
+		record.subagentSession = toSubagentSession(stub);
+		await record.releaseSession();
+		await record.disposeSession();
+		expect(stub.dispose).toHaveBeenCalledOnce();
+	});
+
+	it("swallows a failing teardown but still marks the session released", async () => {
+		const record = makeSubagent();
+		const stub = createSubagentSessionStub(createMockSession(), "/path/to/session.jsonl");
+		stub.dispose = vi.fn((): Promise<void> => Promise.reject(new Error("teardown failed")));
+		record.subagentSession = toSubagentSession(stub);
+		await expect(record.releaseSession()).resolves.toBeUndefined();
+		expect(record.sessionReleased).toBe(true);
+	});
+
+	it("is a no-op when no session was created (sessionReleased stays false)", async () => {
+		const record = makeSubagent();
+		await expect(record.releaseSession()).resolves.toBeUndefined();
+		expect(record.sessionReleased).toBe(false);
 	});
 });
 
@@ -491,6 +656,9 @@ describe("Subagent.run() — happy path", () => {
 
 	it("flushes pending steers when session is created", async () => {
 		const agent = createRunnableAgent();
+		// A steer arriving while the agent is running but the session is not yet
+		// ready buffers; run() flushes it once the session is created.
+		agent.markRunning(Date.now());
 		void agent.steer("hurry up");
 		expect(agent.pendingSteerCount).toBe(1);
 		await agent.run();
@@ -666,6 +834,65 @@ describe("Subagent.scheduleVia() — eager promise capture", () => {
 	});
 });
 
+describe("Subagent.waitUntilSettled()", () => {
+	it("resolves immediately for an agent that has no run handle", async () => {
+		const agent = makeSubagent({ status: "queued" });
+		await expect(agent.waitUntilSettled(new AbortController().signal)).resolves.toBeUndefined();
+	});
+
+	it("resolves immediately for an agent that already left the active set", async () => {
+		const agent = makeSubagent({ status: "completed", result: "done", startedAt: 1, completedAt: 2 });
+		agent.start();
+		await agent.promise;
+		await expect(agent.waitUntilSettled(new AbortController().signal)).resolves.toBeUndefined();
+	});
+
+	it("spans the queue slot and the run that follows it", async () => {
+		const agent = makeSubagent({ status: "queued" });
+		const { promise: gate, resolve: openSlot } = Promise.withResolvers<void>(); // eslint-disable-line @typescript-eslint/no-invalid-void-type -- Promise.withResolvers<void> is valid; rule does not allow void in generic fn call type args
+		agent.scheduleVia(async (thunk) => {
+			await gate;
+			await thunk();
+		});
+
+		const wait = agent.waitUntilSettled(new AbortController().signal);
+		openSlot();
+		await wait;
+
+		expect(agent.status).toBe("completed");
+	});
+
+	it("ends the wait on interrupt without cancelling the agent", async () => {
+		const agent = makeSubagent({ status: "queued" });
+		const { promise: gate, resolve: openSlot } = Promise.withResolvers<void>(); // eslint-disable-line @typescript-eslint/no-invalid-void-type -- Promise.withResolvers<void> is valid; rule does not allow void in generic fn call type args
+		agent.scheduleVia(async (thunk) => {
+			await gate;
+			await thunk();
+		});
+		const controller = new AbortController();
+
+		const wait = agent.waitUntilSettled(controller.signal);
+		controller.abort();
+		await wait;
+
+		// Interrupting the query must not cancel the work: the agent is still
+		// queued and still runs once its slot opens.
+		expect(agent.status).toBe("queued");
+		openSlot();
+		await agent.promise;
+		expect(agent.status).toBe("completed");
+	});
+
+	it("returns immediately when the signal is already aborted", async () => {
+		const agent = makeSubagent({ status: "queued" });
+		agent.scheduleVia(() => new Promise<never>(() => {}));
+
+		await agent.waitUntilSettled(AbortSignal.abort());
+
+		expect(agent.status).toBe("queued");
+	});
+});
+
 // ── Agent.resume() ─────────────────────────────────────────────────────────────
 
 /** Create an Agent with a SubagentSession already attached, ready for resume(). */
@@ -716,8 +943,7 @@ describe("Subagent.resume() — observer lifecycle", () => {
 		const session = createMockSession();
 		const stub = createSubagentSessionStub(session);
 		stub.resumeTurnLoop.mockImplementation(async () => {
-			session.emit({ type: "message_end", message: { role: "assistant", usage: { input: 70, output: 30, cacheWrite: 5 } } });
-			session.emit({ type: "compaction_end", aborted: false, result: { tokensBefore: 999 }, reason: "overflow" });
+			emitResumeUsageAndCompaction(session);
 			return "second";
 		});
 		const { agent } = createResumableAgent({ session, stub });
@@ -750,6 +976,24 @@ describe("Subagent.resume() — observer lifecycle", () => {
 		session.emit({ type: "tool_execution_end" });
 		expect(agent.toolUses).toBe(0);
 	});
+
+	it("fires observer.onResumeFinished once the resume completes", async () => {
+		const onResumeFinished = vi.fn();
+		const { agent } = createResumableAgent({ observer: { onResumeFinished } });
+		await agent.resume("continue");
+		expect(onResumeFinished).toHaveBeenCalledExactlyOnceWith(agent);
+		expect(agent.status).toBe("completed");
+	});
+
+	it("fires observer.onResumeFinished when the resume errors", async () => {
+		const onResumeFinished = vi.fn();
+		const stub = createSubagentSessionStub();
+		stub.resumeTurnLoop.mockRejectedValue(new Error("resume exploded"));
+		const { agent } = createResumableAgent({ observer: { onResumeFinished }, stub });
+		await agent.resume("continue");
+		expect(onResumeFinished).toHaveBeenCalledExactlyOnceWith(agent);
+		expect(agent.status).toBe("error");
+	});
 });
 
 describe("Subagent.resume() — error handling", () => {
@@ -775,5 +1019,27 @@ describe("Subagent.resume() — error handling", () => {
 	it("throws when no session exists", async () => {
 		const agent = makeSubagent();
 		await expect(agent.resume("more")).rejects.toThrow(/missing session/);
+	});
+});
+
+describe("Subagent.resume() — awaitable handle", () => {
+	it("republishes the promise getter for the in-flight resume", async () => {
+		const { agent, stub } = createResumableAgent();
+		agent.start();
+		const firstRun = agent.promise;
+		await firstRun;
+		const { promise: resuming, resolve: finishResume } = Promise.withResolvers<string>();
+		stub.resumeTurnLoop.mockReturnValue(resuming);
+
+		const returned = agent.resume("continue");
+
+		// The getter must track the live resume, not the settled first-run handle.
+		expect(agent.promise).not.toBe(firstRun);
+		expect(agent.promise).toBe(returned);
+
+		finishResume("resumed late");
+		await returned;
+		expect(agent.status).toBe("completed");
+		expect(agent.result).toBe("resumed late");
 	});
 });

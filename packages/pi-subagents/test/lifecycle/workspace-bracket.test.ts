@@ -22,6 +22,14 @@ const ctx = {
 	invocation: undefined,
 };
 
+/** Construct a bracket over a prepared "/ws/dir" workspace; the act (dispose) stays in each test. */
+async function preparedBracket(resultAddendum?: string): Promise<{ bracket: WorkspaceBracket; workspace: Workspace }> {
+	const workspace = makeWorkspace("/ws/dir", resultAddendum);
+	const bracket = new WorkspaceBracket(() => makeProvider(workspace));
+	await bracket.prepare(ctx);
+	return { bracket, workspace };
+}
+
 describe("WorkspaceBracket — hasProvider", () => {
 	it("returns false when no provider is registered", () => {
 		const bracket = new WorkspaceBracket(() => undefined);
@@ -79,31 +87,23 @@ describe("WorkspaceBracket — dispose", () => {
 	});
 
 	it("returns the resultAddendum from the workspace", async () => {
-		const workspace = makeWorkspace("/ws/dir", "\n\n---\nsaved to branch foo");
-		const bracket = new WorkspaceBracket(() => makeProvider(workspace));
-		await bracket.prepare(ctx);
+		const { bracket } = await preparedBracket("\n\n---\nsaved to branch foo");
 		const addendum = bracket.dispose(outcome);
 		expect(addendum).toBe("\n\n---\nsaved to branch foo");
 	});
 
 	it("returns empty string when workspace.dispose returns no addendum", async () => {
-		const workspace = makeWorkspace("/ws/dir");
-		const bracket = new WorkspaceBracket(() => makeProvider(workspace));
-		await bracket.prepare(ctx);
+		const { bracket } = await preparedBracket();
 		expect(bracket.dispose(outcome)).toBe("");
 	});
 
 	it("returns empty string when workspace.dispose returns an empty resultAddendum", async () => {
-		const workspace = makeWorkspace("/ws/dir", "");
-		const bracket = new WorkspaceBracket(() => makeProvider(workspace));
-		await bracket.prepare(ctx);
+		const { bracket } = await preparedBracket("");
 		expect(bracket.dispose(outcome)).toBe("");
 	});
 
 	it("passes the outcome to workspace.dispose", async () => {
-		const workspace = makeWorkspace("/ws/dir");
-		const bracket = new WorkspaceBracket(() => makeProvider(workspace));
-		await bracket.prepare(ctx);
+		const { bracket, workspace } = await preparedBracket();
 		bracket.dispose(outcome);
 		expect(workspace.dispose).toHaveBeenCalledWith(outcome);
 	});

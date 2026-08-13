@@ -82,15 +82,9 @@ describe("createToolDeps", () => {
     it("replaces settings when overridden", () => {
       const deps = createToolDeps({
         settings: {
+          ...createToolDeps().settings,
           defaultMaxTurns: 10,
           maxConcurrent: 2,
-          agentModelPicker: false,
-          agentModelDefault: undefined,
-          setAgentModelDefault: vi.fn(),
-          modelScopeAsked: false,
-          markModelScopeAsked: vi.fn(),
-          acquirePickerLock: vi.fn().mockResolvedValue(() => {}),
-          clearSessionModelDefault: vi.fn(),
         },
       });
       expect(deps.settings.defaultMaxTurns).toBe(10);

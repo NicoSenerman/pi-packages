@@ -96,3 +96,19 @@ Permissions depend only on the core's events; workspaces depend only on the core
   Confirming Pi's event model supports awaited pre-bind emission is the first investigation of the reclaimed phase.
 - Once the cwd is resolved through the provider seam rather than relayed by `Agent`, child-session creation can construct a born-complete execution and the "runner" concept dissolves — recovering the structural goal of the abandoned collaborator steps by a cleaner route.
 - The reclaimed Phase 16 roadmap and step issues live in [`docs/architecture/architecture.md`](../architecture/architecture.md).
+
+## Amendment: prevent-load ships as a settings key, not a provider seam (#696)
+
+This decision reserved prevent-load as a *latent* provider seam, "added only if a real consumer needs it."
+A real consumer arrived: in-process children reloaded `@cortexkit/pi-magic-context`, whose per-session initialization scans the whole Pi session store, and four concurrent children exhausted the V8 heap in the shared process.
+
+The seam was nonetheless **not** built.
+The governing rule above — no vacant hooks — decides it: a provider seam is warranted when an *extension* must inject a value the core consumes, and no extension wants to supply a prevent-load policy.
+The only policy source is the operator's configuration, so a registerable provider whose sole consumer would be pi-subagents' own settings reader is precisely the speculative abstraction this ADR forbids.
+
+The core therefore reads an `excludedExtensionPackages` list from the layered `subagents.json` and filters the child's package view before resource loading.
+This is narrower than the per-agent policy Phase 14 evicted: it is global/project scope only, never per agent type; it names packages rather than individual extensions or tools; and it carries no tool-permission semantics, which remain deny-at-use in `@gotgenes/pi-permission-system`.
+Default inheritance is unchanged — an absent or empty list reproduces prior behavior exactly.
+
+Latent extensibility is preserved rather than spent.
+The filtering is applied at the composition root, so if a sandboxing extension ever needs to supply the policy generatively, a provider seam can be added additively without disturbing the settings key or the assembly factory.

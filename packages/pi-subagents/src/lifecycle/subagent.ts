@@ -26,7 +26,6 @@ import {
 import type { LifetimeUsage } from "#src/lifecycle/usage";
 import type { WorkspaceProvider } from "#src/lifecycle/workspace";
 import { WorkspaceBracket } from "#src/lifecycle/workspace-bracket";
-import { NotificationState } from "#src/observation/notification-state";
 import { subscribeSubagentObserver } from "#src/observation/record-observer";
 import type { RunConfig } from "#src/runtime";
 import type {
@@ -46,11 +45,23 @@ export interface SubagentLifecycleObserver {
   onSessionCreated?(agent: Subagent): void;
   /** Fires once when the run completes or fails (for concurrency drain). */
   onRunFinished?(agent: Subagent): void;
+  /** Fires once when a resumed run reaches a terminal state. */
+  onResumeFinished?(agent: Subagent): void;
   /** Fires on compaction events during the run. */
   onCompacted?(agent: Subagent, info: CompactionInfo): void;
 }
 
 export type { SubagentStatus } from "#src/lifecycle/subagent-state";
+
+/**
+ * The result of a steer attempt. `Subagent.steer` owns the non-running
+ * rejection rule and reports it here, so coordinators switch on the outcome
+ * instead of pre-checking status (tell by id, with outcomes).
+ */
+export type SteerOutcome =
+  | { kind: "delivered" }
+  | { kind: "buffered" }
+  | { kind: "rejected"; status: SubagentStatus };
 
 /**
  * The execution machinery a Subagent needs to run. A single mandatory
@@ -113,11 +124,20 @@ export class Subagent {
   get error(): string | undefined {
     return this.state.error;
   }
+  get stoppedWhileQueued(): boolean {
+    return this.state.stoppedWhileQueued;
+  }
   get startedAt(): number {
     return this.state.startedAt;
   }
   get completedAt(): number | undefined {
     return this.state.completedAt;
+  }
+  get consumedAt(): number | undefined {
+    return this.state.consumedAt;
+  }
+  get consumed(): boolean {
+    return this.state.consumed;
   }
   get toolUses(): number {
     return this.state.toolUses;
@@ -137,8 +157,17 @@ export class Subagent {
   get responseText(): string {
     return this.state.responseText;
   }
-  get thinking(): string {
-    return this.state.thinking;
+  isActive(): boolean {
+    return this.state.isActive();
+  }
+  isTerminalError(): boolean {
+    return this.state.isTerminalError();
+  }
+  isRunning(): boolean {
+    return this.state.isRunning();
+  }
+  canBeSteered(): boolean {
+    return this.state.canBeSteered();
   }
   get maxTurns(): number | undefined {
     return this.execution.maxTurns;
@@ -151,6 +180,7 @@ export class Subagent {
 
   readonly abortController: AbortController;
   private _promise?: Promise<void>;
+  /** Handle on the agent's current run — the initial run, or the live resume that replaced it. */
   get promise(): Promise<void> | undefined {
     return this._promise;
   }
@@ -160,9 +190,15 @@ export class Subagent {
   private readonly workspaceBracket: WorkspaceBracket;
 
   subagentSession?: SubagentSession;
-  private _notification?: NotificationState;
-  get notification(): NotificationState | undefined {
-    return this._notification;
+
+  // Retained after releaseSession() disposes the heavy session, so outputFile
+  // (transcript pointer) survives and the resume path can tell "released" from
+  // "never had a session."
+  private _releasedOutputFile?: string;
+  private _sessionReleased = false;
+  /** True once releaseSession() has freed a live session (distinct from never having had one). */
+  get sessionReleased(): boolean {
+    return this._sessionReleased;
   }
 
   // Steer buffer — messages queued before the session is ready
@@ -172,9 +208,17 @@ export class Subagent {
     return this._pendingSteers.length;
   }
 
-  /** Path to the agent's session JSONL file, or undefined if not yet available. */
+  /**
+   * Path to the agent's session JSONL file, or undefined if not yet available.
+   * Falls back to the path captured at releaseSession() once the live session is gone.
+   */
   get outputFile(): string | undefined {
-    return this.subagentSession?.outputFile;
+    return this.subagentSession?.outputFile ?? this._releasedOutputFile;
+  }
+
+  /** The tool call ID that spawned this background agent, if any. */
+  get toolCallId(): string | undefined {
+    return this.execution.parentSession?.toolCallId;
   }
 
   /** Returns true when a SubagentSession is available (session is ready). */
@@ -183,16 +227,21 @@ export class Subagent {
   }
 
   /**
-   * Deliver or buffer a steer message.
-   * Returns true when delivered immediately; false when buffered for later delivery.
+   * Steer a running agent, owning the non-running rejection rule.
+   * Returns a `rejected` outcome (with the observed status) when the agent is
+   * not running, a `buffered` outcome when the session is not yet ready, or a
+   * `delivered` outcome once the message reaches the session.
    */
-  async steer(message: string): Promise<boolean> {
+  async steer(message: string): Promise<SteerOutcome> {
+    if (!this.canBeSteered()) {
+      return { kind: "rejected", status: this.status };
+    }
     if (!this.subagentSession) {
       this.queueSteer(message);
-      return false;
+      return { kind: "buffered" };
     }
     await this.subagentSession.steer(message);
-    return true;
+    return { kind: "delivered" };
   }
 
   /** Return the session conversation as formatted text, or undefined if no session. */
@@ -250,12 +299,6 @@ export class Subagent {
     this.workspaceBracket = new WorkspaceBracket(
       this.execution.getWorkspaceProvider ?? (() => undefined),
     );
-
-    // Notification state — created from parentSession.toolCallId if present
-    const toolCallId = init.execution.parentSession?.toolCallId;
-    if (toolCallId) {
-      this._notification = new NotificationState(toolCallId);
-    }
   }
 
   /**
@@ -357,9 +400,25 @@ export class Subagent {
    * immediately without running.
    */
   private guardedRun(): Promise<void> {
-    if (this.status !== "queued" && this.status !== "running")
-      return Promise.resolve();
+    if (!this.isActive()) return Promise.resolve();
     return this.run();
+  }
+
+  /**
+   * Wait until this agent's current run settles.
+   * Resolves immediately when the agent is no longer active or has no run
+   * handle. A queued agent is awaitable because scheduleVia() captures the
+   * limiter promise at spawn, so the wait spans both the queue slot and the
+   * run that follows it.
+   *
+   * When `signal` fires the wait ends early and the agent keeps running: this
+   * is a query, so interrupting it must not cancel the work. Cancelling the
+   * work on a parent interrupt is InterruptHandler's separate decision.
+   */
+  async waitUntilSettled(signal: AbortSignal): Promise<void> {
+    const run = this._promise;
+    if (!run || !this.isActive()) return;
+    await settleOrAbort(run, signal);
   }
 
   /**
@@ -367,16 +426,32 @@ export class Subagent {
    * subscription lifecycle internally (same wiring as run()).
    *
    * Requires an existing SubagentSession (set when the original run created it).
-   * The returned promise always resolves (errors are captured internally).
+   * The returned promise always resolves (errors are captured internally) and is
+   * published as the `promise` getter, so waiters track the resume rather than
+   * the settled handle of the original run.
    * The parent signal flows straight through to resumeTurnLoop — resume does not
    * route through this.abortController.
    */
-  async resume(prompt: string, signal?: AbortSignal): Promise<void> {
+  resume(prompt: string, signal?: AbortSignal): Promise<void> {
     const subagentSession = this.subagentSession;
     if (!subagentSession) {
-      throw new Error("Subagent not configured for resume — missing session");
+      // Rejection, not a throw: this method is not async, and a synchronous
+      // throw would escape a caller's `.rejects` assertion.
+      return Promise.reject(
+        new Error("Subagent not configured for resume — missing session"),
+      );
     }
 
+    this._promise = this.runResume(subagentSession, prompt, signal);
+    return this._promise;
+  }
+
+  /** The resume body. Always resolves — errors terminate through failResume(). */
+  private async runResume(
+    subagentSession: SubagentSession,
+    prompt: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
     this.resetForResume(Date.now());
     this.listeners.attachObserver(
       subscribeSubagentObserver(subagentSession, this.state, {
@@ -385,28 +460,24 @@ export class Subagent {
     );
 
     try {
-      const responseText = await subagentSession.resumeTurnLoop(prompt, signal);
-      this.markCompleted(responseText);
+      this.completeResume(await subagentSession.resumeTurnLoop(prompt, signal));
     } catch (err) {
-      this.markError(err);
-    } finally {
-      this.listeners.release();
+      this.failResume(err);
     }
   }
 
-  /** Increment tool use count. Called by record-observer on tool_execution_end. */
-  incrementToolUses(): void {
-    this.state.incrementToolUses();
+  /** Terminate a resume as completed: mark, release listeners, notify observer. */
+  completeResume(result: string): void {
+    this.markCompleted(result);
+    this.listeners.release();
+    this.execution.observer?.onResumeFinished?.(this);
   }
 
-  /** Accumulate a usage delta into lifetimeUsage. Called by record-observer on message_end. */
-  addUsage(delta: { input: number; output: number; cacheWrite: number }): void {
-    this.state.addUsage(delta);
-  }
-
-  /** Increment compaction count. Called by record-observer on compaction_end. */
-  incrementCompactions(): void {
-    this.state.incrementCompactions();
+  /** Terminate a resume as errored: mark, release listeners, notify observer. */
+  failResume(err: unknown): void {
+    this.markError(err);
+    this.listeners.release();
+    this.execution.observer?.onResumeFinished?.(this);
   }
 
   /** Transition to running state. Sets status and startedAt. */
@@ -451,14 +522,30 @@ export class Subagent {
     this.state.markStopped(completedAt);
   }
 
+  /** Record the parent collected this agent's outcome. Idempotent. */
+  markConsumed(at?: number): void {
+    this.state.markConsumed(at);
+  }
+
+  /**
+   * Stop an agent that never started, then notify like every other terminal
+   * transition. No listener release: nothing is wired before run().
+   * The record leaves the active set here, so the thunk the limiter runs when
+   * the slot finally frees no-ops on guardedRun()'s guard — one notification.
+   */
+  stopQueued(): void {
+    this.state.stopQueued();
+    this.execution.observer?.onRunFinished?.(this);
+  }
+
   /**
    * Abort a running agent: fire AbortController and transition to stopped.
    * Returns false if the agent is not running.
-   * A still-queued agent is stopped by SubagentManager; its scheduled thunk
+   * A still-queued agent is stopped via stopQueued(); its scheduled thunk
    * then no-ops on the queued-status guard.
    */
   abort(): boolean {
-    if (this.status !== "running") return false;
+    if (!this.isRunning()) return false;
     this.abortController.abort();
     this.markStopped();
     return true;
@@ -483,7 +570,7 @@ export class Subagent {
     this._pendingSteers = [];
   }
 
-  /** Reset for resume: running status, new startedAt, clear completedAt/result/error/listeners. */
+  /** Reset for resume: running status, new startedAt, clear completedAt/result/error/consumedAt/listeners. */
   resetForResume(startedAt: number): void {
     this.state.resetForResume(startedAt);
     this.listeners.release();
@@ -512,9 +599,31 @@ export class Subagent {
     this.execution.observer?.onRunFinished?.(this);
   }
 
-  /** Dispose the wrapped session, firing the `disposed` lifecycle event. */
-  disposeSession(): void {
-    this.subagentSession?.dispose();
+  /**
+   * Dispose the wrapped session, firing the `disposed` lifecycle event.
+   * Resolves once the child's extensions have shut down; a failing teardown is
+   * swallowed so the caller's remaining cleanup still runs.
+   */
+  async disposeSession(): Promise<void> {
+    await disposeQuietly(this.subagentSession, "child session dispose");
+  }
+
+  /**
+   * Release the heavy session while keeping the record: capture the transcript
+   * pointer, dispose the session (firing `disposed`), clear it, and mark released.
+   * A no-op once the session is gone — the retention sweep may call it repeatedly.
+   *
+   * The record's own state is updated before the teardown is awaited, so a sweep
+   * tick arriving mid-teardown sees a released record rather than starting a
+   * second one.
+   */
+  async releaseSession(): Promise<void> {
+    const session = this.subagentSession;
+    if (!session) return;
+    this._releasedOutputFile = session.outputFile;
+    this.subagentSession = undefined;
+    this._sessionReleased = true;
+    await disposeQuietly(session, "child session release");
   }
 
   /** Fail a run: mark error, release listeners, best-effort workspace dispose, notify observer. */
@@ -533,4 +642,43 @@ export class Subagent {
 
     this.execution.observer?.onRunFinished?.(this);
   }
+}
+
+/**
+ * Tear a child session down without letting its failure escape.
+ * Both teardown paths are cleanup: a child that will not shut down cleanly must
+ * not stop the caller from finishing the rest of its own cleanup.
+ */
+async function disposeQuietly(
+  session: SubagentSession | undefined,
+  context: string,
+): Promise<void> {
+  try {
+    await session?.dispose();
+  } catch (err) {
+    debugLog(context, err);
+  }
+}
+
+/**
+ * Settle with `run`, or early when `signal` fires — whichever comes first.
+ * The inner controller is the listener-cleanup channel: it detaches the abort
+ * listener whichever branch wins, so repeated waits within one parent turn do
+ * not accumulate listeners on that turn's signal.
+ */
+function settleOrAbort(run: Promise<void>, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
+  const detach = new AbortController();
+  const interrupted = new Promise<void>((resolve) => {
+    signal.addEventListener(
+      "abort",
+      () => {
+        resolve();
+      },
+      { once: true, signal: detach.signal },
+    );
+  });
+  return Promise.race([run, interrupted]).finally(() => {
+    detach.abort();
+  });
 }

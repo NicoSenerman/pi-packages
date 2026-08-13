@@ -1,24 +1,17 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-redundant-type-constituents -- Pi SDK types are not fully exported; see upstream Pi SDK for type improvements */
 /**
  * Model resolution: exact match ("provider/modelId") with fuzzy fallback.
  */
-
-export interface ModelEntry {
-  id: string;
-  name: string;
-  provider: string;
-}
+import type { Model } from "@earendil-works/pi-ai";
 
 export interface ModelRegistry {
-  find(provider: string, modelId: string): any;
-  getAll(): any[];
-  getAvailable?(): any[];
+  find(provider: string, modelId: string): Model<any> | undefined;
+  getAll(): Model<any>[];
+  getAvailable?(): Model<any>[];
 }
 
 /** Successful model resolution — `model` is the resolved or inherited model instance. */
 export interface ModelResolutionResult {
-
-  model: any;
+  model: Model<any> | undefined;
   error?: undefined;
 }
 
@@ -42,12 +35,13 @@ export type ModelResolution = ModelResolutionResult | ModelResolutionError;
  *    - `modelFromParams` false → silent fallback to `parentModel`.
  */
 export function resolveInvocationModel(
-  parentModel: unknown,
+  parentModel: Model<any> | undefined,
   modelInput: string | undefined,
   modelFromParams: boolean,
-  registry: ModelRegistry,
+  registry: ModelRegistry | undefined,
 ): ModelResolution {
   if (!modelInput) return { model: parentModel };
+  if (!registry) return { error: "No model registry available." };
   const resolved = resolveModel(modelInput, registry);
   if (typeof resolved !== "string") return { model: resolved };
   if (modelFromParams) return { error: resolved };
@@ -62,9 +56,9 @@ export function resolveInvocationModel(
 export function resolveModel(
   input: string,
   registry: ModelRegistry,
-): any | string {
+): Model<any> | string {
   // Available models (those with auth configured)
-  const all = (registry.getAvailable?.() ?? registry.getAll()) as ModelEntry[];
+  const all = registry.getAvailable?.() ?? registry.getAll();
   const availableSet = new Set(all.map(m => `${m.provider}/${m.id}`.toLowerCase()));
 
   // 1. Exact match: "provider/modelId" — only if available (has auth)
@@ -79,10 +73,27 @@ export function resolveModel(
   }
 
   // 2. Fuzzy match against available models
-  const query = input.toLowerCase();
+  const bestMatch = findBestFuzzyMatch(all, input.toLowerCase());
+  if (bestMatch) {
+    const found = registry.find(bestMatch.provider, bestMatch.id);
+    if (found) return found;
+  }
 
-  // Score each model: prefer exact id match > id contains > name contains > provider+id contains
-  let bestMatch: ModelEntry | undefined;
+  // 3. No match — list available models
+  const modelList = all
+    .map(m => `  ${m.provider}/${m.id}`)
+    .sort()
+    .join("\n");
+  return `Model not found: "${input}".\n\nAvailable models:\n${modelList}`;
+}
+
+/**
+ * Score each candidate model — prefer exact id match > id contains > name
+ * contains > provider+id contains — and return the best match at or above
+ * the acceptance threshold (20), or undefined if nothing scores high enough.
+ */
+function findBestFuzzyMatch(all: Model<any>[], query: string): Model<any> | undefined {
+  let bestMatch: Model<any> | undefined;
   let bestScore = 0;
 
   for (const m of all) {
@@ -107,15 +118,5 @@ export function resolveModel(
     }
   }
 
-  if (bestMatch && bestScore >= 20) {
-    const found = registry.find(bestMatch.provider, bestMatch.id);
-    if (found) return found;
-  }
-
-  // 3. No match — list available models
-  const modelList = all
-    .map(m => `  ${m.provider}/${m.id}`)
-    .sort()
-    .join("\n");
-  return `Model not found: "${input}".\n\nAvailable models:\n${modelList}`;
+  return bestScore >= 20 ? bestMatch : undefined;
 }

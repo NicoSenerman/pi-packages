@@ -22,221 +22,274 @@ import type { LifetimeUsage } from "#src/lifecycle/usage";
 import { addUsage } from "#src/lifecycle/usage";
 
 export type SubagentStatus =
-  | "queued"
-  | "running"
-  | "completed"
-  | "steered"
-  | "aborted"
-  | "stopped"
-  | "error";
+	| "queued"
+	| "running"
+	| "completed"
+	| "steered"
+	| "aborted"
+	| "stopped"
+	| "error";
+
+// ---- Status classification predicates ----
+// The single decision point for the re-derived status groupings. Instance
+// methods on SubagentState delegate here; DTO consumers holding a bare
+// SubagentStatus (no SubagentState instance) call these directly.
+
+/** Running or queued — the agent is still live (started or awaiting a slot). */
+export function isActiveStatus(status: SubagentStatus): boolean {
+	return status === "running" || status === "queued";
+}
+
+/** Terminated by error, abort, or external stop (excludes the successful `steered`). */
+export function isTerminalErrorStatus(status: SubagentStatus): boolean {
+	return status === "error" || status === "stopped" || status === "aborted";
+}
+
+/** Actively running (excludes queued). */
+export function isRunningStatus(status: SubagentStatus): boolean {
+	return status === "running";
+}
 
 export interface SubagentStateInit {
-  status?: SubagentStatus;
-  result?: string;
-  error?: string;
-  startedAt?: number;
-  completedAt?: number;
+	status?: SubagentStatus;
+	result?: string;
+	error?: string;
+	/** Whether the agent was stopped before the limiter ever admitted it. */
+	stoppedWhileQueued?: boolean;
+	startedAt?: number;
+	completedAt?: number;
+	/** Time the parent collected the outcome; undefined = obligation still open. */
+	consumedAt?: number;
+	// Stats — seed a populated value without replaying the accumulation methods
+	toolUses?: number;
+	lifetimeUsage?: LifetimeUsage;
+	compactionCount?: number;
+	// Live activity — activeTools is seeded by name (each entry calls addActiveTool)
+	turnCount?: number;
+	activeTools?: string[];
+	responseText?: string;
 }
 
 export class SubagentState {
-  // Transition state — encapsulated behind getters, mutated only via transition methods
-  private _status: SubagentStatus;
-  get status(): SubagentStatus {
-    return this._status;
-  }
+	// Transition state — encapsulated behind getters, mutated only via transition methods
+	private _status: SubagentStatus;
+	get status(): SubagentStatus { return this._status; }
 
-  private _result?: string;
-  get result(): string | undefined {
-    return this._result;
-  }
+	private _result?: string;
+	get result(): string | undefined { return this._result; }
 
-  private _error?: string;
-  get error(): string | undefined {
-    return this._error;
-  }
+	private _error?: string;
+	get error(): string | undefined { return this._error; }
 
-  private _startedAt: number;
-  get startedAt(): number {
-    return this._startedAt;
-  }
+	// Never-started marker — a queued agent stopped before its slot opened has no
+	// result, as distinct from a started agent that produced none.
+	private _stoppedWhileQueued: boolean;
+	get stoppedWhileQueued(): boolean { return this._stoppedWhileQueued; }
 
-  private _completedAt?: number;
-  get completedAt(): number | undefined {
-    return this._completedAt;
-  }
+	private _startedAt: number;
+	get startedAt(): number { return this._startedAt; }
 
-  // Stats — accumulated via mutation methods, readable via getters
-  private _toolUses = 0;
-  get toolUses(): number {
-    return this._toolUses;
-  }
+	private _completedAt?: number;
+	get completedAt(): number | undefined { return this._completedAt; }
 
-  private _lifetimeUsage: LifetimeUsage = {
-    input: 0,
-    output: 0,
-    cacheWrite: 0,
-  };
-  get lifetimeUsage(): Readonly<LifetimeUsage> {
-    return this._lifetimeUsage;
-  }
+	// Result delivery — whether the parent has collected the outcome (orthogonal to status)
+	private _consumedAt?: number;
+	get consumedAt(): number | undefined { return this._consumedAt; }
+	get consumed(): boolean { return this._consumedAt != null; }
 
-  private _compactionCount = 0;
-  get compactionCount(): number {
-    return this._compactionCount;
-  }
+	// Stats — accumulated via mutation methods, readable via getters
+	private _toolUses: number;
+	get toolUses(): number { return this._toolUses; }
 
-  // Live activity — accumulated via transition methods, readable via getters
-  private _turnCount = 1;
-  get turnCount(): number {
-    return this._turnCount;
-  }
+	private _lifetimeUsage: LifetimeUsage;
+	get lifetimeUsage(): Readonly<LifetimeUsage> { return this._lifetimeUsage; }
 
-  private _activeTools = new Map<string, string>();
-  get activeTools(): ReadonlyMap<string, string> {
-    return this._activeTools;
-  }
+	private _compactionCount: number;
+	get compactionCount(): number { return this._compactionCount; }
 
-  private _toolKeySeq = 0;
+	// Live activity — accumulated via transition methods, readable via getters
+	private _turnCount: number;
+	get turnCount(): number { return this._turnCount; }
 
-  private _responseText = "";
-  get responseText(): string {
-    return this._responseText;
-  }
+	private _activeTools = new Map<string, string>();
+	get activeTools(): ReadonlyMap<string, string> { return this._activeTools; }
 
-  private _thinking = "";
-  get thinking(): string {
-    return this._thinking;
-  }
+	private _toolKeySeq = 0;
 
-  constructor(init: SubagentStateInit = {}) {
-    this._status = init.status ?? "queued";
-    this._result = init.result;
-    this._error = init.error;
-    this._startedAt = init.startedAt ?? Date.now();
-    this._completedAt = init.completedAt;
-  }
+	private _responseText: string;
+	get responseText(): string { return this._responseText; }
 
-  /** Increment tool use count. Called by record-observer on tool_execution_end. */
-  incrementToolUses(): void {
-    this._toolUses++;
-  }
+	constructor(init: SubagentStateInit = {}) {
+		this._status = init.status ?? "queued";
+		this._result = init.result;
+		this._error = init.error;
+		this._stoppedWhileQueued = init.stoppedWhileQueued ?? false;
+		this._startedAt = init.startedAt ?? Date.now();
+		this._completedAt = init.completedAt;
+		this._consumedAt = init.consumedAt;
+		this._toolUses = init.toolUses ?? 0;
+		// Copy so a later addUsage() cannot mutate the caller's object.
+		this._lifetimeUsage = init.lifetimeUsage
+			? { ...init.lifetimeUsage }
+			: { input: 0, output: 0, cacheWrite: 0 };
+		this._compactionCount = init.compactionCount ?? 0;
+		this._turnCount = init.turnCount ?? 1;
+		this._responseText = init.responseText ?? "";
+		for (const name of init.activeTools ?? []) {
+			this.addActiveTool(name);
+		}
+	}
 
-  /** Accumulate a usage delta into lifetimeUsage. Called by record-observer on message_end. */
-  addUsage(delta: { input: number; output: number; cacheWrite: number }): void {
-    addUsage(this._lifetimeUsage, delta);
-  }
+	/** Running or queued — still live. */
+	isActive(): boolean {
+		return isActiveStatus(this._status);
+	}
 
-  /** Increment compaction count. Called by record-observer on compaction_end. */
-  incrementCompactions(): void {
-    this._compactionCount++;
-  }
+	/** Terminated by error, abort, or external stop (excludes `steered`). */
+	isTerminalError(): boolean {
+		return isTerminalErrorStatus(this._status);
+	}
 
-  /** Record a turn boundary. Called by record-observer on turn_end. */
-  incrementTurnCount(): void {
-    this._turnCount++;
-  }
+	/** Actively running (excludes queued). */
+	isRunning(): boolean {
+		return isRunningStatus(this._status);
+	}
 
-  /** Record a tool starting. Called by record-observer on tool_execution_start. */
-  addActiveTool(toolName: string): void {
-    this._activeTools.set(toolName + "_" + ++this._toolKeySeq, toolName);
-  }
+	/** Whether a steer message can be delivered — the agent must be running. */
+	canBeSteered(): boolean {
+		return isRunningStatus(this._status);
+	}
 
-  /** Remove one active tool by name (first match). Called by record-observer on tool_execution_end. */
-  removeActiveTool(toolName: string): void {
-    for (const [key, name] of this._activeTools) {
-      if (name === toolName) {
-        this._activeTools.delete(key);
-        break;
-      }
-    }
-  }
+	/** Increment tool use count. Called by record-observer on tool_execution_end. */
+	incrementToolUses(): void {
+		this._toolUses++;
+	}
 
-  /** Reset the current response text. Called by record-observer on message_start. */
-  resetResponseText(): void {
-    this._responseText = "";
-  }
+	/** Accumulate a usage delta into lifetimeUsage. Called by record-observer on message_end. */
+	addUsage(delta: { input: number; output: number; cacheWrite: number }): void {
+		addUsage(this._lifetimeUsage, delta);
+	}
 
-  /** Append a text delta to the current response text. Called by record-observer on message_update. */
-  appendResponseText(delta: string): void {
-    this._responseText += delta;
-  }
+	/** Increment compaction count. Called by record-observer on compaction_end. */
+	incrementCompactions(): void {
+		this._compactionCount++;
+	}
 
-  /** Reset the current thinking text. Called by record-observer on message_start. */
-  resetThinking(): void {
-    this._thinking = "";
-  }
+	/** Record a turn boundary. Called by record-observer on turn_end. */
+	incrementTurnCount(): void {
+		this._turnCount++;
+	}
 
-  /** Append a thinking delta to the current thinking text. Called by record-observer on message_update (thinking_delta). */
-  appendThinking(delta: string): void {
-    this._thinking += delta;
-  }
+	/** Record a tool starting. Called by record-observer on tool_execution_start. */
+	addActiveTool(toolName: string): void {
+		this._activeTools.set(toolName + "_" + (++this._toolKeySeq), toolName);
+	}
 
-  /** Transition to running state. Sets status and startedAt. */
-  markRunning(startedAt: number): void {
-    this._status = "running";
-    this._startedAt = startedAt;
-  }
+	/** Remove one active tool by name (first match). Called by record-observer on tool_execution_end. */
+	removeActiveTool(toolName: string): void {
+		for (const [key, name] of this._activeTools) {
+			if (name === toolName) {
+				this._activeTools.delete(key);
+				break;
+			}
+		}
+	}
 
-  /**
-   * Transition to completed state.
-   * Always sets result and completedAt (??=). Only changes status if not stopped.
-   */
-  markCompleted(result: string, completedAt?: number): void {
-    this._result = result;
-    this._completedAt ??= completedAt ?? Date.now();
-    if (this._status !== "stopped") {
-      this._status = "completed";
-    }
-  }
+	/** Reset the current response text. Called by record-observer on message_start. */
+	resetResponseText(): void {
+		this._responseText = "";
+	}
 
-  /**
-   * Transition to aborted state.
-   * Always sets result and completedAt (??=). Only changes status if not stopped.
-   */
-  markAborted(result: string, completedAt?: number): void {
-    this._result = result;
-    this._completedAt ??= completedAt ?? Date.now();
-    if (this._status !== "stopped") {
-      this._status = "aborted";
-    }
-  }
+	/** Append a text delta to the current response text. Called by record-observer on message_update. */
+	appendResponseText(delta: string): void {
+		this._responseText += delta;
+	}
 
-  /**
-   * Transition to steered state.
-   * Always sets result and completedAt (??=). Only changes status if not stopped.
-   */
-  markSteered(result: string, completedAt?: number): void {
-    this._result = result;
-    this._completedAt ??= completedAt ?? Date.now();
-    if (this._status !== "stopped") {
-      this._status = "steered";
-    }
-  }
+	/** Transition to running state. Sets status and startedAt. */
+	markRunning(startedAt: number): void {
+		this._status = "running";
+		this._startedAt = startedAt;
+	}
 
-  /**
-   * Transition to error state.
-   * Always sets error (formatted) and completedAt (??=). Only changes status if not stopped.
-   */
-  markError(error: unknown, completedAt?: number): void {
-    this._error = error instanceof Error ? error.message : String(error);
-    this._completedAt ??= completedAt ?? Date.now();
-    if (this._status !== "stopped") {
-      this._status = "error";
-    }
-  }
+	/**
+	 * Transition to completed state.
+	 * Always sets result and completedAt (??=). Only changes status if not stopped.
+	 */
+	markCompleted(result: string, completedAt?: number): void {
+		this._result = result;
+		this._completedAt ??= completedAt ?? Date.now();
+		if (this._status !== "stopped") {
+			this._status = "completed";
+		}
+	}
 
-  /** Transition to stopped state. Always valid — no guard. */
-  markStopped(completedAt?: number): void {
-    this._status = "stopped";
-    this._completedAt = completedAt ?? Date.now();
-  }
+	/**
+	 * Transition to aborted state.
+	 * Always sets result and completedAt (??=). Only changes status if not stopped.
+	 */
+	markAborted(result: string, completedAt?: number): void {
+		this._result = result;
+		this._completedAt ??= completedAt ?? Date.now();
+		if (this._status !== "stopped") {
+			this._status = "aborted";
+		}
+	}
 
-  /** Reset for resume: running status, new startedAt, clear completedAt/result/error. */
-  resetForResume(startedAt: number): void {
-    this._status = "running";
-    this._startedAt = startedAt;
-    this._completedAt = undefined;
-    this._result = undefined;
-    this._error = undefined;
-  }
+	/**
+	 * Transition to steered state.
+	 * Always sets result and completedAt (??=). Only changes status if not stopped.
+	 */
+	markSteered(result: string, completedAt?: number): void {
+		this._result = result;
+		this._completedAt ??= completedAt ?? Date.now();
+		if (this._status !== "stopped") {
+			this._status = "steered";
+		}
+	}
+
+	/**
+	 * Transition to error state.
+	 * Always sets error (formatted) and completedAt (??=). Only changes status if not stopped.
+	 */
+	markError(error: unknown, completedAt?: number): void {
+		this._error = error instanceof Error ? error.message : String(error);
+		this._completedAt ??= completedAt ?? Date.now();
+		if (this._status !== "stopped") {
+			this._status = "error";
+		}
+	}
+
+	/**
+	 * Record the parent collected the outcome. Idempotent — keeps the first
+	 * collection time (??=), so a re-read does not advance the retention clock.
+	 */
+	markConsumed(at?: number): void {
+		this._consumedAt ??= at ?? Date.now();
+	}
+
+	/** Transition to stopped state. Always valid — no guard. */
+	markStopped(completedAt?: number): void {
+		this._status = "stopped";
+		this._completedAt = completedAt ?? Date.now();
+	}
+
+	/**
+	 * Stop an agent that is still awaiting a concurrency slot. Records the
+	 * never-started fact only when the agent is genuinely still queued, so a
+	 * mis-targeted call cannot claim it.
+	 */
+	stopQueued(completedAt?: number): void {
+		if (this._status === "queued") this._stoppedWhileQueued = true;
+		this.markStopped(completedAt);
+	}
+
+	/** Reset for resume: running status, new startedAt, clear completedAt/result/error/consumedAt. */
+	resetForResume(startedAt: number): void {
+		this._status = "running";
+		this._startedAt = startedAt;
+		this._completedAt = undefined;
+		this._result = undefined;
+		this._error = undefined;
+		this._consumedAt = undefined;
+	}
 }

@@ -13,16 +13,15 @@ export interface ToolStartWidget {
 
 /**
  * Narrows pi's full ExtensionMode union ("tui" | "rpc" | "json" | "print").
- * Only "tui" drives the real interactive factory path; every other mode
- * (rpc, json, print) lacks a live TUI and must receive the pre-rendered
- * string[] form so it crosses pi's RPC bridge to the external host.
+ * Only "tui" drives the interactive factory path; every other mode must
+ * receive the pre-rendered string[] form so it crosses pi's RPC bridge.
  */
 export type ExtensionMode = "tui" | "rpc" | "json" | "print";
 
 /** Minimal context shape for tool_execution_start — only the fields the handler reads. */
 interface ToolStartCtx {
   ui: unknown;
-  mode: ExtensionMode;
+  mode?: ExtensionMode;
 }
 
 /**
@@ -35,7 +34,7 @@ export class ToolStartHandler {
   constructor(private readonly widget: ToolStartWidget) {}
 
   handleToolExecutionStart(_event: unknown, ctx: ToolStartCtx): void {
-    this.widget.setUICtx(ctx.ui, ctx.mode);
+    this.widget.setUICtx(ctx.ui, ctx.mode ?? "tui");
     this.widget.onTurnStart();
   }
 }

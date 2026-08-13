@@ -2,11 +2,12 @@
  * types.ts — Type definitions for the subagent system.
  */
 
-import type { ThinkingLevel } from "@earendil-works/pi-ai";
+import type { Model, ThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentSessionEvent, SessionContext as SdkSessionContext } from "@earendil-works/pi-coding-agent";
 import type { ModelRegistry } from "#src/session/model-resolver";
 
 
+export type { SteerOutcome } from "#src/lifecycle/subagent";
 export { Subagent } from "#src/lifecycle/subagent";
 export type { AgentSessionEvent, ThinkingLevel };
 
@@ -55,6 +56,8 @@ export interface AgentConfig extends AgentIdentity, AgentPromptConfig {
   inheritContext?: boolean;
   /** Default for spawn: run in background. undefined = caller decides. */
   runInBackground?: boolean;
+  /** One-line usage guideline for the subagent tool's Guidelines: block. Omitted — no guideline line. */
+  toolGuideline?: string;
   /** true = this is an embedded default agent (informational) */
   isDefault?: boolean;
   /** false = agent is hidden from the registry */
@@ -82,8 +85,8 @@ export interface AgentInvocation {
  */
 export interface SessionContext {
   readonly cwd: string;
-  readonly model: unknown;
-  readonly modelRegistry: ModelRegistry | undefined;
+  readonly model: Model<any> | undefined;
+  readonly modelRegistry: ModelRegistry;
   getSystemPrompt(): string;
   readonly sessionManager: {
     getSessionFile(): string | undefined;
@@ -108,7 +111,7 @@ export interface ParentSessionInfo {
 	parentSessionFile?: string;
 	/** Session ID of the parent agent (stored in the child session's parentSession header). */
 	parentSessionId?: string;
-	/** Tool call ID for background notification wiring. When set, spawn attaches NotificationState. */
+	/** Tool call ID for background notification wiring. Exposed on the record via Subagent.toolCallId. */
 	toolCallId?: string;
 }
 

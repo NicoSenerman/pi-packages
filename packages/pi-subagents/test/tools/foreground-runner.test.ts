@@ -31,6 +31,24 @@ describe("runForeground", () => {
 		expect(result.content[0].text).toContain("All done.");
 	});
 
+	it("marks the returned record consumed (foreground-return delivery edge)", async () => {
+		const record = createTestSubagent();
+		const deps = createToolDeps({
+			manager: { ...createToolDeps().manager, spawnAndWait: vi.fn().mockResolvedValue(record) },
+		});
+		await runForeground(deps.manager, makeParams(), undefined, undefined);
+		expect(record.consumed).toBe(true);
+	});
+
+	it("marks consumed even when the agent errored (result delivered in the tool result)", async () => {
+		const record = createTestSubagent({ status: "error", error: "boom" });
+		const deps = createToolDeps({
+			manager: { ...createToolDeps().manager, spawnAndWait: vi.fn().mockResolvedValue(record) },
+		});
+		await runForeground(deps.manager, makeParams(), undefined, undefined);
+		expect(record.consumed).toBe(true);
+	});
+
 	it("returns error message when agent record status is error", async () => {
 		const deps = createToolDeps({
 			manager: {

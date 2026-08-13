@@ -19,6 +19,21 @@ function makeSettings() {
       message: "Grace turns set to 3",
       level: "info",
     })),
+    consumedSessionRetentionMinutes: 10,
+    unconsumedSessionRetentionMinutes: 720,
+    applyConsumedSessionRetentionMinutes: vi.fn((): { message: string; level: "info" | "warning" } => ({
+      message: "Consumed-session retention set to 30 min",
+      level: "info",
+    })),
+    applyUnconsumedSessionRetentionMinutes: vi.fn((): { message: string; level: "info" | "warning" } => ({
+      message: "Unconsumed-session retention set to 1440 min",
+      level: "info",
+    })),
+    abortAllOnInterrupt: true,
+    toggleAbortAllOnInterrupt: vi.fn((): { message: string; level: "info" | "warning" } => ({
+      message: "Abort all subagents on ESC: off",
+      level: "info",
+    })),
   };
 }
 
@@ -37,7 +52,7 @@ describe("SubagentsSettingsHandler", () => {
     expect(handler).toBeInstanceOf(SubagentsSettingsHandler);
   });
 
-  it("shows the three settings options with current values", async () => {
+  it("shows the six settings options with current values", async () => {
     const { handler } = makeHandler();
     const ui = makeMenuUI([undefined]); // cancel immediately
     await handler.handle({ ui });
@@ -46,7 +61,20 @@ describe("SubagentsSettingsHandler", () => {
       "Max concurrency (current: 4)",
       "Default max turns (current: unlimited)",
       "Grace turns (current: 5)",
+      "Consumed-session retention (current: 10 min)",
+      "Unconsumed-session retention (current: 720 min)",
+      "Abort all subagents on ESC (current: on)",
     ]);
+  });
+
+  it("renders the abort-on-ESC option as off when the policy is disabled", async () => {
+    const settings = makeSettings();
+    settings.abortAllOnInterrupt = false;
+    const { handler } = makeHandler(settings);
+    const ui = makeMenuUI([undefined]);
+    await handler.handle({ ui });
+    const options = ui.select.mock.calls[0][1] as string[];
+    expect(options[5]).toBe("Abort all subagents on ESC (current: off)");
   });
 
   it("applies no change when the settings list is cancelled", async () => {
@@ -85,6 +113,15 @@ describe("SubagentsSettingsHandler — max concurrency", () => {
     ui.input = vi.fn().mockResolvedValue(undefined);
     await handler.handle({ ui });
     expect(settings.applyMaxConcurrent).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-numeric input with a warning and does not apply", async () => {
+    const { handler, settings } = makeHandler();
+    const ui = makeMenuUI(["Max concurrency (current: 4)"]);
+    ui.input = vi.fn().mockResolvedValue("abc");
+    await handler.handle({ ui });
+    expect(settings.applyMaxConcurrent).not.toHaveBeenCalled();
+    expect(ui.notify).toHaveBeenCalledWith("Must be a positive integer.", "warning");
   });
 });
 
@@ -136,5 +173,66 @@ describe("SubagentsSettingsHandler — grace turns", () => {
     await handler.handle({ ui });
     expect(settings.applyGraceTurns).not.toHaveBeenCalled();
     expect(ui.notify).toHaveBeenCalledWith("Must be a positive integer.", "warning");
+  });
+});
+
+describe("SubagentsSettingsHandler — retention windows", () => {
+  it("delegates a valid consumed window to applyConsumedSessionRetentionMinutes", async () => {
+    const { handler, settings } = makeHandler();
+    const ui = makeMenuUI(["Consumed-session retention (current: 10 min)"]);
+    ui.input = vi.fn().mockResolvedValue("30");
+    await handler.handle({ ui });
+    expect(settings.applyConsumedSessionRetentionMinutes).toHaveBeenCalledWith(30);
+    expect(ui.notify).toHaveBeenCalledWith("Consumed-session retention set to 30 min", "info");
+  });
+
+  it("delegates a valid unconsumed window to applyUnconsumedSessionRetentionMinutes", async () => {
+    const { handler, settings } = makeHandler();
+    const ui = makeMenuUI(["Unconsumed-session retention (current: 720 min)"]);
+    ui.input = vi.fn().mockResolvedValue("1440");
+    await handler.handle({ ui });
+    expect(settings.applyUnconsumedSessionRetentionMinutes).toHaveBeenCalledWith(1440);
+    expect(ui.notify).toHaveBeenCalledWith("Unconsumed-session retention set to 1440 min", "info");
+  });
+
+  it("rejects a consumed window below 1 with a warning and does not apply", async () => {
+    const { handler, settings } = makeHandler();
+    const ui = makeMenuUI(["Consumed-session retention (current: 10 min)"]);
+    ui.input = vi.fn().mockResolvedValue("0");
+    await handler.handle({ ui });
+    expect(settings.applyConsumedSessionRetentionMinutes).not.toHaveBeenCalled();
+    expect(ui.notify).toHaveBeenCalledWith("Must be a positive integer.", "warning");
+  });
+});
+
+describe("SubagentsSettingsHandler — abort all subagents on ESC", () => {
+  it("flips the policy directly and notifies the returned toast", async () => {
+    const { handler, settings } = makeHandler();
+    const ui = makeMenuUI(["Abort all subagents on ESC (current: on)"]);
+    await handler.handle({ ui });
+    expect(settings.toggleAbortAllOnInterrupt).toHaveBeenCalledOnce();
+    expect(ui.notify).toHaveBeenCalledWith("Abort all subagents on ESC: off", "info");
+  });
+
+  it("never prompts for input — the toggle is a direct flip", async () => {
+    const { handler } = makeHandler();
+    const ui = makeMenuUI(["Abort all subagents on ESC (current: on)"]);
+    await handler.handle({ ui });
+    expect(ui.input).not.toHaveBeenCalled();
+  });
+
+  it("does not flip the policy when the settings list is cancelled", async () => {
+    const { handler, settings } = makeHandler();
+    const ui = makeMenuUI([undefined]);
+    await handler.handle({ ui });
+    expect(settings.toggleAbortAllOnInterrupt).not.toHaveBeenCalled();
+  });
+
+  it("does not flip the policy when a numeric setting is chosen", async () => {
+    const { handler, settings } = makeHandler();
+    const ui = makeMenuUI(["Grace turns (current: 5)"]);
+    ui.input = vi.fn().mockResolvedValue("3");
+    await handler.handle({ ui });
+    expect(settings.toggleAbortAllOnInterrupt).not.toHaveBeenCalled();
   });
 });

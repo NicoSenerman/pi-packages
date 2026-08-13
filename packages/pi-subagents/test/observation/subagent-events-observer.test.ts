@@ -6,7 +6,6 @@ import { createTestSubagent } from "#test/helpers/make-subagent";
 
 function makeNotifications(): NotificationSystem {
 	return {
-		cancelNudge: vi.fn(),
 		sendCompletion: vi.fn(),
 		dispose: vi.fn(),
 	};
@@ -107,7 +106,7 @@ describe("SubagentEventsObserver", () => {
 			});
 		});
 
-		it("calls notifications.sendCompletion when result is not consumed", () => {
+		it("calls notifications.sendCompletion unconditionally — the manager decides whether to nudge", () => {
 			const notifications = makeNotifications();
 			const { observer } = makeObserver({ notifications });
 			const record = createTestSubagent({ status: "completed" });
@@ -117,20 +116,73 @@ describe("SubagentEventsObserver", () => {
 			expect(notifications.sendCompletion).toHaveBeenCalledExactlyOnceWith(record);
 		});
 
-		it("does not call sendCompletion when result is already consumed", () => {
+		it("emits exactly once and appends exactly once per call", () => {
+			const { observer, emit, appendEntry } = makeObserver();
+			observer.onSubagentCompleted(createTestSubagent({ status: "completed" }));
+			expect(emit).toHaveBeenCalledTimes(1);
+			expect(appendEntry).toHaveBeenCalledTimes(1);
+		});
+	});
+
+	describe("onSubagentResumed", () => {
+		it("emits subagents:resumed with the buildEventData payload for a completed resume", () => {
+			const { observer, emit } = makeObserver();
+			const record = createTestSubagent({ status: "completed", result: "resumed output" });
+
+			observer.onSubagentResumed(record);
+
+			expect(emit).toHaveBeenCalledExactlyOnceWith("subagents:resumed", buildEventData(record));
+		});
+
+		it("emits subagents:resumed (not subagents:failed) for an error resume — payload discriminates", () => {
+			const { observer, emit } = makeObserver();
+			const record = createTestSubagent({ status: "error", error: "boom" });
+
+			observer.onSubagentResumed(record);
+
+			expect(emit).toHaveBeenCalledExactlyOnceWith("subagents:resumed", buildEventData(record));
+		});
+
+		it("appends subagents:record with the eight persisted fields", () => {
+			const { observer, appendEntry } = makeObserver();
+			const record = createTestSubagent({
+				id: "agent-5",
+				type: "Explore",
+				description: "resume explore",
+				status: "completed",
+				result: "resumed it",
+				error: undefined,
+				startedAt: 3000,
+				completedAt: 4000,
+			});
+
+			observer.onSubagentResumed(record);
+
+			expect(appendEntry).toHaveBeenCalledExactlyOnceWith("subagents:record", {
+				id: "agent-5",
+				type: "Explore",
+				description: "resume explore",
+				status: "completed",
+				result: "resumed it",
+				error: undefined,
+				startedAt: 3000,
+				completedAt: 4000,
+			});
+		});
+
+		it("calls notifications.sendCompletion unconditionally — the manager decides whether to nudge", () => {
 			const notifications = makeNotifications();
 			const { observer } = makeObserver({ notifications });
-			const record = createTestSubagent({ status: "completed", toolCallId: "tc-1" });
-			record.notification!.markConsumed();
+			const record = createTestSubagent({ status: "completed" });
 
-			observer.onSubagentCompleted(record);
+			observer.onSubagentResumed(record);
 
-			expect(notifications.sendCompletion).not.toHaveBeenCalled();
+			expect(notifications.sendCompletion).toHaveBeenCalledExactlyOnceWith(record);
 		});
 
 		it("emits exactly once and appends exactly once per call", () => {
 			const { observer, emit, appendEntry } = makeObserver();
-			observer.onSubagentCompleted(createTestSubagent({ status: "completed" }));
+			observer.onSubagentResumed(createTestSubagent({ status: "completed" }));
 			expect(emit).toHaveBeenCalledTimes(1);
 			expect(appendEntry).toHaveBeenCalledTimes(1);
 		});

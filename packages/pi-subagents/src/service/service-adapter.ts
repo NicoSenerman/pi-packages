@@ -5,6 +5,7 @@
  * (stripping non-serializable fields), and session gating.
  */
 
+import type { Model } from "@earendil-works/pi-ai";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import type { WorkspaceProvider } from "#src/lifecycle/workspace";
 import type { SpawnOptions, SubagentRecord, SubagentsService } from "#src/service/service";
@@ -35,7 +36,7 @@ export interface ServiceRuntimeLike {
 export class SubagentsServiceAdapter implements SubagentsService {
   constructor(
     private readonly manager: SubagentManagerLike,
-    private readonly resolveModel: (input: string, registry: ModelRegistry) => unknown,
+    private readonly resolveModel: (input: string, registry: ModelRegistry) => Model<any> | string,
     private readonly runtime: ServiceRuntimeLike,
   ) {}
 
@@ -44,19 +45,7 @@ export class SubagentsServiceAdapter implements SubagentsService {
       throw new Error("No active session — cannot spawn agents outside a session.");
     }
 
-    let model: unknown;
-    if (options?.model) {
-      const registry = this.runtime.currentCtx.modelRegistry;
-      if (!registry) {
-        throw new Error("No model registry available.");
-      }
-      const resolved = this.resolveModel(options.model, registry);
-      if (typeof resolved === "string") {
-        throw new Error(resolved);
-      }
-      model = resolved;
-    }
-
+    const model = this.resolveModelOption(options?.model);
     const description = options?.description ?? prompt.slice(0, 80);
     const isBackground = !(options?.foreground ?? false);
 
@@ -87,11 +76,11 @@ export class SubagentsServiceAdapter implements SubagentsService {
 
   async steer(id: string, message: string): Promise<boolean> {
     const record = this.manager.getRecord(id);
-    if (record?.status !== "running") {
+    if (!record) {
       return false;
     }
-    await record.steer(message);
-    return true;
+    const outcome = await record.steer(message);
+    return outcome.kind !== "rejected";
   }
 
   async waitForAll(): Promise<void> {
@@ -104,6 +93,20 @@ export class SubagentsServiceAdapter implements SubagentsService {
 
   registerWorkspaceProvider(provider: WorkspaceProvider): () => void {
     return this.manager.registerWorkspaceProvider(provider);
+  }
+
+  /** Resolve an optional model-string override against the current session's registry. */
+  private resolveModelOption(modelInput: string | undefined): Model<any> | undefined {
+    if (!modelInput) return undefined;
+    const registry = this.runtime.currentCtx?.modelRegistry;
+    if (!registry) {
+      throw new Error("No model registry available.");
+    }
+    const resolved = this.resolveModel(modelInput, registry);
+    if (typeof resolved === "string") {
+      throw new Error(resolved);
+    }
+    return resolved;
   }
 }
 

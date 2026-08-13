@@ -2,9 +2,15 @@
 // - Global:  ~/.pi/agent/subagents.json (agentDir injected at construction) — manual defaults, never written here
 // - Project: <cwd>/.pi/subagents.json — written by /agents → Settings; overrides global on load
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
-import { CONFIG_DIR_NAME } from "@earendil-works/pi-coding-agent";
+import { deriveSubagentSessionDir } from "#src/session/session-dir";
 import {
   type LayeredSettingsSource,
   loadLayeredSettings,
@@ -18,10 +24,48 @@ export interface SubagentsSettings {
    */
   defaultMaxTurns?: number;
   graceTurns?: number;
+  /** Minutes a consumed agent's session is retained after its last relevance event. */
+  consumedSessionRetentionMinutes?: number;
+  /** Minutes an unconsumed agent's session is retained (safety cap). */
+  unconsumedSessionRetentionMinutes?: number;
+  /**
+   * When false, a parent interrupt (ESC) leaves background and queued subagents
+   * running. Foreground agents hold the parent's run signal directly, so they
+   * abort on ESC either way.
+   */
+  abortAllOnInterrupt?: boolean;
+  /**
+   * Pi package sources whose extensions child sessions must not load, matched
+   * against Pi's configured source string exactly (e.g. `npm:@scope/pkg`).
+   * The package's skills, prompts, and themes stay available to children.
+   */
+  excludedExtensionPackages?: string[];
   /** true = prompt interactively for the subagent model when no explicit model applies. */
   agentModelPicker?: boolean;
-  /** Provider/modelId string that skips the picker once set (session-scoped, or permanent when written). */
+  /** Provider/modelId string that skips the picker once set (session-scoped). */
   agentModelDefault?: string;
+}
+
+/**
+ * The persisted form of the in-memory settings values.
+ * `saveSettings` rewrites the whole project file from this shape, so every key
+ * that must survive a `/subagents:settings` edit has to appear here.
+ */
+export interface SettingsSnapshot {
+  maxConcurrent: number;
+  defaultMaxTurns: number;
+  graceTurns: number;
+  consumedSessionRetentionMinutes: number;
+  unconsumedSessionRetentionMinutes: number;
+  abortAllOnInterrupt: boolean;
+  /**
+   * Present only when non-empty, so files that never set it gain no noise.
+   * It must round-trip: the key has no `/subagents:settings` affordance, so a
+   * hand-edited value would otherwise be erased by any unrelated setting change.
+   */
+  excludedExtensionPackages?: string[];
+  /** Present only when true so files that never set it gain no noise. */
+  agentModelPicker?: boolean;
 }
 
 /** Emit callback — a subset of `pi.events.emit` to keep helpers testable. */
@@ -29,6 +73,9 @@ export type SettingsEmit = (event: string, payload: unknown) => void;
 
 const DEFAULT_MAX_CONCURRENT = 4;
 const DEFAULT_GRACE_TURNS = 5;
+const DEFAULT_CONSUMED_RETENTION_MINUTES = 10;
+const DEFAULT_UNCONSUMED_RETENTION_MINUTES = 720;
+const DEFAULT_ABORT_ALL_ON_INTERRUPT = true;
 
 /**
  * Owns all three in-memory settings values and their load/save/persist cycle.
@@ -38,7 +85,17 @@ export class SettingsManager {
   private _defaultMaxTurns: number | undefined = undefined;
   private _graceTurns: number = DEFAULT_GRACE_TURNS;
   private _maxConcurrent: number = DEFAULT_MAX_CONCURRENT;
+  private _consumedSessionRetentionMinutes: number =
+    DEFAULT_CONSUMED_RETENTION_MINUTES;
+  private _unconsumedSessionRetentionMinutes: number =
+    DEFAULT_UNCONSUMED_RETENTION_MINUTES;
+  private _abortAllOnInterrupt: boolean = DEFAULT_ABORT_ALL_ON_INTERRUPT;
+  private _excludedExtensionPackages: string[] = [];
   private _agentModelPicker: boolean = false;
+  private _agentModelDefault: string | undefined = undefined;
+  private _modelScopeAsked = false;
+  private _modelDeclinedSession = false;
+  private _pickerLock: Promise<unknown> = Promise.resolve();
 
   private readonly emit: SettingsEmit;
   private readonly cwd: string;
@@ -91,7 +148,35 @@ export class SettingsManager {
     this._maxConcurrent = Math.max(1, n);
   }
 
-  // ── agentModelPicker: plain boolean flag ──
+  // ── retention windows: clamped to [1, RETENTION_MINUTES_CEILING] minutes ──
+
+  get consumedSessionRetentionMinutes(): number {
+    return this._consumedSessionRetentionMinutes;
+  }
+
+  set consumedSessionRetentionMinutes(n: number) {
+    this._consumedSessionRetentionMinutes = clampRetentionMinutes(n);
+  }
+
+  get unconsumedSessionRetentionMinutes(): number {
+    return this._unconsumedSessionRetentionMinutes;
+  }
+
+  set unconsumedSessionRetentionMinutes(n: number) {
+    this._unconsumedSessionRetentionMinutes = clampRetentionMinutes(n);
+  }
+
+  // ── abortAllOnInterrupt: flipped via toggleAbortAllOnInterrupt(); no normalization ──
+
+  get abortAllOnInterrupt(): boolean {
+    return this._abortAllOnInterrupt;
+  }
+
+  // ── excludedExtensionPackages: hand-edited only; no /subagents:settings affordance ──
+
+  get excludedExtensionPackages(): readonly string[] {
+    return this._excludedExtensionPackages;
+  }
 
   get agentModelPicker(): boolean {
     return this._agentModelPicker;
@@ -101,35 +186,35 @@ export class SettingsManager {
     this._agentModelPicker = v;
   }
 
-  // ── agentModelDefault: raw "provider/modelId" string; "use this for every ──
-  //    spawn" sessions without the picker painting. Written by perm remember. ──
-
-  private _agentModelDefault: string | undefined = undefined;
-  private _modelScopeAsked = false;
-  private _modelDeclinedSession = false;
-  // Serialize the model picker across concurrent spawns: a parallel batch of
-  // subagent dispatches all hit maybePickAgentModel at once, but each needs its
-  // own full picker turn (model pick + optional scope ask). Without this lock
-  // the scope ask from spawn #1 lands behind spawn #2's model pick in piru's
-  // FIFO overlay queue, producing a confusing/missing scope ask.
-  private _pickerLock: Promise<unknown> = Promise.resolve();
-
   get agentModelDefault(): string | undefined {
     return this._agentModelDefault;
   }
 
-  setAgentModelDefault(value: string): void {
+  setAgentModelDefault(
+    value: string,
+    parentSessionFile: string | undefined,
+  ): void {
     this._agentModelDefault = value;
+    writeSessionModelSidecar(parentSessionFile, value);
   }
 
-  /** Reset the session-scoped model choice so the picker asks again. */
-  clearSessionModelDefault(): void {
+  clearSessionModelDefault(parentSessionFile: string | undefined): void {
     this._agentModelDefault = undefined;
     this._modelScopeAsked = false;
     this._modelDeclinedSession = false;
+    deleteSessionModelSidecar(parentSessionFile);
   }
 
-  /** True once the session-scope question has been asked; subsequent pickers default to "once". */
+  loadSessionModelDefault(
+    parentSessionFile: string | undefined,
+  ): string | undefined {
+    const value = readSessionModelSidecar(parentSessionFile);
+    this._agentModelDefault = value;
+    this._modelScopeAsked = value !== undefined;
+    this._modelDeclinedSession = false;
+    return value;
+  }
+
   get modelScopeAsked(): boolean {
     return this._modelScopeAsked;
   }
@@ -143,13 +228,6 @@ export class SettingsManager {
     this._modelDeclinedSession = declinedSession;
   }
 
-  /**
-   * Serialize the model picker across concurrent spawns: returns a release
-   * function once it's the caller's turn. Concurrent dispatches all hit
-   * maybePickAgentModel at once; without this lock their select() requests
-   * interleave in piru's FIFO overlay queue (scope ask from #1 lands behind
-   * #2's model pick), producing a missing/confusing scope ask.
-   */
   async acquirePickerLock(): Promise<() => void> {
     let release!: () => void;
     const held = new Promise<void>((resolve) => {
@@ -176,9 +254,19 @@ export class SettingsManager {
       this.defaultMaxTurns = settings.defaultMaxTurns;
     if (typeof settings.graceTurns === "number")
       this.graceTurns = settings.graceTurns;
+    if (typeof settings.consumedSessionRetentionMinutes === "number")
+      this.consumedSessionRetentionMinutes =
+        settings.consumedSessionRetentionMinutes;
+    if (typeof settings.unconsumedSessionRetentionMinutes === "number")
+      this.unconsumedSessionRetentionMinutes =
+        settings.unconsumedSessionRetentionMinutes;
+    if (typeof settings.abortAllOnInterrupt === "boolean")
+      this._abortAllOnInterrupt = settings.abortAllOnInterrupt;
+    // Assigned unconditionally: removing the key from disk must clear the value.
+    this._excludedExtensionPackages = [
+      ...(settings.excludedExtensionPackages ?? []),
+    ];
     this.agentModelPicker = settings.agentModelPicker === true;
-    if (typeof settings.agentModelDefault === "string")
-      this.setAgentModelDefault(settings.agentModelDefault);
     this.emit("subagents:settings_loaded", { settings });
     return settings;
   }
@@ -187,16 +275,23 @@ export class SettingsManager {
    * Snapshot current in-memory values for persistence.
    * `defaultMaxTurns` uses 0 as the on-disk marker for unlimited (undefined).
    */
-  snapshot(): {
-    maxConcurrent: number;
-    defaultMaxTurns: number;
-    graceTurns: number;
-  } {
-    return {
+  snapshot(): SettingsSnapshot {
+    const snapshot: SettingsSnapshot = {
       maxConcurrent: this._maxConcurrent,
       defaultMaxTurns: this._defaultMaxTurns ?? 0,
       graceTurns: this._graceTurns,
+      consumedSessionRetentionMinutes: this._consumedSessionRetentionMinutes,
+      unconsumedSessionRetentionMinutes:
+        this._unconsumedSessionRetentionMinutes,
+      abortAllOnInterrupt: this._abortAllOnInterrupt,
     };
+    if (this._excludedExtensionPackages.length > 0) {
+      snapshot.excludedExtensionPackages = [...this._excludedExtensionPackages];
+    }
+    if (this._agentModelPicker) {
+      snapshot.agentModelPicker = true;
+    }
+    return snapshot;
   }
 
   /**
@@ -234,6 +329,39 @@ export class SettingsManager {
     return this.saveAndNotify(`Grace turns set to ${this.graceTurns}`);
   }
 
+  /** Set the consumed-session retention window (minutes), persist, and return the toast. */
+  applyConsumedSessionRetentionMinutes(n: number): {
+    message: string;
+    level: "info" | "warning";
+  } {
+    this.consumedSessionRetentionMinutes = n; // setter normalizes: clamp [1, ceiling]
+    return this.saveAndNotify(
+      `Consumed-session retention set to ${this.consumedSessionRetentionMinutes} min`,
+    );
+  }
+
+  /** Set the unconsumed-session retention window (minutes), persist, and return the toast. */
+  applyUnconsumedSessionRetentionMinutes(n: number): {
+    message: string;
+    level: "info" | "warning";
+  } {
+    this.unconsumedSessionRetentionMinutes = n; // setter normalizes: clamp [1, ceiling]
+    return this.saveAndNotify(
+      `Unconsumed-session retention set to ${this.unconsumedSessionRetentionMinutes} min`,
+    );
+  }
+
+  /**
+   * Flip whether a parent interrupt (ESC) aborts every subagent, persist, and
+   * return the toast. The manager owns the negation so callers just say "flip it".
+   */
+  toggleAbortAllOnInterrupt(): { message: string; level: "info" | "warning" } {
+    this._abortAllOnInterrupt = !this._abortAllOnInterrupt;
+    return this.saveAndNotify(
+      `Abort all subagents on ESC: ${this._abortAllOnInterrupt ? "on" : "off"}`,
+    );
+  }
+
   /**
    * Persist the current snapshot, emit `subagents:settings_changed`,
    * and return the toast the UI should display.
@@ -255,6 +383,22 @@ export class SettingsManager {
 const MAX_CONCURRENT_CEILING = 1024;
 const MAX_TURNS_CEILING = 10_000;
 const GRACE_TURNS_CEILING = 1_000;
+// Retention windows: 1 minute floor, two-week ceiling (60 * 24 * 14).
+const RETENTION_MINUTES_CEILING = 20_160;
+
+/** Clamp a retention window to [1, RETENTION_MINUTES_CEILING] minutes. */
+function clampRetentionMinutes(n: number): number {
+  return Math.min(RETENTION_MINUTES_CEILING, Math.max(1, n));
+}
+
+/** True when a value is an integer minute count within the accepted retention range. */
+function isRetentionMinutes(n: unknown): n is number {
+  return (
+    Number.isInteger(n) &&
+    (n as number) >= 1 &&
+    (n as number) <= RETENTION_MINUTES_CEILING
+  );
+}
 
 /** Drop fields that don't match the expected shape. Silent — garbage becomes absent. */
 function sanitize(raw: unknown): SubagentsSettings {
@@ -282,6 +426,22 @@ function sanitize(raw: unknown): SubagentsSettings {
   ) {
     out.graceTurns = r.graceTurns as number;
   }
+  if (isRetentionMinutes(r.consumedSessionRetentionMinutes)) {
+    out.consumedSessionRetentionMinutes = r.consumedSessionRetentionMinutes;
+  }
+  if (isRetentionMinutes(r.unconsumedSessionRetentionMinutes)) {
+    out.unconsumedSessionRetentionMinutes = r.unconsumedSessionRetentionMinutes;
+  }
+  if (typeof r.abortAllOnInterrupt === "boolean") {
+    out.abortAllOnInterrupt = r.abortAllOnInterrupt;
+  }
+  if (Array.isArray(r.excludedExtensionPackages)) {
+    const sources = r.excludedExtensionPackages
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    out.excludedExtensionPackages = [...new Set(sources)];
+  }
   if (typeof r.agentModelPicker === "boolean") {
     out.agentModelPicker = r.agentModelPicker;
   }
@@ -292,7 +452,7 @@ function sanitize(raw: unknown): SubagentsSettings {
 }
 
 function projectPath(cwd: string): string {
-  return join(cwd, CONFIG_DIR_NAME, "subagents.json");
+  return join(cwd, ".pi", "subagents.json");
 }
 
 /** Load merged settings: global provides defaults, project overrides. */
@@ -340,4 +500,54 @@ export function persistToastFor(
         message: `${successMsg} (session only; failed to persist)`,
         level: "warning",
       };
+}
+
+const SIDECAR_FILENAME = "subagent-model.json";
+
+export function sessionModelSidecarPath(
+  parentSessionFile: string | undefined,
+): string | undefined {
+  if (!parentSessionFile) return undefined;
+  const dir = deriveSubagentSessionDir(parentSessionFile, process.cwd());
+  return join(dirname(dir), SIDECAR_FILENAME);
+}
+
+export function readSessionModelSidecar(
+  parentSessionFile: string | undefined,
+): string | undefined {
+  const path = sessionModelSidecarPath(parentSessionFile);
+  if (!path || !existsSync(path)) return undefined;
+  try {
+    const raw = JSON.parse(readFileSync(path, "utf-8"));
+    if (raw && typeof raw.model === "string") return raw.model;
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function writeSessionModelSidecar(
+  parentSessionFile: string | undefined,
+  value: string,
+): void {
+  const path = sessionModelSidecarPath(parentSessionFile);
+  if (!path) return;
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, JSON.stringify({ model: value }, null, 2), "utf-8");
+  } catch {
+    // Persistence isn't fatal — the in-memory value still gates the picker.
+  }
+}
+
+export function deleteSessionModelSidecar(
+  parentSessionFile: string | undefined,
+): void {
+  const path = sessionModelSidecarPath(parentSessionFile);
+  if (!path) return;
+  try {
+    if (existsSync(path)) unlinkSync(path);
+  } catch {
+    // ignore
+  }
 }

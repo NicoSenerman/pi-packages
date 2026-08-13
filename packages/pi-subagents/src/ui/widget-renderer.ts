@@ -7,6 +7,10 @@
 
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import type { AgentConfigLookup } from "#src/config/agent-types";
+import {
+	isActiveStatus,
+	type SubagentStatus,
+} from "#src/lifecycle/subagent-state";
 import type { LifetimeUsage } from "#src/lifecycle/usage";
 import { getLifetimeTotal } from "#src/lifecycle/usage";
 import type { SubagentType } from "#src/types";
@@ -17,9 +21,9 @@ import {
 	formatTurns,
 	getDisplayName,
 	getPromptModeLabel,
-	SPINNER,
 	type Theme,
 } from "#src/ui/display";
+import { GLYPHS, SPINNER } from "#src/ui/glyphs";
 
 // ── Data interfaces ──────────────────────────────────────────────────────────
 
@@ -27,7 +31,7 @@ import {
 export interface WidgetAgent {
 	readonly id: string;
 	readonly type: SubagentType;
-	readonly status: string;
+	readonly status: SubagentStatus;
 	readonly description: string;
 	readonly toolUses: number;
 	readonly startedAt: number;
@@ -59,21 +63,21 @@ export function renderFinishedLine(
 	let icon: string;
 	let statusText: string;
 	if (agent.status === "completed") {
-		icon = theme.fg("success", "✓");
+		icon = theme.fg("success", GLYPHS.success);
 		statusText = "";
 	} else if (agent.status === "steered") {
-		icon = theme.fg("warning", "✓");
+		icon = theme.fg("warning", GLYPHS.success);
 		statusText = theme.fg("warning", " (turn limit)");
 	} else if (agent.status === "stopped") {
-		icon = theme.fg("dim", "■");
+		icon = theme.fg("dim", GLYPHS.stopped);
 		statusText = theme.fg("dim", " stopped");
 	} else if (agent.status === "error") {
-		icon = theme.fg("error", "✗");
+		icon = theme.fg("error", GLYPHS.failure);
 		const errMsg = agent.error ? `: ${agent.error.slice(0, 60)}` : "";
 		statusText = theme.fg("error", ` error${errMsg}`);
 	} else {
 		// aborted
-		icon = theme.fg("error", "✗");
+		icon = theme.fg("error", GLYPHS.failure);
 		statusText = theme.fg("warning", " aborted");
 	}
 
@@ -112,7 +116,7 @@ export function renderRunningLines(
 	const activityText = describeActivity(agent.activeTools, agent.responseText);
 
 	const header = `${theme.fg("accent", frame)} ${theme.bold(name)}${modeTag}  ${theme.fg("muted", agent.description)} ${theme.fg("dim", "·")} ${theme.fg("dim", statsText)}`;
-	const activityLine = theme.fg("dim", `  \u23BF  ${activityText}`);
+	const activityLine = theme.fg("dim", `  ${GLYPHS.subLine}  ${activityText}`);
 
 	return [header, activityLine];
 }
@@ -137,7 +141,7 @@ function categorizeAgents(
 		running: agents.filter(a => a.status === "running"),
 		queued: agents.filter(a => a.status === "queued"),
 		finished: agents.filter(
-			a => a.status !== "running" && a.status !== "queued" && a.completedAt != null
+			a => !isActiveStatus(a.status) && a.completedAt != null
 				&& shouldShowFinished(a.id, a.status),
 		),
 	};
@@ -172,7 +176,7 @@ function buildSections(
 	}
 
 	const queuedLine = categories.queued.length > 0
-		? truncate(theme.fg("dim", "\u251C\u2500") + ` ${theme.fg("muted", "\u25E6")} ${theme.fg("dim", `${categories.queued.length} queued`)}`)
+		? truncate(theme.fg("dim", "\u251C\u2500") + ` ${theme.fg("muted", GLYPHS.queued)} ${theme.fg("dim", `${categories.queued.length} queued`)}`)
 		: undefined;
 
 	return { finishedLines, runningLines, queuedLine };
@@ -270,7 +274,7 @@ export function renderWidgetLines(params: {
 
 	const truncate = (line: string) => truncateToWidth(line, terminalWidth);
 	const headingColor = hasActive ? "accent" : "dim";
-	const headingIcon = hasActive ? "\u25CF" : "\u25CB";
+	const headingIcon = hasActive ? GLYPHS.agentsActive : GLYPHS.agentsIdle;
 
 	const { finishedLines, runningLines, queuedLine } = buildSections(
 		{ running, queued, finished },

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { createSubagentRuntime, SubagentRuntime } from "#src/runtime";
 import type { SessionContext } from "#src/types";
+import { makeModel } from "#test/helpers/make-model";
 import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 
 const mockBuildParentSnapshot = vi.hoisted(() =>
@@ -16,7 +17,7 @@ function makeSessionCtx(overrides?: Partial<SessionContext>): SessionContext {
   return {
     cwd: "/test/cwd",
     model: undefined,
-    modelRegistry: undefined,
+    modelRegistry: { find: () => undefined, getAll: () => [] },
     getSystemPrompt: () => "test prompt",
     sessionManager: {
       getSessionFile: () => "/sessions/test.jsonl",
@@ -107,10 +108,11 @@ describe("SubagentRuntime context query methods", () => {
   it("getModelInfo returns model and modelRegistry from current context", () => {
     const runtime = createSubagentRuntime();
     const registry = { find: () => undefined, getAll: () => [], getAvailable: () => [] };
-    const ctx = makeSessionCtx({ model: { id: "claude-sonnet", name: "Claude Sonnet" }, modelRegistry: registry });
+    const model = makeModel({ id: "claude-sonnet", name: "Claude Sonnet" });
+    const ctx = makeSessionCtx({ model, modelRegistry: registry });
     runtime.setSessionContext(ctx);
     const info = runtime.getModelInfo();
-    expect(info.parentModel).toEqual({ id: "claude-sonnet", name: "Claude Sonnet" });
+    expect(info.parentModel).toBe(model);
     expect(info.modelRegistry).toBe(registry);
   });
 

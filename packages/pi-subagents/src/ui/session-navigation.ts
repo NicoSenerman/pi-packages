@@ -14,8 +14,7 @@
 
 import { buildSessionContext, parseSessionEntries, type SessionEntry, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { AgentConfigLookup } from "#src/config/agent-types";
-import type { EvictedSubagent } from "#src/lifecycle/subagent-manager";
-import type { SubagentStatus } from "#src/lifecycle/subagent-state";
+import { isRunningStatus, type SubagentStatus } from "#src/lifecycle/subagent-state";
 import type { AgentSessionEvent, SessionMessage, SubagentType } from "#src/types";
 import { formatDuration, getDisplayName } from "#src/ui/display";
 
@@ -33,6 +32,8 @@ export interface NavigableSubagent {
   readonly activeTools: ReadonlyMap<string, string>;
   readonly responseText: string;
   readonly agentMessages: readonly SessionMessage[];
+  /** Persisted transcript path, retained after the live session is released. */
+  readonly outputFile: string | undefined;
   isSessionReady(): boolean;
   subscribeToUpdates(fn: (event: AgentSessionEvent) => void): (() => void) | undefined;
   getToolDefinition(name: string): ToolDefinition | undefined;
@@ -41,14 +42,15 @@ export interface NavigableSubagent {
 /**
  * A navigable entry plus the label shown in the picker.
  *
- * A `live` entry sources its transcript from the in-memory record; an `evicted`
- * entry sources it from the persisted session file (the record is gone).
+ * A `live` entry sources its transcript from the in-memory record; a `snapshot`
+ * entry sources it from the persisted session file (the session was released by
+ * the retention sweep, but the record and its transcript pointer survive).
  */
 export type NavigationEntry =
   | { readonly kind: "live"; readonly label: string; readonly record: NavigableSubagent }
-  | { readonly kind: "evicted"; readonly label: string; readonly outputFile: string };
+  | { readonly kind: "snapshot"; readonly label: string; readonly outputFile: string };
 
-/** The fields `buildLabel` reads — shared by a live record and an evicted descriptor. */
+/** The fields `buildLabel` reads — shared by the live and snapshot (released-session) label paths. */
 interface LabelFields {
   readonly type: SubagentType;
   readonly description: string;
@@ -68,8 +70,12 @@ export interface StreamingState {
 export interface TranscriptSource {
   /** Current message history. */
   getMessages(): readonly SessionMessage[];
-  /** Subscribe to changes; returns an unsubscribe, or undefined for a static snapshot. */
-  subscribe(onChange: () => void): (() => void) | undefined;
+  /**
+   * Subscribe to changes; returns an unsubscribe, or undefined for a static
+   * snapshot. The session event is forwarded so a consumer can route on it —
+   * a streaming delta and a settled message warrant very different work.
+   */
+  subscribe(onChange: (event?: AgentSessionEvent) => void): (() => void) | undefined;
   /** Running-agent streaming state, or undefined when not streaming. */
   streaming(): StreamingState | undefined;
   /** Resolve a registered tool definition by name, for Pi's tool-execution components. */
@@ -77,34 +83,33 @@ export interface TranscriptSource {
 }
 
 /**
- * Label every navigable subagent for the picker: live records with a viewable
- * session, then agents evicted by the cleanup sweep (deduped against live ids).
+ * Label every navigable subagent for the picker: records with a live session
+ * source their transcript in-memory (`live`); records whose session the
+ * retention sweep released but which retain a transcript pointer source it from
+ * disk (`snapshot`). Records with neither are not navigable. Live entries first.
  */
 export function listNavigableAgents(
   agents: readonly NavigableSubagent[],
-  evicted: readonly EvictedSubagent[],
   registry: AgentConfigLookup,
 ): NavigationEntry[] {
-  const live = agents
-    .filter((record) => record.isSessionReady())
-    .map((record): NavigationEntry => ({ kind: "live", record, label: buildLabel(record, registry) }));
-  const liveIds = new Set(agents.map((record) => record.id));
-  const evictedEntries = evicted
-    .filter((descriptor) => !liveIds.has(descriptor.id))
-    .map((descriptor): NavigationEntry => ({
-      kind: "evicted",
-      outputFile: descriptor.outputFile,
-      label: buildLabel(descriptor, registry, true),
-    }));
-  return [...live, ...evictedEntries];
+  const live: NavigationEntry[] = [];
+  const snapshots: NavigationEntry[] = [];
+  for (const record of agents) {
+    if (record.isSessionReady()) {
+      live.push({ kind: "live", record, label: buildLabel(record, registry) });
+    } else if (record.outputFile) {
+      snapshots.push({ kind: "snapshot", outputFile: record.outputFile, label: buildLabel(record, registry, true) });
+    }
+  }
+  return [...live, ...snapshots];
 }
 
 /**
  * Source a transcript from a persisted child-session JSONL snapshot.
  *
- * For an agent evicted from the manager's map by the 10-minute cleanup sweep:
- * the in-memory record (and its message history) is gone, but the session file
- * survives on disk. Reads the file, drops the `SessionHeader`, and resolves the
+ * For an agent whose live session the retention sweep released: the in-memory
+ * message history is gone, but the session file survives on disk (and the
+ * record retains its path). Reads the file, drops the `SessionHeader`, and resolves the
  * message list via Pi's own parser. A static snapshot — no subscription, no
  * streaming, no live tool registry. `readFile` is injected so this module makes
  * no `fs` calls.
@@ -128,18 +133,18 @@ export function fileSnapshotSource(
 export function liveSource(record: NavigableSubagent): TranscriptSource {
   return {
     getMessages: () => record.agentMessages,
-    subscribe: (onChange) => record.subscribeToUpdates(() => onChange()),
+    subscribe: (onChange) => record.subscribeToUpdates(onChange),
     streaming: () =>
-      record.status === "running"
+      isRunningStatus(record.status)
         ? { activeTools: record.activeTools, responseText: record.responseText }
         : undefined,
     getToolDefinition: (name) => record.getToolDefinition(name),
   };
 }
 
-function buildLabel(fields: LabelFields, registry: AgentConfigLookup, evicted = false): string {
+function buildLabel(fields: LabelFields, registry: AgentConfigLookup, released = false): string {
   const name = getDisplayName(fields.type, registry);
   const duration = formatDuration(fields.startedAt, fields.completedAt);
-  const marker = evicted ? " · evicted (snapshot)" : "";
+  const marker = released ? " · session released (snapshot)" : "";
   return `${name} (${fields.description}) · ${fields.toolUses} tools · ${fields.status} · ${duration}${marker}`;
 }

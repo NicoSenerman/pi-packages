@@ -18,7 +18,7 @@ Run them in foreground or background, steer them mid-run, resume completed sessi
 - **In-process & native** — agents run inside the same pi runtime (no spawned subprocesses), sharing tool names, calling conventions, and UI patterns (`subagent`, `get_subagent_result`, `steer_subagent`) — feels native
 - **Parallel background agents** — spawn multiple agents that run concurrently with automatic queuing (configurable concurrency limit, default 4) and individual completion notifications
 - **Live widget UI** — persistent above-editor widget with animated spinners, live tool activity, token counts, and colored status icons
-- **Conversation viewer** — select any agent in `/agents` to open a live-scrolling overlay of its full conversation (auto-follows new content, scroll up to pause)
+- **Session transcripts** — open any subagent's full session transcript (running or with its session released) in pi's native read-only viewer via `/subagents:sessions`
 - **Custom agent types** — define agents in `.pi/agents/<name>.md` with YAML frontmatter: custom system prompts, model selection, thinking levels, tool restrictions
 - **Mid-run steering** — inject messages into running agents to redirect their work without restarting
 - **Session resume** — pick up where an agent left off, preserving full conversation context
@@ -29,7 +29,7 @@ Run them in foreground or background, steer them mid-run, resume completed sessi
 - **Context inheritance** — optionally fork the parent conversation into a sub-agent so it knows what's been discussed
 - **Styled completion notifications** — background agent results render as themed, compact notification boxes (icon, stats, result preview) instead of raw XML.
   Expandable to show full output
-- **Event bus** — lifecycle events (`subagents:created`, `started`, `completed`, `failed`, `steered`, `compacted`) emitted via `pi.events`, enabling other extensions to react to sub-agent activity
+- **Event bus** — lifecycle events (`subagents:created`, `started`, `completed`, `failed`, `resumed`, `steered`, `compacted`) emitted via `pi.events`, enabling other extensions to react to sub-agent activity
 
 ## Install
 
@@ -65,11 +65,11 @@ The extension renders a persistent widget above the editor showing active backgr
 
 ```text
 ● Agents
-├─ ⠹ Agent  Refactor auth module · ⟳5≤30 · 5 tool uses · 33.8k token (62%) · 12.3s
+├─ ⠹ Agent  Refactor auth module · ↻5≤30 · 5 tool uses · 33.8k token (62%) · 12.3s
 │    ⎿  editing 2 files…
-├─ ⠹ Explore  Find auth files · ⟳3 · 3 tool uses · 12.4k token (8%) · 4.1s
+├─ ⠹ Explore  Find auth files · ↻3 · 3 tool uses · 12.4k token (8%) · 4.1s
 │    ⎿  searching…
-├─ ⠹ Agent  Long-running task · ⟳42 · 38 tool uses · 91.0k token (84% · ↻2) · 2m17s
+├─ ⠹ Agent  Long-running task · ↻42 · 38 tool uses · 91.0k token (84% · ⇊2) · 2m17s
 │    ⎿  reading…
 └─ 2 queued
 ```
@@ -78,19 +78,19 @@ The token field is annotated with two optional signals inside parens:
 
 - **`NN%`** — context-window utilization (color-coded: <70% dim, 70–85% warning, ≥85% error).
   Omitted when the model has no declared `contextWindow`, or briefly right after compaction.
-- **`↻N`** — number of times the session has compacted, when > 0.
+- **`⇊N`** — number of times the session has compacted, when > 0.
   Stays dim; the percent's color carries urgency.
 
 Individual agent results render inline in the conversation:
 
 | State          | Example                                                                                  |
 | -------------- | ---------------------------------------------------------------------------------------- |
-| **Running**    | `⠹ ⟳3≤30 · 3 tool uses · 12.4k token (8%)` / `⎿ searching, reading 3 files…`             |
-| **Completed**  | `✓ ⟳8 · 5 tool uses · 33.8k token (62%) · 12.3s` / `⎿ Done`                              |
-| **Wrapped up** | `✓ ⟳50≤50 · 50 tool uses · 89.1k token (84% · ↻2) · 45.2s` / `⎿ Wrapped up (turn limit)` |
-| **Stopped**    | `■ ⟳3 · 3 tool uses · 12.4k token (8%)` / `⎿ Stopped`                                    |
-| **Error**      | `✗ ⟳3 · 3 tool uses · 12.4k token (8%)` / `⎿ Error: timeout`                             |
-| **Aborted**    | `✗ ⟳55≤50 · 55 tool uses · 102.3k token (95% · ↻3)` / `⎿ Aborted (max turns exceeded)`   |
+| **Running**    | `⠹ ↻3≤30 · 3 tool uses · 12.4k token (8%)` / `⎿ searching, reading 3 files…`             |
+| **Completed**  | `✓ ↻8 · 5 tool uses · 33.8k token (62%) · 12.3s` / `⎿ Done`                              |
+| **Wrapped up** | `✓ ↻50≤50 · 50 tool uses · 89.1k token (84% · ⇊2) · 45.2s` / `⎿ Wrapped up (turn limit)` |
+| **Stopped**    | `■ ↻3 · 3 tool uses · 12.4k token (8%)` / `⎿ Stopped`                                    |
+| **Error**      | `✗ ↻3 · 3 tool uses · 12.4k token (8%)` / `⎿ Error: timeout`                             |
+| **Aborted**    | `✗ ↻55≤50 · 55 tool uses · 102.3k token (95% · ⇊3)` / `⎿ Aborted (max turns exceeded)`   |
 
 Completed results can be expanded (ctrl+o in pi) to show the full agent output inline.
 
@@ -98,7 +98,7 @@ Background agent completion notifications render as styled boxes:
 
 ```text
 ✓ Find auth files completed
-  ⟳3 · 3 tool uses · 12.4k token · 4.1s
+  ↻3 · 3 tool uses · 12.4k token · 4.1s
   ⎿  Found 5 files related to authentication...
   transcript: .pi/output/agent-abc123.jsonl
 ```
@@ -116,7 +116,11 @@ The LLM receives structured `<task-notification>` XML for parsing, while the use
 The `general-purpose` agent is a **parent twin** — it receives the parent's entire system prompt plus a sub-agent context bridge, so it follows the same rules the parent does.
 Explore and Plan use `replace` mode: the parent prompt is the cacheable base and their specialist read-only instructions are appended last, giving them the final say.
 
-Default agents can be **ejected** (`/agents` → select agent → Eject) to export them as `.md` files for customization, **overridden** by creating a `.md` file with the same name (e.g. `.pi/agents/general-purpose.md`), or **disabled** per-project with `enabled: false` frontmatter.
+In every mode, a child that runs somewhere other than the parent — one given an isolated workspace by a `WorkspaceProvider` — does not inherit the parent's `Current working directory:` footer.
+That line is stripped from the inherited prompt, leaving the fresh footer Pi appends for the child session's own directory as the single, correct claim; without the strip, the child follows the parent's path instead.
+A child sharing the parent's directory inherits the prompt untouched, so its prefix stays byte-identical to the parent's.
+
+Default agents can be **overridden** by creating a `.md` file with the same name (e.g. `.pi/agents/general-purpose.md`), or **disabled** per-project with `enabled: false` frontmatter.
 
 ## Custom Agents
 
@@ -223,31 +227,23 @@ The message interrupts after the current tool execution.
 
 ## Commands
 
-| Command   | Description                       |
-| --------- | --------------------------------- |
-| `/agents` | Interactive agent management menu |
+| Command               | Description                                                                         |
+| --------------------- | ----------------------------------------------------------------------------------- |
+| `/subagents:settings` | Configure subagent settings (concurrency, turn limits, retention, interrupt policy) |
+| `/subagents:sessions` | View a subagent's session transcript (read-only)                                    |
 
-The `/agents` command opens an interactive menu:
+### `/subagents:settings`
 
-```text
-Running agents (2) — 1 running, 1 done     ← only shown when agents exist
-Agent types (6)                             ← unified list: defaults + custom
-Create new agent                            ← manual wizard or AI-generated
-Settings                                    ← max concurrency, max turns, grace turns
-```
+Interactive list to tune runtime settings — max concurrency, default max turns, grace turns, the two session-retention windows, and whether ESC aborts every subagent.
+The numeric settings open an input prompt; the abort-on-ESC entry is a direct flip.
+Changes persist across pi restarts (see [Persistent Settings](#persistent-settings)).
 
-- **Agent types** — unified list with source indicators: `•` (project), `◦` (global), `✕` (disabled).
-  Select an agent to manage it:
-  - **Default agents** (no override): Eject (export as `.md`), Disable
-  - **Default agents** (ejected/overridden): Edit, Disable, Reset to default, Delete
-  - **Custom agents**: Edit, Disable, Delete
-  - **Disabled agents**: Enable, Edit, Delete
-- **Eject** — writes the embedded default config as a `.md` file to project or personal location, so you can customize it
-- **Disable/Enable** — toggle agent availability.
-  Disabled agents stay visible in the list (marked `✕`) and can be re-enabled
-- **Create new agent** — choose project/personal location, then manual wizard (step-by-step prompts for name, tools, model, thinking, system prompt) or AI-generated (describe what the agent should do and a sub-agent writes the `.md` file).
-  Any name is allowed, including default agent names (overrides them)
-- **Settings** — configure max concurrency, default max turns, and grace turns at runtime
+### `/subagents:sessions`
+
+Pick any subagent — running, or completed with its live session already released — and read its full session transcript in pi's native per-entry viewer.
+Read-only: no steering, no session takeover (steering lives in the `steer_subagent` tool and the background widget).
+
+Creating and editing agent definitions is not a command — write an agent `.md` file in your editor, or ask a pi session to generate one (see [Custom Agents](#custom-agents)).
 
 ## Graceful Max Turns
 
@@ -272,18 +268,22 @@ The widget shows queued agents as a collapsed count.
 
 Foreground agents bypass the queue — they block the parent anyway.
 
+Stopping a still-queued agent produces the same completion notification a running agent's stop does.
+Because that agent never started, the notification says so and offers no result to collect.
+
 ## Persistent Settings
 
-Runtime tuning values set via `/agents` → Settings (max concurrency, default max turns, grace turns) persist across pi restarts.
+Runtime tuning values set via `/subagents:settings` (max concurrency, default max turns, grace turns, the two session-retention windows, and the abort-on-interrupt policy) persist across pi restarts.
+A completed subagent's record is kept for the whole parent session (so `get_subagent_result` never misses); only its heavy in-memory session is released — after `consumedSessionRetentionMinutes` once the result has been collected, or after the `unconsumedSessionRetentionMinutes` safety cap if it never was.
 Two files, merged on load:
 
 - **Global:** `~/.pi/agent/subagents.json` — your machine-wide defaults.
-  Edit by hand; the `/agents` menu never writes here.
+  Edit by hand; the `/subagents:settings` command never writes here.
 - **Project:** `<cwd>/.pi/subagents.json` — per-project overrides.
-  Written by `/agents` → Settings.
+  Written by `/subagents:settings`.
 
 **Precedence:** project overrides global on any field present in both.
-Missing fields fall back to the hardcoded defaults (max concurrency `4`, default max turns unlimited, grace turns `5`).
+Missing fields fall back to the hardcoded defaults (max concurrency `4`, default max turns unlimited, grace turns `5`, consumed-session retention `10` minutes, unconsumed-session retention `720` minutes, abort-all-on-interrupt `true`).
 
 **Example — global defaults for a beefy machine:**
 
@@ -292,15 +292,74 @@ mkdir -p ~/.pi/agent
 cat > ~/.pi/agent/subagents.json <<'EOF'
 {
   "maxConcurrent": 16,
-  "graceTurns": 10
+  "graceTurns": 10,
+  "unconsumedSessionRetentionMinutes": 1440,
+  "abortAllOnInterrupt": false
 }
 EOF
 ```
 
-Every project now starts with concurrency 16 and grace 10, without ever touching the menu.
-Individual projects can still override via `/agents` → Settings.
+Every project now starts with concurrency 16, grace 10, and ESC left to the parent, without ever touching the command.
+Individual projects can still override via `/subagents:settings`.
 
-**Failure behavior:** missing file is silent; malformed JSON logs a `[pi-subagents] Ignoring malformed settings at …` warning to stderr; invalid/out-of-range field values are dropped per-field; write failures downgrade the `/agents` toast to a warning with `(session only; failed to persist)`.
+**Failure behavior:** missing file is silent; malformed JSON logs a `[pi-subagents] Ignoring malformed settings at …` warning to stderr; invalid/out-of-range field values are dropped per-field; write failures downgrade the `/subagents:settings` toast to a warning with `(session only; failed to persist)`.
+
+### Excluding package extensions from children
+
+Some package extensions are parent-scoped or expensive to initialize per session.
+Because children run in the parent's process, such an extension initializing once per child multiplies its cost in a single heap — enough, in the case that motivated this feature, to exhaust the V8 heap with four concurrent children.
+
+List the offending packages under `excludedExtensionPackages` to keep their extensions out of child sessions:
+
+```json
+{
+  "excludedExtensionPackages": ["npm:@cortexkit/pi-magic-context"]
+}
+```
+
+Entries must match Pi's configured package source string exactly, as it appears in your Pi `settings.json` `packages` array — there is no glob or prefix matching.
+
+What this does and does not do:
+
+- Only the matched packages' **extensions** are disabled, and only in children.
+  Their skills, prompts, and themes stay available to children.
+- The parent session is unaffected, as is the child's own settings — only the child's resource loading is filtered.
+- The exclusion happens during package resolution, so the extension's module is never imported and its factory never runs in the child.
+- Excluding a package also removes the **tools** that extension registers from child sessions.
+  If you need the tools but want the extension's resources released when the child is disposed, exclusion is the wrong lever — see [Child session lifecycle](#child-session-lifecycle) below.
+
+This key is hand-edited in the global or project `subagents.json`; `/subagents:settings` does not expose it, but it is preserved when you change other settings there.
+An absent or empty list reproduces the default behavior, in which children inherit every parent extension.
+
+### Child session lifecycle
+
+A child session runs in the parent's process but is a full Pi session with its own extension set.
+It receives the standard pair of session lifecycle events:
+
+| Event              | When                                                | Reason      |
+| ------------------ | --------------------------------------------------- | ----------- |
+| `session_start`    | Extensions are bound, before the child's first turn | `"startup"` |
+| `session_shutdown` | The child session is disposed                       | `"quit"`    |
+
+Disposal happens when the retention window for a finished agent expires, when completed records are cleared at session start or switch, when the parent session shuts down, or when child extension binding fails partway.
+It does **not** happen the moment an agent finishes: the session is retained so the agent can be resumed, per the `consumedSessionRetentionMinutes` and `unconsumedSessionRetentionMinutes` settings above.
+
+The shutdown event is dispatched and awaited **before** the child's `AgentSession` is disposed, so a handler still has a live context and can close what it opened — stdio subprocesses, sockets, timers, file handles.
+Each child's shutdown is bounded: a handler that never resolves is abandoned after a few seconds and disposal proceeds, so one misbehaving extension cannot stall the parent's teardown or Pi's exit.
+
+If you author an extension that runs in children, note that its `session_shutdown` handler now fires **once per child session** in addition to once for the parent.
+A handler that flushes a log, writes a summary, or closes a shared resource should be safe to run repeatedly within one process.
+Before this behavior existed, children fired `session_start` with no matching shutdown, so extension-owned resources accumulated for the life of the parent process.
+
+### Abort on interrupt
+
+By default, pressing ESC to interrupt the parent agent also aborts every subagent.
+Set `abortAllOnInterrupt` to `false` (or flip it from `/subagents:settings`) to keep background and queued subagents running when you interrupt the parent — useful when you spawn long background work and then want to steer the parent without losing it.
+
+A foreground agent aborts on ESC regardless of this setting.
+It holds the parent's own run signal for the duration of its blocking tool call, so the interrupt reaches it directly; the policy governs background and queued agents.
+
+The policy is read at the moment ESC fires, so flipping it mid-session applies to the very next interrupt.
 
 ## Events
 
@@ -312,10 +371,11 @@ Agent lifecycle events are emitted via `pi.events.emit()` so other extensions ca
 | `subagents:started`          | Agent transitions to running (including queued→running) | `id`, `type`, `description`                                                                                          |
 | `subagents:completed`        | Agent finished successfully                             | `id`, `type`, `durationMs`, `tokens` (lifetime `{ input, output, total }`), `toolUses`, `result`                     |
 | `subagents:failed`           | Agent errored, stopped, or aborted                      | same as completed + `error`, `status`                                                                                |
+| `subagents:resumed`          | Resumed run reached a terminal state (completed/error)  | same as completed + `error`, `status` (`buildEventData` shape) — `status`/`error` discriminate                       |
 | `subagents:steered`          | Steering message sent                                   | `id`, `message`                                                                                                      |
 | `subagents:compacted`        | Agent's session successfully compacted                  | `id`, `type`, `description`, `reason` (`"manual"` / `"threshold"` / `"overflow"`), `tokensBefore`, `compactionCount` |
 | `subagents:settings_loaded`  | Persisted settings applied at extension init            | `settings` (merged global + project)                                                                                 |
-| `subagents:settings_changed` | `/agents` → Settings mutation was applied               | `settings`, `persisted` (`boolean` — `false` on write failure)                                                       |
+| `subagents:settings_changed` | `/subagents:settings` mutation was applied              | `settings`, `persisted` (`boolean` — `false` on write failure)                                                       |
 
 `tokens.total` = `input + output + cacheWrite`.
 `cacheRead` is excluded — each turn's `cacheRead` is the cumulative cached prefix re-read on that one API call, so summing per-message would over-count it.
@@ -330,7 +390,8 @@ The earlier `isolation: "worktree"` spawn flag and `isolation:` frontmatter key 
 ## Removed: agent memory and skill preloading
 
 Persistent agent memory (the `memory:` frontmatter key) and skill preloading (the `skills:` frontmatter key) were removed when the core was slimmed down.
-Children now always inherit the parent's skills and extensions, so the `isolated`, `extensions`, and `skills` frontmatter keys no longer exist.
+Children inherit the parent's skills and extensions by default, so the `isolated`, `extensions`, and `skills` frontmatter keys no longer exist.
+Package-level extension opt-outs live in the [`excludedExtensionPackages`](#excluding-package-extensions-from-children) setting rather than agent frontmatter.
 
 ## Migrating from `disallowed_tools`
 

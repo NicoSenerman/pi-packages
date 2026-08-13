@@ -22,6 +22,7 @@ import type { ChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { SubagentSession } from "#src/lifecycle/subagent-session";
 import type { EnvInfo } from "#src/session/env";
+import type { ModelRegistry } from "#src/session/model-resolver";
 import {
   type AssemblerIO,
   assembleSessionConfig,
@@ -70,6 +71,8 @@ export interface SessionManagerLike {
 export interface ResourceLoaderOptions {
   cwd: string;
   agentDir: string;
+  /** Settings the loader resolves packages from; defaults to the ambient ones when absent. */
+  settingsManager?: SettingsManager;
   noPromptTemplates?: boolean;
   noThemes?: boolean;
   noContextFiles?: boolean;
@@ -84,8 +87,8 @@ export interface CreateSessionOptions {
   agentDir: string;
   sessionManager: SessionManagerLike;
   settingsManager: SettingsManager;
-  modelRegistry: unknown;
-  model?: unknown;
+  modelRegistry: ModelRegistry;
+  model?: Model<any>;
   tools: string[];
   resourceLoader: ResourceLoaderLike;
   thinkingLevel?: ThinkingLevel;
@@ -116,6 +119,12 @@ export interface SessionFactoryIO {
   createResourceLoader: (opts: ResourceLoaderOptions) => ResourceLoaderLike;
   createSessionManager: (cwd: string, sessionDir: string) => SessionManagerLike;
   createSettingsManager: (cwd: string, agentDir: string) => SettingsManager;
+  /**
+   * Settings view the child's resource loader resolves packages from.
+   * The composition root decides whether any package extensions are excluded;
+   * the identity function reproduces the child's default full inheritance.
+   */
+  createLoaderSettingsManager: (parent: SettingsManager) => SettingsManager;
   createSession: (
     opts: CreateSessionOptions,
   ) => Promise<{ session: AgentSession }>;
@@ -190,96 +199,96 @@ export async function createSubagentSession(
   );
 
   const agentDir = deps.io.getAgentDir();
+  const sessionSettings = deps.io.createSettingsManager(
+    cfg.effectiveCwd,
+    agentDir,
+  );
+  const loaderSettings = deps.io.createLoaderSettingsManager(sessionSettings);
 
-  // Mark child sessions BEFORE extension factories run.
-  // Factories execute during loader.reload()/createSession (registerTool),
-  // not only during bindExtensions (session_start). Parent-only extensions
-  // such as pi-fff check PI_SUBAGENT_SESSION=1 at factory time and no-op so
-  // children keep stock grep/find and do not open a second FileFinder on the
-  // shared LMDB DBs (error: "environment already open in this program").
+  // Mark child sessions BEFORE extension factories run. Parent-only
+  // extensions such as pi-fff check PI_SUBAGENT_SESSION=1 at factory time
+  // and no-op so children keep stock grep/find and do not open a second
+  // FileFinder on the shared LMDB DBs.
   const prevSubagentSession = process.env.PI_SUBAGENT_SESSION;
   process.env.PI_SUBAGENT_SESSION = "1";
 
+  // Children inherit the parent's skills and every extension the composition
+  // root did not exclude (#696).
+  //
+  // Suppress AGENTS.md/CLAUDE.md and APPEND_SYSTEM.md - upstream's
+  // buildSystemPrompt() re-appends both AFTER systemPromptOverride, which
+  // would defeat prompt_mode: replace. Parent context, if wanted, reaches the
+  // subagent via prompt_mode: append (parentSystemPrompt is embedded in
+  // systemPromptOverride) or inherit_context (conversation).
+  const loader = deps.io.createResourceLoader({
+    cwd: cfg.effectiveCwd,
+    agentDir,
+    settingsManager: loaderSettings,
+    noPromptTemplates: true,
+    noThemes: true,
+    noContextFiles: true,
+    systemPromptOverride: () => cfg.systemPrompt,
+    appendSystemPromptOverride: () => [],
+  });
+  await loader.reload();
+
+  // Create a persisted SessionManager so transcripts are written in Pi's
+  // official JSONL format. Falls back to a temp directory when the parent
+  // session is not persisted (e.g. headless/API mode).
+  const sessionDir = deps.io.deriveSessionDir(
+    params.parentSession?.parentSessionFile,
+    cfg.effectiveCwd,
+  );
+  const sessionManager = deps.io.createSessionManager(
+    cfg.effectiveCwd,
+    sessionDir,
+  );
+  sessionManager.newSession({
+    parentSession: params.parentSession?.parentSessionId,
+  });
+  const sessionId = sessionManager.getSessionId();
+
+  const { session } = await deps.io.createSession({
+    cwd: cfg.effectiveCwd,
+    agentDir,
+    sessionManager,
+    settingsManager: sessionSettings,
+    modelRegistry: snapshot.modelRegistry,
+    model: cfg.model,
+    tools: cfg.toolNames,
+    resourceLoader: loader,
+    thinkingLevel: cfg.thinkingLevel,
+  });
+
+  const subagentSession = new SubagentSession(session, {
+    outputFile: sessionManager.getSessionFile(),
+    sessionId,
+    sessionDir,
+    agentName: type,
+    agentMaxTurns: cfg.agentMaxTurns,
+    parentContext: snapshot.parentContext,
+    lifecycle: deps.lifecycle,
+  });
+
+  // Publish session-created before bindExtensions() so observers (e.g. the
+  // permission system) can register the child synchronously and have their
+  // entry in place for the first permission check during child extension
+  // initialization. The event bus dispatches synchronously, so a synchronous
+  // subscriber completes before this returns.
+  deps.lifecycle.sessionCreated({ sessionId, parentSessionId });
+
   try {
-    // Children always load the parent's extensions and skills.
-    // Suppress AGENTS.md/CLAUDE.md and APPEND_SYSTEM.md - upstream's
-    // buildSystemPrompt() re-appends both AFTER systemPromptOverride, which
-    // would defeat prompt_mode: replace. Parent context, if wanted, reaches the
-    // subagent via prompt_mode: append (parentSystemPrompt is embedded in
-    // systemPromptOverride) or inherit_context (conversation).
-    const loader = deps.io.createResourceLoader({
-      cwd: cfg.effectiveCwd,
-      agentDir,
-      noPromptTemplates: true,
-      noThemes: true,
-      noContextFiles: true,
-      systemPromptOverride: () => cfg.systemPrompt,
-      appendSystemPromptOverride: () => [],
-    });
-    await loader.reload();
-
-    // Create a persisted SessionManager so transcripts are written in Pi's
-    // official JSONL format. Falls back to a temp directory when the parent
-    // session is not persisted (e.g. headless/API mode).
-    const sessionDir = deps.io.deriveSessionDir(
-      params.parentSession?.parentSessionFile,
-      cfg.effectiveCwd,
-    );
-    const sessionManager = deps.io.createSessionManager(
-      cfg.effectiveCwd,
-      sessionDir,
-    );
-    sessionManager.newSession({
-      parentSession: params.parentSession?.parentSessionId,
-    });
-    const sessionId = sessionManager.getSessionId();
-
-    const { session } = await deps.io.createSession({
-      cwd: cfg.effectiveCwd,
-      agentDir,
-      sessionManager,
-      settingsManager: deps.io.createSettingsManager(
-        cfg.effectiveCwd,
-        agentDir,
-      ),
-      modelRegistry: snapshot.modelRegistry,
-      model: cfg.model,
-      tools: cfg.toolNames,
-      resourceLoader: loader,
-      thinkingLevel: cfg.thinkingLevel,
-    });
-
-    const subagentSession = new SubagentSession(session, {
-      outputFile: sessionManager.getSessionFile(),
-      sessionId,
-      sessionDir,
-      agentName: type,
-      agentMaxTurns: cfg.agentMaxTurns,
-      parentContext: snapshot.parentContext,
-      lifecycle: deps.lifecycle,
-    });
-
-    // Publish session-created before bindExtensions() so observers (e.g. the
-    // permission system) can register the child synchronously and have their
-    // entry in place for the first permission check during child extension
-    // initialization. The event bus dispatches synchronously, so a synchronous
-    // subscriber completes before this returns.
-    deps.lifecycle.sessionCreated({ sessionId, parentSessionId });
-
-    try {
-      // Bind extensions so that session_start fires and extensions can initialize.
-      await session.bindExtensions({});
-      // Apply recursion guard after bindExtensions so extension-registered tools
-      // are included in the post-bind active set.
-      applyRecursionGuard(session);
-    } catch (err) {
-      // Binding failed after session-created — dispose (emit disposed +
-      // session.dispose()) before rethrowing so registration is never leaked.
-      subagentSession.dispose();
-      throw err;
-    }
-
-    return subagentSession;
+    // Bind extensions so that session_start fires and extensions can initialize.
+    await session.bindExtensions({});
+    // Apply recursion guard after bindExtensions so extension-registered tools
+    // are included in the post-bind active set.
+    applyRecursionGuard(session);
+  } catch (err) {
+    // Binding failed after session-created — dispose (child session_shutdown +
+    // session.dispose() + emit disposed) before rethrowing so neither the
+    // registration nor a partially-initialized extension's resources leak.
+    await subagentSession.dispose();
+    throw err;
   } finally {
     if (prevSubagentSession === undefined) {
       delete process.env.PI_SUBAGENT_SESSION;
@@ -287,4 +296,6 @@ export async function createSubagentSession(
       process.env.PI_SUBAGENT_SESSION = prevSubagentSession;
     }
   }
+
+  return subagentSession;
 }

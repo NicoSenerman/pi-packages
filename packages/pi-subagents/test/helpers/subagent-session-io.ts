@@ -41,6 +41,8 @@ export function createSubagentSessionIO() {
 			getSessionId: vi.fn().mockReturnValue("child-session-id"),
 		}),
 		createSettingsManager: vi.fn().mockReturnValue({}),
+		// Identity by default: no package exclusions, so children inherit everything.
+		createLoaderSettingsManager: vi.fn().mockImplementation((parent: unknown) => parent),
 		createSession: vi.fn(),
 		assemblerIO: {
 			buildAgentPrompt: vi.fn((..._args: unknown[]): string => "system prompt"),

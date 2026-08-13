@@ -1,6 +1,7 @@
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import { AgentTool } from "#src/tools/agent-tool";
-import { createToolDeps } from "#test/helpers/make-deps";
+import { createToolDeps, createToolDepsWithDisabledBuiltInAgents } from "#test/helpers/make-deps";
 import { createTestSubagent } from "#test/helpers/make-subagent";
 import { createMockSession, createSubagentSessionStub, toSubagentSession } from "#test/helpers/mock-session";
 
@@ -8,7 +9,7 @@ function makeCtx(overrides: Record<string, unknown> = {}) {
 	return {
 		ui: { fake: true },
 		...overrides,
-	};
+	} as unknown as ExtensionContext;
 }
 
 function makeTool(deps: ReturnType<typeof createToolDeps>) {
@@ -50,6 +51,27 @@ describe("AgentTool", () => {
 		expect(def.description).toContain("- Explore: Fast codebase exploration agent");
 	});
 
+	it("lists the built-in agent guidelines in registry order", () => {
+		const def = makeTool(createToolDeps()).toToolDefinition();
+		const guidelines = [
+			"- Use general-purpose for complex tasks that need file editing.",
+			"- Use Explore for codebase searches and code understanding.",
+			"- Use Plan for architecture and implementation planning.",
+		];
+		for (const line of guidelines) expect(def.description).toContain(line);
+		const positions = guidelines.map((line) => def.description.indexOf(line));
+		expect(positions).toEqual([...positions].sort((a, b) => a - b));
+	});
+
+	it.for(["Explore", "Plan", "general-purpose"])(
+		"omits the type-list entry and guideline for a disabled built-in %s",
+		(name) => {
+			const def = makeTool(createToolDepsWithDisabledBuiltInAgents(name)).toToolDefinition();
+			expect(def.description).not.toContain(`- ${name}:`);
+			expect(def.description).not.toContain(`- Use ${name} for `);
+		},
+	);
+
 	it("calls registry.reload() on each execute", async () => {
 		const deps = createToolDeps();
 		const reloadSpy = vi.spyOn(deps.registry, "reload");
@@ -90,6 +112,35 @@ describe("AgentTool — resume path", () => {
 		expect(result.content[0].text).toContain("no active session");
 	});
 
+	it("returns not-found copy without claiming cleanup for an unknown resume ID", async () => {
+		const deps = createToolDeps();
+		deps.manager.getRecord = vi.fn().mockReturnValue(undefined);
+		const result = await execute(deps, {
+			prompt: "continue",
+			description: "resume",
+			subagent_type: "general-purpose",
+			resume: "nonexistent",
+		});
+		expect(result.content[0].text).toContain("Agent not found");
+		expect(result.content[0].text).not.toContain("cleaned up");
+	});
+
+	it("points a released-agent resume at get_subagent_result instead of resuming", async () => {
+		const deps = createToolDeps();
+		const released = createTestSubagent();
+		released.subagentSession = toSubagentSession(createSubagentSessionStub(createMockSession(), "/tasks/agent.jsonl"));
+		await released.releaseSession();
+		deps.manager.getRecord = vi.fn().mockReturnValue(released);
+		const result = await execute(deps, {
+			prompt: "continue",
+			description: "resume",
+			subagent_type: "general-purpose",
+			resume: "agent-1",
+		});
+		expect(result.content[0].text).toContain("get_subagent_result");
+		expect(deps.manager.resume).not.toHaveBeenCalled();
+	});
+
 	it("returns result text on successful resume", async () => {
 		const deps = createToolDeps();
 		const resumeRecord = createTestSubagent();
@@ -103,6 +154,22 @@ describe("AgentTool — resume path", () => {
 			resume: "agent-1",
 		});
 		expect(result.content[0].text).toContain("Resumed output.");
+	});
+
+	it("marks the resumed record consumed (resume-return delivery edge)", async () => {
+		const deps = createToolDeps();
+		const resumeRecord = createTestSubagent();
+		resumeRecord.subagentSession = toSubagentSession(createSubagentSessionStub(createMockSession()));
+		deps.manager.getRecord = vi.fn().mockReturnValue(resumeRecord);
+		const resumed = createTestSubagent({ result: "Resumed output." });
+		deps.manager.resume = vi.fn().mockResolvedValue(resumed);
+		await execute(deps, {
+			prompt: "continue",
+			description: "resume",
+			subagent_type: "general-purpose",
+			resume: "agent-1",
+		});
+		expect(resumed.consumed).toBe(true);
 	});
 });
 
@@ -156,7 +223,7 @@ describe("AgentTool — background execution", () => {
 		expect(result.content[0].text).toContain("background");
 	});
 
-	it("passes parentSession.toolCallId to manager.spawn so the manager wires NotificationState", async () => {
+	it("passes parentSession.toolCallId to manager.spawn", async () => {
 		const deps = createToolDeps();
 		deps.manager.getRecord = vi.fn().mockReturnValue(createTestSubagent({ status: "running" }));
 		await execute(deps, {

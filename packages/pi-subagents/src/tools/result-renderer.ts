@@ -7,7 +7,8 @@
  */
 
 import type { AgentDetails, Theme } from "#src/ui/display";
-import { formatMs, formatTurns, SPINNER } from "#src/ui/display";
+import { formatMs, formatTurns } from "#src/ui/display";
+import { GLYPHS, SPINNER } from "#src/ui/glyphs";
 
 // ---- Dispatcher ----
 
@@ -34,13 +35,13 @@ export function renderRunning(details: AgentDetails, theme: Theme): string {
 	const frame = SPINNER[details.spinnerFrame ?? 0];
 	const s = renderStats(details, theme);
 	let line = theme.fg("accent", frame) + (s ? " " + s : "");
-	line += "\n" + theme.fg("dim", `  ⎿  ${details.activity ?? "thinking\u2026"}`);
+	line += "\n" + theme.fg("dim", `  ${GLYPHS.subLine}  ${details.activity ?? "thinking\u2026"}`);
 	return line;
 }
 
 /** Render background launch status. */
 export function renderBackground(details: AgentDetails, theme: Theme): string {
-	return theme.fg("dim", `  \u23BF  Running in background (ID: ${details.agentId})`);
+	return theme.fg("dim", `  ${GLYPHS.subLine}  Running in background (ID: ${details.agentId})`);
 }
 
 /** Render completed or steered status with optional expanded result text. */
@@ -52,7 +53,9 @@ export function renderCompleted(
 ): string {
 	const duration = formatMs(details.durationMs);
 	const isSteered = details.status === "steered";
-	const icon = isSteered ? theme.fg("warning", "\u2713") : theme.fg("success", "\u2713");
+	const icon = isSteered
+		? theme.fg("warning", GLYPHS.success)
+		: theme.fg("success", GLYPHS.success);
 	const s = renderStats(details, theme);
 	let line = icon + (s ? " " + s : "");
 	line += " " + theme.fg("dim", "\u00B7") + " " + theme.fg("dim", duration);
@@ -74,7 +77,7 @@ export function renderCompleted(
 		}
 	} else {
 		const doneText = isSteered ? "Wrapped up (turn limit)" : "Done";
-		line += "\n" + theme.fg("dim", `  \u23BF  ${doneText}`);
+		line += "\n" + theme.fg("dim", `  ${GLYPHS.subLine}  ${doneText}`);
 	}
 	return line;
 }
@@ -82,20 +85,24 @@ export function renderCompleted(
 /** Render stopped status: dim stop icon + stats + "Stopped". */
 export function renderStopped(details: AgentDetails, theme: Theme): string {
 	const s = renderStats(details, theme);
-	let line = theme.fg("dim", "\u25A0") + (s ? " " + s : "");
-	line += "\n" + theme.fg("dim", "  \u23BF  Stopped");
+	let line = theme.fg("dim", GLYPHS.stopped) + (s ? " " + s : "");
+	line += "\n" + theme.fg("dim", `  ${GLYPHS.subLine}  Stopped`);
 	return line;
 }
 
 /** Render error or aborted status: error icon + stats + status message. */
 export function renderFailed(details: AgentDetails, theme: Theme): string {
 	const s = renderStats(details, theme);
-	let line = theme.fg("error", "\u2717") + (s ? " " + s : "");
+	let line = theme.fg("error", GLYPHS.failure) + (s ? " " + s : "");
 
 	if (details.status === "error") {
-		line += "\n" + theme.fg("error", `  \u23BF  Error: ${details.error ?? "unknown"}`);
+		line +=
+			"\n" +
+			theme.fg("error", `  ${GLYPHS.subLine}  Error: ${details.error ?? "unknown"}`);
 	} else {
-		line += "\n" + theme.fg("warning", "  \u23BF  Aborted (max turns exceeded)");
+		line +=
+			"\n" +
+			theme.fg("warning", `  ${GLYPHS.subLine}  Aborted (max turns exceeded)`);
 	}
 	return line;
 }
@@ -103,7 +110,7 @@ export function renderFailed(details: AgentDetails, theme: Theme): string {
 // ---- Shared helper ----
 
 /**
- * Build the stats string: "haiku · thinking: high · ⟳5≤30 · 3 tool uses · 33.8k token".
+ * Build the stats string: "haiku · thinking: high · ↻5≤30 · 3 tool uses · 33.8k token".
  * Returns an empty string when all fields are absent or zero.
  */
 export function renderStats(details: AgentDetails, theme: Theme): string {

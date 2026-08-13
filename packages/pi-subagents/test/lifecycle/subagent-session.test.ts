@@ -11,6 +11,8 @@ import { createChildLifecycleMock } from "#test/helpers/subagent-session-io";
  */
 function createSession(finalText: string) {
   const listeners: Array<(event: any) => void> = [];
+  /** Teardown call order — the shutdown emit must precede session disposal. */
+  const calls: string[] = [];
   const session = {
     messages: [] as unknown[],
     subscribe: vi.fn((listener: (event: any) => void) => {
@@ -25,14 +27,23 @@ function createSession(finalText: string) {
     }),
     abort: vi.fn(),
     steer: vi.fn().mockResolvedValue(undefined),
-    dispose: vi.fn(),
+    dispose: vi.fn(() => {
+      calls.push("dispose");
+    }),
+    hasExtensionHandlers: vi.fn((_eventType: string): boolean => true),
+    extensionRunner: {
+      emit: vi.fn((_event: unknown): Promise<unknown> => {
+        calls.push("emit");
+        return Promise.resolve(undefined);
+      }),
+    },
     getSessionStats: vi.fn(() => ({
       tokens: { input: 100, output: 50, cacheWrite: 10 },
       contextUsage: { percent: 42 },
     })),
     getToolDefinition: vi.fn((_name: string): unknown => undefined),
   };
-  return { session, listeners };
+  return { session, listeners, calls };
 }
 
 function emitTurnEnd(listeners: Array<(e: any) => void>) {
@@ -339,12 +350,62 @@ describe("SubagentSession — delegate methods", () => {
 });
 
 describe("SubagentSession — dispose", () => {
-  it("disposes the session and emits disposed with the child session id", () => {
+  it("disposes the session and emits disposed with the child session id", async () => {
     const { session } = createSession("X");
     const { sub } = makeSubagentSession(session, { sessionId: "child-session-abc", lifecycle });
-    sub.dispose();
+    await sub.dispose();
     expect(session.dispose).toHaveBeenCalledOnce();
     expect(lifecycle.disposed).toHaveBeenCalledOnce();
     expect(lifecycle.disposed).toHaveBeenCalledWith({ sessionId: "child-session-abc" });
+  });
+
+  it("emits session_shutdown to the child's extensions before disposing the session", async () => {
+    const { session, calls } = createSession("X");
+    const { sub } = makeSubagentSession(session);
+    await sub.dispose();
+    expect(session.extensionRunner.emit).toHaveBeenCalledWith({
+      type: "session_shutdown",
+      reason: "quit",
+    });
+    expect(calls).toEqual(["emit", "dispose"]);
+  });
+
+  it("unregisters the child only after its shutdown handlers have run", async () => {
+    const { session } = createSession("X");
+    const { sub } = makeSubagentSession(session, { lifecycle });
+    session.extensionRunner.emit = vi.fn((_event: unknown): Promise<unknown> => {
+      expect(lifecycle.disposed).not.toHaveBeenCalled();
+      return Promise.resolve(undefined);
+    });
+    await sub.dispose();
+    expect(lifecycle.disposed).toHaveBeenCalledOnce();
+  });
+
+  it("disposes a child whose extensions registered no shutdown handler", async () => {
+    const { session, calls } = createSession("X");
+    session.hasExtensionHandlers = vi.fn((_eventType: string): boolean => false);
+    const { sub } = makeSubagentSession(session, { lifecycle });
+    await sub.dispose();
+    expect(session.extensionRunner.emit).not.toHaveBeenCalled();
+    expect(calls).toEqual(["dispose"]);
+    expect(lifecycle.disposed).toHaveBeenCalledOnce();
+  });
+
+  it("is idempotent: a second dispose neither re-emits nor re-disposes", async () => {
+    const { session } = createSession("X");
+    const { sub } = makeSubagentSession(session, { lifecycle });
+    await sub.dispose();
+    await sub.dispose();
+    expect(session.extensionRunner.emit).toHaveBeenCalledOnce();
+    expect(session.dispose).toHaveBeenCalledOnce();
+    expect(lifecycle.disposed).toHaveBeenCalledOnce();
+  });
+
+  it("guards re-entry before its first await, so concurrent disposes emit once", async () => {
+    const { session } = createSession("X");
+    const { sub } = makeSubagentSession(session, { lifecycle });
+    await Promise.all([sub.dispose(), sub.dispose()]);
+    expect(session.extensionRunner.emit).toHaveBeenCalledOnce();
+    expect(session.dispose).toHaveBeenCalledOnce();
   });
 });

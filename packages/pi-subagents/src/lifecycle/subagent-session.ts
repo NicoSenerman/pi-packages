@@ -16,6 +16,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { ChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
+import { emitChildSessionShutdown } from "#src/lifecycle/child-shutdown";
 import { normalizeMaxTurns } from "#src/lifecycle/turn-limits";
 import { getSessionContextPercent, type SessionStatsLike } from "#src/lifecycle/usage";
 import { extractText } from "#src/session/context";
@@ -62,6 +63,8 @@ export interface SubagentSessionMeta {
  * One child AgentSession plus its turn-driving and teardown — born complete.
  */
 export class SubagentSession {
+  private disposed = false;
+
   constructor(
     private readonly _session: AgentSession,
     private readonly meta: SubagentSessionMeta,
@@ -190,8 +193,23 @@ export class SubagentSession {
     return this._session.getToolDefinition(name);
   }
 
-  /** Tear down: session.dispose() + emit `disposed` (registry unregister). */
-  dispose(): void {
+  /**
+   * Tear down: child `session_shutdown` + session.dispose() + emit `disposed`
+   * (registry unregister).
+   *
+   * The order is load-bearing. The shutdown emit runs first because
+   * `AgentSession.dispose()` invalidates the extension runner, after which every
+   * handler's context throws (#709). The `disposed` event runs last because it
+   * unregisters the child from the permission system, so a shutdown handler
+   * still resolves against a live registration.
+   *
+   * Idempotent: the guard is set before the first await, so concurrent callers
+   * (a retention sweep racing a manager teardown) emit and dispose exactly once.
+   */
+  async dispose(): Promise<void> {
+    if (this.disposed) return;
+    this.disposed = true;
+    await emitChildSessionShutdown(this._session);
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- dispose may not exist on all session implementations
     this._session.dispose?.();
     this.meta.lifecycle.disposed({ sessionId: this.meta.sessionId });

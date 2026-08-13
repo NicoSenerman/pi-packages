@@ -44,7 +44,7 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
 
 	onSubagentCompleted(record: Subagent): void {
 		// Emit lifecycle event based on terminal status.
-		const isError = record.status === "error" || record.status === "stopped" || record.status === "aborted";
+		const isError = record.isTerminalError();
 		const eventData = buildEventData(record);
 		if (isError) {
 			this.emit("subagents:failed", eventData);
@@ -52,7 +52,24 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
 			this.emit("subagents:completed", eventData);
 		}
 
-		// Persist final record for cross-extension history reconstruction.
+		this.persistAndNotify(record);
+	}
+
+	onSubagentResumed(record: Subagent): void {
+		// A resumed run terminates only as completed or error; a single distinct
+		// channel carries both — the payload's status/error discriminate. Existing
+		// subagents:completed/failed subscribers keep their once-per-run semantics.
+		this.emit("subagents:resumed", buildEventData(record));
+		this.persistAndNotify(record);
+	}
+
+	/**
+	 * Persist the terminal record for cross-extension history reconstruction and
+	 * announce completion. Shared by every terminal-state handler (fresh and
+	 * resumed). The nudge suppresses itself if the record is already consumed —
+	 * consumption is domain state on the record, not owned here.
+	 */
+	private persistAndNotify(record: Subagent): void {
 		this.appendEntry("subagents:record", {
 			id: record.id,
 			type: record.type,
@@ -63,10 +80,6 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
 			startedAt: record.startedAt,
 			completedAt: record.completedAt,
 		});
-
-		// Skip notification if result was already consumed via get_subagent_result.
-		if (record.notification?.resultConsumed) return;
-
 		this.notifications.sendCompletion(record);
 	}
 

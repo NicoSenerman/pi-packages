@@ -1,5 +1,6 @@
 /**
- * turn_start event handler that aborts subagents on a parent interrupt (ESC).
+ * turn_start event handler that aborts subagents on a parent interrupt (ESC),
+ * subject to the abort-all policy.
  *
  * The parent agent loop creates a fresh AbortController per run and only aborts
  * it on an explicit interrupt — never on normal completion. So latching to the
@@ -20,16 +21,23 @@ interface InterruptCtx {
 }
 
 /**
- * Latches the current parent abort signal and aborts all subagents when it fires.
+ * Latches the current parent abort signal and aborts all subagents when it fires,
+ * unless `shouldAbortAll` declines.
  *
  * The latch dedups by reference: most turns reuse the same signal (no-op); a new
  * run's signal triggers a detach-and-rewire. The `abort` listener is one-shot.
+ *
+ * `shouldAbortAll` is consulted inside the listener, so a mid-session settings
+ * change applies to the very next interrupt without re-wiring.
  */
 export class InterruptHandler {
   private latched?: AbortSignal;
   private detach?: () => void;
 
-  constructor(private readonly manager: InterruptManager) {}
+  constructor(
+    private readonly manager: InterruptManager,
+    private readonly shouldAbortAll: () => boolean,
+  ) {}
 
   handleTurnStart(ctx: InterruptCtx): void {
     const signal = ctx.signal;
@@ -41,6 +49,7 @@ export class InterruptHandler {
     if (!signal) return;
 
     const onAbort = (): void => {
+      if (!this.shouldAbortAll()) return;
       this.manager.abortAll();
     };
     signal.addEventListener("abort", onAbort, { once: true });

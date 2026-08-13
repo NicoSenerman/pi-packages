@@ -1,57 +1,42 @@
 import { describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
-import type { EvictedSubagent } from "#src/lifecycle/subagent-manager";
-import type { SessionMessage } from "#src/types";
+import type { AgentSessionEvent, SessionMessage } from "#src/types";
 import { fileSnapshotSource, listNavigableAgents, liveSource, type NavigableSubagent, type TranscriptSource } from "#src/ui/session-navigation";
+import { makeNavigable } from "#test/helpers/make-navigable";
 
 const registry = new AgentTypeRegistry(() => new Map());
 
-function makeEvicted(overrides: Partial<EvictedSubagent> = {}): EvictedSubagent {
-  return {
-    id: "evicted-1",
-    type: "general-purpose",
-    description: "Old task",
-    status: "completed",
-    startedAt: 1000,
-    completedAt: 4000,
-    toolUses: 5,
-    outputFile: "/tasks/evicted-1.jsonl",
-    ...overrides,
-  };
-}
-
-function makeNavigable(overrides: Partial<NavigableSubagent> = {}): NavigableSubagent {
-  return {
-    id: "agent-1",
-    type: "general-purpose",
-    description: "Test task",
-    status: "completed",
-    startedAt: 1000,
-    completedAt: 4000,
-    toolUses: 2,
-    activeTools: new Map(),
-    responseText: "",
-    agentMessages: [],
-    isSessionReady: () => true,
-    subscribeToUpdates: vi.fn(() => () => {}),
-    getToolDefinition: vi.fn(() => undefined),
-    ...overrides,
-  };
-}
-
 describe("listNavigableAgents", () => {
   it("returns an empty list for no agents", () => {
-    expect(listNavigableAgents([], [], registry)).toEqual([]);
+    expect(listNavigableAgents([], registry)).toEqual([]);
   });
 
-  it("keeps only session-ready records", () => {
+  it("makes a session-ready record a live entry", () => {
     const ready = makeNavigable({ id: "ready", isSessionReady: () => true });
-    const notReady = makeNavigable({ id: "not-ready", isSessionReady: () => false });
-    const entries = listNavigableAgents([ready, notReady], [], registry);
+    const entries = listNavigableAgents([ready], registry);
     expect(entries).toHaveLength(1);
     const [entry] = entries;
     expect(entry.kind).toBe("live");
     expect(entry.kind === "live" && entry.record).toBe(ready);
+  });
+
+  it("makes a released record (no live session, has outputFile) a snapshot entry", () => {
+    const released = makeNavigable({
+      id: "released",
+      isSessionReady: () => false,
+      outputFile: "/tasks/released-1.jsonl",
+      description: "Investigate the bug",
+      toolUses: 3,
+    });
+    const [entry] = listNavigableAgents([released], registry);
+    expect(entry.kind).toBe("snapshot");
+    expect(entry.kind === "snapshot" && entry.outputFile).toBe("/tasks/released-1.jsonl");
+    expect(entry.label).toBe("Agent (Investigate the bug) · 3 tools · completed · 3.0s · session released (snapshot)");
+  });
+
+  it("drops a record with neither a live session nor an outputFile", () => {
+    const gone = makeNavigable({ id: "gone", isSessionReady: () => false, outputFile: undefined });
+    expect(listNavigableAgents([gone], registry)).toEqual([]);
   });
 
   it("builds a label with name, description, tool count, status, and duration", () => {
@@ -63,32 +48,16 @@ describe("listNavigableAgents", () => {
       startedAt: 1000,
       completedAt: 4000,
     });
-    const [entry] = listNavigableAgents([record], [], registry);
+    const [entry] = listNavigableAgents([record], registry);
     // getDisplayName resolves "general-purpose" against the empty registry to its fallback display name.
     expect(entry.label).toBe("Agent (Investigate the bug) · 3 tools · completed · 3.0s");
   });
 
-  it("appends evicted entries with a snapshot marker and their outputFile", () => {
-    const descriptor = makeEvicted({ description: "Investigate the bug", toolUses: 3 });
-    const [entry] = listNavigableAgents([], [descriptor], registry);
-    expect(entry.kind).toBe("evicted");
-    expect(entry.kind === "evicted" && entry.outputFile).toBe("/tasks/evicted-1.jsonl");
-    expect(entry.label).toBe("Agent (Investigate the bug) · 3 tools · completed · 3.0s · evicted (snapshot)");
-  });
-
-  it("orders live entries before evicted ones", () => {
-    const live = makeNavigable({ id: "live-1" });
-    const evicted = makeEvicted({ id: "evicted-1" });
-    const kinds = listNavigableAgents([live], [evicted], registry).map((e) => e.kind);
-    expect(kinds).toEqual(["live", "evicted"]);
-  });
-
-  it("dedups an evicted descriptor that still has a live record with the same id", () => {
-    const record = makeNavigable({ id: "shared" });
-    const descriptor = makeEvicted({ id: "shared" });
-    const entries = listNavigableAgents([record], [descriptor], registry);
-    expect(entries).toHaveLength(1);
-    expect(entries[0]?.kind).toBe("live");
+  it("orders live entries before snapshot ones", () => {
+    const live = makeNavigable({ id: "live-1", isSessionReady: () => true });
+    const released = makeNavigable({ id: "released-1", isSessionReady: () => false, outputFile: "/tasks/x.jsonl" });
+    const kinds = listNavigableAgents([live, released], registry).map((e) => e.kind);
+    expect(kinds).toEqual(["live", "snapshot"]);
   });
 });
 
@@ -111,8 +80,11 @@ describe("liveSource", () => {
     const onChange = vi.fn();
     const returned = liveSource(record).subscribe(onChange);
     expect(record.subscribeToUpdates).toHaveBeenCalledOnce();
-    captured?.({ type: "turn_end" });
-    expect(onChange).toHaveBeenCalledOnce();
+    const event = { type: "turn_end" } as AgentSessionEvent;
+    captured?.(event);
+    // The event is forwarded, not merely counted: the consumer routes on its
+    // type to decide whether a streaming delta or a settled message arrived.
+    expect(onChange).toHaveBeenCalledWith(event);
     expect(returned).toBe(unsub);
   });
 

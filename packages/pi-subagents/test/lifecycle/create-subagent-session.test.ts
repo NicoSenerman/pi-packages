@@ -87,6 +87,36 @@ describe("createSubagentSession — assembly", () => {
     );
   });
 
+  it("gives the resource loader the derived settings view, not the session's own", async () => {
+    const sessionSettings = { marker: "session" };
+    const loaderSettings = { marker: "loader" };
+    io.createSettingsManager.mockReturnValue(sessionSettings);
+    io.createLoaderSettingsManager.mockReturnValue(loaderSettings);
+
+    await createSubagentSession(
+      { snapshot: STUB_SNAPSHOT, type: "Explore" },
+      createSubagentSessionDeps({ io, exec, registry: mockAgentLookup }),
+    );
+
+    expect(io.createLoaderSettingsManager).toHaveBeenCalledWith(sessionSettings);
+    expect(io.createResourceLoader).toHaveBeenCalledWith(
+      expect.objectContaining({ settingsManager: loaderSettings }),
+    );
+    expect(io.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({ settingsManager: sessionSettings }),
+    );
+  });
+
+  it("creates the session's settings manager exactly once and reuses it", async () => {
+    await createSubagentSession(
+      { snapshot: STUB_SNAPSHOT, type: "Explore" },
+      createSubagentSessionDeps({ io, exec, registry: mockAgentLookup }),
+    );
+
+    expect(io.createSettingsManager).toHaveBeenCalledTimes(1);
+    expect(io.createLoaderSettingsManager).toHaveBeenCalledTimes(1);
+  });
+
   it("suppresses AGENTS.md/CLAUDE.md/APPEND_SYSTEM.md for subagents", async () => {
     await createSubagentSession(
       { snapshot: STUB_SNAPSHOT, type: "Explore" },
@@ -204,6 +234,24 @@ describe("createSubagentSession — dispose on creation failure", () => {
     expect(lifecycle.disposed).toHaveBeenCalledOnce();
     expect(lifecycle.disposed).toHaveBeenCalledWith({ sessionId: "child-session-id" });
     expect(session.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("shuts down the extensions that did initialize before the bind failed", async () => {
+    const session = createFactorySession();
+    session.bindExtensions = vi.fn().mockRejectedValue(new Error("bind failed"));
+    io.createSession.mockResolvedValue({ session });
+
+    await expect(
+      createSubagentSession(
+        { snapshot: STUB_SNAPSHOT, type: "Explore" },
+        createSubagentSessionDeps({ io, exec, registry: mockAgentLookup }),
+      ),
+    ).rejects.toThrow("bind failed");
+
+    expect(session.extensionRunner.emit).toHaveBeenCalledWith({
+      type: "session_shutdown",
+      reason: "quit",
+    });
   });
 });
 

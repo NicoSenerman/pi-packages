@@ -9,12 +9,8 @@ import {
 } from "#src/tools/helpers";
 import type { ResolvedSpawnConfig } from "#src/tools/spawn-config";
 import type { ParentSessionInfo, Subagent } from "#src/types";
-import {
-  type AgentDetails,
-  describeActivity,
-  formatMs,
-  SPINNER,
-} from "#src/ui/display";
+import { type AgentDetails, describeActivity, formatMs } from "#src/ui/display";
+import { SPINNER } from "#src/ui/glyphs";
 
 /** Narrow manager interface for the foreground runner. */
 export interface ForegroundManagerDeps {
@@ -41,7 +37,7 @@ export async function runForeground(
   manager: ForegroundManagerDeps,
   params: ForegroundParams,
   signal: AbortSignal | undefined,
-  onUpdate: ((update: AgentToolResult<any>) => void) | undefined,
+  onUpdate: ((update: AgentToolResult<AgentDetails>) => void) | undefined,
 ) {
   const { identity, execution, presentation } = params.config;
   let spinnerFrame = 0;
@@ -68,8 +64,7 @@ export async function runForeground(
     };
     onUpdate?.({
       content: [{ type: "text", text: `${toolUses} tool uses...` }],
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Pi SDK ToolCallUpdate details type is not exported
-      details: details as any,
+      details,
     });
   };
 
@@ -109,6 +104,10 @@ export async function runForeground(
   }
 
   clearInterval(spinnerInterval);
+
+  // Foreground-return delivery edge: the result is handed back in this tool
+  // result, so the outcome is collected. Mark it consumed.
+  record.markConsumed();
 
   const tokenText = formatLifetimeTokens(record);
   const details = buildDetails(presentation.detailBase, record, { tokens: tokenText });
