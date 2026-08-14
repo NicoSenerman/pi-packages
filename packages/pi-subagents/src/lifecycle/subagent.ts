@@ -177,6 +177,10 @@ export class Subagent {
     const m = this.execution.model;
     return m ? `${m.provider}/${m.id}` : undefined;
   }
+  /** Initial spawn prompt (not the short description). */
+  get prompt(): string {
+    return this.execution.prompt;
+  }
 
   readonly abortController: AbortController;
   private _promise?: Promise<void>;
