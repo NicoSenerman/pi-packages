@@ -597,6 +597,12 @@ export class PermissionForwarder implements ApprovalRequester, InboxProcessor {
         ctx.ui,
         "Permission Required (Subagent)",
         forwardedMessage,
+        // Bound the detached-poller `ui.select`: if the parent UI never
+        // services it (e.g. the prompt is raised while no agent turn is active
+        // and the client doesn't surface detached dialogs), resolve as a deny
+        // at the forwarding timeout instead of parking the promise forever and
+        // leaving the child to hit its 10-min timeout unaided.
+        { timeoutMs: PERMISSION_FORWARDING_TIMEOUT_MS },
       );
     } catch (error) {
       logPermissionForwardingError(
@@ -621,6 +627,22 @@ export class PermissionForwarder implements ApprovalRequester, InboxProcessor {
     currentSessionId: string,
     decision: PermissionPromptDecision,
   ): void {
+    // Ensure responses/ exists immediately before writing. The detached manual
+    // prompt (`runForwardedManualPrompt`) writes here outside `processInbox`'s
+    // defensive mkdir, and a concurrent `cleanupPermissionForwardingLocationIfEmpty`
+    // pass can remove responses/ once the claimed request file is gone — so by
+    // the time the user answers the dialog, responses/ may be absent (the
+    // ENOENT .tmp-write loop from issue #398). `mkdirSync` recursive is
+    // idempotent, so this is safe to repeat on the auto-approve path too.
+    if (
+      !ensureDirectoryExists(
+        this.logger,
+        location.responsesDir,
+        "permission forwarding responses",
+      )
+    ) {
+      return;
+    }
     const responsePath = join(location.responsesDir, `${request.id}.json`);
     this.logger.review(
       decision.approved

@@ -1,8 +1,5 @@
 export type PermissionDecisionState =
-  | "approved"
-  | "approved_for_session"
-  | "denied"
-  | "denied_with_reason";
+  "approved" | "approved_for_session" | "denied" | "denied_with_reason";
 
 export type PermissionPromptDecision = {
   approved: boolean;
@@ -17,7 +14,15 @@ export type PermissionPromptDecision = {
 };
 
 export interface PermissionDecisionUi {
-  select(title: string, options: string[]): Promise<string | undefined>;
+  select(
+    title: string,
+    options: string[],
+    /** Optional pi `ui.select` options. `timeout` auto-resolves the prompt
+     * as `undefined` (which `requestPermissionDecisionFromUi` maps to a deny)
+     * after the given ms — used to bound a forwarded prompt whose `ui.select`
+     * is raised from a detached poller and may never be serviced. */
+    opts?: { timeout?: number },
+  ): Promise<string | undefined>;
   input(title: string, placeholder?: string): Promise<string | undefined>;
 }
 
@@ -67,6 +72,16 @@ export function isPermissionDecisionState(
 export interface RequestPermissionOptions {
   /** Override the "for this session" option label (e.g. to show the suggested pattern). */
   sessionLabel?: string;
+  /**
+   * Forward this many ms as a `ui.select` timeout. When the select is raised
+   * from a context that may never service it (notably `pi-permission-system`'s
+   * `ForwardingManager` detached poller, off any agent turn), a timeout turns a
+   * permanent ghost-hang into a clean deny at the deadline instead of leaving
+   * the promise parked until the child's 10-min forwarding timeout. Inline
+   * prompts (raised inside a live `tool_call` hook) should leave this unset so
+   * the user is never auto-denied while actively reading the prompt.
+   */
+  timeoutMs?: number;
 }
 
 export async function requestPermissionDecisionFromUi(
@@ -83,9 +98,13 @@ export async function requestPermissionDecisionFromUi(
     DENY_WITH_REASON_OPTION,
   ] as const;
 
-  const selected = await ui.select(`${title}\n${message}`, [
-    ...decisionOptions,
-  ]);
+  const selected = await ui.select(
+    `${title}\n${message}`,
+    [...decisionOptions],
+    options?.timeoutMs !== undefined
+      ? { timeout: options.timeoutMs }
+      : undefined,
+  );
 
   if (selected === APPROVE_OPTION) {
     return {
