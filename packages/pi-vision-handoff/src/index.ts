@@ -70,13 +70,7 @@ export const PRESET_NAMES = Object.keys(
  *    `promptMode: "custom"` (e.g. after the user cleared the override) still
  *    describes images instead of erroring. */
 export type PromptMode =
-  | "default"
-  | "ocr"
-  | "ui"
-  | "code"
-  | "diagram"
-  | "brief"
-  | "custom";
+  "default" | "ocr" | "ui" | "code" | "diagram" | "brief" | "custom";
 
 /** Whether `mode` is one of the named presets (excludes `default`/`custom`). */
 export function isPresetMode(
@@ -259,19 +253,10 @@ export interface VisionHandoffConfig {
 
 export const DEFAULT_CONFIG: VisionHandoffConfig = {
   enabled: true,
-  // NeuralWatt Kimi K2.6-fast is the default vision describer. Verified basis:
-  //   - ~/.pi/settings.json sets `defaultProvider: "neuralwatt"`.
-  //   - ~/.pi/agent/models.json lists provider "neuralwatt" with model id
-  //     "kimi-k2.6-fast" (non-reasoning fast tier — returns within pi's read-tool
-  //     timeout window, unlike the reasoning kimi-k2.6/kimi-k2.7-code which
-  //     cancel mid-call on the vision path). The old pi-vision fork shipped this
-  //     same default.
-  // This is the ONE divergence from upstream's `visionModel: null` default —
-  // it does NOT restrict the user: the interactive picker
-  // (`/vision-handoff select`, `src/vision-model-selector.ts`) still lists every
-  // vision-capable model in the registry, and `model <ref>` / `add <ref>` accept
-  // any `provider/id`. NeuralWatt is just the out-of-the-box value.
-  visionModel: "neuralwatt/kimi-k2.6-fast",
+  // NeuralWatt Kimi K3-fast is the default vision describer (K2.6-fast is gone
+  // from the live catalog). Non-reasoning fast tier — returns within pi's
+  // read-tool timeout; full kimi-k3 reasoning can stall the vision path.
+  visionModel: "neuralwatt/kimi-k3-fast",
   autoHandoff: true,
   handoffModels: [],
   maxTokens: undefined,
