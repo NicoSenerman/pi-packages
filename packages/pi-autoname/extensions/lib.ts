@@ -69,7 +69,7 @@ export const DEFAULT_CONFIG: Required<AutonameConfig> = {
    * role, managed in pi-config) supplies the default when present; the
    * consumer's own pi-autoname.json always wins.
    */
-  model: "ollama-cloud/deepseek-v4-flash",
+  model: "ollama-cloud/glm-5.3-flash",
   fallbackModels: [],
   cooldownMinutes: 10,
   debug: false,
