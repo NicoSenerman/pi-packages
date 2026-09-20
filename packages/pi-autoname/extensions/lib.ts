@@ -1,3 +1,6 @@
+import { readFileSync } from "fs";
+import { join } from "path";
+
 /**
  * pi-autoname pure utility functions.
  * Extracted for testability — no side effects, no fs, no network.
@@ -61,9 +64,10 @@ export interface AutonameConfig {
 export const DEFAULT_CONFIG: Required<AutonameConfig> = {
   enabled: true,
   /**
-   * Default naming model. Resolves (via ctx.modelRegistry.find / getModel)
-   * to the `ollama-cloud` provider entry in ~/.pi/agent/models.json, which
-   * points at https://ollama.com/v1 (openai-completions API).
+   * Default naming model — last-resort fallback only. The shared
+   * utility-models registry (~/.pi/agent/utility-models.json, `autoname`
+   * role, managed in pi-config) supplies the default when present; the
+   * consumer's own pi-autoname.json always wins.
    */
   model: "ollama-cloud/deepseek-v4-flash",
   fallbackModels: [],
@@ -71,6 +75,31 @@ export const DEFAULT_CONFIG: Required<AutonameConfig> = {
   debug: false,
   respectManualName: false,
 };
+
+/**
+ * Read the shared utility-models registry's `autoname` role. Returns
+ * empty on any read/parse error — callers fall back to DEFAULT_CONFIG.
+ */
+export function loadRegistryDefaults(
+  agentDir: string,
+): Partial<Pick<AutonameConfig, "model" | "fallbackModels">> {
+  try {
+    const raw = readFileSync(join(agentDir, "utility-models.json"), "utf-8");
+    const entry = JSON.parse(raw)?.autoname;
+    if (!entry || typeof entry.model !== "string") return {};
+    const fallbacks = Array.isArray(entry.fallbacks)
+      ? entry.fallbacks.filter(
+          (f: unknown): f is string => typeof f === "string",
+        )
+      : [];
+    return {
+      model: entry.model.trim(),
+      ...(fallbacks.length ? { fallbackModels: fallbacks } : {}),
+    };
+  } catch {
+    return {};
+  }
+}
 
 export function normalizeConfig(input: unknown): AutonameConfig {
   if (!input || typeof input !== "object") return { ...DEFAULT_CONFIG };

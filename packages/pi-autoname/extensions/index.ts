@@ -21,6 +21,7 @@ import {
 import { join, dirname } from "path";
 
 import {
+  loadRegistryDefaults,
   normalizeConfig,
   redactSensitiveText,
   isHighQualityName,
@@ -95,8 +96,13 @@ function loadConfig(): AutonameConfig {
       return _configCache;
     }
 
-    const raw = readFileSync(CONFIG_PATH, "utf-8");
-    const config = normalizeConfig(JSON.parse(raw));
+    const registry = loadRegistryDefaults(getAgentDir());
+    const merged = {
+      model: registry.model,
+      fallbackModels: registry.fallbackModels,
+      ...JSON.parse(readFileSync(CONFIG_PATH, "utf-8")),
+    };
+    const config = normalizeConfig(merged);
     _debugEnabled = config.debug ?? false;
     _configCache = config;
     _configMtime = stat.mtimeMs;
@@ -107,7 +113,12 @@ function loadConfig(): AutonameConfig {
     console.error(
       `[pi-autoname] failed to load config; using defaults: ${message}`,
     );
-    _configCache = { ...DEFAULT_CONFIG };
+    const registry = loadRegistryDefaults(getAgentDir());
+    _configCache = {
+      ...DEFAULT_CONFIG,
+      ...(registry.model ? { model: registry.model } : {}),
+      ...(registry.fallbackModels ? { fallbackModels: registry.fallbackModels } : {}),
+    };
     _configMtime = 0;
     return _configCache;
   }

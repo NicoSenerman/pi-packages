@@ -293,9 +293,32 @@ export function isVisionModel(
   return !!model && Array.isArray(model.input) && model.input.includes("image");
 }
 
+/**
+ * The shared utility-models registry (pi-config, symlinked into the agent
+ * dir) supplies the default `describer` vision model when present. Consumer
+ * config (pi-vision-handoff.json) still wins.
+ */
+export function registryDescriberDefault(): string | null {
+  try {
+    const raw = readFileSync(join(getAgentDir(), "utility-models.json"), "utf8");
+    const entry = JSON.parse(raw)?.describer;
+    if (entry && typeof entry.model === "string" && entry.model.trim()) {
+      return parseModelRef(entry.model) ? entry.model.trim() : null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 /** Merge a parsed config object onto defaults, tolerating missing/invalid fields. */
 export function normalizeConfig(raw: unknown): VisionHandoffConfig {
   const base: VisionHandoffConfig = { ...DEFAULT_CONFIG };
+  const registryDescriber = registryDescriberDefault();
+  // Registry default applies whenever the consumer config doesn't carry an
+  // explicit visionModel (absent object OR absent field) — field presence
+  // (including explicit null) below overrides it.
+  if (registryDescriber) base.visionModel = registryDescriber;
   if (!raw || typeof raw !== "object") return base;
   const obj = raw as Record<string, unknown>;
 
@@ -366,12 +389,12 @@ export function normalizeConfig(raw: unknown): VisionHandoffConfig {
 /** Read config from disk (falls back to defaults on missing/corrupt file). */
 export function readConfig(): VisionHandoffConfig {
   const path = getConfigPath();
-  if (!existsSync(path)) return { ...DEFAULT_CONFIG };
+  if (!existsSync(path)) return normalizeConfig(undefined);
   try {
     const raw = readFileSync(path, "utf8");
     return normalizeConfig(JSON.parse(raw));
   } catch {
-    return { ...DEFAULT_CONFIG };
+    return normalizeConfig(undefined);
   }
 }
 
