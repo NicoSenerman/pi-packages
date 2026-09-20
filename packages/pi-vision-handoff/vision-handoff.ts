@@ -34,6 +34,8 @@ import type {
   ExtensionContext,
   ModelRegistry,
 } from "@earendil-works/pi-coding-agent";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { Box, Text } from "@earendil-works/pi-tui";
 import type {
   Api,
@@ -72,7 +74,10 @@ import {
   readImageBuffer,
   resolvePrewarmImage,
 } from "./src/image.js";
-import { resizeImage } from "@earendil-works/pi-coding-agent";
+import {
+  getAgentDir,
+  resizeImage,
+} from "@earendil-works/pi-coding-agent";
 import {
   VisionModelSelectorComponent,
   type VisionModelSelectorResult,
@@ -107,6 +112,29 @@ let reportUsage: (record: VisionHandoffUsageRecord) => void = () => {};
 let inFlightUi: { setStatus: ExtensionContext["ui"]["setStatus"] } | null =
   null;
 
+/**
+ * The shared utility-models registry's `describer.fallbacks` — vision models
+ * tried (in order) after the primary fails a whole batch.
+ */
+function visionFallbackCandidates(): string[] {
+  try {
+    const raw = readFileSync(
+      join(getAgentDir(), "utility-models.json"),
+      "utf8",
+    );
+    const fallbacks: unknown = JSON.parse(raw)?.describer?.fallbacks;
+    if (Array.isArray(fallbacks)) {
+      return fallbacks
+        .filter((m): m is string => typeof m === "string")
+        .map((m) => m.trim())
+        .filter((m) => !!parseModelRef(m));
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
 function resolveVisionModel(
   modelRegistry: ModelRegistry,
   ref: string,
@@ -124,6 +152,7 @@ function resolveVisionModel(
 const loaderDeps: LoaderDeps = {
   getConfig: () => config,
   resolveVisionModel,
+  getVisionFallbacks: () => visionFallbackCandidates(),
   reportUsage: (record) => reportUsage(record),
   setLastError: (msg) => {
     lastDescriberError = msg;

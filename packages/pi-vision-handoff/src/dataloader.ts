@@ -57,6 +57,8 @@ export interface LoaderDeps extends DescriberDeps {
   getConfig(): VisionHandoffConfig;
   /** Resolve the configured vision model against a registry. */
   resolveVisionModel: VisionModelResolver;
+  /** Registry `describer.fallbacks` refs (provider-qualified strings). */
+  getVisionFallbacks?: () => string[];
 }
 
 const resolvedMicrotask = Promise.resolve();
@@ -77,6 +79,10 @@ export class DescriptionLoader implements Disposable {
   private dispatchScheduled = false;
   private turnModelRegistry: ModelRegistry | null = null;
   private turnVisionModel: Model<Api> | null = null;
+  /** Fallback vision models (registry `describer.fallbacks`), resolved the
+   *  same way as the primary. Tried in order when the primary's batch yields
+   *  zero descriptions (call failure: auth, timeout, provider outage). */
+  private turnVisionFallbacks: Model<Api>[] = [];
   private turnSignal: AbortSignal | undefined;
   private pendingTurnPrompt = "";
 
@@ -88,7 +94,15 @@ export class DescriptionLoader implements Disposable {
   bindTurnContext(ctx: { modelRegistry: ModelRegistry; signal?: AbortSignal }): void {
     this.turnModelRegistry = ctx.modelRegistry;
     this.turnSignal = ctx.signal;
-    const resolved = this.deps.resolveVisionModel(ctx.modelRegistry, this.deps.getConfig().visionModel!);
+    const cfg = this.deps.getConfig();
+    const resolved = this.deps.resolveVisionModel(ctx.modelRegistry, cfg.visionModel!);
+    this.turnVisionFallbacks = [];
+    for (const ref of this.deps.getVisionFallbacks?.() ?? []) {
+      const fb = this.deps.resolveVisionModel(ctx.modelRegistry, ref);
+      if (fb && fb !== resolved && !this.turnVisionFallbacks.includes(fb)) {
+        this.turnVisionFallbacks.push(fb);
+      }
+    }
     if (resolved) this.turnVisionModel = resolved;
   }
 
@@ -181,15 +195,22 @@ export class DescriptionLoader implements Disposable {
     this.deps.setLastError(null); // clear before a fresh attempt
     const misses = batch.keys.map((k, i) => ({ hash: k, img: batch.imgs[i] }));
     const cfg = this.deps.getConfig();
-    const parsed = await runBatch(
-      misses,
-      this.pendingTurnPrompt,
-      this.turnVisionModel,
-      this.turnModelRegistry,
-      cfg,
-      this.deps,
-      this.turnSignal,
-    );
+    const candidates = [this.turnVisionModel, ...this.turnVisionFallbacks];
+    let parsed: Awaited<ReturnType<typeof runBatch>> = new Map();
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      parsed = await runBatch(
+        misses,
+        this.pendingTurnPrompt,
+        candidate,
+        this.turnModelRegistry,
+        cfg,
+        this.deps,
+        this.turnSignal,
+      );
+      if (parsed.size > 0) break;
+      if (this.turnSignal?.aborted) break;
+    }
     for (let i = 0; i < batch.keys.length; i++) {
       const raw = parsed.get(batch.keys[i]);
       if (raw) {
