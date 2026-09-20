@@ -349,7 +349,10 @@ async function callModelWithTimeout(
       {
         apiKey: auth.apiKey,
         headers: auth.headers,
-        maxTokens: 256,
+        // Reasoning models burn reasoning tokens inside maxTokens; a
+        // tight cap can empty the budget before any prose. Give the name
+        // room.
+        maxTokens: 1024,
         signal: controller.signal,
       },
     );
