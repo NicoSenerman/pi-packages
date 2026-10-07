@@ -500,3 +500,32 @@ describe("buildAgentPrompt", () => {
     });
   });
 });
+
+describe("buildAgentPrompt recursion-guard tool listing", () => {
+  it("strips subagent dispatch tool lines from the inherited parent tools section", () => {
+    const config = getDefaultConfig("general-purpose");
+    const parentPrompt = [
+      "<tools>",
+      "- read: Read a file",
+      "- subagent: Spawn a sub-agent",
+      "- get_subagent_result: Read a sub-agent result",
+      "- steer_subagent: Steer a running sub-agent",
+      "- bash: Run a shell command",
+      "</tools>",
+      "",
+      "<rules>",
+      "- Delegate via the subagent tool when appropriate", // prose survives (no "- subagent:" shape)
+      "</rules>",
+    ].join("\n");
+    const prompt = buildAgentPrompt(config, "/workspace", env, {
+      systemPrompt: parentPrompt,
+      cwd: PARENT_CWD,
+    });
+    expect(prompt).not.toContain("- subagent:");
+    expect(prompt).not.toContain("- get_subagent_result:");
+    expect(prompt).not.toContain("- steer_subagent:");
+    expect(prompt).toContain("- read: Read a file");
+    expect(prompt).toContain("- bash: Run a shell command");
+    expect(prompt).toContain("Delegate via the subagent tool when appropriate");
+  });
+});

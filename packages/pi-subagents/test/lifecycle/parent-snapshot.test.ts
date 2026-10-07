@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const { buildParentContextMock } = vi.hoisted(() => ({
   buildParentContextMock: vi.fn((): string => ""),
@@ -9,7 +9,11 @@ vi.mock("#src/session/context", () => ({
 }));
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { buildParentSnapshot } from "#src/lifecycle/parent-snapshot";
+import {
+  buildParentSnapshot,
+  resetStashedTurnPrompt,
+  stashTurnSystemPrompt,
+} from "#src/lifecycle/parent-snapshot";
 
 function makeCtx(overrides: Record<string, unknown> = {}) {
   return {
@@ -23,6 +27,10 @@ function makeCtx(overrides: Record<string, unknown> = {}) {
 }
 
 describe("buildParentSnapshot", () => {
+  beforeEach(() => {
+    resetStashedTurnPrompt();
+  });
+
   it("captures cwd from ctx", () => {
     const snapshot = buildParentSnapshot(makeCtx({ cwd: "/custom/path" }));
     expect(snapshot.cwd).toBe("/custom/path");
@@ -68,5 +76,31 @@ describe("buildParentSnapshot", () => {
     buildParentContextMock.mockReturnValueOnce("");
     const snapshot = buildParentSnapshot(makeCtx(), true);
     expect(snapshot.parentContext).toBeUndefined();
+  });
+
+  it("prefers the stashed per-turn prompt over ctx.getSystemPrompt()", () => {
+    // Regression: pi 1.0 `{ systemPrompt }` forcers (PPS BACH/GATED prompts,
+    // rpiv-todo blocks) make getSystemPrompt() serve per-turn appends that
+    // must never leak into child prompts via the verbatim embed.
+    stashTurnSystemPrompt("pre-forcer render (skills gated, no BACH)");
+    const snapshot = buildParentSnapshot(
+      makeCtx({ getSystemPrompt: () => "forced wire prompt + BACH manifesto" }),
+    );
+    expect(snapshot.systemPrompt).toBe("pre-forcer render (skills gated, no BACH)");
+  });
+
+  it("falls back to ctx.getSystemPrompt() when no stash exists", () => {
+    const snapshot = buildParentSnapshot(
+      makeCtx({ getSystemPrompt: () => "fallback prompt" }),
+    );
+    expect(snapshot.systemPrompt).toBe("fallback prompt");
+  });
+
+  it("ignores an empty stash value", () => {
+    stashTurnSystemPrompt("");
+    const snapshot = buildParentSnapshot(
+      makeCtx({ getSystemPrompt: () => "real prompt" }),
+    );
+    expect(snapshot.systemPrompt).toBe("real prompt");
   });
 });

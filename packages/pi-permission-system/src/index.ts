@@ -328,6 +328,32 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
   pi.on("before_agent_start", (event, ctx) => {
     agentPrep.handle(event, ctx);
 
+    /**
+     * Append a mode prompt. pi 1.0: mutate the render options
+     * (`appendSystemPrompt` renders as the `<addendum>` section) rather than
+     * returning `{ systemPrompt }`, which sets `forceSystemPrompt` and
+     * freezes every later before_agent_start mutation (notably the built-in
+     * MCP extension's `mcp_servers` section, loaded after all packages) off
+     * the wire for as long as the mode stays on. Pre-1.0 (no
+     * systemPromptOptions on the event): legacy string-append return.
+     */
+    const appendModePrompt = (
+      text: string,
+    ): { systemPrompt: string } | undefined => {
+      const opts = (
+        event as {
+          systemPromptOptions?: { appendSystemPrompt?: string };
+        }
+      ).systemPromptOptions;
+      if (!opts) {
+        return { systemPrompt: event.systemPrompt + `\n\n${text}` };
+      }
+      opts.appendSystemPrompt = opts.appendSystemPrompt
+        ? `${opts.appendSystemPrompt}\n\n${text}`
+        : text;
+      return undefined;
+    };
+
     // Don't inject BACH mode prompt into child subagent sessions —
     // they don't have the subagent tool, and the orchestrator prompt
     // confuses them into trying to delegate (which they can't).
@@ -340,10 +366,8 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
     }
 
     if (isBachMode() && !isChildSession) {
-      return {
-        systemPrompt:
-          event.systemPrompt +
-          `\n\nYou are in BACH mode — an orchestrator that preserves context by delegating work to fresh subagents.
+      return appendModePrompt(
+        `You are in BACH mode — an orchestrator that preserves context by delegating work to fresh subagents.
 
 ## Core Principle
 
@@ -384,15 +408,13 @@ Ask before allocating real work with ask_user; combine related questions (e.g. l
 ## The Orchestration Loop
 
 Loop: explore (scout, no ask needed) → ask if ambiguous → delegate async → review → synthesize → iterate. Write self-contained tasks (AGENTS.md → "Subagents — Quick Reference"). Critical prohibitions live in AGENTS.md — auto-approve does NOT authorize skipping them.`,
-      };
+      );
     }
 
     if (getCurrentMode() === "gated") {
-      return {
-        systemPrompt:
-          event.systemPrompt +
-          `\n\nYou are in GATED mode — the user is actively participating in this session. Every file mutation and destructive command requires their approval. Share your reasoning before acting: explain what you find, propose next steps, and wait for direction. This may be an investigation session with no changes needed — follow the user's lead. Ask questions, surface findings, and treat each permission prompt as a checkpoint to confirm you're on the right track.`,
-      };
+      return appendModePrompt(
+        `You are in GATED mode — the user is actively participating in this session. Every file mutation and destructive command requires their approval. Share your reasoning before acting: explain what you find, propose next steps, and wait for direction. This may be an investigation session with no changes needed — follow the user's lead. Ask questions, surface findings, and treat each permission prompt as a checkpoint to confirm you're on the right track.`,
+      );
     }
     return undefined;
   });

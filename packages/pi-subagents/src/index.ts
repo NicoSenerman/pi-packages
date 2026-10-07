@@ -33,6 +33,10 @@ import {
 import { createChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
 import { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
 import {
+  resetStashedTurnPrompt,
+  stashTurnSystemPrompt,
+} from "#src/lifecycle/parent-snapshot";
+import {
   createSubagentSession,
   type SubagentSessionDeps,
 } from "#src/lifecycle/create-subagent-session";
@@ -209,9 +213,28 @@ export default function (pi: ExtensionAPI) {
     settings,
   );
 
-  pi.on("session_start", (event, ctx) =>
-    lifecycle.handleSessionStart(event, ctx),
-  );
+  pi.on("session_start", (event, ctx) => {
+    resetStashedTurnPrompt();
+    return lifecycle.handleSessionStart(event, ctx);
+  });
+
+  // Stash the parent session's per-turn system prompt as seen at our handler
+  // position (after the piru bridge's skills gating, before any
+  // `{ systemPrompt }` forcer like PPS's BACH/GATED prompts or rpiv-todo's
+  // block). buildParentSnapshot embeds this stash into child prompts so
+  // per-turn orchestrator appends don't leak into subagents. Child sessions
+  // run this extension too — skip them so their own (embedded) prompt never
+  // becomes a stash candidate.
+  pi.on("before_agent_start", (event, ctx) => {
+    try {
+      const header = ctx.sessionManager.getHeader();
+      if (header?.parentSession != null) return;
+    } catch {
+      // getHeader unavailable — treat as parent.
+    }
+    stashTurnSystemPrompt(event.systemPrompt);
+  });
+
   pi.on("session_before_switch", () => lifecycle.handleSessionBeforeSwitch());
   pi.on("session_shutdown", () => lifecycle.handleSessionShutdown());
 

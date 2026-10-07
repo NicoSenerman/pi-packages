@@ -50,7 +50,9 @@ ${env.isGitRepo ? `Git repository: yes\nBranch: ${env.branch}` : "Not a git repo
 Platform: ${env.platform}`;
 
   const identity = inherited
-    ? withoutContradictoryCwdFooter(inherited.systemPrompt, inherited.cwd, cwd)
+    ? withoutRecursionGuardedToolLines(
+        withoutContradictoryCwdFooter(inherited.systemPrompt, inherited.cwd, cwd),
+      )
     : genericBase;
 
   if (config.promptMode === "append") {
@@ -130,6 +132,25 @@ function withoutContradictoryCwdFooter(
   return prompt
     .split("\n")
     .filter((line) => line !== footerLine)
+    .join("\n");
+}
+
+/**
+ * Drop the recursion-guarded dispatch tools from the inherited prompt's
+ * `<tools>` listing. The create-subagent-session recursion guard removes
+ * `subagent`/`get_subagent_result`/`steer_subagent` from the child's ACTIVE
+ * set, but the embedded parent prompt still documents them — and combined
+ * with any inherited per-turn appends the child may try to call tools it
+ * does not have. The match is the exact `- name:` line format pi's tools
+ * section renderer emits, so rule-list prose survives.
+ */
+function withoutRecursionGuardedToolLines(prompt: string): string {
+  return prompt
+    .split("\n")
+    .filter(
+      (line) =>
+        !/^- (subagent|get_subagent_result|steer_subagent): /.test(line),
+    )
     .join("\n");
 }
 

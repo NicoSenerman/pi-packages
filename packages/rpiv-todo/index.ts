@@ -260,10 +260,13 @@ export default function (pi: ExtensionAPI) {
 
 	// Auto-inject an `## Open TODOs (N)` summary into the system prompt so the
 	// agent stays aware of open todos across subagent forks (which wipe the
-	// in-memory list). Append (never replace) — pi-core chains systemPrompt
-	// results from multiple extensions, so returning only our block would
-	// stomp theirs. Return `{}` (no systemPrompt key) when clean so we don't
-	// override the prompt at all.
+	// in-memory list). pi 1.0: mutate systemPromptOptions.appendSystemPrompt
+	// (renders as the <addendum> section). Never return `{ systemPrompt }` —
+	// that sets forceSystemPrompt, and pi then serves that literal string on
+	// every model call, freezing every later before_agent_start mutation
+	// (notably the built-in MCP extension's mcp_servers section, which loads
+	// after all packages) off the wire for as long as a todo stays open.
+	// Pre-1.0 fallback (no systemPromptOptions on the event): legacy return.
 	pi.on("before_agent_start", async (event) => {
 		const open = getTodos().filter((t) => t.status === "pending" || t.status === "in_progress");
 		if (open.length === 0) return {};
@@ -273,6 +276,11 @@ export default function (pi: ExtensionAPI) {
 			(t) => `- #${t.id} [${t.status}] ${t.subject}${t.activeForm ? ` — ${t.activeForm}` : ""}`,
 		);
 		const block = `## Open TODOs (${open.length})\n\n${lines.join("\n")}`;
-		return { systemPrompt: event.systemPrompt + "\n\n" + block };
+		const opts = (event as { systemPromptOptions?: { appendSystemPrompt?: string } }).systemPromptOptions;
+		if (!opts) return { systemPrompt: event.systemPrompt + "\n\n" + block };
+		opts.appendSystemPrompt = opts.appendSystemPrompt
+			? `${opts.appendSystemPrompt}\n\n${block}`
+			: block;
+		return {};
 	});
 }

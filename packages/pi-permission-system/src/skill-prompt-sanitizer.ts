@@ -290,3 +290,57 @@ export function findSkillPathMatch(
 
   return bestMatch;
 }
+
+/** Minimal shape of a pi 1.0 `systemPromptOptions.skills` entry. */
+export type SkillOption = {
+  name: string;
+  description?: string;
+  filePath?: string;
+  disableModelInvocation?: boolean;
+};
+
+/**
+ * pi 1.0 path: resolve permissions directly from `systemPromptOptions.skills`
+ * instead of regexing the rendered prompt.
+ *
+ * Returns the non-denied skill objects plus the resolved entry list (visible
+ * skills only, same contract as the prompt-parsing path) so the skill-read
+ * gate keeps working. Callers assign `options.skills = visible` when the sets
+ * differ — no string surgery, no `{ systemPrompt }` forcing, so the sectioned
+ * render stays live (built-in MCP section etc. survive).
+ */
+export function resolveSkillOptionEntries(
+  skills: readonly SkillOption[],
+  permissionManager: SkillPermissionChecker,
+  agentName: string | null,
+  cwd: string,
+): { visible: SkillOption[]; entries: SkillPromptEntry[] } {
+  const cache = new Map<string, PermissionState>();
+  const visible: SkillOption[] = [];
+  const entries: SkillPromptEntry[] = [];
+
+  for (const skill of skills) {
+    if (!skill || typeof skill.name !== "string" || !skill.name) continue;
+    const state = resolvePermissionState(
+      skill.name,
+      permissionManager,
+      agentName,
+      cache,
+    );
+    if (state === "deny") continue;
+    visible.push(skill);
+    entries.push(
+      createResolvedSkillEntry(
+        {
+          name: skill.name,
+          description: skill.description ?? "",
+          location: skill.filePath ?? "",
+        },
+        state,
+        cwd,
+      ),
+    );
+  }
+
+  return { visible, entries };
+}

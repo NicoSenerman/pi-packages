@@ -315,3 +315,75 @@ describe("AgentPrepHandler.handle", () => {
     expect(wire2).toBe(narrowedProse);
   });
 });
+
+// ── pi 1.0 systemPromptOptions path ────────────────────────────────────────
+
+describe("AgentPrepHandler pi 1.0 systemPromptOptions path", () => {
+  function makeOptionsEvent(skills: Array<{ name: string; filePath: string }>) {
+    return {
+      systemPrompt: "You are an assistant.",
+      systemPromptOptions: { skills },
+    };
+  }
+
+  it("filters denied skills from options.skills in place and never forces a prompt", async () => {
+    const { handler, permissionManager } = makeSetup();
+    vi.mocked(permissionManager.checkPermission).mockImplementation(
+      (surface, input) =>
+        surface === "skill" &&
+        (input as { name?: string })?.name === "secret"
+          ? makeCheckResult({ state: "deny" })
+          : makeCheckResult(),
+    );
+    const event = makeOptionsEvent([
+      { name: "secret", filePath: "/skills/secret/SKILL.md" },
+      { name: "open", filePath: "/skills/open/SKILL.md" },
+    ]);
+
+    const result = await handler.handle(event, makeCtx());
+
+    // No { systemPrompt } forcing — forcing freezes later before_agent_start
+    // mutations (built-in MCP mcp_servers section) off the wire.
+    expect(result).toEqual({});
+    expect(event.systemPromptOptions.skills).toEqual([
+      { name: "open", filePath: "/skills/open/SKILL.md" },
+    ]);
+  });
+
+  it("records only the visible skills as active skill entries", async () => {
+    const { handler, session, permissionManager } = makeSetup();
+    vi.mocked(permissionManager.checkPermission).mockImplementation(
+      (surface, input) =>
+        surface === "skill" &&
+        (input as { name?: string })?.name === "secret"
+          ? makeCheckResult({ state: "deny" })
+          : makeCheckResult(),
+    );
+    const spy = vi.spyOn(session, "setActiveSkillEntries");
+    const event = makeOptionsEvent([
+      { name: "secret", filePath: "/skills/secret/SKILL.md" },
+      { name: "open", filePath: "/skills/open/SKILL.md" },
+    ]);
+
+    await handler.handle(event, makeCtx());
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    const entries = spy.mock.calls[0][0];
+    expect(entries.map((e) => e.name)).toEqual(["open"]);
+    expect(entries[0].location).toBe("/skills/open/SKILL.md");
+  });
+
+  it("leaves options.skills untouched when nothing is denied", async () => {
+    const { handler } = makeSetup(); // default checkPermission: allow
+    const skills = [
+      { name: "a", filePath: "/skills/a/SKILL.md" },
+      { name: "b", filePath: "/skills/b/SKILL.md" },
+    ];
+    const event = makeOptionsEvent(skills);
+
+    const result = await handler.handle(event, makeCtx());
+
+    expect(result).toEqual({});
+    expect(event.systemPromptOptions.skills).toEqual(skills);
+  });
+});

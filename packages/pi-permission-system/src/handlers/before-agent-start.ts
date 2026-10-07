@@ -4,7 +4,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import type { PermissionResolver } from "#src/permission-resolver";
 import type { PermissionSession } from "#src/permission-session";
-import { resolveSkillPromptEntries } from "#src/skill-prompt-sanitizer";
+import { resolveSkillOptionEntries, resolveSkillPromptEntries, type SkillOption } from "#src/skill-prompt-sanitizer";
 import { sanitizeAvailableToolsSection } from "#src/system-prompt-sanitizer";
 import { getToolNameFromValue, type ToolRegistry } from "#src/tool-registry";
 import type { PermissionState } from "#src/types";
@@ -12,6 +12,14 @@ import type { PermissionState } from "#src/types";
 /** Minimal subset of BeforeAgentStartEvent used by this handler. */
 interface BeforeAgentStartPayload {
   systemPrompt: string;
+  /**
+   * pi 1.0+: mutable render inputs for the sectioned system prompt. Mutating
+   * `skills` (and not returning `{ systemPrompt }`) keeps the sectioned
+   * render live — returning a string sets `forceSystemPrompt`, which freezes
+   * every later handler's section mutations (e.g. the built-in MCP
+   * `mcp_servers` section) off the wire for the rest of the session.
+   */
+  systemPromptOptions?: { skills?: SkillOption[] };
 }
 
 /**
@@ -76,6 +84,33 @@ export class AgentPrepHandler {
 
     this.toolRegistry.setActive(allowedTools);
 
+    // pi 1.0 path: filter skills at the source. `options.skills` feeds the
+    // <skills> section render directly, so permission denies apply without
+    // touching the prompt string. The dead `Available tools:` / `Guidelines:`
+    // surgery is skipped here — pi 1.0 renders the tools section from the
+    // active set (setActiveTools above) and prunes rules per selected tool.
+    const systemPromptOptions = event.systemPromptOptions;
+    const optionSkills = systemPromptOptions?.skills;
+    if (
+      systemPromptOptions &&
+      Array.isArray(optionSkills) &&
+      optionSkills.length > 0
+    ) {
+      const resolved = resolveSkillOptionEntries(
+        optionSkills,
+        this.resolver,
+        agentName,
+        ctx.cwd,
+      );
+      this.session.setActiveSkillEntries(resolved.entries);
+      if (resolved.visible.length !== optionSkills.length) {
+        systemPromptOptions.skills = resolved.visible;
+      }
+      return {};
+    }
+
+    // Pre-1.0 fallback: prompt-string surgery (still correct on the old
+    // single-string prompt format).
     const toolPromptResult = sanitizeAvailableToolsSection(
       event.systemPrompt,
       allowedTools,
