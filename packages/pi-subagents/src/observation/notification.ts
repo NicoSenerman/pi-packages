@@ -3,6 +3,10 @@ import type { SubagentStatus } from "#src/lifecycle/subagent-state";
 import { getLifetimeTotal } from "#src/lifecycle/usage";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import {
+  renderNotificationCardForRpc,
+  renderUpdateCardForRpc,
+} from "#src/observation/renderer";
+import {
   currentResumeRefusal,
   renderOutcomeAddenda,
   renderStatusLabel,
@@ -24,6 +28,8 @@ export interface NotificationDetails {
   resultPreview: string;
   /** The run's turn budget; absent until its turn loop starts. */
   turnBudget?: TurnBudget;
+  /** Pre-rendered collapsed card for hosts without renderer plumbing (piru RPC). */
+  renderedText?: string;
 }
 
 // ---- Pure helpers (exported for unit testing) ----
@@ -176,6 +182,11 @@ export function buildEventData(record: Subagent) {
 
 // ---- Notification system factory ----
 
+/** Attach the pre-rendered RPC card to notification details. */
+function withRenderedCard(d: NotificationDetails): NotificationDetails {
+  return { ...d, renderedText: renderNotificationCardForRpc(d) };
+}
+
 export interface NotificationSystem {
   sendCompletion: (record: Subagent) => void;
   sendUpdate: (record: Subagent, message: string) => void;
@@ -290,6 +301,10 @@ export class NotificationManager implements NotificationSystem {
           id: record.id,
           description: record.description,
           message,
+          renderedText: renderUpdateCardForRpc({
+            description: record.description,
+            message,
+          }),
         },
       },
       { deliverAs: "followUp", triggerTurn: true },
@@ -316,7 +331,9 @@ export class NotificationManager implements NotificationSystem {
         customType: "subagent-notification",
         content: notification + addenda + pointerLines,
         display: true,
-        details: buildNotificationDetails(record, 500),
+        // RPC hosts (piru) render this pre-built card; native pi re-renders
+        // from details through the registered message renderer. Same source.
+        details: withRenderedCard(buildNotificationDetails(record, 500)),
       },
       { deliverAs: "followUp", triggerTurn: true },
     );

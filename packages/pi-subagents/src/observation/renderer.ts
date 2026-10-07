@@ -101,3 +101,48 @@ export function createNotificationRenderer() {
     return new Text(line, 0, 0);
   };
 }
+
+/**
+ * Create the update renderer callback for `pi.registerMessageRenderer`
+ * (`subagent-update`): one line — glyph, description, the message's first line.
+ */
+export function createUpdateRenderer() {
+  return (
+    message: { details?: { description: string; message: string } },
+    _options: RenderOptions,
+    theme: RendererTheme,
+  ): Text | undefined => {
+    const d = message.details;
+    if (!d) return undefined;
+    const first = d.message.split("\n")[0] ?? "";
+    const line =
+      `${theme.fg("dim", GLYPHS.toolCall)} ${theme.bold(d.description)} ` +
+      theme.fg("dim", `— ${first}`);
+    return new Text(line, 0, 0);
+  };
+}
+
+/** Theme that leaves every string untouched — pi has no TUI theme under RPC. */
+const IDENTITY_THEME: RendererTheme = {
+  fg: (_style, text) => text,
+  bold: (text) => text,
+};
+
+/** pi RPC hosts (piru) cannot run message renderers; render the card headlessly. */
+const RPC_CARD_WIDTH = 96;
+
+/**
+ * Pre-render a notification/update card to plain lines for RPC hosts. Uses the
+ * same registered renderers native pi uses, so piru chat and native pi stay in
+ * lockstep as the card layout evolves.
+ */
+export function renderNotificationCardForRpc(details: NotificationDetails): string {
+  const component = createNotificationRenderer()({ details }, { expanded: false }, IDENTITY_THEME);
+  return component ? component.render(RPC_CARD_WIDTH).join("\n") : "";
+}
+
+/** The update counterpart of renderNotificationCardForRpc. */
+export function renderUpdateCardForRpc(details: { description: string; message: string }): string {
+  const component = createUpdateRenderer()({ details }, { expanded: false }, IDENTITY_THEME);
+  return component ? component.render(RPC_CARD_WIDTH).join("\n") : "";
+}

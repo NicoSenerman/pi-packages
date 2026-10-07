@@ -46,7 +46,8 @@ import {
   type NotificationDetails,
   NotificationManager,
 } from "#src/observation/notification";
-import { createNotificationRenderer } from "#src/observation/renderer";
+import { createNotificationRenderer,
+  createUpdateRenderer } from "#src/observation/renderer";
 import { SubagentEventsObserver } from "#src/observation/subagent-events-observer";
 import { BridgeCommandWatcher } from "#src/observation/bridge-command-watcher";
 import { SnapshotEmitter } from "#src/observation/snapshot-emitter";
@@ -95,6 +96,10 @@ export default function (pi: ExtensionAPI) {
   pi.registerMessageRenderer<NotificationDetails>(
     "subagent-notification",
     createNotificationRenderer(),
+  );
+  pi.registerMessageRenderer(
+    "subagent-update",
+    createUpdateRenderer(),
   );
 
   // Custom entries are display-only (never enter LLM context).
