@@ -214,15 +214,21 @@ export async function createSubagentSession(
   const prevSubagentSession = process.env.PI_SUBAGENT_SESSION;
   process.env.PI_SUBAGENT_SESSION = "1";
 
-  // Children inherit the parent's skills and every extension the composition
-  // root did not exclude (#696).
-  //
-  // Suppress AGENTS.md/CLAUDE.md and APPEND_SYSTEM.md - upstream's
-  // buildSystemPrompt() re-appends both AFTER systemPromptOverride, which
-  // would defeat prompt_mode: replace. Parent context, if wanted, reaches the
-  // subagent via prompt_mode: append (parentSystemPrompt is embedded in
-  // systemPromptOverride) or inherit_context (conversation).
-  const loader = deps.io.createResourceLoader({
+  // The marker lives on the shared daemon process.env, so EVERY await below
+  // (loader/session creation, bindExtensions) must sit inside this try: a
+  // throw outside the finally leaves the parent daemon permanently marked as
+  // a child (parent-only extensions stay disabled, the widget stops painting,
+  // tool shells see PI_SUBAGENT_SESSION=1 for the rest of the process).
+  try {
+    // Children inherit the parent's skills and every extension the composition
+    // root did not exclude (#696).
+    //
+    // Suppress AGENTS.md/CLAUDE.md and APPEND_SYSTEM.md - upstream's
+    // buildSystemPrompt() re-appends both AFTER systemPromptOverride, which
+    // would defeat prompt_mode: replace. Parent context, if wanted, reaches the
+    // subagent via prompt_mode: append (parentSystemPrompt is embedded in
+    // systemPromptOverride) or inherit_context (conversation).
+    const loader = deps.io.createResourceLoader({
     cwd: cfg.effectiveCwd,
     agentDir,
     settingsManager: loaderSettings,
@@ -292,6 +298,9 @@ export async function createSubagentSession(
     // registration nor a partially-initialized extension's resources leak.
     await subagentSession.dispose();
     throw err;
+  }
+
+  return subagentSession;
   } finally {
     if (prevSubagentSession === undefined) {
       delete process.env.PI_SUBAGENT_SESSION;
@@ -299,6 +308,4 @@ export async function createSubagentSession(
       process.env.PI_SUBAGENT_SESSION = prevSubagentSession;
     }
   }
-
-  return subagentSession;
 }

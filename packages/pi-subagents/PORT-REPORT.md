@@ -60,3 +60,14 @@ excluding .git/node_modules/dist.
   beforeEach — shells spawned inside a piru main session inherit
   `PI_SUBAGENT_SESSION=1`, which made the widget-clear test host-env dependent.
 - Two `waitUntilSettled` tests updated for the `WaitOutcome` return.
+
+## FOLLOW-UP FIX (same day): PI_SUBAGENT_SESSION daemon-env leak
+
+The child marker was restored only around `bindExtensions`; a throw in
+`loader.reload()` / `createSession()` (e.g. a broken extension file — exactly
+today's torn-plannotator/ask-user-parse incident) escaped before the finally,
+leaving the shared parent daemon permanently marked as a child: parent-only
+extensions disabled, widget silenced, every spawned tool shell inheriting
+`PI_SUBAGENT_SESSION=1`. The whole creation window now sits inside one
+try/finally. Regression tests cover bind-throw and reload-throw restore paths
+(create-subagent-session.test.ts; 1294/1294 green on both copies).

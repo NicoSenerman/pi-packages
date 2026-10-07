@@ -253,6 +253,46 @@ describe("createSubagentSession — dispose on creation failure", () => {
       reason: "quit",
     });
   });
+
+  it("restores PI_SUBAGENT_SESSION when bindExtensions throws", async () => {
+    const session = createFactorySession();
+    session.bindExtensions = vi.fn().mockRejectedValue(new Error("bind failed"));
+    io.createSession.mockResolvedValue({ session });
+
+    const prev = process.env.PI_SUBAGENT_SESSION;
+    delete process.env.PI_SUBAGENT_SESSION;
+    try {
+      await expect(
+        createSubagentSession({ snapshot: STUB_SNAPSHOT, type: "Explore" }, defaultDeps()),
+      ).rejects.toThrow("bind failed");
+      expect(process.env.PI_SUBAGENT_SESSION).toBeUndefined();
+    } finally {
+      if (prev === undefined) delete process.env.PI_SUBAGENT_SESSION;
+      else process.env.PI_SUBAGENT_SESSION = prev;
+    }
+  });
+
+  it("restores PI_SUBAGENT_SESSION when loader.reload() throws (daemon env must not leak the child marker)", async () => {
+    // Regression: the marker is set on the shared process.env before
+    // loader/session creation; a throw there (e.g. a broken extension file)
+    // previously escaped the restore and marked the parent daemon as a child
+    // for the rest of its life.
+    io.createResourceLoader.mockReturnValue({
+      reload: vi.fn().mockRejectedValue(new Error("reload failed")),
+    });
+
+    const prev = process.env.PI_SUBAGENT_SESSION;
+    delete process.env.PI_SUBAGENT_SESSION;
+    try {
+      await expect(
+        createSubagentSession({ snapshot: STUB_SNAPSHOT, type: "Explore" }, defaultDeps()),
+      ).rejects.toThrow("reload failed");
+      expect(process.env.PI_SUBAGENT_SESSION).toBeUndefined();
+    } finally {
+      if (prev === undefined) delete process.env.PI_SUBAGENT_SESSION;
+      else process.env.PI_SUBAGENT_SESSION = prev;
+    }
+  });
 });
 
 describe("createSubagentSession — post-bind recursion guard", () => {
