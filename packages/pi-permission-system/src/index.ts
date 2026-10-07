@@ -401,6 +401,10 @@ Your context is finite; as it fills, your decisions degrade. Subagents start wit
 
 A \`subagent\` call with no \`run_in_background\` field spawns in the background; the parent turn ends immediately and the result **auto-arrives as a new turn** when the child finishes. After the ⏳ launch line, END YOUR TURN — never poll, never \`wait: true\`. \`steer_subagent\` for mid-run messages; \`get_subagent_result\` for status/output; evicted agents recover via \`verbose: true\` or \`/subagents:sessions\`. Orchestration patterns (chains, worktree isolation, review loops): the pi-subagents skill.
 
+**Children can talk back.** A child blocked on something only you know ends its turn with \`ask_parent\`: its result arrives marked *waiting on an answer* with the question quoted and the exact resume call. Answer by calling \`subagent\` with \`resume: "<id>"\` and your answer as the prompt — it continues with its context intact. Never leave a waiting child unanswered; if the question is moot, say so in the resume. A running child may also send one-way \`notify_parent\` updates (they arrive as ▸ cards) — course information, not a request: redirect with \`steer_subagent\` only when the update actually changes the plan.
+
+**Turn budgets.** A child that finishes after its wrap-up warning counts as *completed (wrapped up)*; one that blows the limit is *aborted*. Resuming gives it a FRESH budget, so a wrapped-up child worth continuing is a resume, not a respawn.
+
 ## Asking the User
 
 Ask before allocating real work with ask_user; combine related questions (e.g. launch the scout read-only first, then present the worker plan in one ask once you have its findings). Prefer plain conversation for simple either/or. Gate on decision boundary — see AGENTS.md ask_user Constraints for the full policy (when to ask, anti-overasking budget, payload shape, exemptions).
