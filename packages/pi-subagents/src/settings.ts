@@ -42,6 +42,8 @@ export interface SubagentsSettings {
   excludedExtensionPackages?: string[];
   /** true = prompt interactively for the subagent model when no explicit model applies. */
   agentModelPicker?: boolean;
+  /** false = children never get notify_parent (mid-run one-way updates). Default true. */
+  midRunUpdates?: boolean;
   /** Provider/modelId string that skips the picker once set (session-scoped). */
   agentModelDefault?: string;
 }
@@ -66,6 +68,8 @@ export interface SettingsSnapshot {
   excludedExtensionPackages?: string[];
   /** Present only when true so files that never set it gain no noise. */
   agentModelPicker?: boolean;
+  /** Present only when false (the non-default) so files that never set it gain no noise. */
+  midRunUpdates?: boolean;
 }
 
 /** Emit callback — a subset of `pi.events.emit` to keep helpers testable. */
@@ -90,6 +94,7 @@ export class SettingsManager {
   private _unconsumedSessionRetentionMinutes: number =
     DEFAULT_UNCONSUMED_RETENTION_MINUTES;
   private _abortAllOnInterrupt: boolean = DEFAULT_ABORT_ALL_ON_INTERRUPT;
+  private _midRunUpdates: boolean = true;
   private _excludedExtensionPackages: string[] = [];
   private _agentModelPicker: boolean = false;
   private _agentModelDefault: string | undefined = undefined;
@@ -170,6 +175,16 @@ export class SettingsManager {
 
   get abortAllOnInterrupt(): boolean {
     return this._abortAllOnInterrupt;
+  }
+
+  // ── midRunUpdates: no normalization; whether children get notify_parent ──
+
+  get midRunUpdates(): boolean {
+    return this._midRunUpdates;
+  }
+
+  set midRunUpdates(v: boolean) {
+    this._midRunUpdates = v === true;
   }
 
   // ── excludedExtensionPackages: hand-edited only; no /subagents:settings affordance ──
@@ -268,6 +283,8 @@ export class SettingsManager {
         settings.unconsumedSessionRetentionMinutes;
     if (typeof settings.abortAllOnInterrupt === "boolean")
       this._abortAllOnInterrupt = settings.abortAllOnInterrupt;
+    if (typeof settings.midRunUpdates === "boolean")
+      this._midRunUpdates = settings.midRunUpdates;
     // Assigned unconditionally: removing the key from disk must clear the value.
     this._excludedExtensionPackages = [
       ...(settings.excludedExtensionPackages ?? []),
@@ -296,6 +313,9 @@ export class SettingsManager {
     }
     if (this._agentModelPicker) {
       snapshot.agentModelPicker = true;
+    }
+    if (!this._midRunUpdates) {
+      snapshot.midRunUpdates = false;
     }
     return snapshot;
   }
@@ -365,6 +385,13 @@ export class SettingsManager {
     this._abortAllOnInterrupt = !this._abortAllOnInterrupt;
     return this.saveAndNotify(
       `Abort all subagents on ESC: ${this._abortAllOnInterrupt ? "on" : "off"}`,
+    );
+  }
+
+  toggleMidRunUpdates(): { message: string; level: "info" | "warning" } {
+    this._midRunUpdates = !this._midRunUpdates;
+    return this.saveAndNotify(
+      `Mid-run updates from subagents: ${this._midRunUpdates ? "on" : "off"}`,
     );
   }
 

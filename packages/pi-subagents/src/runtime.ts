@@ -17,6 +17,8 @@ import type { SessionContext } from "#src/types";
 export interface RunConfig {
   readonly defaultMaxTurns: number | undefined;
   readonly graceTurns: number;
+  /** Whether a running child's notify_parent updates are installed. Default true. */
+  readonly midRunUpdates?: boolean;
 }
 
 /**

@@ -91,6 +91,21 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
 		this.notifications.sendCompletion(record);
 	}
 
+	/**
+	 * A running child sent a notify_parent update: emit the lifecycle event and
+	 * announce it (withheld while the parent run is active, then delivered).
+	 * sendUpdate marks the message announced so outcome carriers don't repeat it.
+	 */
+	onSubagentUpdate(record: Subagent, message: string): void {
+		this.emit("subagents:update", {
+			id: record.id,
+			type: record.type,
+			description: record.description,
+			message,
+		});
+		this.notifications.sendUpdate(record, message);
+	}
+
 	onSubagentCompacted(record: Subagent, info: CompactionInfo): void {
 		// Emit compacted event when agent's session compacts (preserves count on record).
 		this.emit("subagents:compacted", {

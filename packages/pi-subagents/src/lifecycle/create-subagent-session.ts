@@ -16,13 +16,16 @@ import type { Model } from "@earendil-works/pi-ai";
 import {
   type AgentSession,
   type SettingsManager,
+  type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { AgentConfigLookup } from "#src/config/agent-types";
 import type { ChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { SubagentSession } from "#src/lifecycle/subagent-session";
+import { AskParentTool, type QuestionRecorder } from "#src/session/ask-parent-tool";
 import type { EnvInfo } from "#src/session/env";
 import type { ModelRegistry } from "#src/session/model-resolver";
+import { NotifyParentTool, type UpdateAnnouncer } from "#src/session/notify-parent-tool";
 import {
   type AssemblerIO,
   assembleSessionConfig,
@@ -90,6 +93,8 @@ export interface CreateSessionOptions {
   modelRegistry: ModelRegistry;
   model?: Model<any>;
   tools: string[];
+  /** Core-installed child tools (ask_parent/notify_parent), pi 1.0 SDK customTools. */
+  customTools?: ToolDefinition[];
   /** Re-applied whenever the SDK rebuilds the tool registry (#725). */
   excludeTools?: string[];
   resourceLoader: ResourceLoaderLike;
@@ -163,6 +168,33 @@ export interface CreateSubagentSessionParams {
   parentSession?: ParentSessionInfo;
   model?: Model<any>;
   thinkingLevel?: ThinkingLevel;
+  /**
+   * Records a question the child declares with `ask_parent`. Supplied for every
+   * child; its absence installs no ask-back tool.
+   */
+  askParent?: QuestionRecorder;
+  /**
+   * Announces a mid-run update the child sends with `notify_parent`. Supplied
+   * only when the operator left the mid-run channel on; its absence installs
+   * no update tool.
+   */
+  notifyParent?: UpdateAnnouncer;
+}
+
+/**
+ * The core's own child-facing tools, built for whichever callbacks this run
+ * supplied. An agent's `tools:` list is its complete capability allowlist, so
+ * these are appended to it rather than drawn from it: they are protocol the
+ * core installs in every child, and neither reaches the filesystem, the shell,
+ * or the network.
+ */
+function buildChildTools(params: CreateSubagentSessionParams): ToolDefinition[] {
+  const tools: ToolDefinition[] = [];
+  if (params.askParent)
+    tools.push(new AskParentTool(params.askParent).toToolDefinition());
+  if (params.notifyParent)
+    tools.push(new NotifyParentTool(params.notifyParent).toToolDefinition());
+  return tools;
 }
 
 /**
@@ -256,6 +288,7 @@ export async function createSubagentSession(
   });
   const sessionId = sessionManager.getSessionId();
 
+  const childTools = buildChildTools(params);
   const { session } = await deps.io.createSession({
     cwd: cfg.effectiveCwd,
     agentDir,
@@ -263,8 +296,9 @@ export async function createSubagentSession(
     settingsManager: sessionSettings,
     modelRegistry: snapshot.modelRegistry,
     model: cfg.model,
-    tools: cfg.toolNames,
+    tools: [...cfg.toolNames, ...childTools.map((tool) => tool.name)],
     excludeTools: EXCLUDED_TOOL_NAMES,
+    customTools: childTools,
     resourceLoader: loader,
     thinkingLevel: cfg.thinkingLevel,
   });

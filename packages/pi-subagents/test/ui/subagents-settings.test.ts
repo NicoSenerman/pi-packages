@@ -34,6 +34,11 @@ function makeSettings() {
       message: "Abort all subagents on ESC: off",
       level: "info",
     })),
+    midRunUpdates: true,
+    toggleMidRunUpdates: vi.fn((): { message: string; level: "info" | "warning" } => ({
+      message: "Mid-run updates from subagents: off",
+      level: "info",
+    })),
   };
 }
 
@@ -52,7 +57,7 @@ describe("SubagentsSettingsHandler", () => {
     expect(handler).toBeInstanceOf(SubagentsSettingsHandler);
   });
 
-  it("shows the six settings options with current values", async () => {
+  it("shows the seven settings options with current values", async () => {
     const { handler } = makeHandler();
     const ui = makeMenuUI([undefined]); // cancel immediately
     await handler.handle({ ui });
@@ -64,6 +69,7 @@ describe("SubagentsSettingsHandler", () => {
       "Consumed-session retention (current: 10 min)",
       "Unconsumed-session retention (current: 720 min)",
       "Abort all subagents on ESC (current: on)",
+      "Mid-run updates from subagents (current: on)",
     ]);
   });
 

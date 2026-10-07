@@ -1,6 +1,10 @@
 import { debugLog } from "#src/debug";
 import type { SubagentStatus } from "#src/lifecycle/subagent-state";
 import { getLifetimeTotal } from "#src/lifecycle/usage";
+import {
+  currentResumeRefusal,
+  renderOutcomeAddenda,
+} from "#src/observation/outcome-addenda";
 import type { Subagent } from "#src/types";
 
 /** Details attached to custom notification messages for visual rendering. */
@@ -83,6 +87,22 @@ export function formatTaskNotification(record: Subagent, resultMaxLen: number): 
 }
 
 /**
+ * Format a mid-run update announcement (notify_parent). The message escaped is
+ * the child's own finding; the trailing line names the steer affordance, the
+ * only live channel back into a running child.
+ */
+export function formatUpdateNotification(record: Subagent, message: string): string {
+  return joinNotificationLines([
+    "<subagent-update>",
+    `<task-id>${record.id}</task-id>`,
+    `<summary>Subagent "${escapeXml(record.description)}" sent an update</summary>`,
+    `<message>${escapeXml(message)}</message>`,
+    "</subagent-update>",
+    `The agent is still running. Steer it with steer_subagent("${record.id}", "...") to redirect it, or let it continue.`,
+  ]);
+}
+
+/**
  * Format the block for an agent stopped before the limiter admitted it. Such an
  * agent never ran, so it has no result and no usage — reporting either (even as
  * zeroes) would point the parent at work that does not exist.
@@ -161,6 +181,7 @@ export function buildEventData(record: Subagent) {
 
 export interface NotificationSystem {
   sendCompletion: (record: Subagent) => void;
+  sendUpdate: (record: Subagent, message: string) => void;
   dispose: () => void;
 }
 
@@ -172,6 +193,8 @@ export class NotificationManager implements NotificationSystem {
   // are withheld here — where record.consumed is still consultable — and
   // flushed once the run settles.
   private pendingNudges = new Map<string, Subagent>();
+  /** Mid-run updates are queued in order and never collapse by id — each message is a distinct fact. */
+  private pendingUpdates: Array<{ record: Subagent; message: string }> = [];
   private parentRunActive = false;
   private disposed = false;
 
@@ -200,6 +223,21 @@ export class NotificationManager implements NotificationSystem {
     this.emitIndividualNudge(record);
   }
 
+  /**
+   * A running child's notify_parent update. Same withholding discipline as
+   * completion nudges; a claimed or no-longer-active record drops the update
+   * (a carrier holds the outcome and will render it instead).
+   */
+  sendUpdate(record: Subagent, message: string): void {
+    if (this.disposed) return;
+    if (!this.canAnnounceUpdate(record)) return;
+    if (this.parentRunActive) {
+      this.pendingUpdates.push({ record, message });
+      return;
+    }
+    this.emitUpdate(record, message);
+  }
+
   /** The parent's agent run became active; nudges are withheld until it settles. */
   onParentAgentStart(): void {
     this.parentRunActive = true;
@@ -214,6 +252,14 @@ export class NotificationManager implements NotificationSystem {
     this.parentRunActive = false;
     const withheld = [...this.pendingNudges.values()];
     this.pendingNudges.clear();
+    const withheldUpdates = this.pendingUpdates.splice(0);
+    for (const { record, message } of withheldUpdates) {
+      try {
+        if (this.canAnnounceUpdate(record)) this.emitUpdate(record, message);
+      } catch (err) {
+        debugLog("notification update render", err);
+      }
+    }
     for (const record of withheld) {
       try {
         this.emitIndividualNudge(record);
@@ -227,19 +273,51 @@ export class NotificationManager implements NotificationSystem {
   dispose(): void {
     this.disposed = true;
     this.pendingNudges.clear();
+    this.pendingUpdates = [];
+  }
+
+  private canAnnounceUpdate(record: Subagent): boolean {
+    return !record.hasClaims && record.isActive();
+  }
+
+  private emitUpdate(record: Subagent, message: string): void {
+    // This channel is delivering the message, so no outcome carrier may repeat
+    // it — the record renders only what is still owed.
+    record.markUpdateAnnounced(message);
+    this.sendMessage(
+      {
+        customType: "subagent-update",
+        content: formatUpdateNotification(record, message),
+        display: true,
+        details: {
+          id: record.id,
+          description: record.description,
+          message,
+        },
+      },
+      { deliverAs: "followUp", triggerTurn: true },
+    );
   }
 
   private emitIndividualNudge(record: Subagent): void {
     if (record.consumed || record.hasClaims) return;
 
     const notification = formatTaskNotification(record, 500);
+    // The addenda ride the nudge: undelivered mid-run updates, then the
+    // ask-back affordance when the child ended waiting on an answer.
+    const addenda = renderOutcomeAddenda({
+      id: record.id,
+      runUpdates: record.runUpdates,
+      pendingQuestion: record.pendingQuestion,
+      resumeRefusal: currentResumeRefusal(record),
+    });
     // A never-started agent has no transcript and nothing to collect.
     const pointerLines = record.stoppedWhileQueued ? "" : this.buildPointerLines(record);
 
     this.sendMessage(
       {
         customType: "subagent-notification",
-        content: notification + pointerLines,
+        content: notification + addenda + pointerLines,
         display: true,
         details: buildNotificationDetails(record, 500),
       },

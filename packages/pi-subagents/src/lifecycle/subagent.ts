@@ -62,6 +62,8 @@ export interface SubagentLifecycleObserver {
   onRunFinished?(agent: Subagent): void;
   /** Fires once when a resumed run reaches a terminal state. */
   onResumeFinished?(agent: Subagent): void;
+  /** Fires when a running child sends the delegating agent a mid-run update (notify_parent). */
+  onUpdateSent?(agent: Subagent, message: string): void;
   /** Fires on compaction events during the run. */
   onCompacted?(agent: Subagent, info: CompactionInfo): void;
 }
@@ -378,6 +380,7 @@ export class Subagent {
       }
     }
 
+    const runConfig = this.execution.getRunConfig?.();
     try {
       this.subagentSession = await this.execution.createSubagentSession({
         snapshot: this.execution.snapshot,
@@ -386,6 +389,14 @@ export class Subagent {
         parentSession: this.execution.parentSession,
         model: this.execution.model,
         thinkingLevel: this.execution.thinkingLevel,
+        askParent: (question) => {
+          this.state.setPendingQuestion(question);
+        },
+        notifyParent: this.canSendUpdates(runConfig)
+          ? (message) => {
+              this.announceUpdate(message);
+            }
+          : undefined,
       });
     } catch (err) {
       // The factory disposed its own session on a post-creation failure.
@@ -401,7 +412,6 @@ export class Subagent {
     );
     this.execution.observer?.onSessionCreated?.(this);
 
-    const runConfig = this.execution.getRunConfig?.();
     try {
       const result = await this.subagentSession.runTurnLoop(
         this.execution.prompt,
@@ -528,9 +538,57 @@ export class Subagent {
     this.notifyResumeFinished();
   }
 
+  /** The question the child ended its current run with, if it declared one. */
+  get pendingQuestion(): string | undefined {
+    return this.state.pendingQuestion;
+  }
+
+  /** The mid-run updates no announcement has delivered — carriers render these. */
+  get runUpdates(): readonly string[] {
+    return this.state.runUpdates;
+  }
+
+  /** Forwarder: an announcement channel delivered this update. */
+  markUpdateAnnounced(message: string): void {
+    this.state.markUpdateAnnounced(message);
+  }
+
+  /**
+   * Whether this run gets the mid-run update channel.
+   *
+   * The operator's setting is the whole gate: where an update lands is decided
+   * per message by announceUpdate(), not per child at session creation, so no
+   * child has to be refused the tool for a condition that can change mid-run.
+   * Defaults to on when no run config is supplied, matching the setting.
+   */
+  private canSendUpdates(runConfig: Pick<RunConfig, "midRunUpdates"> | undefined): boolean {
+    return runConfig?.midRunUpdates ?? true;
+  }
+
+  /**
+   * Record an update the child sent, then surface it to the observer channel.
+   * The update joins the run's ledger regardless of who delivers it: a carrier
+   * that could not reach the parent in time still owes the message, and the
+   * ledger is how an outcome carrier repeats only what announcements missed.
+   */
+  private announceUpdate(message: string): void {
+    this.state.recordUpdate(message);
+    this.execution.observer?.onUpdateSent?.(this, message);
+  }
+
+  /**
+   * Drop a question the child recorded before the run failed. Carriers render
+   * a pending question as "answer by resuming me", which is not the right next
+   * action after a failure — the error text already tells the parent to look.
+   */
+  private clearPendingQuestion(): void {
+    this.state.setPendingQuestion(undefined);
+  }
+
   /** Terminate a resume as errored: mark, release listeners, notify observer. */
   failResume(err: unknown): void {
     this.markError(err);
+    this.clearPendingQuestion();
     this.listeners.release();
     this.notifyResumeFinished();
   }
@@ -680,12 +738,19 @@ export class Subagent {
       : result.steered
         ? "steered"
         : "completed";
-    const finalResult =
-      result.responseText +
-      this.workspaceBracket.dispose({
-        status: finalStatus,
-        description: this.description,
-      });
+    // A completed child that declared a question is inviting a resume, so its
+    // workspace stays live for the resume to re-enter. Every other outcome
+    // tears the workspace down here. The question was recorded by ask_parent
+    // during the run, so it is already on the record.
+    const holdForResume =
+      finalStatus === "completed" && this.state.pendingQuestion !== undefined;
+    const finalResult = holdForResume
+      ? result.responseText
+      : result.responseText +
+        this.workspaceBracket.dispose({
+          status: finalStatus,
+          description: this.description,
+        });
 
     if (result.aborted) this.markAborted(finalResult);
     else if (result.steered) this.markSteered(finalResult);
@@ -724,6 +789,7 @@ export class Subagent {
   /** Fail a run: mark error, release listeners, best-effort workspace dispose, notify observer. */
   failRun(err: unknown): void {
     this.markError(err);
+    this.clearPendingQuestion();
     this.listeners.release();
 
     try {

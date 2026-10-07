@@ -90,6 +90,18 @@ export class BridgeCommandWatcher {
     // POLL_INTERVAL_MS later) is not lost. Otherwise a line landing inside
     // that window would sit until the second tick.
     void this.drain().catch((err) => debugLog("BridgeCommandWatcher.drain0", err));
+    // Second kick just past one poll interval: watchFile's baseline stat is
+    // captured asynchronously and can land AFTER an in-flight append (observed
+    // ~10% under vitest). Then every later poll sees no change and never
+    // fires, and the immediate kick above already ran empty — the command is
+    // lost. A delayed re-drain reads content directly, not via mtime diffs,
+    // so it finds the line regardless of when the baseline was taken.
+    const delayedKick = setTimeout(() => {
+      // stop() before the kick → nothing to do (sibling tests lean on this).
+      if (!this.active) return;
+      void this.drain().catch((err) => debugLog("BridgeCommandWatcher.drain1", err));
+    }, POLL_INTERVAL_MS + 100);
+    delayedKick.unref?.();
   }
 
   stop(): void {

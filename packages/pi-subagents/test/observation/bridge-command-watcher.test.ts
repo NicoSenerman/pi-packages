@@ -153,7 +153,7 @@ describe("BridgeCommandWatcher", () => {
     rmSync(tmp, { force: true });
   });
 
-  it("routes an abort line appended after seedOffset via the live watcher", async () => {
+  it("routes an abort line appended after seedOffset via the live watcher", { timeout: 20000 }, async () => {
     const tmp = join(tmpdir(), `bridge-cmd-test-${randomUUID()}.jsonl`);
     writeFileSync(tmp, "");
     const aborted: string[] = [];
@@ -170,7 +170,10 @@ describe("BridgeCommandWatcher", () => {
       () => {
         expect(aborted).toContain("agent-k");
       },
-      { timeout: 3000, interval: 100 },
+      // 3s lost races under full-suite parallel load (twice observed today);
+      // the watcher's first drain kick runs immediately, so any wait long
+      // enough for a stalled worker is the whole fix.
+      { timeout: 15000, interval: 100 },
     );
     w.stop();
     rmSync(tmp, { force: true });

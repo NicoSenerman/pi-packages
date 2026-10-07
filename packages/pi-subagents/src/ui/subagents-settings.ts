@@ -120,6 +120,12 @@ const SETTINGS: readonly SettingDescriptor[] = [
     currentDisplay: (settings) => (settings.abortAllOnInterrupt ? "on" : "off"),
     toggle: (settings) => settings.toggleAbortAllOnInterrupt(),
   },
+  {
+    kind: "toggle",
+    label: "Mid-run updates from subagents",
+    currentDisplay: (settings) => (settings.midRunUpdates ? "on" : "off"),
+    toggle: (settings) => settings.toggleMidRunUpdates(),
+  },
 ];
 
 // ---- Class ----

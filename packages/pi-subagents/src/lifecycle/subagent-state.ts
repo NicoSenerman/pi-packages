@@ -74,6 +74,16 @@ export interface SettledOutcome {
 	status: SubagentStatus;
 	result?: string;
 	error?: string;
+	/** The question the run ended with, when it declared one. */
+	pendingQuestion?: string;
+	/** The updates no announcement delivered — what a carrier still owes. */
+	runUpdates?: readonly string[];
+}
+
+/** One update a child sent during a run, and whether an announcement delivered it. */
+interface RunUpdate {
+	message: string;
+	announced: boolean;
 }
 
 export interface CarrierClaim {
@@ -113,6 +123,23 @@ export class SubagentState {
 	private _superseded?: { run: number; outcome: SettledOutcome };
 	private readonly _claims = new Set<CarrierClaim>();
 	get hasClaims(): boolean { return this._claims.size > 0; }
+
+	// The question the child ended its run with (recorded via the ask_parent
+	// tool). Part of the outcome like _result; a carrier renders it with the
+	// resume call that answers it. Not cleared by consumption — the question is
+	// owed until a resume answers it, and resetForResume clears it when that
+	// resume begins.
+	private _pendingQuestion?: string;
+	get pendingQuestion(): string | undefined { return this._pendingQuestion; }
+
+	// Mid-run updates the child sent via notify_parent, each marked delivered
+	// once an announcement carried it — so a message reaches the parent exactly
+	// once, through whichever channel got there, and no carrier repeats it.
+	private readonly _runUpdates: RunUpdate[] = [];
+	/** The updates no announcement delivered — what an outcome carrier must render. */
+	get runUpdates(): readonly string[] {
+		return this._runUpdates.filter((u) => !u.announced).map((u) => u.message);
+	}
 
 	// Stats — accumulated via mutation methods, readable via getters
 	private _toolUses: number;
@@ -226,6 +253,27 @@ export class SubagentState {
 	markRunning(startedAt: number): void {
 		this._status = "running";
 		this._startedAt = startedAt;
+		this._runUpdates.length = 0;
+	}
+
+	/** Record an update the child sent during this run, owed to a carrier until delivered. */
+	recordUpdate(message: string): void {
+		this._runUpdates.push({ message, announced: false });
+	}
+
+	/**
+	 * The announcement channel delivered this message, so no outcome carrier may
+	 * repeat it. Marks the first copy still owed: two identical messages are two
+	 * facts the child sent twice, and one announcement delivered one of them.
+	 */
+	markUpdateAnnounced(message: string): void {
+		const owed = this._runUpdates.find((u) => !u.announced && u.message === message);
+		if (owed) owed.announced = true;
+	}
+
+	/** Record the question the child ended its run with (ask_parent tool). */
+	setPendingQuestion(question: string | undefined): void {
+		this._pendingQuestion = question;
 	}
 
 	/**
@@ -321,7 +369,13 @@ export class SubagentState {
 	resetForResume(startedAt: number): void {
 		this._superseded = {
 			run: this._run,
-			outcome: { status: this._status, result: this._result, error: this._error },
+			outcome: {
+				status: this._status,
+				result: this._result,
+				error: this._error,
+				pendingQuestion: this._pendingQuestion,
+				runUpdates: this.runUpdates,
+			},
 		};
 		this._run++;
 		this._status = "running";
@@ -330,5 +384,10 @@ export class SubagentState {
 		this._result = undefined;
 		this._error = undefined;
 		this._consumedAt = undefined;
+		// A resumed run answers the old question; whether it asks a new one is
+		// decided when it terminates.
+		this._pendingQuestion = undefined;
+		// The updates belong to the run that produced them, and this starts another.
+		this._runUpdates.length = 0;
 	}
 }
