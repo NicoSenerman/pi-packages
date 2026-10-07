@@ -585,10 +585,24 @@ describe("SessionNavigatorHandler", () => {
       });
     });
 
-    it("docks the pane when the UI reports no mode", async () => {
+    it("falls back instead of mounting when the UI runs no factory (RPC hosts like piru)", async () => {
       const ui = makeUI(label(), { interactive: false });
-      await handleIn(ui);
-      expect(ui.custom).toHaveBeenLastCalledWith(expect.any(Function), { overlay: false });
+      const sent: string[] = [];
+      await handleWith(ui, [PICK], { fallbackSend: (c) => sent.push(c) });
+      // A non-interactive UI must not receive a custom mount it cannot render —
+      // the only custom call is the mode probe.
+      expect(ui.custom).toHaveBeenCalledTimes(1);
+      // The transcript rides the chat fallback instead.
+      expect(sent.length).toBe(1);
+      expect(sent[0]).toContain("Agent");
+    });
+
+    it("warns with the transcript path when no fallback sender is available", async () => {
+      const ui = makeUI(label(), { interactive: false });
+      await handleWith(ui, [PICK]);
+      expect(ui.custom).toHaveBeenCalledTimes(1);
+      expect(ui.notify).toHaveBeenCalledOnce();
+      expect(ui.notify.mock.calls[0][1]).toBe("warning");
     });
 
     it("mounts the pane once, after a probe that mounts nothing", async () => {

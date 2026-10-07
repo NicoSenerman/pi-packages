@@ -358,6 +358,12 @@ export default function (pi: ExtensionAPI) {
         registry,
         cwd: ctx.cwd,
         readFile: (path) => readFileSync(path, "utf8"),
+        // Persisted run records live in the parent's session entries; they
+        // outlive the manager's retention sweep.
+        sessionEntries: ctx.sessionManager.getEntries(),
+        // piru (RPC mode) cannot mount ui.custom components; dump into chat instead.
+        fallbackSend: (content) =>
+          pi.sendMessage({ customType: "subagent-transcript", content, display: true }),
       });
     },
   });

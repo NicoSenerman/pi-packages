@@ -133,6 +133,12 @@ export interface SessionNavigatorParams {
   readFile: (path: string) => string;
   /** The parent session's entries, whose run records outlive the manager's. */
   sessionEntries: readonly SessionEntryLike[];
+  /**
+   * Chat-dump fallback for hosts without `ui.custom` (pi RPC mode — piru).
+   * Called with the transcript rendered as plain text instead of mounting a
+   * pane. Absent → the operator gets a notify pointing at the transcript file.
+   */
+  fallbackSend?: (content: string) => void;
 }
 
 /** How a scroll move treats following new output; by default it follows when it lands on the bottom. */
@@ -164,7 +170,7 @@ export interface TranscriptPaneOptions {
  * holds, such as those from before a `/reload`.
  */
 export class SessionNavigatorHandler {
-  async handle({ ui, agents, registry, cwd, readFile, sessionEntries }: SessionNavigatorParams): Promise<void> {
+  async handle({ ui, agents, registry, cwd, readFile, sessionEntries, fallbackSend }: SessionNavigatorParams): Promise<void> {
     const entries = listNavigableAgents(agents, registry, readPersistedRuns(sessionEntries));
     if (entries.length === 0) {
       ui.notify("No subagent sessions to view.", "info");
@@ -187,6 +193,19 @@ export class SessionNavigatorHandler {
     }
     const markdownTheme = getMarkdownTheme();
     const mode = await probeTuiMode(ui);
+    if (mode === undefined) {
+      // pi RPC mode (piru): `ui.custom` is a no-op stub there. Deliver the
+      // transcript as a chat message instead of a pane nobody would render.
+      if (paramsFallback(source, entry.heading, fallbackSend)) return;
+      const file = entry.kind === "snapshot" ? entry.outputFile : undefined;
+      ui.notify(
+        file
+          ? `This host cannot render the transcript viewer; the transcript is at ${file}`
+          : "This host cannot render the transcript viewer.",
+        "warning",
+      );
+      return;
+    }
     await ui.custom<undefined>(
       (tui, theme, keys, done) =>
         new TranscriptPane({ tui, theme, keys, source, heading: entry.heading, done, cwd, markdownTheme }),
@@ -195,19 +214,55 @@ export class SessionNavigatorHandler {
   }
 }
 
+/** One transcript message rendered as chat lines: role header, text, tool calls by name. */
+function messageToLines(message: unknown): string[] {
+  const msg = message as { role?: string; content?: unknown };
+  const role = msg.role ?? "?";
+  const parts = Array.isArray(msg.content) ? msg.content : [];
+  const lines: string[] = [`── ${role} ──`];
+  for (const part of parts as { type?: string; text?: string; name?: string }[]) {
+    if (part.type === "text" && part.text) lines.push(part.text);
+    else if (part.type === "toolCall") lines.push(`  ⚒ ${part.name ?? "tool"}`);
+    else if (part.type === "toolResult") lines.push("  ⚒ result");
+  }
+  return lines;
+}
+
+/**
+ * Dump the transcript into chat via the fallback sender. Returns false when no
+ * sender was supplied (the caller then points at the file instead).
+ */
+function paramsFallback(
+  source: TranscriptSource,
+  heading: EntryHeading,
+  fallbackSend: ((content: string) => void) | undefined,
+): boolean {
+  if (!fallbackSend) return false;
+  const title = `${heading.name}${heading.modeLabel ? ` (${heading.modeLabel})` : ""} — ${heading.description}`;
+  const lines = [`── ${title} ──`, ""];
+  for (const message of source.getMessages()) {
+    lines.push(...messageToLines(message));
+  }
+  const stream = source.streaming();
+  if (stream?.responseText) lines.push("", stream.responseText);
+  fallbackSend(lines.join("\n"));
+  return true;
+}
+
 /**
  * The TUI's render mode, read before the pane mounts. Pi decides overlay versus
  * docked before it runs a `ui.custom` factory and exposes no mode accessor, so
  * this mounts a factory that closes with `tui.mode` before returning; Pi then
  * never mounts what it returns. A UI that runs no factory (print or RPC mode)
- * resolves `undefined`, which keeps the docked default.
+ * resolves `undefined` — which here means "no custom component support at all",
+ * so callers fall back instead of mounting a pane nobody renders.
  */
-async function probeTuiMode(ui: SessionNavigatorUI): Promise<TuiMode> {
+async function probeTuiMode(ui: SessionNavigatorUI): Promise<TuiMode | undefined> {
   const mode = await ui.custom<TuiMode | undefined>((tui, _theme, _keys, done) => {
     done(tui.mode);
     return NOTHING;
   });
-  return mode === "fullscreen" ? "fullscreen" : "regular";
+  return mode === "fullscreen" ? "fullscreen" : mode === "regular" ? "regular" : undefined;
 }
 
 /** Docked in regular mode (ADR 0007); a focused overlay in fullscreen mode, so the viewport keys reach it (ADR 0012). */
