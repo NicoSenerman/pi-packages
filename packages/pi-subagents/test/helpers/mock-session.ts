@@ -54,8 +54,8 @@ export function createSubagentSessionStub(
 	return {
 		session,
 		outputFile,
-		runTurnLoop: vi.fn().mockResolvedValue({ responseText: "done", aborted: false, steered: false }),
-		resumeTurnLoop: vi.fn().mockResolvedValue("resumed"),
+		runTurnLoop: vi.fn().mockResolvedValue({ responseText: "done", turnBudget: { used: 1, phase: "within" } }),
+		resumeTurnLoop: vi.fn().mockResolvedValue({ responseText: "resumed", turnBudget: { used: 1, phase: "within" } }),
 		steer: vi.fn((message: string): Promise<void> => session.steer(message) as Promise<void>),
 		dispose: vi.fn((): Promise<void> => {
 			session.dispose();

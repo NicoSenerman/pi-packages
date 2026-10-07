@@ -35,11 +35,11 @@ describe("getStatusLabel", () => {
   });
 
   it('returns label for "aborted"', () => {
-    expect(getStatusLabel("aborted")).toBe("Aborted (max turns exceeded)");
+    expect(getStatusLabel("aborted")).toBe("Aborted (turn limit reached, output may be incomplete)");
   });
 
   it('returns label for "steered"', () => {
-    expect(getStatusLabel("steered")).toBe("Wrapped up (turn limit)");
+    expect(getStatusLabel("steered")).toBe("Wrapped up (reached turn limit)");
   });
 
   it('returns "Done" for completed', () => {

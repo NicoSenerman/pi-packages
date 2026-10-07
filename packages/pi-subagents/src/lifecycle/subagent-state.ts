@@ -20,6 +20,7 @@
 
 import type { LifetimeUsage } from "#src/lifecycle/usage";
 import { addUsage } from "#src/lifecycle/usage";
+import type { TurnBudget } from "#src/lifecycle/turn-limits";
 
 export type SubagentStatus =
 	| "queued"
@@ -78,6 +79,8 @@ export interface SettledOutcome {
 	pendingQuestion?: string;
 	/** The updates no announcement delivered — what a carrier still owes. */
 	runUpdates?: readonly string[];
+	/** The run's turn limit and its use; absent when no limit applied. */
+	turnBudget?: TurnBudget;
 }
 
 /** One update a child sent during a run, and whether an announcement delivered it. */
@@ -131,6 +134,12 @@ export class SubagentState {
 	// resume begins.
 	private _pendingQuestion?: string;
 	get pendingQuestion(): string | undefined { return this._pendingQuestion; }
+
+	// The run's turn budget, live: the turn loop reports it before the first
+	// turn and after each boundary, so the last report is already the outcome's.
+	// Cleared where a run begins (markRunning / resetForResume).
+	private _turnBudget?: TurnBudget;
+	get turnBudget(): TurnBudget | undefined { return this._turnBudget; }
 
 	// Mid-run updates the child sent via notify_parent, each marked delivered
 	// once an announcement carried it — so a message reaches the parent exactly
@@ -254,6 +263,12 @@ export class SubagentState {
 		this._status = "running";
 		this._startedAt = startedAt;
 		this._runUpdates.length = 0;
+		this._turnBudget = undefined;
+	}
+
+	/** Record the budget the running turn loop reports. */
+	setTurnBudget(budget: TurnBudget): void {
+		this._turnBudget = budget;
 	}
 
 	/** Record an update the child sent during this run, owed to a carrier until delivered. */
@@ -375,6 +390,7 @@ export class SubagentState {
 				error: this._error,
 				pendingQuestion: this._pendingQuestion,
 				runUpdates: this.runUpdates,
+				turnBudget: this._turnBudget,
 			},
 		};
 		this._run++;
@@ -389,5 +405,7 @@ export class SubagentState {
 		this._pendingQuestion = undefined;
 		// The updates belong to the run that produced them, and this starts another.
 		this._runUpdates.length = 0;
+		// A resumed run gets a fresh budget; the previous run's ends with it.
+		this._turnBudget = undefined;
 	}
 }

@@ -33,7 +33,9 @@ export type WaitOutcome =
 import type { LifetimeUsage } from "#src/lifecycle/usage";
 import type { WorkspaceProvider } from "#src/lifecycle/workspace";
 import { WorkspaceBracket } from "#src/lifecycle/workspace-bracket";
+import { wrappedUpAtTurnLimit } from "#src/lifecycle/turn-limits";
 import { subscribeSubagentObserver } from "#src/observation/record-observer";
+import type { ModelIdentity } from "#src/ui/display";
 import type { RunConfig } from "#src/runtime";
 import type {
   AgentInvocation,
@@ -200,6 +202,15 @@ export class Subagent {
   }
   get maxTurns(): number | undefined {
     return this.execution.maxTurns;
+  }
+  /** Model identity for the session viewer's header; undefined when inheriting. */
+  get model(): ModelIdentity | undefined {
+    const m = this.execution.model;
+    return m ? { provider: m.provider, id: m.id } : undefined;
+  }
+  /** Thinking level for the session viewer's header; undefined when inheriting. */
+  get thinkingLevel(): string | undefined {
+    return this.execution.thinkingLevel;
   }
   /** Model as "provider/modelId" for snapshot consumers; undefined when inheriting. */
   get modelLabel(): string | undefined {
@@ -418,8 +429,11 @@ export class Subagent {
         {
           maxTurns: this.execution.maxTurns,
           defaultMaxTurns: runConfig?.defaultMaxTurns,
-          graceTurns: runConfig?.graceTurns,
+          wrapUpTurns: runConfig?.wrapUpTurns,
           signal: this.abortController.signal,
+          onTurnBudget: (budget) => {
+            this.state.setTurnBudget(budget);
+          },
         },
       );
       this.completeRun(result);
@@ -531,9 +545,24 @@ export class Subagent {
     }
   }
 
-  /** Terminate a resume as completed: mark, release listeners, notify observer. */
-  completeResume(result: string): void {
-    this.markCompleted(result);
+  /** Terminate a resume as completed: mark, dispose or hold the workspace, release listeners, notify observer. */
+  completeResume(result: TurnLoopResult): void {
+    // The harness ending the resume at its turn limit ends the run for good,
+    // as it does for an initial run.
+    const exhausted = result.turnBudget.phase === "exhausted";
+    const finalStatus: SubagentStatus = exhausted ? "aborted" : "completed";
+    // A child answering one question may need to ask another, which holds the
+    // workspace for the next resume the same way the original run did.
+    const finalResult =
+      !exhausted && this.state.pendingQuestion !== undefined
+        ? result.responseText
+        : result.responseText +
+          this.workspaceBracket.dispose({
+            status: finalStatus,
+            description: this.description,
+          });
+    if (exhausted) this.markAborted(finalResult);
+    else this.markCompleted(finalResult);
     this.listeners.release();
     this.notifyResumeFinished();
   }
@@ -729,21 +758,23 @@ export class Subagent {
     this._runKind = "resume";
   }
 
-  /** Complete a run: release listeners, dispose the workspace, status transition, notify observer. */
+  /** Complete a run: status transition, dispose or hold the workspace, notify observer. */
   completeRun(result: TurnLoopResult): void {
     this.listeners.release();
 
-    const finalStatus: SubagentStatus = result.aborted
-      ? "aborted"
-      : result.steered
-        ? "steered"
-        : "completed";
+    // The harness ending the run at its turn limit is the one way a run that
+    // returned is not complete.
+    const exhausted = result.turnBudget.phase === "exhausted";
+    const finalStatus: SubagentStatus = exhausted ? "aborted" : "completed";
     // A completed child that declared a question is inviting a resume, so its
     // workspace stays live for the resume to re-enter. Every other outcome
-    // tears the workspace down here. The question was recorded by ask_parent
-    // during the run, so it is already on the record.
+    // tears the workspace down here, including a run that wrapped up at its
+    // turn limit. The question was recorded by ask_parent during the run, so
+    // it is already on the record.
     const holdForResume =
-      finalStatus === "completed" && this.state.pendingQuestion !== undefined;
+      finalStatus === "completed" &&
+      this.state.pendingQuestion !== undefined &&
+      !wrappedUpAtTurnLimit({ status: finalStatus, turnBudget: result.turnBudget });
     const finalResult = holdForResume
       ? result.responseText
       : result.responseText +
@@ -752,8 +783,7 @@ export class Subagent {
           description: this.description,
         });
 
-    if (result.aborted) this.markAborted(finalResult);
-    else if (result.steered) this.markSteered(finalResult);
+    if (exhausted) this.markAborted(finalResult);
     else this.markCompleted(finalResult);
 
     this.notifyRunFinished();

@@ -86,7 +86,7 @@ describe("GetResultTool", () => {
 
 	it("waits for promise when wait=true and agent is running", async () => {
 		const sessionStub = createSubagentSessionStub();
-		sessionStub.runTurnLoop.mockResolvedValue({ responseText: "Finished after wait.", aborted: false, steered: false });
+		sessionStub.runTurnLoop.mockResolvedValue({ responseText: "Finished after wait.", turnBudget: { used: 1, phase: "within" } });
 		const record = createTestSubagent({
 			status: "running",
 			completedAt: undefined,
@@ -104,7 +104,7 @@ describe("GetResultTool", () => {
 
 	it("waits for a queued agent when wait=true", async () => {
 		const sessionStub = createSubagentSessionStub();
-		sessionStub.runTurnLoop.mockResolvedValue({ responseText: "Finished after the queue.", aborted: false, steered: false });
+		sessionStub.runTurnLoop.mockResolvedValue({ responseText: "Finished after the queue.", turnBudget: { used: 1, phase: "within" } });
 		const record = createTestSubagent({
 			status: "queued",
 			completedAt: undefined,

@@ -15,6 +15,7 @@ import {
   type LayeredSettingsSource,
   loadLayeredSettings,
 } from "#src/layered-settings";
+import { isBelowMinimumTurns, MIN_MAX_TURNS } from "#src/lifecycle/turn-limits";
 export interface SubagentsSettings {
   maxConcurrent?: number;
   /**
@@ -23,7 +24,13 @@ export interface SubagentsSettings {
    * `/agents` → Settings input prompt explicitly says "0 = unlimited".
    */
   defaultMaxTurns?: number;
-  graceTurns?: number;
+  /** Turns left when a subagent is warned about its budget. */
+  wrapUpTurns?: number;
+  /**
+   * Load-only marker: a settings file still names the removed `graceTurns`.
+   * `load()` warns and strips it, so it is never applied, emitted, or saved.
+   */
+  legacyGraceTurns?: true;
   /** Minutes a consumed agent's session is retained after its last relevance event. */
   consumedSessionRetentionMinutes?: number;
   /** Minutes an unconsumed agent's session is retained (safety cap). */
@@ -56,7 +63,7 @@ export interface SubagentsSettings {
 export interface SettingsSnapshot {
   maxConcurrent: number;
   defaultMaxTurns: number;
-  graceTurns: number;
+  wrapUpTurns: number;
   consumedSessionRetentionMinutes: number;
   unconsumedSessionRetentionMinutes: number;
   abortAllOnInterrupt: boolean;
@@ -76,7 +83,7 @@ export interface SettingsSnapshot {
 export type SettingsEmit = (event: string, payload: unknown) => void;
 
 const DEFAULT_MAX_CONCURRENT = 4;
-const DEFAULT_GRACE_TURNS = 5;
+const DEFAULT_WRAP_UP_TURNS = 2;
 const DEFAULT_CONSUMED_RETENTION_MINUTES = 10;
 const DEFAULT_UNCONSUMED_RETENTION_MINUTES = 720;
 const DEFAULT_ABORT_ALL_ON_INTERRUPT = true;
@@ -87,7 +94,7 @@ const DEFAULT_ABORT_ALL_ON_INTERRUPT = true;
  */
 export class SettingsManager {
   private _defaultMaxTurns: number | undefined = undefined;
-  private _graceTurns: number = DEFAULT_GRACE_TURNS;
+  private _wrapUpTurns: number = DEFAULT_WRAP_UP_TURNS;
   private _maxConcurrent: number = DEFAULT_MAX_CONCURRENT;
   private _consumedSessionRetentionMinutes: number =
     DEFAULT_CONSUMED_RETENTION_MINUTES;
@@ -129,18 +136,18 @@ export class SettingsManager {
     if (n == null || n === 0) {
       this._defaultMaxTurns = undefined;
     } else {
-      this._defaultMaxTurns = Math.max(1, n);
+      this._defaultMaxTurns = Math.max(MIN_MAX_TURNS, n);
     }
   }
 
-  // ── graceTurns: minimum 1 ──
+  // ── wrapUpTurns: minimum 1 ──
 
-  get graceTurns(): number {
-    return this._graceTurns;
+  get wrapUpTurns(): number {
+    return this._wrapUpTurns;
   }
 
-  set graceTurns(n: number) {
-    this._graceTurns = Math.max(1, n);
+  set wrapUpTurns(n: number) {
+    this._wrapUpTurns = Math.max(1, n);
   }
 
   // ── maxConcurrent: minimum 1 ──
@@ -273,8 +280,18 @@ export class SettingsManager {
       this.maxConcurrent = settings.maxConcurrent;
     if (typeof settings.defaultMaxTurns === "number")
       this.defaultMaxTurns = settings.defaultMaxTurns;
-    if (typeof settings.graceTurns === "number")
-      this.graceTurns = settings.graceTurns;
+    if (typeof settings.wrapUpTurns === "number")
+      this.wrapUpTurns = settings.wrapUpTurns;
+    if (settings.legacyGraceTurns) {
+      console.warn(
+        `[pi-subagents] graceTurns was removed; set wrapUpTurns (turns left when a subagent is warned, default ${DEFAULT_WRAP_UP_TURNS}) instead.`,
+      );
+    }
+    if (isBelowMinimumTurns(settings.defaultMaxTurns)) {
+      console.warn(
+        `[pi-subagents] defaultMaxTurns ${settings.defaultMaxTurns} is below the minimum of ${MIN_MAX_TURNS}; using ${MIN_MAX_TURNS}.`,
+      );
+    }
     if (typeof settings.consumedSessionRetentionMinutes === "number")
       this.consumedSessionRetentionMinutes =
         settings.consumedSessionRetentionMinutes;
@@ -302,7 +319,7 @@ export class SettingsManager {
     const snapshot: SettingsSnapshot = {
       maxConcurrent: this._maxConcurrent,
       defaultMaxTurns: this._defaultMaxTurns ?? 0,
-      graceTurns: this._graceTurns,
+      wrapUpTurns: this._wrapUpTurns,
       consumedSessionRetentionMinutes: this._consumedSessionRetentionMinutes,
       unconsumedSessionRetentionMinutes:
         this._unconsumedSessionRetentionMinutes,
@@ -348,11 +365,11 @@ export class SettingsManager {
   }
 
   /**
-   * Set graceTurns, persist, and return the toast.
+   * Set wrapUpTurns, persist, and return the toast.
    */
-  applyGraceTurns(n: number): { message: string; level: "info" | "warning" } {
-    this.graceTurns = n; // setter normalizes: max(1, n)
-    return this.saveAndNotify(`Grace turns set to ${this.graceTurns}`);
+  applyWrapUpTurns(n: number): { message: string; level: "info" | "warning" } {
+    this.wrapUpTurns = n; // setter normalizes: max(1, n)
+    return this.saveAndNotify(`Wrap-up turns set to ${this.wrapUpTurns}`);
   }
 
   /** Set the consumed-session retention window (minutes), persist, and return the toast. */
@@ -415,7 +432,7 @@ export class SettingsManager {
 // that any realistic power-user setting passes through.
 const MAX_CONCURRENT_CEILING = 1024;
 const MAX_TURNS_CEILING = 10_000;
-const GRACE_TURNS_CEILING = 1_000;
+const WRAP_UP_TURNS_CEILING = 1_000;
 // Retention windows: 1 minute floor, two-week ceiling (60 * 24 * 14).
 const RETENTION_MINUTES_CEILING = 20_160;
 
@@ -453,11 +470,14 @@ function sanitize(raw: unknown): SubagentsSettings {
     out.defaultMaxTurns = r.defaultMaxTurns as number;
   }
   if (
-    Number.isInteger(r.graceTurns) &&
-    (r.graceTurns as number) >= 1 &&
-    (r.graceTurns as number) <= GRACE_TURNS_CEILING
+    Number.isInteger(r.wrapUpTurns) &&
+    (r.wrapUpTurns as number) >= 1 &&
+    (r.wrapUpTurns as number) <= WRAP_UP_TURNS_CEILING
   ) {
-    out.graceTurns = r.graceTurns as number;
+    out.wrapUpTurns = r.wrapUpTurns as number;
+  }
+  if ("graceTurns" in r) {
+    out.legacyGraceTurns = true;
   }
   if (isRetentionMinutes(r.consumedSessionRetentionMinutes)) {
     out.consumedSessionRetentionMinutes = r.consumedSessionRetentionMinutes;

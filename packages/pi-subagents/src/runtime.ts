@@ -11,12 +11,12 @@ import type { ModelInfo } from "#src/tools/spawn-config";
 import type { SessionContext } from "#src/types";
 
 /**
- * Narrow config subset read by Agent when driving the turn loop (defaultMaxTurns, graceTurns).
+ * Narrow config subset read by Agent when driving the turn loop (defaultMaxTurns, wrapUpTurns).
  * Kept separate so callers can satisfy it without depending on the full runtime.
  */
 export interface RunConfig {
   readonly defaultMaxTurns: number | undefined;
-  readonly graceTurns: number;
+  readonly wrapUpTurns: number;
   /** Whether a running child's notify_parent updates are installed. Default true. */
   readonly midRunUpdates?: boolean;
 }

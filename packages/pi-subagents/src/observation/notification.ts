@@ -1,9 +1,11 @@
 import { debugLog } from "#src/debug";
 import type { SubagentStatus } from "#src/lifecycle/subagent-state";
 import { getLifetimeTotal } from "#src/lifecycle/usage";
+import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import {
   currentResumeRefusal,
   renderOutcomeAddenda,
+  renderStatusLabel,
 } from "#src/observation/outcome-addenda";
 import type { Subagent } from "#src/types";
 
@@ -20,6 +22,8 @@ export interface NotificationDetails {
   outputFile?: string;
   error?: string;
   resultPreview: string;
+  /** The run's turn budget; absent until its turn loop starts. */
+  turnBudget?: TurnBudget;
 }
 
 // ---- Pure helpers (exported for unit testing) ----
@@ -39,26 +43,19 @@ export function escapeXml(s: string): string {
 }
 
 /** Human-readable status label for agent completion. */
-export function getStatusLabel(status: string, error?: string): string {
-  switch (status) {
-    case "error":
-      return `Error: ${error ?? "unknown"}`;
-    case "aborted":
-      return "Aborted (max turns exceeded)";
-    case "steered":
-      return "Wrapped up (turn limit)";
-    case "stopped":
-      return "Stopped";
-    default:
-      return "Done";
-  }
+export function getStatusLabel(
+  status: string,
+  error?: string,
+  turnBudget?: TurnBudget,
+): string {
+  return renderStatusLabel({ status, error, turnBudget });
 }
 
 /** Format a structured <task-notification> XML block for the parent agent to parse. */
 export function formatTaskNotification(record: Subagent, resultMaxLen: number): string {
   if (record.stoppedWhileQueued) return formatNeverStartedNotification(record);
 
-  const status = getStatusLabel(record.status, record.error);
+  const status = getStatusLabel(record.status, record.error, record.turnBudget);
   const durationMs = record.completedAt ? record.completedAt - record.startedAt : 0;
   const totalTokens = getLifetimeTotal(record.lifetimeUsage);
   const contextPercent = record.getContextPercent();

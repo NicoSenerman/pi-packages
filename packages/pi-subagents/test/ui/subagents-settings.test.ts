@@ -6,7 +6,7 @@ function makeSettings() {
   return {
     maxConcurrent: 4,
     defaultMaxTurns: undefined as number | undefined,
-    graceTurns: 5,
+    wrapUpTurns: 5,
     applyMaxConcurrent: vi.fn((): { message: string; level: "info" | "warning" } => ({
       message: "Max concurrency set to 8",
       level: "info",
@@ -15,8 +15,8 @@ function makeSettings() {
       message: "Default max turns set to unlimited",
       level: "info",
     })),
-    applyGraceTurns: vi.fn((): { message: string; level: "info" | "warning" } => ({
-      message: "Grace turns set to 3",
+    applyWrapUpTurns: vi.fn((): { message: string; level: "info" | "warning" } => ({
+      message: "Wrap-up turns set to 3",
       level: "info",
     })),
     consumedSessionRetentionMinutes: 10,
@@ -65,7 +65,7 @@ describe("SubagentsSettingsHandler", () => {
     expect(options).toEqual([
       "Max concurrency (current: 4)",
       "Default max turns (current: unlimited)",
-      "Grace turns (current: 5)",
+      "Wrap-up turns (current: 5)",
       "Consumed-session retention (current: 10 min)",
       "Unconsumed-session retention (current: 720 min)",
       "Abort all subagents on ESC (current: on)",
@@ -89,7 +89,7 @@ describe("SubagentsSettingsHandler", () => {
     await handler.handle({ ui });
     expect(settings.applyMaxConcurrent).not.toHaveBeenCalled();
     expect(settings.applyDefaultMaxTurns).not.toHaveBeenCalled();
-    expect(settings.applyGraceTurns).not.toHaveBeenCalled();
+    expect(settings.applyWrapUpTurns).not.toHaveBeenCalled();
     expect(ui.input).not.toHaveBeenCalled();
   });
 });
@@ -162,22 +162,22 @@ describe("SubagentsSettingsHandler — default max turns", () => {
   });
 });
 
-describe("SubagentsSettingsHandler — grace turns", () => {
-  it("delegates a valid value to applyGraceTurns and notifies the returned toast", async () => {
+describe("SubagentsSettingsHandler — wrap-up turns", () => {
+  it("delegates a valid value to applyWrapUpTurns and notifies the returned toast", async () => {
     const { handler, settings } = makeHandler();
-    const ui = makeMenuUI(["Grace turns (current: 5)"]);
+    const ui = makeMenuUI(["Wrap-up turns (current: 5)"]);
     ui.input = vi.fn().mockResolvedValue("3");
     await handler.handle({ ui });
-    expect(settings.applyGraceTurns).toHaveBeenCalledWith(3);
-    expect(ui.notify).toHaveBeenCalledWith("Grace turns set to 3", "info");
+    expect(settings.applyWrapUpTurns).toHaveBeenCalledWith(3);
+    expect(ui.notify).toHaveBeenCalledWith("Wrap-up turns set to 3", "info");
   });
 
   it("rejects a value below 1 with a warning and does not apply", async () => {
     const { handler, settings } = makeHandler();
-    const ui = makeMenuUI(["Grace turns (current: 5)"]);
+    const ui = makeMenuUI(["Wrap-up turns (current: 5)"]);
     ui.input = vi.fn().mockResolvedValue("0");
     await handler.handle({ ui });
-    expect(settings.applyGraceTurns).not.toHaveBeenCalled();
+    expect(settings.applyWrapUpTurns).not.toHaveBeenCalled();
     expect(ui.notify).toHaveBeenCalledWith("Must be a positive integer.", "warning");
   });
 });
@@ -236,7 +236,7 @@ describe("SubagentsSettingsHandler — abort all subagents on ESC", () => {
 
   it("does not flip the policy when a numeric setting is chosen", async () => {
     const { handler, settings } = makeHandler();
-    const ui = makeMenuUI(["Grace turns (current: 5)"]);
+    const ui = makeMenuUI(["Wrap-up turns (current: 5)"]);
     ui.input = vi.fn().mockResolvedValue("3");
     await handler.handle({ ui });
     expect(settings.toggleAbortAllOnInterrupt).not.toHaveBeenCalled();

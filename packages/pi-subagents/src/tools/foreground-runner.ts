@@ -9,6 +9,10 @@ import {
 } from "#src/tools/helpers";
 import type { ResolvedSpawnConfig } from "#src/tools/spawn-config";
 import type { ParentSessionInfo, Subagent } from "#src/types";
+import {
+  currentResumeRefusal,
+  renderOutcomeAddenda,
+} from "#src/observation/outcome-addenda";
 import { type AgentDetails, describeActivity, formatMs } from "#src/ui/display";
 import { SPINNER } from "#src/ui/glyphs";
 
@@ -124,8 +128,16 @@ export async function runForeground(
   const statsParts = [`${record.toolUses} tool uses`];
   if (tokenText) statsParts.push(tokenText);
   return textResult(
-    `${fallbackNote}Agent completed in ${formatMs(durationMs)} (${statsParts.join(", ")})${getStatusNote(record.status)}.\n\n` +
-      (record.result?.trim() ?? "No output."),
+    `${fallbackNote}Agent completed in ${formatMs(durationMs)} (${statsParts.join(", ")})${getStatusNote(record.status, record.turnBudget)}.\n\n` +
+      (record.result?.trim() ?? "No output.") +
+      // The child may have asked a question the caller must answer by resuming
+      // it, or flagged mid-run updates nobody has seen — both ride the result.
+      renderOutcomeAddenda({
+        id: record.id,
+        runUpdates: record.runUpdates,
+        pendingQuestion: record.pendingQuestion,
+        resumeRefusal: currentResumeRefusal(record),
+      }),
     details,
   );
 }

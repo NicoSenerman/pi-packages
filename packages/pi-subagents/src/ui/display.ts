@@ -11,6 +11,21 @@ import { GLYPHS } from "#src/ui/glyphs";
 
 // ---- Types ----
 
+/** A model's provider/id pair, as the viewer's rules and stats lines render it. */
+export interface ModelIdentity {
+  readonly provider: string;
+  readonly id: string;
+}
+
+export function formatModel(model: ModelIdentity): string {
+  return `${model.provider}/${model.id}`;
+}
+
+/** A model's `provider/id` label, or undefined while the model is unknown. */
+export function modelLabel(model: ModelIdentity | undefined): string | undefined {
+  return model ? formatModel(model) : undefined;
+}
+
 export type Theme = {
   fg(color: string, text: string): string;
   bold(text: string): string;

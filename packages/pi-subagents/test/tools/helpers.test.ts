@@ -230,7 +230,7 @@ describe("buildAgentGuidelines", () => {
 
 describe("getStatusNote", () => {
   it("returns aborted note for aborted status", () => {
-    expect(getStatusNote("aborted")).toBe(" (aborted \u2014 max turns exceeded, output may be incomplete)");
+    expect(getStatusNote("aborted")).toBe(" (aborted \u2014 turn limit reached, output may be incomplete)");
   });
 
   it("returns steered note for steered status", () => {
@@ -238,7 +238,7 @@ describe("getStatusNote", () => {
   });
 
   it("returns stopped note for stopped status", () => {
-    expect(getStatusNote("stopped")).toBe(" (stopped by user)");
+    expect(getStatusNote("stopped")).toBe(" (stopped \u2014 user request)");
   });
 
   it("returns empty string for completed status", () => {

@@ -10,13 +10,13 @@ export interface SettingsToast {
 export interface SubagentsSettingsManager {
   readonly maxConcurrent: number;
   readonly defaultMaxTurns: number | undefined;
-  readonly graceTurns: number;
+  readonly wrapUpTurns: number;
   readonly consumedSessionRetentionMinutes: number;
   readonly unconsumedSessionRetentionMinutes: number;
   readonly abortAllOnInterrupt: boolean;
   applyMaxConcurrent(n: number): SettingsToast;
   applyDefaultMaxTurns(n: number): SettingsToast;
-  applyGraceTurns(n: number): SettingsToast;
+  applyWrapUpTurns(n: number): SettingsToast;
   applyConsumedSessionRetentionMinutes(n: number): SettingsToast;
   applyUnconsumedSessionRetentionMinutes(n: number): SettingsToast;
   toggleAbortAllOnInterrupt(): SettingsToast;
@@ -86,13 +86,13 @@ const SETTINGS: readonly SettingDescriptor[] = [
   },
   {
     kind: "numeric",
-    label: "Grace turns",
-    currentDisplay: (settings) => settings.graceTurns,
-    inputTitle: "Grace turns after wrap-up steer",
-    inputDefault: (settings) => String(settings.graceTurns),
+    label: "Wrap-up turns",
+    currentDisplay: (settings) => settings.wrapUpTurns,
+    inputTitle: "Turns left when a subagent is warned to wrap up",
+    inputDefault: (settings) => String(settings.wrapUpTurns),
     minimum: 1,
     validationMessage: "Must be a positive integer.",
-    apply: (settings, n) => settings.applyGraceTurns(n),
+    apply: (settings, n) => settings.applyWrapUpTurns(n),
   },
   {
     kind: "numeric",

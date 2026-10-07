@@ -1,19 +1,12 @@
 import type { AgentConfigLookup } from "#src/config/agent-types";
+import type { TurnBudget } from "#src/lifecycle/turn-limits";
+import { renderStatusNote } from "#src/observation/outcome-addenda";
 import { getLifetimeTotal, type LifetimeUsage } from "#src/lifecycle/usage";
 import { type AgentDetails, formatTokens } from "#src/ui/display";
 
 /** Parenthetical status note for completed agent result text. */
-export function getStatusNote(status: string): string {
-  switch (status) {
-    case "aborted":
-      return " (aborted \u2014 max turns exceeded, output may be incomplete)";
-    case "steered":
-      return " (wrapped up \u2014 reached turn limit)";
-    case "stopped":
-      return " (stopped by user)";
-    default:
-      return "";
-  }
+export function getStatusNote(status: string, turnBudget?: TurnBudget): string {
+  return renderStatusNote({ status, turnBudget });
 }
 
 /** Build AgentDetails from a base + record-specific fields. */

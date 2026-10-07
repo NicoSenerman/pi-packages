@@ -1,13 +1,78 @@
 /**
  * outcome-addenda.ts — The trailing "what next" tail every outcome carrier
- * appends: the updates a child sent mid-run that no announcement delivered,
- * then the ask-back affordance when a child ended its turn with a question.
+ * appends (the updates a child sent mid-run that no announcement delivered,
+ * then the ask-back affordance when a child ended its turn with a question),
+ * plus the shared reading of WHAT a terminal status means — one source of
+ * truth, since the fork's carriers disagreed on it ("max turns exceeded" vs
+ * "output may be incomplete"...).
  *
- * Ported from upstream pi-subagents 21.3 (gotgenes/pi-packages #858) onto the
- * pitui fork's carrier set (foreground tool result, background completion
- * notification, get_subagent_result report). Pure functions over the three
+ * Ported from upstream pi-subagents 21.3 + 23.0 (gotgenes/pi-packages #858,
+ * #1021, #1022) onto the pitui fork's carrier set. Pure functions over the
  * facts they need, so any carrier can call them.
  */
+
+import type { SubagentStatus } from "#src/lifecycle/subagent-state";
+import { type TurnBudget, wrappedUpAtTurnLimit } from "#src/lifecycle/turn-limits";
+
+/** What a terminal status means, independent of how a carrier renders it. */
+export interface StatusMeaning {
+  /** Sentence-initial label, e.g. "Wrapped up". */
+  label: string;
+  /** Why, without terminal punctuation, e.g. "after turn-budget warning". */
+  detail: string;
+}
+
+// "steered" stays: pre-23.0 persisted records and older forks can carry it;
+// the turn-budget engine no longer produces it, but a carrier must still render one.
+const STATUS_MEANINGS: Partial<Record<SubagentStatus, StatusMeaning>> = {
+  aborted: { label: "Aborted", detail: "turn limit reached, output may be incomplete" },
+  stopped: { label: "Stopped", detail: "user request" },
+  steered: { label: "Wrapped up", detail: "reached turn limit" },
+};
+
+/** A run that finished on its own after the harness warned it about its turn limit. */
+const WRAPPED_UP: StatusMeaning = { label: "Wrapped up", detail: "after turn-budget warning" };
+
+/** Only what the status presentations read: status, the error an error label names, the budget that qualifies a completed run. */
+export interface StatusOutcome {
+  status: string;
+  error?: string;
+  turnBudget?: TurnBudget;
+}
+
+function statusMeaning(outcome: StatusOutcome): StatusMeaning | undefined {
+  return wrappedUpAtTurnLimit(outcome)
+    ? WRAPPED_UP
+    : STATUS_MEANINGS[outcome.status as SubagentStatus];
+}
+
+/**
+ * Standalone label form, e.g. "Wrapped up (after turn-budget warning)".
+ * An error reports its message instead: the status alone does not say what went wrong.
+ */
+export function renderStatusLabel(outcome: StatusOutcome): string {
+  if (outcome.status === "error") return `Error: ${outcome.error ?? "unknown"}`;
+  const meaning = statusMeaning(outcome);
+  return meaning ? `${meaning.label} (${meaning.detail})` : "Done";
+}
+
+/**
+ * Parenthetical suffix form, e.g. " (wrapped up — after turn-budget warning)", for a
+ * carrier appending to its own sentence. Empty when the status is unremarkable.
+ */
+export function renderStatusNote(outcome: StatusOutcome): string {
+  const meaning = statusMeaning(outcome);
+  if (!meaning) return "";
+  return ` (${meaning.label.toLowerCase()} \u2014 ${meaning.detail})`;
+}
+
+/** A turn budget rendered as a stats-line part, e.g. "Turns: 7/20" (or "7" with no limit). */
+export function renderTurnBudget(budget: TurnBudget | undefined): string | undefined {
+  if (!budget) return undefined;
+  return budget.maxTurns !== undefined
+    ? `Turns: ${budget.used}/${budget.maxTurns}`
+    : `Turns: ${budget.used}`;
+}
 
 /** Why a resume is unavailable, worded for the affordance sentence. */
 export type ResumeRefusal =

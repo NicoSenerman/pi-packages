@@ -47,8 +47,8 @@ describe("settings persistence", () => {
   });
 
   it("loads from global when no project file", () => {
-    writeGlobal({ maxConcurrent: 16, graceTurns: 10 });
-    expect(loadSettings(globalDir, projectDir)).toEqual({ maxConcurrent: 16, graceTurns: 10 });
+    writeGlobal({ maxConcurrent: 16, wrapUpTurns: 10 });
+    expect(loadSettings(globalDir, projectDir)).toEqual({ maxConcurrent: 16, wrapUpTurns: 10 });
   });
 
   it("loads from project when no global file", () => {
@@ -57,11 +57,11 @@ describe("settings persistence", () => {
   });
 
   it("merges global + project with project winning on conflicts", () => {
-    writeGlobal({ maxConcurrent: 16, graceTurns: 10 });
+    writeGlobal({ maxConcurrent: 16, wrapUpTurns: 10 });
     writeProject({ maxConcurrent: 4, defaultMaxTurns: 50 });
     expect(loadSettings(globalDir, projectDir)).toEqual({
       maxConcurrent: 4, // project wins
-      graceTurns: 10, // from global
+      wrapUpTurns: 10, // from global
       defaultMaxTurns: 50, // from project only
     });
   });
@@ -70,7 +70,7 @@ describe("settings persistence", () => {
     const settings = {
       maxConcurrent: 7,
       defaultMaxTurns: 30,
-      graceTurns: 3,
+      wrapUpTurns: 3,
     };
     saveSettings(settings, projectDir);
     expect(loadSettings(globalDir, projectDir)).toEqual(settings);
@@ -106,15 +106,15 @@ describe("settings persistence", () => {
   });
 
   it("composes partial global + partial project correctly", () => {
-    writeGlobal({ graceTurns: 10 });
+    writeGlobal({ wrapUpTurns: 10 });
     writeProject({ maxConcurrent: 2 });
-    expect(loadSettings(globalDir, projectDir)).toEqual({ graceTurns: 10, maxConcurrent: 2 });
+    expect(loadSettings(globalDir, projectDir)).toEqual({ wrapUpTurns: 10, maxConcurrent: 2 });
   });
 
   describe("sanitizer", () => {
     it("drops maxConcurrent < 1", () => {
-      writeProject({ maxConcurrent: 0, graceTurns: 5 });
-      expect(loadSettings(globalDir, projectDir)).toEqual({ graceTurns: 5 });
+      writeProject({ maxConcurrent: 0, wrapUpTurns: 5 });
+      expect(loadSettings(globalDir, projectDir)).toEqual({ wrapUpTurns: 5 });
     });
 
     it("drops negative maxConcurrent", () => {
@@ -141,8 +141,8 @@ describe("settings persistence", () => {
       expect(loadSettings(globalDir, projectDir)).toEqual({});
     });
 
-    it("drops graceTurns < 1", () => {
-      writeProject({ graceTurns: 0 });
+    it("drops wrapUpTurns < 1", () => {
+      writeProject({ wrapUpTurns: 0 });
       expect(loadSettings(globalDir, projectDir)).toEqual({});
     });
 
@@ -177,17 +177,17 @@ describe("settings persistence", () => {
       writeProject({
         maxConcurrent: 4, // ok
         defaultMaxTurns: -5, // dropped
-        graceTurns: 3, // ok
+        wrapUpTurns: 3, // ok
       });
-      expect(loadSettings(globalDir, projectDir)).toEqual({ maxConcurrent: 4, graceTurns: 3 });
+      expect(loadSettings(globalDir, projectDir)).toEqual({ maxConcurrent: 4, wrapUpTurns: 3 });
     });
 
-    it("accepts values at the ceiling (maxConcurrent=1024, defaultMaxTurns=10000, graceTurns=1000)", () => {
-      writeProject({ maxConcurrent: 1024, defaultMaxTurns: 10_000, graceTurns: 1_000 });
+    it("accepts values at the ceiling (maxConcurrent=1024, defaultMaxTurns=10000, wrapUpTurns=1000)", () => {
+      writeProject({ maxConcurrent: 1024, defaultMaxTurns: 10_000, wrapUpTurns: 1_000 });
       expect(loadSettings(globalDir, projectDir)).toEqual({
         maxConcurrent: 1024,
         defaultMaxTurns: 10_000,
-        graceTurns: 1_000,
+        wrapUpTurns: 1_000,
       });
     });
 
@@ -196,12 +196,12 @@ describe("settings persistence", () => {
       expect(loadSettings(globalDir, projectDir).maxConcurrent).toBeUndefined();
       writeProject({ defaultMaxTurns: 10_001 });
       expect(loadSettings(globalDir, projectDir).defaultMaxTurns).toBeUndefined();
-      writeProject({ graceTurns: 1_001 });
-      expect(loadSettings(globalDir, projectDir).graceTurns).toBeUndefined();
+      writeProject({ wrapUpTurns: 1_001 });
+      expect(loadSettings(globalDir, projectDir).wrapUpTurns).toBeUndefined();
     });
 
     it("drops absurdly large values (e.g. 1e6)", () => {
-      writeProject({ maxConcurrent: 1_000_000, defaultMaxTurns: 1_000_000, graceTurns: 1_000_000 });
+      writeProject({ maxConcurrent: 1_000_000, defaultMaxTurns: 1_000_000, wrapUpTurns: 1_000_000 });
       expect(loadSettings(globalDir, projectDir)).toEqual({});
     });
 
@@ -213,8 +213,8 @@ describe("settings persistence", () => {
     });
 
     it("drops a non-boolean abortAllOnInterrupt", () => {
-      writeProject({ abortAllOnInterrupt: "false", graceTurns: 5 });
-      expect(loadSettings(globalDir, projectDir)).toEqual({ graceTurns: 5 });
+      writeProject({ abortAllOnInterrupt: "false", wrapUpTurns: 5 });
+      expect(loadSettings(globalDir, projectDir)).toEqual({ wrapUpTurns: 5 });
       writeProject({ abortAllOnInterrupt: 0 });
       expect(loadSettings(globalDir, projectDir)).toEqual({});
       writeProject({ abortAllOnInterrupt: null });
@@ -316,9 +316,9 @@ describe("SettingsManager", () => {
       expect(sm.defaultMaxTurns).toBeUndefined();
     });
 
-    it("defaults to graceTurns: 5", () => {
+    it("defaults to wrapUpTurns: 2", () => {
       const sm = new SettingsManager({ emit: vi.fn(), cwd: "/tmp", agentDir: "/nonexistent" });
-      expect(sm.graceTurns).toBe(5);
+      expect(sm.wrapUpTurns).toBe(2);
     });
 
     it("defaults to maxConcurrent: 4", () => {
@@ -388,30 +388,30 @@ describe("SettingsManager", () => {
       expect(sm.defaultMaxTurns).toBeUndefined();
     });
 
-    it("clamps values below 1 (but not 0) to 1", () => {
+    it("clamps values below 2 (but not 0) to 2", () => {
       const sm = new SettingsManager({ emit: vi.fn(), cwd: "/tmp", agentDir: "/nonexistent" });
       sm.defaultMaxTurns = -5;
-      expect(sm.defaultMaxTurns).toBe(1);
+      expect(sm.defaultMaxTurns).toBe(2);
     });
   });
 
-  describe("graceTurns setter normalization", () => {
+  describe("wrapUpTurns setter normalization", () => {
     it("stores a positive value as-is", () => {
       const sm = new SettingsManager({ emit: vi.fn(), cwd: "/tmp", agentDir: "/nonexistent" });
-      sm.graceTurns = 10;
-      expect(sm.graceTurns).toBe(10);
+      sm.wrapUpTurns = 10;
+      expect(sm.wrapUpTurns).toBe(10);
     });
 
     it("clamps 0 to 1", () => {
       const sm = new SettingsManager({ emit: vi.fn(), cwd: "/tmp", agentDir: "/nonexistent" });
-      sm.graceTurns = 0;
-      expect(sm.graceTurns).toBe(1);
+      sm.wrapUpTurns = 0;
+      expect(sm.wrapUpTurns).toBe(1);
     });
 
     it("clamps negative values to 1", () => {
       const sm = new SettingsManager({ emit: vi.fn(), cwd: "/tmp", agentDir: "/nonexistent" });
-      sm.graceTurns = -3;
-      expect(sm.graceTurns).toBe(1);
+      sm.wrapUpTurns = -3;
+      expect(sm.wrapUpTurns).toBe(1);
     });
   });
 
@@ -451,11 +451,11 @@ describe("SettingsManager", () => {
 
     it("applies merged settings from disk to in-memory values", () => {
       mkdirSync(join(projectDir, ".pi"), { recursive: true });
-      writeFileSync(join(projectDir, ".pi", "subagents.json"), JSON.stringify({ graceTurns: 7, maxConcurrent: 8 }));
+      writeFileSync(join(projectDir, ".pi", "subagents.json"), JSON.stringify({ wrapUpTurns: 7, maxConcurrent: 8 }));
       const emit = vi.fn();
       const sm = new SettingsManager({ emit, cwd: projectDir, agentDir: globalDir });
       sm.load();
-      expect(sm.graceTurns).toBe(7);
+      expect(sm.wrapUpTurns).toBe(7);
       expect(sm.maxConcurrent).toBe(8);
       expect(sm.defaultMaxTurns).toBeUndefined();
     });
@@ -495,7 +495,7 @@ describe("SettingsManager", () => {
 
     it("leaves abortAllOnInterrupt at its default when the file omits it", () => {
       mkdirSync(join(projectDir, ".pi"), { recursive: true });
-      writeFileSync(join(projectDir, ".pi", "subagents.json"), JSON.stringify({ graceTurns: 7 }));
+      writeFileSync(join(projectDir, ".pi", "subagents.json"), JSON.stringify({ wrapUpTurns: 7 }));
       const sm = new SettingsManager({ emit: vi.fn(), cwd: projectDir, agentDir: globalDir });
       sm.load();
       expect(sm.abortAllOnInterrupt).toBe(true);
@@ -503,12 +503,12 @@ describe("SettingsManager", () => {
 
     it("emits subagents:settings_loaded with merged settings", () => {
       mkdirSync(join(projectDir, ".pi"), { recursive: true });
-      writeFileSync(join(projectDir, ".pi", "subagents.json"), JSON.stringify({ graceTurns: 7 }));
+      writeFileSync(join(projectDir, ".pi", "subagents.json"), JSON.stringify({ wrapUpTurns: 7 }));
       const emit = vi.fn();
       const sm = new SettingsManager({ emit, cwd: projectDir, agentDir: globalDir });
       sm.load();
       expect(emit).toHaveBeenCalledTimes(1);
-      expect(emit).toHaveBeenCalledWith("subagents:settings_loaded", { settings: { graceTurns: 7 } });
+      expect(emit).toHaveBeenCalledWith("subagents:settings_loaded", { settings: { wrapUpTurns: 7 } });
     });
 
     it("returns the loaded settings object", () => {
@@ -546,39 +546,39 @@ describe("SettingsManager", () => {
   describe("snapshot()", () => {
     it("returns default values before any changes", () => {
       const sm = new SettingsManager({ emit: vi.fn(), cwd: "/tmp", agentDir: "/nonexistent" });
-      expect(sm.snapshot()).toEqual({ maxConcurrent: 4, defaultMaxTurns: 0, graceTurns: 5, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: true });
+      expect(sm.snapshot()).toEqual({ maxConcurrent: 4, defaultMaxTurns: 0, wrapUpTurns: 2, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: true });
     });
 
     it("reflects mutations: defaultMaxTurns undefined maps to 0 in snapshot", () => {
       const sm = new SettingsManager({ emit: vi.fn(), cwd: "/tmp", agentDir: "/nonexistent" });
       sm.defaultMaxTurns = undefined;
-      sm.graceTurns = 3;
+      sm.wrapUpTurns = 3;
       sm.maxConcurrent = 8;
-      expect(sm.snapshot()).toEqual({ maxConcurrent: 8, defaultMaxTurns: 0, graceTurns: 3, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: true });
+      expect(sm.snapshot()).toEqual({ maxConcurrent: 8, defaultMaxTurns: 0, wrapUpTurns: 3, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: true });
     });
 
     it("reflects a concrete defaultMaxTurns value", () => {
       const sm = new SettingsManager({ emit: vi.fn(), cwd: "/tmp", agentDir: "/nonexistent" });
       sm.defaultMaxTurns = 20;
-      expect(sm.snapshot()).toEqual({ maxConcurrent: 4, defaultMaxTurns: 20, graceTurns: 5, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: true });
+      expect(sm.snapshot()).toEqual({ maxConcurrent: 4, defaultMaxTurns: 20, wrapUpTurns: 2, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: true });
     });
 
     it("reflects mutated retention windows", () => {
       const sm = new SettingsManager({ emit: vi.fn(), cwd: "/tmp", agentDir: "/nonexistent" });
       sm.consumedSessionRetentionMinutes = 30;
       sm.unconsumedSessionRetentionMinutes = 1440;
-      expect(sm.snapshot()).toEqual({ maxConcurrent: 4, defaultMaxTurns: 0, graceTurns: 5, consumedSessionRetentionMinutes: 30, unconsumedSessionRetentionMinutes: 1440, abortAllOnInterrupt: true });
+      expect(sm.snapshot()).toEqual({ maxConcurrent: 4, defaultMaxTurns: 0, wrapUpTurns: 2, consumedSessionRetentionMinutes: 30, unconsumedSessionRetentionMinutes: 1440, abortAllOnInterrupt: true });
     });
 
     it("reflects a flipped abortAllOnInterrupt", () => {
       const sm = new SettingsManager({ emit: vi.fn(), cwd: "/tmp", agentDir: "/nonexistent" });
       sm.toggleAbortAllOnInterrupt();
-      expect(sm.snapshot()).toEqual({ maxConcurrent: 4, defaultMaxTurns: 0, graceTurns: 5, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: false });
+      expect(sm.snapshot()).toEqual({ maxConcurrent: 4, defaultMaxTurns: 0, wrapUpTurns: 2, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: false });
     });
 
     it("omits excludedExtensionPackages when none are configured", () => {
       const sm = new SettingsManager({ emit: vi.fn(), cwd: "/tmp", agentDir: "/nonexistent" });
-      expect(sm.snapshot()).toEqual({ maxConcurrent: 4, defaultMaxTurns: 0, graceTurns: 5, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: true });
+      expect(sm.snapshot()).toEqual({ maxConcurrent: 4, defaultMaxTurns: 0, wrapUpTurns: 2, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: true });
     });
   });
 
@@ -605,13 +605,13 @@ describe("SettingsManager", () => {
       const sm = new SettingsManager({ emit: vi.fn(), cwd: projectDir, agentDir: "/nonexistent" });
       sm.load();
 
-      sm.applyGraceTurns(7);
+      sm.applyWrapUpTurns(7);
 
       const written = JSON.parse(readFileSync(settingsPath, "utf-8"));
       expect(written).toEqual({
         maxConcurrent: 4,
         defaultMaxTurns: 0,
-        graceTurns: 7,
+        wrapUpTurns: 7,
         consumedSessionRetentionMinutes: 10,
         unconsumedSessionRetentionMinutes: 720,
         abortAllOnInterrupt: true,
@@ -626,16 +626,16 @@ describe("SettingsManager", () => {
       const toast = sm.saveAndNotify("Max concurrency set to 5");
       expect(toast).toEqual({ message: "Max concurrency set to 5", level: "info" });
       const written = JSON.parse(readFileSync(join(projectDir, ".pi", "subagents.json"), "utf-8"));
-      expect(written).toEqual({ maxConcurrent: 5, defaultMaxTurns: 0, graceTurns: 5, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: true });
+      expect(written).toEqual({ maxConcurrent: 5, defaultMaxTurns: 0, wrapUpTurns: 2, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: true });
     });
 
     it("emits subagents:settings_changed with persisted:true on success", () => {
       const emit = vi.fn();
       const sm = new SettingsManager({ emit, cwd: projectDir, agentDir: "/nonexistent" });
-      sm.graceTurns = 3;
-      sm.saveAndNotify("Grace turns set to 3");
+      sm.wrapUpTurns = 3;
+      sm.saveAndNotify("Wrap-up turns set to 3");
       expect(emit).toHaveBeenCalledWith("subagents:settings_changed", {
-        settings: { maxConcurrent: 4, defaultMaxTurns: 0, graceTurns: 3, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: true },
+        settings: { maxConcurrent: 4, defaultMaxTurns: 0, wrapUpTurns: 3, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: true },
         persisted: true,
       });
     });
@@ -663,7 +663,7 @@ describe("SettingsManager", () => {
         const sm = new SettingsManager({ emit, cwd: filePosingAsCwd, agentDir: "/nonexistent" });
         sm.saveAndNotify("something");
         expect(emit).toHaveBeenCalledWith("subagents:settings_changed", {
-          settings: { maxConcurrent: 4, defaultMaxTurns: 0, graceTurns: 5, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: true },
+          settings: { maxConcurrent: 4, defaultMaxTurns: 0, wrapUpTurns: 2, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: true },
           persisted: false,
         });
       } finally {
@@ -786,7 +786,7 @@ describe("SettingsManager", () => {
     });
   });
 
-  describe("applyGraceTurns()", () => {
+  describe("applyWrapUpTurns()", () => {
     let projectDir: string;
 
     beforeEach(() => {
@@ -797,24 +797,24 @@ describe("SettingsManager", () => {
       rmSync(projectDir, { recursive: true, force: true });
     });
 
-    it("sets graceTurns and reports the post-normalization value in toast", () => {
+    it("sets wrapUpTurns and reports the post-normalization value in toast", () => {
       const sm = new SettingsManager({ emit: vi.fn(), cwd: projectDir, agentDir: "/nonexistent" });
-      const toast = sm.applyGraceTurns(3);
-      expect(sm.graceTurns).toBe(3);
-      expect(toast).toEqual({ message: "Grace turns set to 3", level: "info" });
+      const toast = sm.applyWrapUpTurns(3);
+      expect(sm.wrapUpTurns).toBe(3);
+      expect(toast).toEqual({ message: "Wrap-up turns set to 3", level: "info" });
     });
 
     it("normalizes 0 to 1 and reports the post-normalization value in toast", () => {
       const sm = new SettingsManager({ emit: vi.fn(), cwd: projectDir, agentDir: "/nonexistent" });
-      const toast = sm.applyGraceTurns(0);
-      expect(sm.graceTurns).toBe(1);
-      expect(toast.message).toBe("Grace turns set to 1");
+      const toast = sm.applyWrapUpTurns(0);
+      expect(sm.wrapUpTurns).toBe(1);
+      expect(toast.message).toBe("Wrap-up turns set to 1");
     });
 
     it("does not call onMaxConcurrentChanged", () => {
       const onChanged = vi.fn();
       const sm = new SettingsManager({ emit: vi.fn(), cwd: projectDir, agentDir: "/nonexistent", onMaxConcurrentChanged: onChanged });
-      sm.applyGraceTurns(5);
+      sm.applyWrapUpTurns(5);
       expect(onChanged).not.toHaveBeenCalled();
     });
   });
@@ -852,7 +852,7 @@ describe("SettingsManager", () => {
       const sm = new SettingsManager({ emit, cwd: projectDir, agentDir: "/nonexistent" });
       sm.toggleAbortAllOnInterrupt();
       expect(emit).toHaveBeenCalledWith("subagents:settings_changed", {
-        settings: { maxConcurrent: 4, defaultMaxTurns: 0, graceTurns: 5, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: false },
+        settings: { maxConcurrent: 4, defaultMaxTurns: 0, wrapUpTurns: 2, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: false },
         persisted: true,
       });
     });

@@ -8,6 +8,12 @@
  */
 
 import type { SubagentStatus } from "#src/lifecycle/subagent";
+import {
+  renderOutcomeAddenda,
+  renderTurnBudget,
+  type ResumeRefusal,
+} from "#src/observation/outcome-addenda";
+import type { TurnBudget } from "#src/lifecycle/turn-limits";
 
 /** The data a get_subagent_result report renders from — only what the formatter reads. */
 export interface AgentReport {
@@ -26,6 +32,14 @@ export interface AgentReport {
 	error: string | undefined;
 	/** Whether the agent was stopped before the limiter ever admitted it. */
 	stoppedWhileQueued: boolean;
+	/** The mid-run updates no announcement delivered (notify_parent ledger). */
+	runUpdates?: readonly string[];
+	/** The question the run ended with, when the child declared one (ask_parent). */
+	pendingQuestion?: string;
+	/** The run's turn budget; absent until its turn loop starts. */
+	turnBudget?: TurnBudget;
+	/** Why a resume would be refused; undefined when one would be accepted. */
+	resumeRefusal?: ResumeRefusal | undefined;
 	/** Present only when verbose was requested and a conversation is available. */
 	conversation?: string;
 	/** Persisted transcript path; rendered as a pointer so the parent can read it directly. */
@@ -35,6 +49,8 @@ export interface AgentReport {
 /** Assemble the stats parts: Tool uses / tokens? / Context? / Compactions? / Duration. */
 export function renderStatsParts(report: AgentReport): string[] {
 	const parts = [`Tool uses: ${report.toolUses}`];
+	const budgetPart = renderTurnBudget(report.turnBudget);
+	if (budgetPart) parts.push(budgetPart);
 	if (report.tokens) parts.push(report.tokens);
 	if (report.contextPercent !== null) parts.push(`Context: ${Math.round(report.contextPercent)}%`);
 	if (report.compactionCount) parts.push(`Compactions: ${report.compactionCount}`);
@@ -59,6 +75,12 @@ export function formatAgentReport(report: AgentReport): string {
 		`Type: ${report.displayName} | Status: ${report.status} | ${renderStatsParts(report).join(" | ")}\n` +
 		`Description: ${report.description}\n\n`;
 	output += renderReportBody(report);
+	output += renderOutcomeAddenda({
+		id: report.id,
+		runUpdates: report.runUpdates,
+		pendingQuestion: report.pendingQuestion,
+		resumeRefusal: report.resumeRefusal,
+	});
 	if (report.conversation) {
 		output += `\n\n--- Agent Conversation ---\n${report.conversation}`;
 	}

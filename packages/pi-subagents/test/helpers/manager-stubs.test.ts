@@ -37,8 +37,7 @@ describe("createSessionFactory", () => {
 		const { stub } = createSessionFactory();
 		await expect(stub.runTurnLoop("go", {})).resolves.toEqual({
 			responseText: "done",
-			aborted: false,
-			steered: false,
+			turnBudget: { used: 1, phase: "within" },
 		});
 	});
 

@@ -544,7 +544,7 @@ describe("SubagentManager — lifetime usage + compaction count are eagerly init
           usage: { input: 200, output: 80, cacheWrite: 20 },
         },
       });
-      return { responseText: "done", aborted: false, steered: false };
+      return { responseText: "done", turnBudget: { used: 1, phase: "within" } };
     });
     ({ manager } = createManager({ createSubagentSession: factory }));
 
@@ -578,7 +578,7 @@ describe("SubagentManager — lifetime usage + compaction count are eagerly init
         result: { tokensBefore: 22222 },
         reason: "manual",
       });
-      return { responseText: "done", aborted: false, steered: false };
+      return { responseText: "done", turnBudget: { used: 1, phase: "within" } };
     });
 
     ({ manager } = createManager({
@@ -611,7 +611,7 @@ describe("SubagentManager — lifetime usage + compaction count are eagerly init
       // Emit events through the session — the record observer subscribed by
       // SubagentManager.resume() will pick them up.
       emitResumeUsageAndCompaction(session);
-      return "second";
+      return { responseText: "second", turnBudget: { used: 1, phase: "within" } };
     });
     ({ manager } = createManager({ createSubagentSession: factory }));
 
@@ -637,15 +637,15 @@ describe("SubagentManager — lifetime usage + compaction count are eagerly init
   });
 });
 
-describe("SubagentManager — getRunConfig threads defaultMaxTurns and graceTurns into the turn loop", () => {
+describe("SubagentManager — getRunConfig threads defaultMaxTurns and wrapUpTurns into the turn loop", () => {
   let manager: SubagentManager;
 
   afterEach(async () => {
     await manager.dispose();
   });
 
-  it("passes defaultMaxTurns and graceTurns from getRunConfig to runTurnLoop", async () => {
-    const getRunConfig = vi.fn(() => ({ defaultMaxTurns: 10, graceTurns: 3 }));
+  it("passes defaultMaxTurns and wrapUpTurns from getRunConfig to runTurnLoop", async () => {
+    const getRunConfig = vi.fn(() => ({ defaultMaxTurns: 10, wrapUpTurns: 3 }));
     const { factory, stub } = createSessionFactory();
     ({ manager } = createManager({
       getRunConfig,
@@ -657,10 +657,10 @@ describe("SubagentManager — getRunConfig threads defaultMaxTurns and graceTurn
 
     const turnOpts = stub.runTurnLoop.mock.calls[0][1];
     expect(turnOpts.defaultMaxTurns).toBe(10);
-    expect(turnOpts.graceTurns).toBe(3);
+    expect(turnOpts.wrapUpTurns).toBe(3);
   });
 
-  it("omits defaultMaxTurns and graceTurns from runTurnLoop when no getRunConfig is provided", async () => {
+  it("omits defaultMaxTurns and wrapUpTurns from runTurnLoop when no getRunConfig is provided", async () => {
     const { factory, stub } = createSessionFactory();
     ({ manager } = createManager({ createSubagentSession: factory }));
 
@@ -669,7 +669,7 @@ describe("SubagentManager — getRunConfig threads defaultMaxTurns and graceTurn
 
     const turnOpts = stub.runTurnLoop.mock.calls[0][1];
     expect(turnOpts.defaultMaxTurns).toBeUndefined();
-    expect(turnOpts.graceTurns).toBeUndefined();
+    expect(turnOpts.wrapUpTurns).toBeUndefined();
   });
 });
 
@@ -723,7 +723,7 @@ describe("SubagentManager — dependency injection via options bag", () => {
 
   it("calls resumeTurnLoop on the SubagentSession when resuming an agent", async () => {
     const { factory, stub } = createSessionFactory();
-    stub.resumeTurnLoop.mockResolvedValue("second");
+    stub.resumeTurnLoop.mockResolvedValue({ responseText: "second", turnBudget: { used: 1, phase: "within" } });
     ({ manager } = createManager({ createSubagentSession: factory }));
 
     const id = spawnBg(manager);
@@ -738,7 +738,7 @@ describe("SubagentManager — dependency injection via options bag", () => {
   it("fires onSubagentResumed when a background agent is resumed", async () => {
     const onSubagentResumed = vi.fn();
     const { factory, stub } = createSessionFactory();
-    stub.resumeTurnLoop.mockResolvedValue("second");
+    stub.resumeTurnLoop.mockResolvedValue({ responseText: "second", turnBudget: { used: 1, phase: "within" } });
     ({ manager } = createManager({
       createSubagentSession: factory,
       observer: { onSubagentResumed },
@@ -756,7 +756,7 @@ describe("SubagentManager — dependency injection via options bag", () => {
   it("does not fire onSubagentResumed when a foreground agent is resumed", async () => {
     const onSubagentResumed = vi.fn();
     const { factory, stub } = createSessionFactory();
-    stub.resumeTurnLoop.mockResolvedValue("second");
+    stub.resumeTurnLoop.mockResolvedValue({ responseText: "second", turnBudget: { used: 1, phase: "within" } });
     ({ manager } = createManager({
       createSubagentSession: factory,
       observer: { onSubagentResumed },
@@ -790,7 +790,7 @@ describe("SubagentManager — queueing and concurrency with injected stubs", () 
       stub.runTurnLoop.mockImplementation(async () => {
         if (n === 1) await gate1;
         if (n === 2) await gate2;
-        return { responseText: `result-${n}`, aborted: false, steered: false };
+        return { responseText: `result-${n}`, turnBudget: { used: 1, phase: "within" } };
       });
       return toSubagentSession(stub);
     });
@@ -864,7 +864,7 @@ describe("SubagentManager — queueing and concurrency with injected stubs", () 
       const stub = createSubagentSessionStub();
       stub.runTurnLoop.mockImplementation(async () => {
         if (n === 1) await gate;
-        return { responseText: "ok", aborted: false, steered: false };
+        return { responseText: "ok", turnBudget: { used: 1, phase: "within" } };
       });
       return toSubagentSession(stub);
     });
@@ -975,7 +975,7 @@ describe("SubagentManager — stopping a queued agent", () => {
       const stub = createSubagentSessionStub();
       stub.runTurnLoop.mockImplementation(async () => {
         if (n === 1) await gate;
-        return { responseText: `result-${n}`, aborted: false, steered: false };
+        return { responseText: `result-${n}`, turnBudget: { used: 1, phase: "within" } };
       });
       return toSubagentSession(stub);
     });

@@ -2,6 +2,7 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import type { AgentConfigLookup } from "#src/config/agent-types";
 import { type AgentReport, formatAgentReport } from "#src/tools/get-result-report";
+import { currentResumeRefusal } from "#src/observation/outcome-addenda";
 import { formatLifetimeTokens, textResult } from "#src/tools/helpers";
 import type { Subagent } from "#src/types";
 import { formatDuration, getDisplayName } from "#src/ui/display";
@@ -52,6 +53,9 @@ export class GetResultTool {
 			report.result = superseded.result;
 			report.error = superseded.error;
 			report.status = superseded.status as AgentReport["status"];
+			report.pendingQuestion = superseded.pendingQuestion;
+			report.runUpdates = superseded.runUpdates;
+			report.turnBudget = superseded.turnBudget;
 		}
 		return textResult(formatAgentReport(report));
 	}
@@ -71,6 +75,10 @@ export class GetResultTool {
 			error: record.error,
 			stoppedWhileQueued: record.stoppedWhileQueued,
 			conversation: verbose ? record.getConversation() : undefined,
+			runUpdates: record.runUpdates,
+			pendingQuestion: record.pendingQuestion,
+			resumeRefusal: currentResumeRefusal(record),
+			turnBudget: record.turnBudget,
 			// Transcript pointer: lets the parent read the full session from disk,
 			// and covers verbose after the live session was released (no conversation).
 			transcriptPath: record.outputFile,

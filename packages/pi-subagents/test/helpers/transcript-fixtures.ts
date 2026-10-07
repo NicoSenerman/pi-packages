@@ -1,14 +1,15 @@
-import type { TUI } from "@earendil-works/pi-tui";
+import type { TUI, TuiMode } from "@earendil-works/pi-tui";
 import { vi } from "vitest";
 import type { SessionMessage } from "#src/types";
 import type { TranscriptSource } from "#src/ui/session-navigation";
 
 /**
- * Minimal TUI double for transcript rendering: terminal dimensions plus a
- * `requestRender` spy. Pi's per-entry components read nothing else from it.
+ * Minimal TUI double for transcript rendering: terminal dimensions, the render
+ * mode, and a `requestRender` spy. Pi's per-entry components read nothing else
+ * from it.
  */
-export function mockTui(rows = 40, columns = 80): TUI {
-  return { terminal: { rows, columns }, requestRender: vi.fn() } as unknown as TUI;
+export function mockTui(rows = 40, columns = 80, mode: TuiMode = "regular"): TUI {
+  return { terminal: { rows, columns }, mode, requestRender: vi.fn() } as unknown as TUI;
 }
 
 /**
@@ -22,6 +23,7 @@ export function fakeSource(overrides: Partial<TranscriptSource> = {}): Transcrip
     subscribe: () => () => {},
     streaming: () => undefined,
     getToolDefinition: () => undefined,
+    sessionModel: () => ({ model: undefined, thinkingLevel: undefined }),
     ...overrides,
   };
 }
