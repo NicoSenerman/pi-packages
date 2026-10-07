@@ -627,6 +627,25 @@ particular agent or with forked context.
 - **Keep conversational authority clear.** Advisory subagents should not silently
   become second decision-makers.
 
+## This-setup operational reference (moved from global AGENTS.md, 2026-10-07)
+
+- **Model selection:** subagents default to the global `~/.pi/settings.json`
+  default model (or the piru spawn-time picker), NOT the calling session's
+  model — pass `model:` explicitly only when the user asks. Available models:
+  `~/.pi/agent/models.json` (`provider` → `models[].id`).
+- **Read-first worker wording:** for infrastructure/investigation tasks include
+  in the prompt: "read-only — report findings, do NOT mutate (no package
+  installs, service changes, config edits, or SSH mutations). If changes are
+  needed, report back."
+- **Web-research workers** must mandate msearch / flarecrawl — never suggest
+  curl (see the global AGENTS.md Web Fetching section).
+- **Non-obvious `subagent` actions** beyond spawning: `list`, `doctor`,
+  `ui-messages`, `search`, `describe`, `connect`.
+- **codemode vs subagent:** `codemode` (one script, `Promise.all` over 2+
+  independent tool calls) is cheaper whenever the work doesn't need a fresh
+  context; keep `run_in_background` subagents for exploration, thinking, and
+  iterative retry.
+
 ## Best Practices
 
 ### Prefer async orchestration

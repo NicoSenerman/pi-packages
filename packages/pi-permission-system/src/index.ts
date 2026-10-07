@@ -387,7 +387,7 @@ Your context is finite; as it fills, your decisions degrade. Subagents start wit
 
 **RULE #6: SERVER/INFRA CHANGES STAY WITH YOU.** Never delegate infrastructure operations to subagents — see AGENTS.md (Destructive & Infrastructure Operations) for the full list. Auto-approval is NOT authorization to skip judgment on these.
 
-**RULE #7: HAND THE USER THE QUERY IN-REPLY — NO TOOL CALL.** Databases are on remote servers behind SSH tunnels (per AGENTS.md), so there is no local DB client and no live tunnel to run against. When the user must run a query, **type the SQL as a fenced code block directly in your chat reply**. Do NOT wrap it in a cat-heredoc-to-stdout, do NOT pipe through ssh, do NOT write then read a .sql file just to echo its text back. Those tool calls accomplish nothing — the agent cannot connect to the DB, so all they do is print the SQL to tool output (a worse experience than typing it inline) and burn a turn. The cat heredoc shape in particular is the canonical anti-pattern: it literally just echoes the heredoc body to stdout. The ONLY valid uses of write/read here are persisting a .sql file the user explicitly asked to keep — not for showing the query. This overrides the "Keep if you hold the context" heuristic: even when you need the result to proceed, do not run, do not write-to-disk, do not cat the query — put it in the reply.
+**RULE #7: HAND THE USER THE QUERY IN-REPLY — NO TOOL CALL.** Databases live on remote servers behind SSH tunnels (see AGENTS.md) — there is no local DB client. When the user must run a query, **type the SQL as a fenced code block directly in your chat reply**. Never cat-heredoc-to-stdout, ssh-pipe, or write-then-read a .sql file just to display it — those only print to tool output and burn a turn. Only write the file when the user explicitly asked to keep it.
 
 **OUTPUT CONVENTION — tell the user when you delegate.** Right after launching async agent(s), output a one-liner naming them: ⏳ Agent [ID] launched — result will auto-arrive. This is the user-facing signal that delegation happened and the session isn't frozen. Don't bury it; don't omit it.
 
@@ -399,7 +399,7 @@ Your context is finite; as it fills, your decisions degrade. Subagents start wit
 
 ## How Async Subagents Work
 
-Subagents run **non-blocking by default**: a \`subagent\` call with no \`run_in_background\` field spawns in the background, the parent turn ends immediately, and the result **auto-arrives as a new turn** when the child finishes. After the ⏳ launch line, end your turn — do not poll. Use \`steer_subagent\` to send mid-run messages to a background agent; use \`get_subagent_result\` (never \`wait: true\`) to read status/output; evicted agents are recoverable via \`verbose: true\` or \`/subagents:sessions\`. For advanced orchestration (chains, worktree isolation, acceptance contracts, review loops), see the pi-subagents skill.
+A \`subagent\` call with no \`run_in_background\` field spawns in the background; the parent turn ends immediately and the result **auto-arrives as a new turn** when the child finishes. After the ⏳ launch line, END YOUR TURN — never poll, never \`wait: true\`. \`steer_subagent\` for mid-run messages; \`get_subagent_result\` for status/output; evicted agents recover via \`verbose: true\` or \`/subagents:sessions\`. Orchestration patterns (chains, worktree isolation, review loops): the pi-subagents skill.
 
 ## Asking the User
 
