@@ -102,6 +102,23 @@ describe("naming language", () => {
     ]), "Spanish");
   });
 
+  it("resolves mixed Spanish/English messages to Spanish on accented or inverted-punctuation signals", () => {
+    // A single ñ/á/¿ outranks any number of English stopwords: users who mix
+    // languages must get names in their language, not in English.
+    assert.equal(detectDominantUserLanguage([
+      { role: "user", text: "¿Puedes revisar the error in this file and fix it?" },
+    ]), "Spanish");
+    assert.equal(detectDominantUserLanguage([
+      { role: "user", text: "cambia la configuración y update the session file please" },
+    ]), "Spanish");
+  });
+
+  it("keeps plain-English messages on English even with Spanish loanwords absent", () => {
+    assert.equal(detectDominantUserLanguage([
+      { role: "user", text: "fix the build error and update the readme when done" },
+    ]), "English");
+  });
+
   it("treats CJK intent as dominant over english noise injected into the same user messages", () => {
     // 回归（来自真实 session）：pi-di18n 把英文 compaction 警告注入 user 消息，与用户中文指令
     // 同处一个 periodic rename 窗口。旧逻辑按裸字符数累加，Latin 压过中文，整体误判为 English，

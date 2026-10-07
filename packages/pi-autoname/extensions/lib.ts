@@ -39,9 +39,13 @@ export interface DialoguePart {
 export type NamingLanguage = "Chinese" | "English" | "Spanish" | "Japanese" | "Korean";
 
 const SPANISH_MARKERS =
-  /\b(?:el|la|los|las|un|una|que|para|por|con|como|cómo|qué|sesión|archivo|gracias|hola|puedes|necesito|también|esto|esta)\b/gi;
+  /\b(?:el|la|los|las|un|una|que|para|por|con|como|cómo|qué|sesión|archivo|gracias|hola|puedes|necesito|también|esto|esta|este|muy|ahora|cuando|dónde|donde|porque|hacer|tiene|estoy|son|eso|más|sí|quiero|falta|pon|haz|revisa|arregla|cambia)\b/gi;
 const ENGLISH_MARKERS =
-  /\b(?:the|and|for|with|this|that|please|help|session|file|error|thanks|hello|can|need|you)\b/gi;
+  /\b(?:the|and|for|with|this|that|please|help|session|file|error|thanks|hello|can|need|you|not|when|why|what|make|fix|change|update|remove|add)\b/gi;
+// Accented vowels / ñ / inverted punctuation are decisive Spanish signals in
+// otherwise-Latin text — a single one outranks any count of English stopwords
+// (a mixed 'revisa el footer pls' must resolve to Spanish, not English).
+const SPANISH_STRONG_SIGNAL = /[ñáéíóúü¿¡]/i;
 
 function naturalLanguageText(text: string): string {
   return text
@@ -97,7 +101,9 @@ export function detectDominantUserLanguage(parts: DialoguePart[]): NamingLanguag
     // function words so a Spanish (or mixed) user is not forced into English.
     if (!hasCjk) {
       const latin = scriptCount(text, /\p{Script=Latin}/gu);
-      const spanish = (text.match(SPANISH_MARKERS) ?? []).length;
+      const spanish =
+        (text.match(SPANISH_MARKERS) ?? []).length +
+        (SPANISH_STRONG_SIGNAL.test(text) ? 8 : 0);
       const english = (text.match(ENGLISH_MARKERS) ?? []).length;
       addScore(spanish > english && spanish > 0 ? "Spanish" : "English", latin);
     }
