@@ -112,6 +112,12 @@ export async function maybePickAgentModel(
     const lastUsed = readModelMru(deps.agentDir);
     const entries = (deps.modelRegistry.getAvailable?.() ??
       []) as ModelEntryLike[];
+    // Registry empty (seen under piru rpc-mode where the extension-side
+    // registry exposes no getAvailable) → an empty picker is a trap dialog:
+    // inherit silently instead.
+    if (entries.length === 0) {
+      return { kind: "inherit" };
+    }
     const suggested = normalizeSuggestedModel(
       deps.params.model as string | undefined,
       entries,

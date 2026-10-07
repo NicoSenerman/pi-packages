@@ -114,6 +114,40 @@ describe("AgentTool — model picker gating", () => {
     ).toMatch(/^Subagent model — /);
   });
 
+  it("inherits silently when the registry has no available models (piru rpc-mode)", async () => {
+    // Found live on piru 0.1.0: the rpc-mode extension registry exposes no
+    // getAvailable entries, so the picker overlay opened with zero rows and
+    // trapped the spawn waiting for a model that could never be selected.
+    const deps = depsWithPicker();
+    deps.runtime.getModelInfo = vi.fn(() => ({
+      parentModel: { id: "glm", name: "glm", provider: "neuralwatt" },
+      modelRegistry: {
+        getAvailable: () => [],
+        getAll: () => [],
+        find: () => undefined,
+      },
+    }));
+    deps.manager.getRecord = vi
+      .fn()
+      .mockReturnValue(createTestSubagent({ status: "running" }));
+    let selectCalls = 0;
+    const ctx = makePickCtx(() => {
+      selectCalls++;
+      return undefined;
+    });
+    await execute(
+      deps,
+      {
+        prompt: "t",
+        description: "d",
+        subagent_type: "general-purpose",
+        run_in_background: true,
+      },
+      ctx,
+    );
+    expect(selectCalls).toBe(0);
+  });
+
   it("fires when params.pick_model is true and setting is off", async () => {
     const deps = createToolDeps(); // agentModelPicker: false
     deps.runtime.getModelInfo = vi.fn(() => ({
