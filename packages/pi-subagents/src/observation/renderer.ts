@@ -132,17 +132,36 @@ const IDENTITY_THEME: RendererTheme = {
 const RPC_CARD_WIDTH = 96;
 
 /**
+ * Post-process a headless card for chat hosts that hard-wrap: drop the
+ * component's padding rows and shorten the transcript line to its basename
+ * (the full path is noise at chat width; the nudge and the viewer carry it).
+ */
+function tidyRpcCard(lines: string[]): string {
+  return lines
+    .map((line) =>
+      line.trimEnd().replace(/transcript: (\S+\/)([^/\s]+)$/, "transcript: $2"),
+    )
+    .filter((line) => line.trim().length > 0)
+    .join("\n");
+}
+
+/**
  * Pre-render a notification/update card to plain lines for RPC hosts. Uses the
  * same registered renderers native pi uses, so piru chat and native pi stay in
  * lockstep as the card layout evolves.
  */
 export function renderNotificationCardForRpc(details: NotificationDetails): string {
-  const component = createNotificationRenderer()({ details }, { expanded: false }, IDENTITY_THEME);
-  return component ? component.render(RPC_CARD_WIDTH).join("\n") : "";
+  const shortFile = details.outputFile?.split("/").pop();
+  const component = createNotificationRenderer()(
+    { details: shortFile ? { ...details, outputFile: shortFile } : details },
+    { expanded: false },
+    IDENTITY_THEME,
+  );
+  return component ? tidyRpcCard(component.render(RPC_CARD_WIDTH)) : "";
 }
 
 /** The update counterpart of renderNotificationCardForRpc. */
 export function renderUpdateCardForRpc(details: { description: string; message: string }): string {
   const component = createUpdateRenderer()({ details }, { expanded: false }, IDENTITY_THEME);
-  return component ? component.render(RPC_CARD_WIDTH).join("\n") : "";
+  return component ? tidyRpcCard(component.render(RPC_CARD_WIDTH)) : "";
 }

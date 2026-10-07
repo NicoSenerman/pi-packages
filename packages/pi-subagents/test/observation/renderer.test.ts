@@ -4,6 +4,7 @@ import {
   buildPreviewLines,
   buildStatsParts,
   createNotificationRenderer,
+  renderNotificationCardForRpc,
   resolveStatusPresentation,
 } from "#src/observation/renderer";
 
@@ -234,5 +235,25 @@ describe("createNotificationRenderer", () => {
     const text = renderText(result);
     expect(text).toContain("7 tool uses");
     expect(text).toContain("5.0k token");
+  });
+});
+
+describe("renderNotificationCardForRpc", () => {
+  it("drops blank padding rows and basenames the transcript path", () => {
+    const card = renderNotificationCardForRpc({
+      id: "abc",
+      description: "Card test",
+      status: "completed",
+      toolUses: 2,
+      turnCount: 3,
+      totalTokens: 5733,
+      durationMs: 8210,
+      resultPreview: "done",
+      outputFile: "/very/long/path/to/tasks/session-file.jsonl",
+    });
+    expect(card).not.toMatch(/\n\s*\n/);
+    expect(card).toContain("transcript: session-file.jsonl");
+    expect(card).not.toContain("/very/long/path");
+    expect(card).toContain("✓ Card test completed");
   });
 });
