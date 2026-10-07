@@ -19,11 +19,14 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { AgentConfigLookup } from "#src/config/agent-types";
+import { debugLog } from "#src/debug";
 import type { ChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { SubagentSession } from "#src/lifecycle/subagent-session";
 import { AskParentTool, type QuestionRecorder } from "#src/session/ask-parent-tool";
+import { builtinExtensionsFor } from "#src/session/builtin-extensions";
 import type { EnvInfo } from "#src/session/env";
+import { expandMcpToolPatterns } from "#src/session/mcp-tool-patterns";
 import type { ModelRegistry } from "#src/session/model-resolver";
 import { NotifyParentTool, type UpdateAnnouncer } from "#src/session/notify-parent-tool";
 import {
@@ -82,6 +85,8 @@ export interface ResourceLoaderOptions {
   systemPromptOverride?: () => string;
   /** Override the append system prompt. Receives the current base value; return the replacement. */
   appendSystemPromptOverride?: (base: string[]) => string[];
+  /** Pi built-in extensions to resolve for this child (codemode/tool-search/mcp). */
+  extensionFactories?: unknown[];
 }
 
 /** Options passed to SessionFactoryIO.createSession. */
@@ -156,6 +161,12 @@ export interface SubagentSessionDeps {
   registry: AgentConfigLookup;
   /** Publishes the child-execution lifecycle so consumers can observe it. */
   lifecycle: ChildLifecyclePublisher;
+  /**
+   * The parent's currently-registered tool names, for expanding `mcp__…*`
+   * patterns in a child's allowlist. MCP tool names exist only once a server
+   * connects, so patterns expand against what the parent has NOW.
+   */
+  listParentToolNames?: () => readonly string[];
 }
 
 /** Per-spawn parameters — the fields that vary per child session. */
@@ -232,6 +243,17 @@ export async function createSubagentSession(
     deps.io.assemblerIO,
   );
 
+  // Expand `mcp__…*` allowlist patterns against the parent's registered tool
+  // names (upstream 22.0): a whole MCP server joins by one pattern instead of
+  // enumerating names that only exist once the server connects.
+  const { toolNames, unmatchedPatterns } = expandMcpToolPatterns(
+    cfg.toolNames,
+    deps.listParentToolNames?.() ?? [],
+  );
+  for (const pattern of unmatchedPatterns) {
+    debugLog(`agent ${type}: tools pattern ${pattern} matched no tool the parent has`, "");
+  }
+
   const agentDir = deps.io.getAgentDir();
   const sessionSettings = deps.io.createSettingsManager(
     cfg.effectiveCwd,
@@ -269,6 +291,7 @@ export async function createSubagentSession(
     noContextFiles: true,
     systemPromptOverride: () => cfg.systemPrompt,
     appendSystemPromptOverride: () => [],
+    extensionFactories: builtinExtensionsFor(toolNames),
   });
   await loader.reload();
 
@@ -296,7 +319,7 @@ export async function createSubagentSession(
     settingsManager: sessionSettings,
     modelRegistry: snapshot.modelRegistry,
     model: cfg.model,
-    tools: [...cfg.toolNames, ...childTools.map((tool) => tool.name)],
+    tools: [...toolNames, ...childTools.map((tool) => tool.name)],
     excludeTools: EXCLUDED_TOOL_NAMES,
     customTools: childTools,
     resourceLoader: loader,

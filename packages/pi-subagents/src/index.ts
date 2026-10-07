@@ -187,6 +187,9 @@ export default function (pi: ExtensionAPI) {
     },
     exec: (cmd, args, opts) => pi.exec(cmd, args, opts),
     registry,
+    // Parent's registered tool names for mcp__ pattern expansion; pi 1.0 API.
+    listParentToolNames: () =>
+      (pi.getAllTools?.() ?? []).map((tool: { name: string }) => tool.name),
     lifecycle: createChildLifecyclePublisher((channel, data) =>
       pi.events.emit(channel, data),
     ),
