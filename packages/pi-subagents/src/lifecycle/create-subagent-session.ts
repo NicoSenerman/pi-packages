@@ -90,6 +90,8 @@ export interface CreateSessionOptions {
   modelRegistry: ModelRegistry;
   model?: Model<any>;
   tools: string[];
+  /** Re-applied whenever the SDK rebuilds the tool registry (#725). */
+  excludeTools?: string[];
   resourceLoader: ResourceLoaderLike;
   thinkingLevel?: ThinkingLevel;
 }
@@ -256,6 +258,7 @@ export async function createSubagentSession(
     modelRegistry: snapshot.modelRegistry,
     model: cfg.model,
     tools: cfg.toolNames,
+    excludeTools: EXCLUDED_TOOL_NAMES,
     resourceLoader: loader,
     thinkingLevel: cfg.thinkingLevel,
   });

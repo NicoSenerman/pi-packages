@@ -46,6 +46,7 @@ export class TodoOverlay {
 	}
 
 	update(): void {
+		if (process.env.PITUI_BRIDGE === "1") return;
 		if (!this.uiCtx) return;
 		const snapshot = this.getSnapshot();
 		const visible = this.selectOverlayTasks(snapshot);

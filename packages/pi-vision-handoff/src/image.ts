@@ -18,7 +18,7 @@
  * agrees with pi on whether a file is an image at all.
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, sep } from "node:path";
 import crypto from "node:crypto";
@@ -248,27 +248,84 @@ export function readImageBuffer(filePath: string): { buf: Buffer; mimeType: stri
   }
 }
 
-/** Regex matching pi's pasted-clipboard temp image file paths anywhere in the
- *  prompt text. pi writes pasted clipboard images to
- *  `<tmpdir>/pi-clipboard-<uuid>.<ext>` and inserts the path as text at the
- *  cursor, so on a non-vision model these arrive as path tokens in the user
- *  prompt — NOT as `event.images`. Matching them lets the extension pre-warm
- *  the describer at paste-enter (concurrent with the agent's first response)
- *  instead of waiting for the agent to `read` them. */
-const CLIPBOARD_IMAGE_PATH_RE = /(\S*pi-clipboard-[^\s]+\.(?:png|jpe?g|gif|webp))/gi;
+/** Max raw file size the omitted-image recovery will re-read. pi's `read`
+ *  already read the file; this bounds the handoff's re-read so a pathologically
+ *  huge file doesn't double the memory. 20MB covers the most generous vision
+ *  model inline-image limit; a larger file would be rejected by the vision
+ *  model anyway. */
+export const MAX_RECOVER_IMAGE_BYTES = 20 * 1024 * 1024;
 
-/** Extract pasted clipboard image file paths from a prompt. Confined to the
- *  OS temp directory so an attacker-crafted prompt can't trick the extension
- *  into reading arbitrary files — only pi's own clipboard temp files qualify. */
-export function findClipboardImagePaths(prompt: string): string[] {
+/** pi core's `read` tool emits this text note (with NO image block) when it
+ *  detected an image but `processImage` failed — Photon/WASM unavailable,
+ *  decode failure, convert-to-PNG failure, or couldn't resize below the inline
+ *  size limit. The handoff's image-block path never sees these (no image
+ *  block), so the image goes undescribed and the model is told the image was
+ *  "omitted". This detects that note so the tool_result handler can re-read the
+ *  raw file and describe its bytes directly (the vision model decodes them —
+ *  no Photon needed). */
+export function isOmittedImageNote(text: string): boolean {
+  return text.includes("Read image file [") && text.includes("[Image omitted:");
+}
+
+/** Read an image file for the omitted-image recovery, bounded by
+ *  {@link MAX_RECOVER_IMAGE_BYTES}. Returns null if the file can't be read, is
+ *  too large, or isn't a supported image (aligned with pi's sniff — APNG and
+ *  unsupported formats are rejected, since the vision model can't decode them
+ *  either). */
+export function readImageBufferBounded(filePath: string): { buf: Buffer; mimeType: string } | null {
+  try {
+    const stat = statSync(filePath);
+    if (stat.size > MAX_RECOVER_IMAGE_BYTES) return null;
+  } catch {
+    return null;
+  }
+  return readImageBuffer(filePath);
+}
+
+/** Regex matching any pasted temp-image file path in the prompt text,
+ *  regardless of which paste mechanism wrote it (pi-clipboard,
+ *  localterm-paste, and others). We match any non-whitespace token ending in
+ *  a supported image extension, then confine to the OS temp directory below.
+ *  The confinement, not the filename pattern, is the security boundary. */
+const PASTED_IMAGE_PATH_RE = /(\S+\.(?:png|jpe?g|gif|webp))/gi;
+const URL_RE = new RegExp('^[a-z][a-z0-9+.-]*://', 'i');
+const LEADING_WRAP_RE = new RegExp('^[^A-Za-z0-9_/@.~-]+');
+
+/** Extract pasted image file paths from a prompt. Confined to the OS temp
+ *  directory so an attacker-crafted prompt can't trick the extension into
+ *  reading arbitrary files — only temp-dir image files qualify (this covers
+ *  every paste mechanism: pi-clipboard, localterm-paste, and others). URLs
+ *  (http(s)://, file://, ...) are skipped so they aren't joined into the temp
+ *  dir and mistaken for local files; leading wrapping chars (parentheses,
+ *  quotes) are stripped so quoted/parenthesized paths still resolve. */
+export function findPastedImagePaths(prompt: string): string[] {
   const tmp = tmpdir();
   const paths = new Set<string>();
-  for (const m of prompt.matchAll(CLIPBOARD_IMAGE_PATH_RE)) {
-    const p = m[1];
-    if (!p) continue;
+  for (const m of prompt.matchAll(PASTED_IMAGE_PATH_RE)) {
+    const token = m[1];
+    if (!token) continue;
+    if (URL_RE.test(token)) continue;
+    const p = token.replace(LEADING_WRAP_RE, "");
     const abs = isAbsolute(p) ? p : join(tmp, p);
     // Ensure the resolved candidate stays inside the temp directory.
     if (abs.startsWith(tmp + sep) || abs === tmp) paths.add(abs);
   }
   return [...paths];
+}
+
+/** Diff the pasted image paths in `text` against `known`, returning those
+ *  that are newly appeared (not yet seen). Used by the paste-time prewarm
+ *  editor to prewarm only newly-pasted paths on each text change, without
+ *  re-reading already-seen ones. `findPastedImagePaths` already dedups
+ *  within a single text, so each returned path is unique and seen at most
+ *  once. Returns [] when `text` holds no pasted paths (e.g. ordinary
+ *  typing) — so the editor's per-keystroke cost when the opt-in is on is one
+ *  regex scan that almost always yields nothing. */
+export function diffPrewarmPaths(text: string, known: Set<string>): string[] {
+  const paths = findPastedImagePaths(text);
+  const newPaths: string[] = [];
+  for (const p of paths) {
+    if (!known.has(p)) newPaths.push(p);
+  }
+  return newPaths;
 }

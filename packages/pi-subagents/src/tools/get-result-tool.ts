@@ -36,18 +36,24 @@ export class GetResultTool {
 		// it is still awaitable — a queued agent counts, because scheduleVia()
 		// captures its limiter promise at spawn. A parent interrupt ends the wait
 		// without cancelling the agent, leaving the outcome uncollected below.
+		let superseded: { result?: string; error?: string; status: string } | undefined;
 		if (params.wait) {
-			await record.waitUntilSettled(signal);
-		}
-
-		// Pull-delivery edge: the parent is collecting the settled outcome here, so
-		// mark it consumed. The completion nudge scheduled by onSubagentCompleted
-		// re-reads record.consumed at fire time and suppresses itself.
-		if (!record.isActive()) {
+			const claim = record.claim();
+			const wait = await record.waitUntilSettled(signal);
+			if (wait.kind === "settled") record.markConsumed();
+			else claim.release();
+			if (wait.kind === "superseded") superseded = wait.outcome;
+		} else if (!record.isActive()) {
 			record.markConsumed();
 		}
 
-		return textResult(formatAgentReport(this.buildReport(record, params.verbose)));
+		const report = this.buildReport(record, params.verbose);
+		if (superseded) {
+			report.result = superseded.result;
+			report.error = superseded.error;
+			report.status = superseded.status as AgentReport["status"];
+		}
+		return textResult(formatAgentReport(report));
 	}
 
 	private buildReport(record: Subagent, verbose?: boolean): AgentReport {

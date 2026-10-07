@@ -46,6 +46,8 @@ export interface WidgetAgent {
 	readonly responseText: string;
 	/** Context-window utilisation (0–100), or null when unavailable. */
 	readonly contextPercent: number | null;
+	/** `provider/id` once known. */
+	readonly modelLabel?: string;
 }
 
 // ── Per-agent rendering ──────────────────────────────────────────────────────
@@ -87,7 +89,8 @@ export function renderFinishedLine(
 	parts.push(duration);
 
 	const modeTag = modeLabel ? ` ${theme.fg("dim", `(${modeLabel})`)}` : "";
-	return `${icon} ${theme.fg("dim", name)}${modeTag}  ${theme.fg("dim", agent.description)} ${theme.fg("dim", "·")} ${theme.fg("dim", parts.join(" · "))}${statusText}`;
+	const modelTag = agent.modelLabel ? ` ${theme.fg("dim", `[${agent.modelLabel}]`)}` : "";
+	return `${icon} ${theme.fg("dim", name)}${modeTag}${modelTag}  ${theme.fg("dim", agent.description)} ${theme.fg("dim", "·")} ${theme.fg("dim", parts.join(" · "))}${statusText}`;
 }
 
 /** Render a single running agent as header + activity line pair (no tree connector prefix). */
@@ -115,7 +118,8 @@ export function renderRunningLines(
 	const frame = SPINNER[spinnerFrame % SPINNER.length];
 	const activityText = describeActivity(agent.activeTools, agent.responseText);
 
-	const header = `${theme.fg("accent", frame)} ${theme.bold(name)}${modeTag}  ${theme.fg("muted", agent.description)} ${theme.fg("dim", "·")} ${theme.fg("dim", statsText)}`;
+	const modelTag = agent.modelLabel ? ` ${theme.fg("dim", `[${agent.modelLabel}]`)}` : "";
+	const header = `${theme.fg("accent", frame)} ${theme.bold(name)}${modeTag}${modelTag}  ${theme.fg("muted", agent.description)} ${theme.fg("dim", "·")} ${theme.fg("dim", statsText)}`;
 	const activityLine = theme.fg("dim", `  ${GLYPHS.subLine}  ${activityText}`);
 
 	return [header, activityLine];

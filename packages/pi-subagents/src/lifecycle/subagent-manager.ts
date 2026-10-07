@@ -55,6 +55,13 @@ export interface SubagentManagerObserver {
   onSubagentCreated(record: Subagent): void;
   /** Fires for every terminal run (foreground + background). Optional. */
   onSubagentFinished?(record: Subagent): void;
+  /**
+   * Fires when a resumed run transitions back to running (foreground +
+   * background). Optional. Distinct from onSubagentStarted so spawn-sensitive
+   * consumers can ignore it; liveness consumers (the widget loop) use it to
+   * re-arm after an idle-gap teardown.
+   */
+  onSubagentResumeStarted?(record: Subagent): void;
 }
 
 export interface SubagentManagerOptions {
@@ -150,6 +157,13 @@ export class SubagentManager {
     return {
       onStarted: (agent) => {
         this.observer?.onSubagentStarted(agent);
+      },
+      onResumeStarted: (agent) => {
+        try {
+          this.observer?.onSubagentResumeStarted?.(agent);
+        } catch (err) {
+          debugLog("onSubagentResumeStarted observer", err);
+        }
       },
       onSessionCreated: options.observer?.onSessionCreated
         ? (agent) => options.observer!.onSessionCreated!(agent)
@@ -269,10 +283,33 @@ export class SubagentManager {
     prompt: string,
     signal?: AbortSignal,
   ): Promise<Subagent | undefined> {
+    const start = this.startResume(id, prompt, { signal, claimOutcome: false });
+    if (start.kind === "refused") return undefined;
+    await start.record.promise;
+    return start.record;
+  }
+
+  /**
+   * Start a resume without waiting. Refuses a still-running agent and one with
+   * no session (#896, #987). `claimOutcome` keeps a foreground caller's claim
+   * across resetForResume; a background resume releases stale claims so the
+   * completion nudge can fire (#1015).
+   */
+  startResume(
+    id: string,
+    prompt: string,
+    options: { signal?: AbortSignal; claimOutcome?: boolean } = {},
+  ): { kind: "started"; record: Subagent } | { kind: "refused"; reason: "unknown-agent" | "still-running" | "no-session" } {
     const agent = this.agents.get(id);
-    if (!agent?.isSessionReady()) return undefined;
-    await agent.resume(prompt, signal);
-    return agent;
+    if (!agent) return { kind: "refused", reason: "unknown-agent" };
+    if (agent.isRunning() || agent.status === "queued") {
+      return { kind: "refused", reason: "still-running" };
+    }
+    if (!agent.isSessionReady()) return { kind: "refused", reason: "no-session" };
+    if (options.claimOutcome) agent.claim();
+    else agent.releaseClaims();
+    void agent.resume(prompt, options.signal);
+    return { kind: "started", record: agent };
   }
 
   getRecord(id: string): Subagent | undefined {

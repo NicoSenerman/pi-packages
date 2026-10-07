@@ -55,6 +55,14 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
 		this.persistAndNotify(record);
 	}
 
+	onSubagentResumeStarted(record: Subagent): void {
+		this.emit("subagents:resuming", {
+			id: record.id,
+			type: record.type,
+			description: record.description,
+		});
+	}
+
 	onSubagentResumed(record: Subagent): void {
 		// A resumed run terminates only as completed or error; a single distinct
 		// channel carries both — the payload's status/error discriminate. Existing

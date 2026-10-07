@@ -11,6 +11,8 @@
  *   before_agent_start → warm the description cache for attached images AND
  *     pasted clipboard image file paths found in the prompt text (pre-warm at
  *     paste-enter, concurrent with the agent's first response).
+ *   optional async clipboard fallback → race matching read tool calls against a
+ *     non-blocking steering-message injection; matching reads cancel delivery.
  *   tool_result (read) → loadDescription() each read-tool image and AWAIT the
  *     shared batch, so N parallel reads coalesce into ONE vision call. The
  *     descriptions land in the tool results before the agent's next turn.
@@ -28,21 +30,11 @@
  * `context` fires.
  */
 
-import type {
-  ExtensionAPI,
-  ExtensionCommandContext,
-  ExtensionContext,
-  ModelRegistry,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ModelRegistry } from "@earendil-works/pi-coding-agent";
+import type { Api, ImageContent, Model, TextContent } from "@earendil-works/pi-ai";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { Box, Text } from "@earendil-works/pi-tui";
-import type {
-  Api,
-  ImageContent,
-  Model,
-  TextContent,
-} from "@earendil-works/pi-ai";
+import { isAbsolute, join, resolve } from "node:path";
+import { resolveAgentDir } from "./src/agent-dir.js";
 import {
   extractImageFromBlock,
   formatModelRef,
@@ -54,7 +46,11 @@ import {
   readConfig,
   stripNonVisionImageNote,
   writeConfig,
+  buildPersistedDescriptionBlock,
+  parsePersistedDescriptionBlock,
+  stripPersistedMarker,
   HANDOFF_COMMAND_DESCRIPTION,
+  UNAVAILABLE,
   type ExtractedImage,
   type VisionHandoffConfig,
 } from "./src/index.js";
@@ -63,27 +59,23 @@ import {
   USAGE_EVENT_CHANNEL,
   type VisionHandoffUsageRecord,
 } from "./src/usage.js";
-import {
-  DescriptionLoader,
-  UNAVAILABLE,
-  type LoaderDeps,
-} from "./src/dataloader.js";
-import {
-  imageHash,
-  findClipboardImagePaths,
-  readImageBuffer,
-  resolvePrewarmImage,
-} from "./src/image.js";
-import {
-  getAgentDir,
-  resizeImage,
-} from "@earendil-works/pi-coding-agent";
-import {
-  VisionModelSelectorComponent,
-  type VisionModelSelectorResult,
-} from "./src/vision-model-selector.js";
+import type { DescriptionLoader, LoaderDeps } from "./src/dataloader.js";
+import { imageHash, findPastedImagePaths, readImageBuffer, readImageBufferBounded, resolvePrewarmImage, isOmittedImageNote } from "./src/image.js";
+import { appendVisionError } from "./src/error-log.js";
+import type { VisionModelSelectorResult } from "./src/vision-model-selector.js";
+import { Text } from "@earendil-works/pi-tui";
 
 let config: VisionHandoffConfig = readConfig();
+
+/** Marker used to dedup the aware-prompt system-prompt note across turns. */
+const AWARE_PROMPT_MARKER = "# Image reading (pi-vision-handoff active)";
+
+/** System-prompt note injected on handoff targets when `awarePrompt` is on.
+ *  Tells the text-only model it CAN read images via the read tool, since the
+ *  handoff swaps image blocks for descriptions. */
+const AWARE_PROMPT_NOTE = `# Image reading (pi-vision-handoff active)
+
+This model lacks native image input, but the pi-vision-handoff extension is enabled: when you call the read tool on an image file, a configured vision model ({visionModel}) describes it and the description is injected as text in the tool result. You CAN read and act on images via the read tool — do not refuse image-reading requests or claim you cannot see images. The "[Current model does not support images…]" note in tool output is stale and is stripped by the extension.`;
 
 /** Most recent describer failure message (auth error, network error, abort,
  *  empty response, etc.). Set by the describer via the loader deps; surfaced
@@ -99,48 +91,129 @@ let lastDescriberError: string | null = null;
  *  Cleared on `session_start`. */
 const warnedHashes = new Set<string>();
 
+/** Current model, tracked so the paste-time prewarm gate can skip prewarming
+ *  when the active model is vision-capable (handoff won't run → a prewarm
+ *  would be a wasted vision call). Updated in session_start and model_select. */
+let currentModel: Model<Api> | undefined | null;
+
+/** Whether the paste-time prewarm editor is installed this session. False in
+ *  non-TUI modes or when another extension already replaced the editor. */
+let editorInstalled = false;
+
 let visionModelCache: { ref: string; model: Model<Api> } | null = null;
 let visionModelUnresolvedRef: string | null = null;
+let inFlightUi: { setStatus: ExtensionContext["ui"]["setStatus"] } | null = null;
+
+interface PendingAsyncClipboardHandoff {
+  token: symbol;
+  paths: Set<string>;
+  cancelled: boolean;
+}
+
+interface PreparedClipboardImage {
+  path: string;
+  image: ExtractedImage;
+  description: Promise<string>;
+}
+
+let pendingAsyncClipboardHandoff: PendingAsyncClipboardHandoff | null = null;
+
+function cancelAsyncClipboardHandoff(): void {
+  if (!pendingAsyncClipboardHandoff) return;
+  pendingAsyncClipboardHandoff.cancelled = true;
+  pendingAsyncClipboardHandoff = null;
+}
+
+function isPendingClipboardRead(input: unknown, cwd: string): boolean {
+  const pending = pendingAsyncClipboardHandoff;
+  if (!pending || !input || typeof input !== "object") return false;
+  const raw = (input as { path?: unknown }).path;
+  if (typeof raw !== "string") return false;
+  const path = raw.startsWith("@") ? raw.slice(1) : raw;
+  const absolute = isAbsolute(path) ? path : resolve(cwd, path);
+  return pending.paths.has(absolute);
+}
+
+function scheduleAsyncClipboardInjection(
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  paths: string[],
+  prepared: Promise<PreparedClipboardImage | null>[],
+): void {
+  cancelAsyncClipboardHandoff();
+  const pending: PendingAsyncClipboardHandoff = {
+    token: Symbol("async-clipboard-handoff"),
+    paths: new Set(paths),
+    cancelled: false,
+  };
+  pendingAsyncClipboardHandoff = pending;
+
+  void (async () => {
+    const entries = (await Promise.all(prepared)).filter(
+      (entry): entry is PreparedClipboardImage => entry !== null,
+    );
+    if (entries.length === 0) {
+      if (pendingAsyncClipboardHandoff?.token === pending.token) {
+        pendingAsyncClipboardHandoff = null;
+      }
+      return;
+    }
+    const descriptions = await Promise.all(entries.map((entry) => entry.description));
+
+    // Always yield out of before_agent_start, even when paste-time prewarm made
+    // every description an immediate cache hit. This lets Pi enter the active
+    // agent run before sendMessage queues the fallback as a steering message.
+    await new Promise<void>((resolveImmediate) => setImmediate(resolveImmediate));
+    if (
+      pending.cancelled ||
+      pendingAsyncClipboardHandoff?.token !== pending.token ||
+      !config.asyncClipboardHandoff ||
+      !isConfigured(config)
+    ) {
+      return;
+    }
+
+    warnFailedImages(
+      ctx,
+      entries.map((entry) => entry.image),
+      descriptions,
+      lastDescriberError ?? "unknown error",
+    );
+    const content = [
+      "Asynchronous vision handoff for pasted image path(s):",
+      ...entries.map(
+        (entry, index) => `${entry.path}\n${descriptions[index] ?? UNAVAILABLE}`,
+      ),
+    ].join("\n\n");
+
+    pendingAsyncClipboardHandoff = null;
+    try {
+      pi.sendMessage(
+        {
+          customType: "vision-handoff-async",
+          content,
+          display: true,
+          details: { imageCount: entries.length },
+        },
+        { deliverAs: "steer", triggerTurn: true },
+      );
+    } catch {
+      // The session may have been replaced/reloaded while the description was
+      // in flight. The stale extension instance must not affect the new one.
+    }
+  })().catch(() => {
+    if (pendingAsyncClipboardHandoff?.token === pending.token) {
+      pendingAsyncClipboardHandoff = null;
+    }
+  });
+}
 
 // Usage reporter; wired to pi.appendEntry + pi.events.emit in the default
 // export. No-op until then so the describer is safe to call before wiring.
 let reportUsage: (record: VisionHandoffUsageRecord) => void = () => {};
 
-// UI handle for the green "vis → <model>" in-flight footer indicator. Captured
-// per turn in `before_agent_start` (where ctx is available) and cleared on
-// session reset. The describer toggles it via `loaderDeps.onInFlightChange`.
-let inFlightUi: { setStatus: ExtensionContext["ui"]["setStatus"] } | null =
-  null;
-
-/**
- * The shared utility-models registry's `describer.fallbacks` — vision models
- * tried (in order) after the primary fails a whole batch.
- */
-function visionFallbackCandidates(): string[] {
-  try {
-    const raw = readFileSync(
-      join(getAgentDir(), "utility-models.json"),
-      "utf8",
-    );
-    const fallbacks: unknown = JSON.parse(raw)?.describer?.fallbacks;
-    if (Array.isArray(fallbacks)) {
-      return fallbacks
-        .filter((m): m is string => typeof m === "string")
-        .map((m) => m.trim())
-        .filter((m) => !!parseModelRef(m));
-    }
-    return [];
-  } catch {
-    return [];
-  }
-}
-
-function resolveVisionModel(
-  modelRegistry: ModelRegistry,
-  ref: string,
-): Model<Api> | null {
-  if (visionModelCache && visionModelCache.ref === ref)
-    return visionModelCache.model;
+function resolveVisionModel(modelRegistry: ModelRegistry, ref: string): Model<Api> | null {
+  if (visionModelCache && visionModelCache.ref === ref) return visionModelCache.model;
   const parsed = parseModelRef(ref);
   if (!parsed) return null;
   const model = modelRegistry.find(parsed.provider, parsed.id);
@@ -149,42 +222,66 @@ function resolveVisionModel(
   return model;
 }
 
+/** True when the primary vision model resolves, or — failing that — at least
+ *  one configured fallback resolves. A broken primary ref (typo, removed
+ *  model) must not short-circuit the whole pipeline to "unresolved" warnings
+ *  when a fallback could still describe images; the loader's failover picks
+ *  the resolvable fallback up in bindTurnContext. */
+function registryVisionFallbacks(): string[] {
+  try {
+    const raw = readFileSync(join(resolveAgentDir(), "utility-models.json"), "utf8");
+    const fallbacks: unknown = JSON.parse(raw)?.describer?.fallbacks;
+    if (!Array.isArray(fallbacks)) return [];
+    return fallbacks
+      .filter((m): m is string => typeof m === "string")
+      .map((m) => m.trim())
+      .filter((m) => !!parseModelRef(m));
+  } catch {
+    return [];
+  }
+}
+
+function isAnyVisionModelResolvable(modelRegistry: ModelRegistry, config: VisionHandoffConfig): boolean {
+  if (resolveVisionModel(modelRegistry, config.visionModel!)) return true;
+  if (config.fallbackModels.some((ref) => resolveVisionModel(modelRegistry, ref))) return true;
+  return registryVisionFallbacks().some((ref) => resolveVisionModel(modelRegistry, ref));
+}
+
 const loaderDeps: LoaderDeps = {
   getConfig: () => config,
   resolveVisionModel,
-  getVisionFallbacks: () => visionFallbackCandidates(),
+  getVisionFallbacks: () => registryVisionFallbacks(),
   reportUsage: (record) => reportUsage(record),
   setLastError: (msg) => {
     lastDescriberError = msg;
   },
   onInFlightChange: (inFlight, model) => {
-    // Green "vis → <model>" footer during in-flight vision describer calls.
-    // Mirrors pi-quick-lint's `ql` slot pattern. Cleared (undefined) when idle.
-    //
-    // Color: pi's footer renders extension statuses with no theme wrapper, so the
-    // text would inherit the terminal's default foreground. We embed ANSI green
-    // directly because pi's `sanitizeStatusText` only strips whitespace — escape
-    // codes pass through untouched. `[32m` = green, `[39m` = default fg.
     if (!inFlightUi) return;
     const GREEN = "\u001b[32m";
     const RESET_FG = "\u001b[39m";
-    inFlightUi.setStatus(
-      "vis",
-      inFlight && model ? `${GREEN}vis → ${model}${RESET_FG}` : undefined,
-    );
+    inFlightUi.setStatus("vis", inFlight && model ? `${GREEN}vis → ${model}${RESET_FG}` : undefined);
   },
 };
-const loader = new DescriptionLoader(loaderDeps);
+// The describer chain (dataloader -> describer -> pi-ai/compat) and pi-core's
+// resizeImage / pi-tui's Text each drag a host module graph into this
+// extension's loader when imported statically. Load them behind the first
+// image turn / editor install / async render so startup stays import-free.
+let loaderPromise: Promise<DescriptionLoader> | undefined;
+const getLoader = (): Promise<DescriptionLoader> => {
+  loaderPromise ??= import("./src/dataloader.js").then(
+    ({ DescriptionLoader }) => new DescriptionLoader(loaderDeps),
+  );
+  return loaderPromise;
+};
+const loadResizeImage = () =>
+  import("@earendil-works/pi-coding-agent").then(({ resizeImage }) => resizeImage);
 
 function isConfigured(cfg: VisionHandoffConfig): boolean {
   return cfg.enabled && !!cfg.visionModel;
 }
 
 function isHandoffTarget(
-  model:
-    | { provider?: string; id?: string; input?: ("text" | "image")[] }
-    | undefined
-    | null,
+  model: { provider?: string; id?: string; input?: ("text" | "image")[] } | undefined | null,
   cfg: VisionHandoffConfig,
 ): boolean {
   if (!model || !model.provider || !model.id) return false;
@@ -192,6 +289,70 @@ function isHandoffTarget(
   if (cfg.handoffModels.includes(ref)) return true;
   if (cfg.autoHandoff && !isVisionModel(model)) return true;
   return false;
+}
+
+/** Whether paste-time prewarm should fire for a text change right now: the
+ *  opt-in flag is on, handoff is configured, and the active model is a handoff
+ *  target (so the prewarmed description will actually be consumed — a
+ *  vision-capable model needs no handoff, so prewarming would waste a call). */
+function shouldPrewarmPaste(): boolean {
+  return config.prewarmPastedImages && isConfigured(config) && isHandoffTarget(currentModel, config);
+}
+
+/** Prewarm one pasted clipboard image path through the dataloader at paste
+ *  time. Mirrors the before_agent_start clipboard prewarm, but binds only the
+ *  model registry (no turn signal — the agent is idle at paste time) and
+ *  resets the turn prompt to "" so a stale previous-turn prompt can't leak
+ *  into the description. The user's question isn't typed yet at paste time, so
+ *  the description is generated without question context (the documented
+ *  tradeoff of the opt-in). If the user submits before this dispatch fires,
+ *  before_agent_start overwrites the prompt — a benign bonus, not a bug. */
+async function prewarmClipboardPath(path: string, modelRegistry: ModelRegistry): Promise<void> {
+  const read = readImageBuffer(path);
+  if (!read) return;
+  const resizeImage = await loadResizeImage();
+  const loader = await getLoader();
+  resolvePrewarmImage(read.buf, read.mimeType, resizeImage)
+    .then((img) => {
+      if (!img) return;
+      // Paste happens while the agent is idle (no run → no live signal).
+      // Reset the turn-abort controller so a previous turn's ESC doesn't leave
+      // it aborted and short-circuit this prewarm; the next submit's
+      // `before_agent_start` resets again. The prewarm batch uses the loader's
+      // controller and becomes abortable once a run starts and binds a live
+      // signal.
+      loader.resetTurnAbort();
+      loader.setPendingTurnPrompt("");
+      loader.bindTurnContext({ modelRegistry });
+      loader.loadDescription(img).catch(() => {});
+    })
+    .catch(() => {});
+}
+
+/** Install the paste-time prewarm editor wrapper for this session. TUI only,
+ *  and only when no other extension has replaced the editor — installing over
+ *  a custom editor would clobber its input handling and break clipboard paste
+ *  (pi wires paste-image to the outermost editor only). When a custom editor
+ *  is present, paste-time prewarm is unavailable; submit-time prewarm
+ *  (before_agent_start) still covers clipboard paths. */
+async function installPrewarmEditor(ctx: ExtensionContext): Promise<void> {
+  if (ctx.mode !== "tui") {
+    editorInstalled = false;
+    return;
+  }
+  if (ctx.ui.getEditorComponent()) {
+    editorInstalled = false;
+    return;
+  }
+  const { PrewarmEditor } = await import("./src/prewarm-editor.js");
+  editorInstalled = true;
+  ctx.ui.setEditorComponent((_tui, theme, keybindings) =>
+    new PrewarmEditor(_tui, theme, keybindings, {
+      modelRegistry: ctx.modelRegistry,
+      shouldPrewarm: shouldPrewarmPaste,
+      prewarmPath: prewarmClipboardPath,
+    }),
+  );
 }
 
 function notifyUnresolvedVisionModel(ctx: ExtensionContext, ref: string): void {
@@ -205,14 +366,17 @@ function notifyUnresolvedVisionModel(ctx: ExtensionContext, ref: string): void {
   }
 }
 
-/** Notify once per failing image per session (dedup via warnedHashes). */
+/** Notify once per failing image per session (dedup via warnedHashes), and log
+ *  EVERY failure (even in headless/SDK mode with no UI) to the error log so the
+ *  user can troubleshoot. The log entry's `phase: "warn"` carries the failing
+ *  image hashes and the surfaced reason — when the reason is "unknown error",
+ *  the real cause lives in the matching `batch`/`single` entry for those hashes. */
 function warnFailedImages(
   ctx: ExtensionContext,
   imgs: ExtractedImage[],
   descs: string[],
   reason: string,
 ): void {
-  if (!ctx.hasUI) return;
   const newlyFailed: string[] = [];
   for (let i = 0; i < imgs.length; i++) {
     if (descs[i] === UNAVAILABLE) {
@@ -222,6 +386,17 @@ function warnFailedImages(
   }
   if (newlyFailed.length === 0) return;
   for (const h of newlyFailed) warnedHashes.add(h);
+  // Always log: troubleshooting must work in headless/SDK mode too, where the
+  // notify below never fires.
+  appendVisionError({
+    phase: "warn",
+    reason,
+    visionModel: config.visionModel,
+    imageHashes: newlyFailed,
+    imageCount: newlyFailed.length,
+    activeModel: ctx.model ? formatModelRef(ctx.model.provider, ctx.model.id) : undefined,
+  });
+  if (!ctx.hasUI) return;
   ctx.ui.notify(
     `pi-vision-handoff: image description failed — ${reason}. Vision model: ${config.visionModel}`,
     "warning",
@@ -230,6 +405,24 @@ function warnFailedImages(
 
 export default function (pi: ExtensionAPI) {
   config = readConfig();
+
+  pi.registerMessageRenderer("vision-handoff-async", (message, { expanded }, theme) => {
+    const details = message.details as { imageCount?: number } | undefined;
+    const count = details?.imageCount ?? 1;
+    const label = `Vision handoff · ${count} pasted image${count === 1 ? "" : "s"}`;
+    const hint = expanded ? "Ctrl+O to collapse" : "Ctrl+O to expand";
+    const summary = theme.fg("dim", `👁 ${label} · ${hint}`);
+    if (!expanded) return new Text(summary, 0, 0);
+    // Apply the dim (grey) style per line: the TUI appends a full SGR reset at
+    // the end of each rendered line, so a single style wrapper would only tint
+    // the first line. Text wraps with wrapTextWithAnsi (ANSI-preserving), and
+    // each line here carries its own dim code so wrapped continuations stay grey.
+    const contentStr = typeof message.content === "string" ? message.content : "";
+    const body = contentStr.length > 0
+      ? contentStr.split("\n").map((line) => theme.fg("dim", line)).join("\n")
+      : "";
+    return new Text(body ? `${summary}\n${body}` : summary, 0, 0);
+  });
 
   // Wire the usage reporter to pi's persistence + event bus. appendEntry
   // persists the record so it replays on session resume/branch, and the event
@@ -251,56 +444,63 @@ export default function (pi: ExtensionAPI) {
     }
   };
 
-  // Render each persisted usage record as a compact themed card in the
-  // transcript. Custom entries are display-only — they never enter LLM
-  // context, so this surfaces per-call token/energy telemetry without the
-  // bloat of a message renderer. Matches the green `vis` footer aesthetic.
-  pi.registerEntryRenderer<VisionHandoffUsageRecord>(
-    USAGE_ENTRY_TYPE,
-    (entry, _options, theme) => {
-      const r = entry.data;
-      if (!r) return undefined;
-      const model = r.responseModel || r.model;
-      const tok = r.usage;
-      const energy =
-        r.energyJoules !== undefined
-          ? `  ${theme.fg("dim", "energy")} ${r.energyJoules.toFixed(1)}J` +
-            (r.costUsd !== undefined ? ` ($${r.costUsd.toFixed(5)})` : "")
-          : "";
-      const line =
-        `${theme.fg("success", "vis")} ${theme.fg("dim", model)} ` +
-        `${theme.fg("muted", "tok")} ${tok.input}↑ ${tok.output}↓` +
-        energy;
-      const box = new Box(0, 0);
-      box.addChild(new Text(line, 0, 0));
-      return box;
-    },
-  );
-
-  pi.on("session_start", async () => {
+  pi.on("session_start", async (_event, ctx) => {
+    cancelAsyncClipboardHandoff();
     // Reload in case the user edited the config on disk from another session.
     config = readConfig();
     visionModelCache = null;
     visionModelUnresolvedRef = null;
     warnedHashes.clear();
-    inFlightUi = null;
-    loader.reset();
+    void getLoader().then((loader) => loader.reset());
+    currentModel = ctx.model;
+    await installPrewarmEditor(ctx);
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
+    cancelAsyncClipboardHandoff();
+    inFlightUi = ctx.hasUI ? ctx.ui : null;
     if (!isConfigured(config)) return;
     if (!isHandoffTarget(ctx.model, config)) return;
 
-    // Capture this turn's UI handle so the describer's onInFlightChange can
-    // drive the green "vis → <model>" footer (ctx.ui is turn-scoped).
-    if (ctx.hasUI) inFlightUi = { setStatus: ctx.ui.setStatus.bind(ctx.ui) };
+    // Opt-in (`awarePrompt`): note telling text-only handoff targets they CAN
+    // read images via the read tool, since the handoff swaps image blocks for
+    // descriptions — some models otherwise refuse image-reading requests from
+    // self-knowledge even though the description is delivered as text. Must
+    // live in THIS single registration: only one before_agent_start result is
+    // used, and a second registration shadows this handler's fallback
+    // bootstrap (regression: the async pasted-path fallback never fired).
+    // pi 1.0: do not return {systemPrompt}. Append via systemPromptOptions.
+    if (
+      config.awarePrompt &&
+      config.visionModel &&
+      !(typeof event.systemPrompt === "string" && event.systemPrompt.includes(AWARE_PROMPT_MARKER))
+    ) {
+      const note = AWARE_PROMPT_NOTE.replace("{visionModel}", config.visionModel);
+      const opts = (event as { systemPromptOptions?: { appendSystemPrompt?: string } }).systemPromptOptions ??= {};
+      if (!opts.appendSystemPrompt?.includes(AWARE_PROMPT_MARKER)) {
+        opts.appendSystemPrompt = opts.appendSystemPrompt ? `${opts.appendSystemPrompt}\n\n${note}` : note;
+      }
+    }
+
+    // Fresh turn → fresh turn-abort controller. `before_agent_start` fires
+    // BEFORE the agent run starts, so `ctx.signal` is undefined here (the run's
+    // abort signal doesn't exist yet — it's created in `agent.prompt()` →
+    // `runWithLifecycle`, which runs AFTER this event). The prewarm below
+    // dispatches describer batches now, and they must be abortable once the
+    // run's live signal arrives — so reset the loader's turn-abort controller
+    // here, and let the later `tool_result`/`context` binds forward the live
+    // signal into it. Without this reset, a previous turn's ESC would leave
+    // the controller aborted and every dispatch would short-circuit to
+    // UNAVAILABLE.
+    const loader = await getLoader();
+    loader.resetTurnAbort();
 
     // Capture this turn's user prompt so every image in the turn — attached or
     // read via the read tool — is described in the same request context.
     loader.setPendingTurnPrompt(event.prompt || "");
     loader.bindTurnContext(ctx);
 
-    if (!resolveVisionModel(ctx.modelRegistry, config.visionModel!)) {
+    if (!isAnyVisionModelResolvable(ctx.modelRegistry, config)) {
       notifyUnresolvedVisionModel(ctx, config.visionModel!);
       return;
     }
@@ -310,9 +510,10 @@ export default function (pi: ExtensionAPI) {
     // 1. Attached image blocks (event.images) — vision-capable targets where
     //    the user message itself carries image blocks (e.g. `pi --image`).
     //
-    // 2. Pasted clipboard image FILE PATHS in the prompt text — the common
-    //    non-vision flow. pi's `handleClipboardImagePaste` writes each pasted
-    //    image to `<tmpdir>/pi-clipboard-<uuid>.<ext>` and inserts the PATH as
+    // 2. Pasted image FILE PATHS in the prompt text — the common non-vision
+    //    flow. pi's `handleClipboardImagePaste` (and other paste mechanisms like
+    //    localterm-paste) write each pasted image to a temp file and insert the
+    //    PATH as
     //    text at the cursor; on a non-vision model these arrive as path tokens
     //    in `event.prompt`, NOT as `event.images`. We scan the prompt for those
     //    temp paths, read the files, and `loadDescription()` them so the ONE
@@ -323,15 +524,11 @@ export default function (pi: ExtensionAPI) {
     //
     // Both sources flow through the same loader: `load()` is synchronous and
     // memoized, so all images in this frame (attached + clipboard-path)
-    // coalesce into ONE batch dispatched after the microtask cascade.
+    // coalesce into ONE batch dispatched via `setImmediate` after the
+    // microtask cascade settles.
     for (const image of event.images ?? []) {
       if (!image || image.type !== "image" || !image.data) continue;
-      loader
-        .loadDescription({
-          data: image.data,
-          mimeType: image.mimeType || "image/png",
-        })
-        .catch(() => {});
+      loader.loadDescription({ data: image.data, mimeType: image.mimeType || "image/png" }).catch(() => {});
     }
 
     // Pasted clipboard image paths in the prompt text — resolve each to the
@@ -347,32 +544,72 @@ export default function (pi: ExtensionAPI) {
     // describes an image the agent will see). A file that can't be read, isn't
     // a supported image, or fails to resize is skipped (the agent's `read`
     // will still describe it via `tool_result` if it emits an image block).
-    for (const p of findClipboardImagePaths(event.prompt || "")) {
-      const read = readImageBuffer(p);
-      if (!read) continue;
-      resolvePrewarmImage(read.buf, read.mimeType, resizeImage)
-        .then((img) => {
-          if (img) loader.loadDescription(img).catch(() => {});
-        })
-        .catch(() => {});
+    const clipboardPaths = findPastedImagePaths(event.prompt || "");
+    const resizeImage = await loadResizeImage();
+    const preparedClipboardImages = clipboardPaths.map(
+      async (path): Promise<PreparedClipboardImage | null> => {
+        try {
+          const read = readImageBuffer(path);
+          if (!read) return null;
+          const image = await resolvePrewarmImage(read.buf, read.mimeType, resizeImage);
+          if (!image) return null;
+          const description = loader.loadDescription(image);
+          description.catch(() => {});
+          return { path, image, description };
+        } catch {
+          return null;
+        }
+      },
+    );
+
+    if (config.asyncClipboardHandoff && clipboardPaths.length > 0) {
+      scheduleAsyncClipboardInjection(pi, ctx, clipboardPaths, preparedClipboardImages);
+    } else {
+      // Start every preparation task even when no consumer awaits it. Each task
+      // calls loadDescription as soon as resize completes, preserving the
+      // original fire-and-forget submit-time prewarm behavior.
+      for (const prepared of preparedClipboardImages) prepared.catch(() => {});
     }
+
+    // Aware-prompt note was applied above via appendSystemPrompt. Do not return
+    // {systemPrompt} — pi 1.0 rejects that handler result.
+  });
+
+  // A direct read and a nested pi.read both emit a read tool_call. If it targets
+  // one of this turn's pasted clipboard paths before the async fallback is
+  // injected, the normal tool_result/context path wins and the queued custom
+  // message is cancelled. The in-flight description is deliberately retained:
+  // the read result reuses it as a cache/in-flight hit.
+  pi.on("tool_call", (event, ctx) => {
+    if (event.toolName !== "read" && event.toolName !== "pi.read") return;
+    if (isPendingClipboardRead(event.input, ctx.cwd)) {
+      cancelAsyncClipboardHandoff();
+    }
+  });
+
+  pi.on("session_shutdown", () => {
+    cancelAsyncClipboardHandoff();
   });
 
   // The PRIMARY injection point: the `read` tool's `tool_result` handler.
   // When the agent reads image files, this fires for each read result. It
   // calls the loader's `loadDescription(img)` for every image block and
   // AWAITS the shared batch — so N parallel reads (pi runs `read` via
-  // Promise.all) coalesce into ONE batched vision call (DataLoader: all
-  // load() calls in the same microtask frame share one batch, dispatched
-  // after the cascade settles) and all resolve together. The descriptions
-  // replace the image blocks in the returned `content`, so by the time the
-  // agent's next turn starts the tool results already carry text — the
-  // agent never sees raw image blocks it can't process.
+  // Promise.all) coalesce into ONE batched vision call: pi fires each read's
+  // `tool_result` as its I/O completes (poll phase), and the loader's
+  // `setImmediate` dispatch defers to the check phase AFTER the whole poll
+  // iteration, so reads completing together land in ONE batch and all resolve
+  // together.
   //
-  // Why block here and not in `context`: the tool-result phase is free time
-  // (the agent is just waiting for tool results), so running the describer
-  // here adds zero latency to the critical path. `context` then becomes a
-  // cache-hit no-op for read images.
+  // Both a direct agent `read` and a NESTED `pi.read` inside fabric_exec reach
+  // this handler and take the SAME path: WARM the cache (during the free
+  // tool-result phase), strip pi's misleading non-vision note, and KEEP the
+  // image block so kitty renders it inline and /resume retains it. The
+  // `context` hook swaps image→description on the LLM-bound clone before the
+  // next turn, so the text-only agent receives the description as text. This
+  // holds for fabric too: pi-fabric re-attaches the nested read's image to the
+  // fabric_exec tool-result content, which IS the agent's message context — so
+  // the `context` hook sees and swaps it, exactly like a direct read.
   pi.on("tool_result", async (event, ctx) => {
     if (!isConfigured(config)) return;
     if (event.toolName !== "read") return;
@@ -381,37 +618,68 @@ export default function (pi: ExtensionAPI) {
 
     // Collect image blocks in this read result. (The read tool emits image
     // blocks even for non-vision models — they reach here untouched.)
+    if (!isHandoffTarget(ctx.model, config)) return;
     const imgs: ExtractedImage[] = [];
+    let hasImageBlock = false;
     for (const block of content) {
       const img = extractImageFromBlock(block);
-      if (img) imgs.push(img);
+      if (img) {
+        imgs.push(img);
+        hasImageBlock = true;
+      }
     }
+
+    // Fallback: `read` detected an image but `processImage` failed (Photon
+    // unavailable / decode fail / convert fail / couldn't resize below the
+    // inline limit), so it emitted a "[Image omitted: …]" text note with NO
+    // image block. The image-block path above never sees it, so the image
+    // would go undescribed and the model would be told the image was "omitted".
+    // Re-read the raw file and describe its bytes directly — the vision model
+    // decodes them itself (no Photon needed). This recovers the Photon-
+    // unavailable and under-vision-model-limit cases; APNG/unsupported are
+    // rejected by the sniff (the vision model can't decode them either).
+    let omittedNoteIndices: number[] = [];
+    if (!hasImageBlock) {
+      for (let i = 0; i < content.length; i++) {
+        const block = content[i];
+        if (
+          block &&
+          typeof block === "object" &&
+          (block as { type: string }).type === "text" &&
+          typeof (block as { text: string }).text === "string" &&
+          isOmittedImageNote((block as { text: string }).text)
+        ) {
+          omittedNoteIndices.push(i);
+        }
+      }
+      if (omittedNoteIndices.length > 0) {
+        const inputPath = event.input.path;
+        if (typeof inputPath === "string") {
+          const resolved = isAbsolute(inputPath) ? inputPath : resolve(ctx.cwd, inputPath);
+          const read = readImageBufferBounded(resolved);
+          if (read) imgs.push({ data: read.buf.toString("base64"), mimeType: read.mimeType });
+        }
+      }
+    }
+
     if (imgs.length === 0) return;
-    if (!isHandoffTarget(ctx.model, config)) return;
+    const loader = await getLoader();
     loader.bindTurnContext(ctx);
-    if (!resolveVisionModel(ctx.modelRegistry, config.visionModel!)) {
+    if (!isAnyVisionModelResolvable(ctx.modelRegistry, config)) {
       notifyUnresolvedVisionModel(ctx, config.visionModel!);
       return;
     }
 
     // load() each image — synchronous calls that push into the current batch
-    // and return memoized promises — then await them all. Parallel reads'
-    // load() calls land in the SAME batch (same microtask frame), so this is
-    // ONE vision call for the whole read set, not N. Awaiting here runs the
-    // describer during the tool-result phase (free time — the agent is just
-    // waiting for tool results), so the batch is COMPLETE before `context`
-    // fires, making `context` a non-blocking cache hit instead of a cold miss
-    // on the critical path.
-    //
-    // We do NOT mutate the result content here for the image blocks: returning
-    // undefined keeps the image block in storage so kitty renders it inline
-    // and `/resume` retains it. The actual image→text swap happens in the
-    // `context` hook (on the cloned LLM-bound payload only), by which point
-    // these are cache hits. We DO strip pi's misleading non-vision note (below)
-    // since the handoff will replace the image with a description.
-    const descs = await Promise.all(
-      imgs.map((img) => loader.loadDescription(img)),
-    );
+    // and return memoized promises — then await them all. pi fires each read's
+    // `tool_result` event as that read's I/O completes (poll phase); the
+    // loader's `setImmediate` dispatch defers to the check phase, AFTER the
+    // whole poll iteration, so reads completing together (the common case for
+    // cached local files) land in ONE batch — ONE vision call for the whole
+    // read set, not N. Awaiting here runs the describer during the tool-result
+    // phase (free time), so the batch is COMPLETE before `context` fires,
+    // making `context` a non-blocking cache hit instead of a cold miss.
+    const descs = await Promise.all(imgs.map((img) => loader.loadDescription(img)));
 
     // On user abort, leave the result untouched — pi is tearing the turn
     // down and the LLM-bound content won't be sent.
@@ -419,21 +687,30 @@ export default function (pi: ExtensionAPI) {
 
     warnFailedImages(ctx, imgs, descs, lastDescriberError ?? "unknown error");
 
-    // Strip pi's `[Current model does not support images…]` note from text
-    // blocks — since the handoff replaces the image with a description in the
+    // Recovery path: no image block was emitted, so there's nothing for the
+    // `context` hook to swap. Replace each "[Image omitted: …]" note directly
+    // with its description (the recovered raw-bytes image is the only img here,
+    // so descs aligns 1:1 with omittedNoteIndices).
+    if (!hasImageBlock) {
+      const recovered = content.slice();
+      for (let i = 0; i < omittedNoteIndices.length && i < descs.length; i++) {
+        recovered[omittedNoteIndices[i]] = { type: "text", text: descs[i] };
+      }
+      return { content: recovered as (TextContent | ImageContent)[] };
+    }
+
+    // Warm the cache (done above) and strip pi's
+    // `[Current model does not support images…]` note from text blocks —
+    // since the handoff replaces the image with a description in the
     // `context` hook, that note is misleading (the agent WILL receive the
     // image's content, as text). Keep the image block itself so kitty still
-    // renders it inline and `/resume` retains it; the `context` hook swaps the
-    // image for its description in the LLM-bound clone before the next turn.
+    // renders it inline and `/resume` retains it; the `context` hook swaps
+    // the image for its description in the LLM-bound clone before the next turn.
     let stripped = false;
     const next = content.slice();
     for (let i = 0; i < next.length; i++) {
       const block = next[i];
-      if (
-        block &&
-        typeof block === "object" &&
-        (block as { type: string }).type === "text"
-      ) {
+      if (block && typeof block === "object" && (block as { type: string }).type === "text") {
         const text = (block as { text: string }).text;
         if (typeof text === "string" && text.includes(NON_VISION_IMAGE_NOTE)) {
           const cleaned = stripNonVisionImageNote(text);
@@ -443,6 +720,37 @@ export default function (pi: ExtensionAPI) {
           }
         }
       }
+    }
+
+    // PERSISTENCE (opt-in, `persistDescriptions`): append a
+    // `[Image described: <hash>]` marker + description text block after each
+    // image block, so the session file carries the description next to the
+    // blob (which stays for kitty inline rendering). On `/resume` — new
+    // process, in-memory cache empty — the `context` hook matches the marker
+    // to the blob by hash and reuses the persisted description, skipping the
+    // vision call entirely (no 30-40s re-describe on every resumed turn).
+    // Only real descriptions are persisted (UNAVAILABLE is a transient
+    // failure, not a description worth replaying — next turn re-attempts).
+    // `imgs`/`descs` are aligned in content order, so walking `next` and
+    // consuming one desc per image block pairs them correctly.
+    if (config.persistDescriptions && hasImageBlock) {
+      const withPersisted: (TextContent | ImageContent)[] = [];
+      let imgIndex = 0;
+      for (const block of next) {
+        withPersisted.push(block);
+        const img = extractImageFromBlock(block);
+        if (img && imgIndex < descs.length) {
+          const desc = descs[imgIndex];
+          if (desc && desc !== UNAVAILABLE) {
+            withPersisted.push({
+              type: "text",
+              text: buildPersistedDescriptionBlock(imageHash(img.mimeType, img.data), desc),
+            });
+          }
+          imgIndex++;
+        }
+      }
+      return { content: withPersisted };
     }
     if (stripped) return { content: next as (TextContent | ImageContent)[] };
   });
@@ -459,14 +767,43 @@ export default function (pi: ExtensionAPI) {
   // replaced them), so this is usually a no-op for the common paste-and-read
   // flow. For the images it does find, `loadDescription()` is a cache hit
   // (warmed by `before_agent_start`) or queues into the loader's current batch.
+  //
+  // PERSISTENCE (opt-in `persistDescriptions`): when the session was persisted
+  // on, a read tool result carries a `[Image described: <hash>]` marker +
+  // description block right next to the blob. On `/resume` (new process, empty
+  // in-memory cache) this hook matches the marker to the blob by hash, reuses
+  // the persisted description, drops the blob from the LLM-bound clone and
+  // strips the marker — NO vision call, no wait. Only images WITHOUT a
+  // persisted description fall through to `loadDescription()`.
   pi.on("context", async (event, ctx) => {
     if (!isConfigured(config)) return;
 
-    const messages = event.messages as unknown as Array<
-      Record<string, unknown>
-    >;
+    const messages = event.messages as unknown as Array<Record<string, unknown>>;
     if (!Array.isArray(messages)) return;
 
+    // Persisted descriptions recovered from the session file (markers written
+    // by the read-tool `tool_result` handler when persistDescriptions was on).
+    // Matched by image hash; a UNAVAILABLE persisted body is ignored so a
+    // recorded failure still falls back to a fresh vision call (requirement:
+    // absent-or-failed persisted description → current behavior).
+    const persisted = new Map<string, string>();
+    for (const msg of messages) {
+      const content = msg.content;
+      if (!Array.isArray(content)) continue;
+      for (const block of content) {
+        if (!block || typeof block !== "object") continue;
+        const b = block as { type?: unknown; text?: unknown };
+        if (b.type !== "text" || typeof b.text !== "string") continue;
+        const parsed = parsePersistedDescriptionBlock(b.text);
+        if (parsed && parsed.description !== UNAVAILABLE && !persisted.has(parsed.hash)) {
+          persisted.set(parsed.hash, parsed.description);
+        }
+      }
+    }
+
+    // Collect image blocks NOT covered by a persisted description. Only these
+    // may need the vision model (cache hits resolve instantly; covered images
+    // never trigger a vision call — the resume fast-path).
     const byHash = new Map<string, ExtractedImage>();
     let anyImage = false;
     for (const msg of messages) {
@@ -476,31 +813,40 @@ export default function (pi: ExtensionAPI) {
         const img = extractImageFromBlock(block);
         if (!img) continue;
         anyImage = true;
-        byHash.set(imageHash(img.mimeType, img.data), img);
+        const hash = imageHash(img.mimeType, img.data);
+        if (!persisted.has(hash)) byHash.set(hash, img);
       }
     }
     if (!anyImage) return;
     if (!isHandoffTarget(ctx.model, config)) return;
+    const loader = await getLoader();
     loader.bindTurnContext(ctx);
-    if (!resolveVisionModel(ctx.modelRegistry, config.visionModel!)) {
-      notifyUnresolvedVisionModel(ctx, config.visionModel!);
-      return;
-    }
+
+    // Seed the in-memory cache with the persisted descriptions so a later
+    // re-read of the same image (same hash) in this resumed session is a
+    // cache hit too, not a re-describe.
+    for (const [hash, desc] of persisted) loader.seedDescription(hash, desc);
 
     // Cache hits (warmed by before_agent_start / tool_result) resolve
     // instantly; any remaining misses queue into the loader's current batch.
+    // An all-persisted payload skips this block entirely: no vision call,
+    // no wait.
     const imgs = [...byHash.values()];
-    const descArr = await Promise.all(
-      imgs.map((img) => loader.loadDescription(img)),
-    );
     const descs = new Map<string, string>();
-    for (let i = 0; i < imgs.length; i++) {
-      descs.set(imageHash(imgs[i].mimeType, imgs[i].data), descArr[i]);
+    if (imgs.length > 0) {
+      if (!isAnyVisionModelResolvable(ctx.modelRegistry, config)) {
+        notifyUnresolvedVisionModel(ctx, config.visionModel!);
+        return;
+      }
+      const descArr = await Promise.all(imgs.map((img) => loader.loadDescription(img)));
+      if (ctx.signal?.aborted) return;
+
+      warnFailedImages(ctx, imgs, descArr, lastDescriberError ?? "unknown error");
+      for (let i = 0; i < imgs.length; i++) {
+        descs.set(imageHash(imgs[i].mimeType, imgs[i].data), descArr[i]);
+      }
     }
-
-    if (ctx.signal?.aborted) return;
-
-    warnFailedImages(ctx, imgs, descArr, lastDescriberError ?? "unknown error");
+    for (const [hash, desc] of persisted) descs.set(hash, desc);
 
     let changed = false;
     for (const msg of messages) {
@@ -511,13 +857,33 @@ export default function (pi: ExtensionAPI) {
       for (const block of content) {
         const img = extractImageFromBlock(block);
         if (img) {
-          next.push({
-            type: "text",
-            text: descs.get(imageHash(img.mimeType, img.data)) ?? UNAVAILABLE,
-          });
-          touched = true;
+          const hash = imageHash(img.mimeType, img.data);
+          if (persisted.has(hash)) {
+            // Already described in this content: the persisted marker + text
+            // block is right there (marker stripped below) — drop the blob so
+            // the model receives the description exactly once.
+            touched = true;
+          } else {
+            next.push({ type: "text", text: descs.get(hash) ?? UNAVAILABLE });
+            touched = true;
+          }
         } else {
           next.push(block);
+        }
+      }
+      // Strip `[Image described: <hash>]` markers from persisted text blocks on
+      // the clone, so the model sees only the description itself.
+      for (let i = 0; i < next.length; i++) {
+        const block = next[i];
+        if (block && typeof block === "object" && (block as { type?: unknown }).type === "text") {
+          const text = (block as { text?: unknown }).text;
+          if (typeof text === "string") {
+            const stripped = stripPersistedMarker(text);
+            if (stripped !== text) {
+              next[i] = { type: "text", text: stripped };
+              touched = true;
+            }
+          }
         }
       }
       if (touched) {
@@ -529,6 +895,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("model_select", (event, ctx) => {
+    currentModel = event.model;
     if (!ctx.hasUI) return;
     if (!isConfigured(config)) return;
     const model = event.model;
@@ -544,24 +911,9 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("vision-handoff", {
     description: HANDOFF_COMMAND_DESCRIPTION,
     getArgumentCompletions(prefix: string) {
-      const subcommands = [
-        "select",
-        "model",
-        "status",
-        "enable",
-        "disable",
-        "auto",
-        "thinking",
-        "preset",
-        "add",
-        "remove",
-        "clear",
-        "help",
-      ];
+      const subcommands = ["select", "model", "status", "enable", "disable", "auto", "thinking", "preset", "prewarm", "fallback", "aware", "persist", "add", "remove", "clear", "help"];
       const matches = subcommands.filter((s) => s.startsWith(prefix));
-      return matches.length > 0
-        ? matches.map((s) => ({ value: s, label: s }))
-        : null;
+      return matches.length > 0 ? matches.map((s) => ({ value: s, label: s })) : null;
     },
     handler: async (args, ctx) => {
       await handleHandoffCommand(ctx, args.trim());
@@ -569,10 +921,7 @@ export default function (pi: ExtensionAPI) {
   });
 }
 
-async function handleHandoffCommand(
-  ctx: ExtensionCommandContext,
-  args: string,
-): Promise<void> {
+async function handleHandoffCommand(ctx: ExtensionCommandContext, args: string): Promise<void> {
   const parts = args.split(/\s+/);
   const subcommand = parts[0]?.toLowerCase() ?? "";
   const rest = parts.slice(1).join(" ");
@@ -594,11 +943,18 @@ async function handleHandoffCommand(
         "  /vision-handoff enable         Enable vision handoff",
         "  /vision-handoff disable        Disable vision handoff (keeps configured model)",
         "  /vision-handoff auto <on|off>  Toggle automatic handoff for all non-vision models",
-        "  /vision-handoff thinking <off|minimal|low|medium|high|xhigh>",
+        "  /vision-handoff thinking <off|minimal|low|medium|high|xhigh|max>",
         "                               Set the vision describer's thinking effort (off = disabled)",
-        "  /vision-handoff preset       Show the active describer system-prompt preset",
         "  /vision-handoff preset <default|ocr|ui|code|diagram|brief|custom>",
         "                               Set the describer system-prompt preset",
+        "  /vision-handoff prewarm <on|off>",
+        "                               Toggle describing pasted images at paste-time (opt-in, off by default)",
+        "  /vision-handoff fallback <on|off>",
+        "                               Inject pasted-image descriptions asynchronously when no matching read wins",
+        "  /vision-handoff aware <on|off>",
+        "                               Tell handoff targets they can read images via the read tool (opt-in, off by default)",
+        "  /vision-handoff persist <on|off>",
+        "                               Persist descriptions to the session file (resume reuses them, no new vision call)",
         "  /vision-handoff add <p/id>     Force handoff for an extra model",
         "  /vision-handoff remove <p/id>  Stop forcing handoff for a model",
         "  /vision-handoff clear          Clear the configured vision model",
@@ -608,6 +964,8 @@ async function handleHandoffCommand(
         "Mechanism: before_agent_start warms a description cache; tool_result loads",
         "  read images through a dataloader (one batched vision call); context swaps",
         "  image blocks in the payload for the cached text description.",
+        "  prewarm on wraps the editor to describe pasted images at paste-time.",
+        "  fallback on asynchronously injects a collapsed description unless a matching read wins.",
       ].join("\n"),
       "info",
     );
@@ -620,20 +978,12 @@ async function handleHandoffCommand(
   }
 
   if (subcommand === "enable") {
-    updateConfig(
-      ctx,
-      (c) => ({ ...c, enabled: true }),
-      "Vision handoff enabled.",
-    );
+    updateConfig(ctx, (c) => ({ ...c, enabled: true }), "Vision handoff enabled.");
     return;
   }
 
   if (subcommand === "disable") {
-    updateConfig(
-      ctx,
-      (c) => ({ ...c, enabled: false }),
-      "Vision handoff disabled.",
-    );
+    updateConfig(ctx, (c) => ({ ...c, enabled: false }), "Vision handoff disabled.");
     return;
   }
 
@@ -662,6 +1012,26 @@ async function handleHandoffCommand(
     return;
   }
 
+  if (subcommand === "prewarm") {
+    handlePrewarmSubcommand(ctx, rest);
+    return;
+  }
+
+  if (subcommand === "fallback") {
+    handleFallbackSubcommand(ctx, rest);
+    return;
+  }
+
+  if (subcommand === "aware") {
+    handleAwareSubcommand(ctx, rest);
+    return;
+  }
+
+  if (subcommand === "persist") {
+    handlePersistSubcommand(ctx, rest);
+    return;
+  }
+
   if (subcommand === "clear") {
     updateConfig(
       ctx,
@@ -678,26 +1048,16 @@ async function handleHandoffCommand(
     }
     const parsed = parseModelRef(rest);
     if (!parsed) {
-      ctx.ui.notify(
-        `Invalid model reference: "${rest}". Use "provider/id".`,
-        "error",
-      );
+      ctx.ui.notify(`Invalid model reference: "${rest}". Use "provider/id".`, "error");
       return;
     }
     const model = ctx.modelRegistry.find(parsed.provider, parsed.id);
     if (!model) {
-      ctx.ui.notify(
-        `Model not found: ${rest}. Use /vision-handoff to pick from the list.`,
-        "error",
-      );
+      ctx.ui.notify(`Model not found: ${rest}. Use /vision-handoff to pick from the list.`, "error");
       return;
     }
     const ref = formatModelRef(parsed.provider, parsed.id);
-    updateConfig(
-      ctx,
-      (c) => ({ ...c, visionModel: ref }),
-      `Vision model set to ${ref}.`,
-    );
+    updateConfig(ctx, (c) => ({ ...c, visionModel: ref }), `Vision model set to ${ref}.`);
     if (!isVisionModel(model)) {
       ctx.ui.notify(
         `Note: ${ref} does not declare image input — it may not describe images well.`,
@@ -714,19 +1074,13 @@ async function handleHandoffCommand(
     }
     const parsed = parseModelRef(rest);
     if (!parsed) {
-      ctx.ui.notify(
-        `Invalid model reference: "${rest}". Use "provider/id".`,
-        "error",
-      );
+      ctx.ui.notify(`Invalid model reference: "${rest}". Use "provider/id".`, "error");
       return;
     }
     const ref = formatModelRef(parsed.provider, parsed.id);
     updateConfig(
       ctx,
-      (c) => ({
-        ...c,
-        handoffModels: Array.from(new Set([...c.handoffModels, ref])),
-      }),
+      (c) => ({ ...c, handoffModels: Array.from(new Set([...c.handoffModels, ref])) }),
       `Added ${ref} to handoff targets.`,
     );
     return;
@@ -739,20 +1093,14 @@ async function handleHandoffCommand(
     }
     const parsed = parseModelRef(rest);
     if (!parsed) {
-      ctx.ui.notify(
-        `Invalid model reference: "${rest}". Use "provider/id".`,
-        "error",
-      );
+      ctx.ui.notify(`Invalid model reference: "${rest}". Use "provider/id".`, "error");
       return;
     }
     const ref = formatModelRef(parsed.provider, parsed.id);
     const before = config.handoffModels.length;
     updateConfig(
       ctx,
-      (c) => ({
-        ...c,
-        handoffModels: c.handoffModels.filter((m) => m !== ref),
-      }),
+      (c) => ({ ...c, handoffModels: c.handoffModels.filter((m) => m !== ref) }),
       `Removed ${ref} from handoff targets.`,
     );
     if (config.handoffModels.length === before) {
@@ -761,10 +1109,7 @@ async function handleHandoffCommand(
     return;
   }
 
-  ctx.ui.notify(
-    `Unknown subcommand: "${subcommand}". Use /vision-handoff help for usage.`,
-    "warning",
-  );
+  ctx.ui.notify(`Unknown subcommand: "${subcommand}". Use /vision-handoff help for usage.`, "warning");
 }
 
 function updateConfig(
@@ -773,6 +1118,7 @@ function updateConfig(
   message: string,
 ): void {
   const next = transform(config);
+  if (!next.asyncClipboardHandoff) cancelAsyncClipboardHandoff();
   const path = writeConfig(next);
   config = next;
   visionModelCache = null;
@@ -783,30 +1129,23 @@ function updateConfig(
 /** Resolve a `/vision-handoff thinking <level>` argument into a
  *  `(thinking, thinkingLevel)` pair. `off` disables thinking; any of the
  *  {@link THINKING_LEVELS} enables it at that effort. */
-function handleThinkingSubcommand(
-  ctx: ExtensionCommandContext,
-  rest: string,
-): void {
+function handleThinkingSubcommand(ctx: ExtensionCommandContext, rest: string): void {
   const arg = rest.trim().toLowerCase();
   if (!arg) {
     ctx.ui.notify(
       `Thinking: ${config.thinking ? `on (${config.thinkingLevel})` : "off"}.\n` +
-        `Usage: /vision-handoff thinking <off|minimal|low|medium|high|xhigh>`,
+        `Usage: /vision-handoff thinking <off|minimal|low|medium|high|xhigh|max>`,
       "info",
     );
     return;
   }
   if (arg === "off") {
-    updateConfig(
-      ctx,
-      (c) => ({ ...c, thinking: false }),
-      "Vision describer thinking off.",
-    );
+    updateConfig(ctx, (c) => ({ ...c, thinking: false }), "Vision describer thinking off.");
     return;
   }
   if (!isThinkingLevel(arg)) {
     ctx.ui.notify(
-      `Unknown thinking level: "${arg}". Use off, minimal, low, medium, high, or xhigh.`,
+      `Unknown thinking level: "${arg}". Use off, minimal, low, medium, high, xhigh, or max.`,
       "error",
     );
     return;
@@ -819,42 +1158,106 @@ function handleThinkingSubcommand(
   );
 }
 
-/** Handle `/vision-handoff preset [name]`. With no arg, notify the active
- *  prompt-preset mode; with a valid {@link PromptMode} name, persist it via
- *  {@link updateConfig} (the same `writeConfig` path the other subcommands use).
- *  An explicit `config.prompt` override still wins over any preset at describe
- *  time (see {@link resolveSystemPrompt} in src/index.ts) — setting a preset
- *  here only changes `promptMode`, so a stray `prompt` override is reported in
- *  the no-arg form so the user isn't surprised when the preset "doesn't apply". */
-function handlePresetSubcommand(
-  ctx: ExtensionCommandContext,
-  rest: string,
-): void {
-  const arg = rest.trim().toLowerCase();
-  if (!arg) {
-    const mode = config.promptMode ?? "default";
-    const overrideNote = config.prompt
-      ? `\nNote: an explicit prompt override is set, so it wins over the "${mode}" preset.`
-      : "";
+/** Handle `/vision-handoff prewarm <on|off>` — toggle paste-time prewarm. */
+function handlePrewarmSubcommand(ctx: ExtensionCommandContext, rest: string): void {
+  const value = rest.trim().toLowerCase();
+  if (!value) {
     ctx.ui.notify(
-      `Prompt preset: ${mode}.${overrideNote}\n` +
-        `Usage: /vision-handoff preset <default|ocr|ui|code|diagram|brief|custom>`,
+      `Paste-time prewarm: ${config.prewarmPastedImages ? "on" : "off"}.\n` +
+        `Usage: /vision-handoff prewarm <on|off>`,
       "info",
     );
     return;
   }
-  if (!isPromptMode(arg)) {
+  if (value !== "on" && value !== "off") {
+    ctx.ui.notify("Usage: /vision-handoff prewarm <on|off>", "warning");
+    return;
+  }
+  const on = value === "on";
+  const note = on
+    ? editorInstalled
+      ? "Paste-time prewarm on — pasted images are described the instant their path lands in the prompt (before submit)."
+      : "Paste-time prewarm on — but another custom editor extension is active, so it's unavailable. Submit-time prewarm still works; disable the other editor extension (or /vision-handoff prewarm off) to silence this."
+    : "Paste-time prewarm off — images are described at submit time (default).";
+  updateConfig(ctx, (c) => ({ ...c, prewarmPastedImages: on }), note);
+}
+
+/** Handle /vision-handoff fallback <on|off>. */
+function handleFallbackSubcommand(ctx: ExtensionCommandContext, rest: string): void {
+  const value = rest.trim().toLowerCase();
+  if (!value) {
     ctx.ui.notify(
-      "Usage: /vision-handoff preset <default|ocr|ui|code|diagram|brief|custom>",
-      "warning",
+      `Async pasted-path fallback: ${config.asyncClipboardHandoff ? "on" : "off"}.\n` +
+        "Usage: /vision-handoff fallback <on|off>",
+      "info",
     );
     return;
   }
-  const mode = arg;
+  if (value !== "on" && value !== "off") {
+    ctx.ui.notify("Usage: /vision-handoff fallback <on|off>", "warning");
+    return;
+  }
+  const on = value === "on";
   updateConfig(
     ctx,
-    (c) => ({ ...c, promptMode: mode }),
-    `Prompt preset set to ${mode}.`,
+    (c) => ({ ...c, asyncClipboardHandoff: on }),
+    on
+      ? "Async pasted-path fallback on — a matching read wins the race; otherwise the description is injected as a collapsed message."
+      : "Async pasted-path fallback off.",
+  );
+}
+
+/** Handle /vision-handoff aware <on|off>. */
+function handleAwareSubcommand(ctx: ExtensionCommandContext, rest: string): void {
+  const value = rest.trim().toLowerCase();
+  if (!value) {
+    ctx.ui.notify(
+      `Aware prompt: ${config.awarePrompt ? "on" : "off"}.\n` +
+        "Usage: /vision-handoff aware <on|off>",
+      "info",
+    );
+    return;
+  }
+  if (value !== "on" && value !== "off") {
+    ctx.ui.notify("Usage: /vision-handoff aware <on|off>", "warning");
+    return;
+  }
+  const on = value === "on";
+  updateConfig(
+    ctx,
+    (c) => ({ ...c, awarePrompt: on }),
+    on
+      ? "Aware prompt on — handoff targets are told they can read images via the read tool."
+      : "Aware prompt off.",
+  );
+}
+
+/** Handle /vision-handoff persist <on|off> — toggle persisting descriptions
+ *  to the session file. When on, generated descriptions are written as
+ *  `[Image described: <hash>]` marker + text blocks in the read tool-result
+ *  content; on `/resume` the `context` hook reuses them by hash, skipping the
+ *  vision call entirely (no 30-40s re-describe latency). */
+function handlePersistSubcommand(ctx: ExtensionCommandContext, rest: string): void {
+  const value = rest.trim().toLowerCase();
+  if (!value) {
+    ctx.ui.notify(
+      `Persist descriptions to the session file: ${config.persistDescriptions ? "on" : "off"}.\n` +
+        "Usage: /vision-handoff persist <on|off>",
+      "info",
+    );
+    return;
+  }
+  if (value !== "on" && value !== "off") {
+    ctx.ui.notify("Usage: /vision-handoff persist <on|off>", "warning");
+    return;
+  }
+  const on = value === "on";
+  updateConfig(
+    ctx,
+    (c) => ({ ...c, persistDescriptions: on }),
+    on
+      ? "Persist descriptions on — generated descriptions are saved to the session file; resumed sessions reuse them without a new vision call."
+      : "Persist descriptions off — descriptions are generated per-session as before.",
   );
 }
 
@@ -864,38 +1267,60 @@ async function showSelector(ctx: ExtensionCommandContext): Promise<void> {
     return;
   }
 
-  const allModels = ctx.modelRegistry.getAll().map((m) => ({
-    provider: m.provider,
-    id: m.id,
-    name: m.name,
-    input: m.input,
-    reasoning: m.reasoning,
-  }));
+  const allModels = ctx.modelRegistry
+    .getAll()
+    .map((m) => ({ provider: m.provider, id: m.id, name: m.name, input: m.input, reasoning: m.reasoning }));
 
-  const result = await ctx.ui.custom<VisionModelSelectorResult>(
-    (tui, theme, _kb, done) => {
-      const selector = new VisionModelSelectorComponent(
-        theme,
-        allModels,
-        config.visionModel,
-        config.thinking,
-        config.thinkingLevel,
-        (r) => done(r),
-      );
-      return {
-        render(width: number) {
-          return selector.render(width);
-        },
-        invalidate() {
-          selector.invalidate();
-        },
-        handleInput(data: string) {
-          selector.handleInput(data);
-          tui.requestRender();
-        },
-      };
-    },
-  );
+  if (ctx.mode !== "tui") {
+    const modelItems = ["None", ...allModels.map((m) => `${m.provider}/${m.id}`)];
+    const modelPick = await ctx.ui.select("Vision model", modelItems);
+    if (modelPick === undefined) return;
+    const ref = modelPick === "None" ? null : modelPick;
+    const thinkingPick = await ctx.ui.select("Thinking", ["on", "off"]);
+    if (thinkingPick === undefined) return;
+    const thinking = thinkingPick === "on";
+    const thinkingLevel = config.thinkingLevel;
+    const fallbackPick = await ctx.ui.select("Async pasted-path fallback", ["on", "off"]);
+    if (fallbackPick === undefined) return;
+    const asyncClipboardHandoff = fallbackPick === "on";
+    const thinkingNote = thinking
+      ? `thinking on (${thinkingLevel})${ref ? " \u2014 applies only if the vision model supports reasoning" : ""}`
+      : "thinking off";
+    updateConfig(
+      ctx,
+      (c) => ({ ...c, visionModel: ref, thinking, thinkingLevel, asyncClipboardHandoff }),
+      ref ? `Vision model set to ${ref} \u00b7 ${thinkingNote}` : `Vision model cleared \u00b7 ${thinkingNote}`,
+    );
+    if (!ref) {
+      ctx.ui.notify("Handoff is inactive until you pick a vision model.", "warning");
+    }
+    return;
+  }
+
+  const { VisionModelSelectorComponent } = await import("./src/vision-model-selector.js");
+  const result = await ctx.ui.custom<VisionModelSelectorResult>((tui, theme, _kb, done) => {
+    const selector = new VisionModelSelectorComponent(
+      theme,
+      allModels,
+      config.visionModel,
+      config.thinking,
+      config.thinkingLevel,
+      config.asyncClipboardHandoff,
+      (r) => done(r),
+    );
+    return {
+      render(width: number) {
+        return selector.render(width);
+      },
+      invalidate() {
+        selector.invalidate();
+      },
+      handleInput(data: string) {
+        selector.handleInput(data);
+        tui.requestRender();
+      },
+    };
+  });
 
   if (!result || result.cancelled) {
     ctx.ui.notify("Vision handoff picker cancelled.", "info");
@@ -905,45 +1330,55 @@ async function showSelector(ctx: ExtensionCommandContext): Promise<void> {
   const ref = result.ref;
   const thinking = result.thinking;
   const thinkingLevel = result.thinkingLevel;
+  const asyncClipboardHandoff = result.asyncClipboardHandoff;
+  // Fold the thinking state into the single updateConfig notify so the
+  // "thinking off" message can't overwrite the model-change message.
+  const thinkingNote = thinking
+    ? `thinking on (${thinkingLevel})${ref ? " — applies only if the vision model supports reasoning" : ""}`
+    : "thinking off";
   updateConfig(
     ctx,
-    (c) => ({ ...c, visionModel: ref, thinking, thinkingLevel }),
-    ref ? `Vision model set to ${ref}` : "Vision model cleared",
-  );
-  ctx.ui.notify(
-    `Thinking: ${thinking ? `on (${thinkingLevel})` : "off"}` +
-      (thinking && ref
-        ? " — applies only if the vision model supports reasoning"
-        : ""),
-    "info",
+    (c) => ({ ...c, visionModel: ref, thinking, thinkingLevel, asyncClipboardHandoff }),
+    ref ? `Vision model set to ${ref} · ${thinkingNote}` : `Vision model cleared · ${thinkingNote}`,
   );
   if (!ref) {
-    ctx.ui.notify(
-      "Handoff is inactive until you pick a vision model.",
-      "warning",
-    );
+    ctx.ui.notify("Handoff is inactive until you pick a vision model.", "warning");
   }
+}
+
+function handlePresetSubcommand(ctx: ExtensionCommandContext, rest: string): void {
+  const arg = rest.trim().toLowerCase();
+  if (!arg) {
+    const mode = config.promptMode ?? "default";
+    const overrideNote = config.prompt
+      ? `\nNote: an explicit prompt override is set, so it wins over the "${mode}" preset.`
+      : "";
+    ctx.ui.notify(
+      `Prompt preset: ${mode}.${overrideNote}\nUsage: /vision-handoff preset <default|ocr|ui|code|diagram|brief|custom>`,
+      "info",
+    );
+    return;
+  }
+  if (!isPromptMode(arg)) {
+    ctx.ui.notify("Usage: /vision-handoff preset <default|ocr|ui|code|diagram|brief|custom>", "warning");
+    return;
+  }
+  updateConfig(ctx, (c) => ({ ...c, promptMode: arg }), `Prompt preset set to ${arg}.`);
 }
 
 function showStatus(ctx: ExtensionCommandContext): void {
   const lines: string[] = [];
   lines.push(`Vision handoff: ${config.enabled ? "enabled" : "disabled"}`);
-  lines.push(
-    `Vision model: ${config.visionModel ?? "(none — pick one with /vision-handoff)"}`,
-  );
-  lines.push(
-    `Auto handoff (non-vision models): ${config.autoHandoff ? "on" : "off"}`,
-  );
-  lines.push(
-    `Handoff targets (explicit): ${config.handoffModels.length ? config.handoffModels.join(", ") : "(none)"}`,
-  );
-  lines.push(
-    `Thinking: ${config.thinking ? `on (${config.thinkingLevel})` : "off"}`,
-  );
+  lines.push(`Vision model: ${config.visionModel ?? "(none — pick one with /vision-handoff)"}`);
+  lines.push(`Auto handoff (non-vision models): ${config.autoHandoff ? "on" : "off"}`);
+  lines.push(`Handoff targets (explicit): ${config.handoffModels.length ? config.handoffModels.join(", ") : "(none)"}`);
+  lines.push(`Thinking: ${config.thinking ? `on (${config.thinkingLevel})` : "off"}`);
   lines.push(`Prompt preset: ${config.promptMode ?? "default"}`);
-  lines.push(
-    `maxTokens: ${config.maxTokens ?? "unbounded"} · cacheMax: ${config.cacheMax} · maxDescriptionLines: ${config.maxDescriptionLines === 0 ? "unbounded" : config.maxDescriptionLines}`,
-  );
+  lines.push(`Paste-time prewarm: ${config.prewarmPastedImages ? `on${editorInstalled ? "" : " (inactive — another custom editor is active)"}` : "off"}`);
+  lines.push(`Async pasted-path fallback: ${config.asyncClipboardHandoff ? "on" : "off"}`);
+  lines.push(`Aware prompt: ${config.awarePrompt ? "on" : "off"}`);
+  lines.push(`Persist descriptions (session file): ${config.persistDescriptions ? "on" : "off"}`);
+  lines.push(`maxTokens: ${config.maxTokens ?? "unbounded"} · cacheMax: ${config.cacheMax} · maxDescriptionLines: ${config.maxDescriptionLines === 0 ? "unbounded" : config.maxDescriptionLines}`);
 
   const model = ctx.model;
   let active = false;

@@ -48,6 +48,13 @@ export interface AgentToolManager {
     prompt: string,
     signal: AbortSignal,
   ) => Promise<Subagent | undefined>;
+  startResume?: (
+    id: string,
+    prompt: string,
+    options?: { signal?: AbortSignal; claimOutcome?: boolean },
+  ) =>
+    | { kind: "started"; record: Subagent }
+    | { kind: "refused"; reason: "unknown-agent" | "still-running" | "no-session" };
   getRecord: (id: string) => Subagent | undefined;
 }
 
@@ -190,6 +197,11 @@ export class AgentTool {
           `Agent not found: "${params.resume as string}". Records are cleared at session start/switch, so it may be from a previous session.`,
         );
       }
+      if (existing.isRunning() || existing.status === "queued") {
+        return textResult(
+          `Agent "${params.resume as string}" is still running; wait for it to finish before resuming.`,
+        );
+      }
       if (!existing.isSessionReady()) {
         if (existing.sessionReleased) {
           return textResult(
@@ -200,12 +212,23 @@ export class AgentTool {
           `Agent "${params.resume as string}" has no active session to resume.`,
         );
       }
+      if (params.run_in_background === true && this.manager.startResume) {
+        const start = this.manager.startResume(params.resume as string, params.prompt as string);
+        if (start.kind === "refused") {
+          return textResult(resumeRefusalText(start.reason, params.resume as string));
+        }
+        return textResult(
+          `Agent "${start.record.id}" resumed in the background. You will be notified when it completes.`,
+        );
+      }
+      const claim = existing.claim();
       const record = await this.manager.resume(
         params.resume as string,
         params.prompt as string,
         signal ?? new AbortController().signal,
       );
       if (!record) {
+        claim.release();
         return textResult(
           `Failed to resume agent "${params.resume as string}".`,
         );
@@ -397,4 +420,17 @@ export function setSessionDefaultModelStatus(
           })()
         : value;
   ui.setStatus(SESSION_DEFAULT_MODEL_STATUS_KEY, `sub: ${label}`);
+}
+
+function resumeRefusalText(
+  reason: "unknown-agent" | "still-running" | "no-session",
+  id: string,
+): string {
+  if (reason === "still-running") {
+    return `Agent "${id}" is still running; wait for it to finish before resuming.`;
+  }
+  if (reason === "unknown-agent") {
+    return `Agent not found: "${id}".`;
+  }
+  return `Agent "${id}" has no active session to resume.`;
 }

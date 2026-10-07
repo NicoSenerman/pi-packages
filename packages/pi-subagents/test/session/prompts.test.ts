@@ -73,7 +73,8 @@ describe("buildAgentPrompt", () => {
   it("general-purpose without parent prompt falls back to generic base", () => {
     const config = getDefaultConfig("general-purpose");
     const prompt = buildAgentPrompt(config, "/workspace", env);
-    expect(prompt).toContain("general-purpose coding agent");
+    expect(prompt).toContain("Do what has been asked; nothing more, nothing less.");
+    expect(prompt).not.toContain("full access to read, write");
     expect(prompt).not.toContain("READ-ONLY");
   });
 
@@ -112,7 +113,8 @@ describe("buildAgentPrompt", () => {
     };
     const prompt = buildAgentPrompt(config, "/workspace", env);
     expect(prompt).toContain("/workspace");
-    expect(prompt).toContain("general-purpose coding agent");
+    expect(prompt).toContain("Do what has been asked; nothing more, nothing less.");
+    expect(prompt).not.toContain("full access to read, write");
     expect(prompt).toContain("Extra custom instructions here.");
   });
 
@@ -190,7 +192,8 @@ describe("buildAgentPrompt", () => {
     };
     const prompt = buildAgentPrompt(config, "/workspace", env);
     // Should use genericBase as the prefix (same fallback as append mode).
-    expect(prompt).toContain("general-purpose coding agent");
+    expect(prompt).toContain("Do what has been asked; nothing more, nothing less.");
+    expect(prompt).not.toContain("full access to read, write");
     expect(prompt).not.toContain("You are a pi coding agent sub-agent");
     expect(prompt).toContain("Custom standalone instructions.");
   });
@@ -248,7 +251,8 @@ describe("buildAgentPrompt", () => {
     expect(prompt).toContain("<sub_agent_context>");
     expect(prompt).not.toContain("<inherited_system_prompt>");
     expect(prompt).toContain("Use the read tool instead of cat");
-    expect(prompt).toContain("general-purpose coding agent");
+    expect(prompt).toContain("Do what has been asked; nothing more, nothing less.");
+    expect(prompt).not.toContain("full access to read, write");
     expect(prompt).toContain("Extra stuff.");
   });
 
@@ -451,28 +455,26 @@ describe("buildAgentPrompt", () => {
       expect(prompt).not.toContain("Current working directory: C:/repo");
     });
 
-    it("leaves the footer in place when the child shares the parent's cwd", () => {
-      const parent = parentPromptNaming("/workspace");
-
+    it("strips the inherited footer even when the child shares the parent's cwd", () => {
+      // Upstream #640: an agreeing footer used to stay to preserve a
+      // byte-identical parent prefix; the catalogue cut already sits ahead of
+      // the footer, so the exception buys nothing and the claim would
+      // duplicate the footer Pi appends for the child.
       const prompt = buildAgentPrompt(replaceConfig(), "/workspace", env, {
-        systemPrompt: parent,
+        systemPrompt: parentPromptNaming("/workspace"),
         cwd: "/workspace",
       });
 
-      // The inherited claim agrees with the child's own, so the prefix stays
-      // byte-identical to the parent's prompt for prefix-caching providers.
-      expect(prompt.startsWith(`${parent}\n\n`)).toBe(true);
+      expect(prompt).not.toContain("Current working directory: /workspace");
     });
 
-    it("treats separator variants of the same directory as agreeing", () => {
-      const parent = parentPromptNaming("C:/repo");
-
+    it("strips separator variants of the same directory too", () => {
       const prompt = buildAgentPrompt(replaceConfig(), "C:/repo", env, {
-        systemPrompt: parent,
+        systemPrompt: parentPromptNaming("C:/repo"),
         cwd: "C:\\repo",
       });
 
-      expect(prompt.startsWith(`${parent}\n\n`)).toBe(true);
+      expect(prompt).not.toContain("Current working directory:");
     });
 
     it("leaves a parent prompt without a footer unchanged", () => {
@@ -536,6 +538,8 @@ describe("buildAgentPrompt static-section dedup", () => {
     const parentPrompt = [
       "You are an expert coding assistant.",
       "",
+      "Use the skills section when relevant.", // prose ahead of the tail survives
+      "",
       "<skills>",
       "The following skills provide specialized instructions for specific tasks.",
       "<available_skills>",
@@ -547,7 +551,7 @@ describe("buildAgentPrompt static-section dedup", () => {
       "/parent/dir",
       "</cwd>",
       "",
-      "Use the skills section when relevant.", // prose survives
+      "trailing extension block", // session-resolved tail: cut with the sections
     ].join("\n");
     const prompt = buildAgentPrompt(config, "/child/dir", env, {
       systemPrompt: parentPrompt,
@@ -555,6 +559,7 @@ describe("buildAgentPrompt static-section dedup", () => {
     });
     expect(prompt).not.toContain("<skills>");
     expect(prompt).not.toContain("<cwd>");
+    expect(prompt).not.toContain("trailing extension block");
     expect(prompt).toContain("expert coding assistant");
     expect(prompt).toContain("Use the skills section when relevant.");
     // The child's own env block still names its working directory.

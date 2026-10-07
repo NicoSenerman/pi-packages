@@ -34,7 +34,7 @@ Use this protocol whenever the trigger matrix says to ask.
 3. **Summarize context**
    - prepare concise trade-off context (3–7 bullets or short paragraph)
 4. **Ask one focused question**
-   - call `ask_user` for one decision at a time
+   - call `ask_user` for one decision at a time; 2-4 independent decisions with settled prerequisites may go together in `questions`
 5. **Commit and proceed**
    - restate chosen option and implement accordingly
 
@@ -79,6 +79,16 @@ Guidance:
 - Pass `"inline"` only when the immediately preceding assistant message (summary, trade-offs, recommendation) is the primary context for the decision and must remain visible.
 - Pass `"overlay"` only to explicitly force the modal style (rare).
 
+### Batches (optional)
+
+`questions` replaces `question` with 2-4 entries, each with its own `question`, `context`, `options`, `allowMultiple`, and `allowFreeform`. The user answers them on separate pages and submits from a review page, where unanswered questions can be submitted as skipped.
+
+Guidance:
+
+- Batch only decisions that are independent and whose prerequisites are settled.
+- Treat each entry as its own decision boundary for the retry/cancel policy.
+- Skipped entries come back as `{ "status": "skipped" }`; handle them like an unclear answer for that decision.
+
 ### Requirement-priority decision
 
 ```json
@@ -86,9 +96,9 @@ Guidance:
   "question": "Which requirement should be prioritized first?",
   "context": "Current request mixes performance tuning and UI redesign. Doing both now risks delaying delivery.",
   "options": [
-    "Performance first",
-    "UI redesign first",
-    "Do a minimal pass on both"
+    { "title": "Performance first" },
+    { "title": "UI redesign first" },
+    { "title": "Do a minimal pass on both" }
   ],
   "allowMultiple": false,
   "allowFreeform": true

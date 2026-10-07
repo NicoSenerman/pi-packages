@@ -208,6 +208,12 @@ export class SettingsManager {
   loadSessionModelDefault(
     parentSessionFile: string | undefined,
   ): string | undefined {
+    // A too-early session_start (before the session file is known) yields an
+    // empty string. Treat that as "not ready yet" and keep the in-memory
+    // default rather than clearing it — otherwise the `sub: <model>` chip and
+    // the scope-asked flag get wiped on a racey resume and only return once the
+    // user re-picks.
+    if (!parentSessionFile) return this._agentModelDefault;
     const value = readSessionModelSidecar(parentSessionFile);
     this._agentModelDefault = value;
     this._modelScopeAsked = value !== undefined;

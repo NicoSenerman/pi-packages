@@ -34,7 +34,10 @@ export class ToolStartHandler {
   constructor(private readonly widget: ToolStartWidget) {}
 
   handleToolExecutionStart(_event: unknown, ctx: ToolStartCtx): void {
-    this.widget.setUICtx(ctx.ui, ctx.mode ?? "tui");
+    // Missing mode used to default to "tui", which registers a factory widget
+    // that RPC (piru) drops. Under the bridge, treat omitted mode as rpc.
+    const mode = ctx.mode ?? (process.env.PITUI_BRIDGE === "1" ? "rpc" : "tui");
+    this.widget.setUICtx(ctx.ui, mode);
     this.widget.onTurnStart();
   }
 }

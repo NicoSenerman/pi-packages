@@ -27,6 +27,19 @@ describe("ToolStartHandler", () => {
       expect(widget.setUICtx).toHaveBeenCalledWith(ui, "tui");
     });
 
+    it("defaults missing mode to rpc when PITUI_BRIDGE=1", () => {
+      const prev = process.env.PITUI_BRIDGE;
+      process.env.PITUI_BRIDGE = "1";
+      try {
+        const ui = { setStatus: vi.fn(), setWidget: vi.fn() };
+        handler.handleToolExecutionStart({}, { ui });
+        expect(widget.setUICtx).toHaveBeenCalledWith(ui, "rpc");
+      } finally {
+        if (prev === undefined) delete process.env.PITUI_BRIDGE;
+        else process.env.PITUI_BRIDGE = prev;
+      }
+    });
+
     it("calls onTurnStart", () => {
       const ui = { setStatus: vi.fn(), setWidget: vi.fn() };
 

@@ -78,6 +78,17 @@ describe("CompositeSubagentObserver", () => {
 			expect(b.onSubagentCompacted).toHaveBeenCalledExactlyOnceWith(record, COMPACTION);
 		});
 
+		it("forwards onSubagentResumeStarted to delegates that implement it, tolerates those that don't", () => {
+			const withHook = { ...makeDelegate(), onSubagentResumeStarted: vi.fn() };
+			const withoutHook = makeDelegate(); // optional hook absent — must be skipped
+			const composite = new CompositeSubagentObserver([withHook, withoutHook]);
+			const record = createTestSubagent({ id: "agent-4b" });
+
+			composite.onSubagentResumeStarted(record);
+
+			expect(withHook.onSubagentResumeStarted).toHaveBeenCalledExactlyOnceWith(record);
+		});
+
 		it("invokes delegates in registration order", () => {
 			const calls: string[] = [];
 			const a: SubagentManagerObserver = {

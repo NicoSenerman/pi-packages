@@ -20,9 +20,16 @@ import type {
   TurnLoopResult,
 } from "#src/lifecycle/subagent-session";
 import {
+  type CarrierClaim,
+  type SettledOutcome,
   SubagentState,
   type SubagentStatus,
 } from "#src/lifecycle/subagent-state";
+
+export type WaitOutcome =
+  | { kind: "settled" }
+  | { kind: "unsettled" }
+  | { kind: "superseded"; outcome: SettledOutcome };
 import type { LifetimeUsage } from "#src/lifecycle/usage";
 import type { WorkspaceProvider } from "#src/lifecycle/workspace";
 import { WorkspaceBracket } from "#src/lifecycle/workspace-bracket";
@@ -41,6 +48,14 @@ import type {
 export interface SubagentLifecycleObserver {
   /** Fires when the subagent transitions to running (inside run(), after markRunning). */
   onStarted?(agent: Subagent): void;
+  /**
+   * Fires when a RESUMED run transitions back to running (inside runResume(),
+   * after resetForResume). Kept distinct from onStarted: spawn-sensitive
+   * consumers (event streams, session-event subscriptions) must not treat a
+   * resume as a fresh spawn, while liveness consumers (the above-editor
+   * widget loop) need it to re-arm after an idle-gap clearInterval.
+   */
+  onResumeStarted?(agent: Subagent): void;
   /** Fires once the session is created — the subagent's subagentSession is now available. */
   onSessionCreated?(agent: Subagent): void;
   /** Fires once when the run completes or fails (for concurrency drain). */
@@ -139,6 +154,18 @@ export class Subagent {
   get consumed(): boolean {
     return this.state.consumed;
   }
+  get hasClaims(): boolean {
+    return this.state.hasClaims;
+  }
+  get runIndex(): number {
+    return this.state.run;
+  }
+  claim(): CarrierClaim {
+    return this.state.claim();
+  }
+  releaseClaims(): void {
+    this.state.releaseClaims();
+  }
   get toolUses(): number {
     return this.state.toolUses;
   }
@@ -200,6 +227,18 @@ export class Subagent {
   // "never had a session."
   private _releasedOutputFile?: string;
   private _sessionReleased = false;
+  /** Guards onRunFinished to exactly one fire per run so abort() can emit the
+   *  terminal snapshot without double-notifying when the run loop later settles. */
+  private _runFinishedNotified = false;
+  /** Guards onResumeFinished to exactly one fire per resume, mirroring
+   *  _runFinishedNotified so abort() of a resumed agent emits the terminal
+   *  snapshot without double-notifying when the resume loop later settles. */
+  private _resumeFinishedNotified = false;
+  /** Which run is active: a fresh "run" or a "resume". Determines which
+   *  terminal observer channel (onRunFinished vs onResumeFinished) abort()
+   *  and the terminal markers fire on — aborting a resume must not fire the
+   *  fresh-run's onSubagentCompleted channel. */
+  private _runKind: "run" | "resume" = "run";
   /** True once releaseSession() has freed a live session (distinct from never having had one). */
   get sessionReleased(): boolean {
     return this._sessionReleased;
@@ -334,7 +373,7 @@ export class Subagent {
       } catch (err) {
         this.markError(err);
         this.listeners.release();
-        this.execution.observer?.onRunFinished?.(this);
+        this.notifyRunFinished();
         return;
       }
     }
@@ -419,10 +458,16 @@ export class Subagent {
    * is a query, so interrupting it must not cancel the work. Cancelling the
    * work on a parent interrupt is InterruptHandler's separate decision.
    */
-  async waitUntilSettled(signal: AbortSignal): Promise<void> {
+  async waitUntilSettled(signal: AbortSignal): Promise<WaitOutcome> {
+    const waitedRun = this.state.run;
     const run = this._promise;
-    if (!run || !this.isActive()) return;
-    await settleOrAbort(run, signal);
+    if (run && this.isActive()) await settleOrAbort(run, signal);
+    const superseded =
+      this.state.run === waitedRun
+        ? undefined
+        : this.state.supersededOutcome(waitedRun);
+    if (superseded) return { kind: "superseded", outcome: superseded };
+    return this.isActive() ? { kind: "unsettled" } : { kind: "settled" };
   }
 
   /**
@@ -463,6 +508,12 @@ export class Subagent {
       }),
     );
 
+    // Resume-start notify — status is already "running" (resetForResume).
+    // Without this, liveness observers that idle-cleared their timers between
+    // runs stay dark for the entire resumed run (the piru "agents" widget
+    // regression: inline panel absent while the subagent visibly works).
+    this.execution.observer?.onResumeStarted?.(this);
+
     try {
       this.completeResume(await subagentSession.resumeTurnLoop(prompt, signal));
     } catch (err) {
@@ -474,14 +525,14 @@ export class Subagent {
   completeResume(result: string): void {
     this.markCompleted(result);
     this.listeners.release();
-    this.execution.observer?.onResumeFinished?.(this);
+    this.notifyResumeFinished();
   }
 
   /** Terminate a resume as errored: mark, release listeners, notify observer. */
   failResume(err: unknown): void {
     this.markError(err);
     this.listeners.release();
-    this.execution.observer?.onResumeFinished?.(this);
+    this.notifyResumeFinished();
   }
 
   /** Transition to running state. Sets status and startedAt. */
@@ -539,19 +590,53 @@ export class Subagent {
    */
   stopQueued(): void {
     this.state.stopQueued();
+    this.notifyRunFinished();
+  }
+
+  /**
+   * Fire onRunFinished exactly once per run. Idempotent so abort() can emit the
+   * terminal snapshot immediately (a hung/zombie child never settles the run
+   * loop, so failRun/completeRun would never fire) without double-notifying in
+   * the healthy case where the run loop later settles and calls failRun/completeRun.
+   */
+  private notifyRunFinished(): void {
+    if (this._runFinishedNotified) return;
+    this._runFinishedNotified = true;
     this.execution.observer?.onRunFinished?.(this);
+  }
+
+  /**
+   * Fire onResumeFinished exactly once per resume. Idempotent so abort() can
+   * emit the terminal snapshot immediately for a hung/zombie resumed child
+   * (whose resume loop never settles to completeResume/failResume) without
+   * double-notifying in the healthy case where the resume loop later settles.
+   */
+  private notifyResumeFinished(): void {
+    if (this._resumeFinishedNotified) return;
+    this._resumeFinishedNotified = true;
+    this.execution.observer?.onResumeFinished?.(this);
   }
 
   /**
    * Abort a running agent: fire AbortController and transition to stopped.
    * Returns false if the agent is not running.
-   * A still-queued agent is stopped via stopQueued(); its scheduled thunk
-   * then no-ops on the queued-status guard.
+   * Releases the run listeners and emits the terminal snapshot here so a
+   * hung/zombie child (whose run loop never settles to failRun/completeRun)
+   * still flips to "stopped" in the panel. A still-queued agent is stopped via
+   * stopQueued(); its scheduled thunk then no-ops on the queued-status guard.
    */
   abort(): boolean {
     if (!this.isRunning()) return false;
     this.abortController.abort();
     this.markStopped();
+    this.listeners.release();
+    // Route to the terminal channel of the *active* run. A resumed agent's
+    // terminal callback is onResumeFinished (→ onSubagentResumed); firing
+    // onRunFinished here would mis-emit onSubagentCompleted and, since the
+    // original run already set _runFinishedNotified, would no-op silently —
+    // leaving the panel stuck on "running" (H3).
+    if (this._runKind === "resume") this.notifyResumeFinished();
+    else this.notifyRunFinished();
     return true;
   }
 
@@ -578,6 +663,12 @@ export class Subagent {
   resetForResume(startedAt: number): void {
     this.state.resetForResume(startedAt);
     this.listeners.release();
+    // A resume is a distinct run with its own terminal channel (onResumeFinished).
+    // Reset the resume notify guard so the resume's terminal markers (abort or
+    // completeResume/failResume) can fire, and mark the active run as a resume
+    // so abort() routes to onResumeFinished instead of the fresh-run channel.
+    this._resumeFinishedNotified = false;
+    this._runKind = "resume";
   }
 
   /** Complete a run: release listeners, dispose the workspace, status transition, notify observer. */
@@ -600,7 +691,7 @@ export class Subagent {
     else if (result.steered) this.markSteered(finalResult);
     else this.markCompleted(finalResult);
 
-    this.execution.observer?.onRunFinished?.(this);
+    this.notifyRunFinished();
   }
 
   /**
@@ -644,7 +735,7 @@ export class Subagent {
       debugLog("workspace dispose on agent error", cleanupErr);
     }
 
-    this.execution.observer?.onRunFinished?.(this);
+    this.notifyRunFinished();
   }
 }
 

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   LifecycleManager,
   LifecycleRuntime,
+  LifecycleWidget,
 } from "#src/handlers/lifecycle";
 import { SessionLifecycleHandler } from "#src/handlers/lifecycle";
 
@@ -24,6 +25,10 @@ describe("SessionLifecycleHandler", () => {
   let handler: SessionLifecycleHandler;
 
   beforeEach(() => {
+    // The handler skips widget frames when PI_SUBAGENT_SESSION=1 is in the
+    // environment; shells spawned inside a piru main session inherit that
+    // variable, so clear it explicitly or the suite depends on caller env.
+    vi.stubEnv("PI_SUBAGENT_SESSION", "");
     mockSetSessionContext = vi.fn();
     mockClearSessionContext = vi.fn();
     mockClearCompleted = vi.fn(() => Promise.resolve());
@@ -74,6 +79,47 @@ describe("SessionLifecycleHandler", () => {
       await handler.handleSessionStart({}, {});
 
       expect(callOrder).toEqual(["setSessionContext", "clearCompleted"]);
+    });
+
+    it("clears the parent agents widget on session_start", async () => {
+      const onParentSessionStart = vi.fn();
+      const widget: LifecycleWidget = { onParentSessionStart };
+      handler = new SessionLifecycleHandler(
+        runtime,
+        manager,
+        mockDisposeNotifications,
+        mockUnpublishService,
+        undefined,
+        widget,
+      );
+      const ui = { setStatus: vi.fn(), setWidget: vi.fn() };
+      await handler.handleSessionStart({}, { ui, mode: "rpc" });
+      expect(onParentSessionStart).toHaveBeenCalledWith(ui, "rpc");
+    });
+
+    it("does not emit parent widget frames from a child session_start", async () => {
+      const onParentSessionStart = vi.fn();
+      const widget: LifecycleWidget = { onParentSessionStart };
+      handler = new SessionLifecycleHandler(
+        runtime,
+        manager,
+        mockDisposeNotifications,
+        mockUnpublishService,
+        undefined,
+        widget,
+      );
+      const prev = process.env.PI_SUBAGENT_SESSION;
+      process.env.PI_SUBAGENT_SESSION = "1";
+      try {
+        await handler.handleSessionStart({}, {
+          ui: { setStatus: vi.fn(), setWidget: vi.fn() },
+          mode: "rpc",
+        });
+      } finally {
+        if (prev === undefined) delete process.env.PI_SUBAGENT_SESSION;
+        else process.env.PI_SUBAGENT_SESSION = prev;
+      }
+      expect(onParentSessionStart).not.toHaveBeenCalled();
     });
 
     it("resolves only after the prior session's children have shut down", async () => {

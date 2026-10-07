@@ -89,11 +89,13 @@ function nonNegativeInt(val: unknown): number | undefined {
  */
 function parseCsvField(val: unknown): string[] | undefined {
   if (val === undefined || val === null) return undefined;
-  // eslint-disable-next-line @typescript-eslint/no-base-to-string -- val is already narrowed past null/undefined; String() is the intended coercion here
-  const s = String(val).trim();
-  if (!s || s === "none") return undefined;
-  const items = s.split(",").map(t => t.trim()).filter(Boolean);
-  return items.length > 0 ? items : undefined;
+  // YAML sequence (`tools: [read, grep]`) keeps entries intact; a scalar is split
+  // on commas. String(array) would re-split names that contain commas (#725).
+  const items = Array.isArray(val)
+    ? val.map((entry) => String(entry).trim()).filter(Boolean)
+    : String(val).trim().split(",").map((t) => t.trim()).filter(Boolean);
+  if (items.length === 0) return undefined;
+  return items.length === 1 && items[0] === "none" ? undefined : items;
 }
 
 /**

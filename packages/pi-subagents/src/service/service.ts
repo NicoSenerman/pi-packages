@@ -79,6 +79,12 @@ export interface SubagentsService {
   /** Send a steering message to a running agent. */
   steer(id: string, message: string): Promise<boolean>;
 
+  /**
+   * Resume a settled agent. Returns false when the id is unknown, still
+   * running, or has no session. Does not wait for the resumed run.
+   */
+  resume(id: string, prompt: string): boolean;
+
   /** Wait for all running and queued agents to complete. */
   waitForAll(): Promise<void>;
 
@@ -96,6 +102,7 @@ export interface SubagentsService {
 /** Event channel constants for pi.events subscriptions. */
 export const SUBAGENT_EVENTS = {
   STARTED: "subagents:started",
+  RESUMING: "subagents:resuming",
   COMPLETED: "subagents:completed",
   FAILED: "subagents:failed",
   RESUMED: "subagents:resumed",

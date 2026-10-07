@@ -26,7 +26,7 @@ import { I18N_NAMESPACE } from "./state/i18n-bridge.js";
 import { clearState, orphanLegacyState, readState } from "./state/persistence.js";
 import { replayFromBranch } from "./state/replay.js";
 import { EMPTY_STATE, type TaskState } from "./state/state.js";
-import { getTodos, replaceState } from "./state/store.js";
+import { getTodos, replaceState, setActiveSession } from "./state/store.js";
 import {
 	registerCleanTodoCommand,
 	registerTodosCommand,
@@ -118,6 +118,8 @@ function maybeAutoClearAllCompleted(state: TaskState): {
 
 export default function (pi: ExtensionAPI) {
 	// Todo overlay widget — constructed lazily at the first session_start with UI.
+	// Piru paints the overlay from the JSON file; RPC ignores setWidget factories.
+	const skipOverlay = process.env.PITUI_BRIDGE === "1";
 	let todoOverlay: TodoOverlay | undefined;
 
 	registerTodoTool(pi);
@@ -133,7 +135,7 @@ export default function (pi: ExtensionAPI) {
 	// the overlay hasn't been created yet, or when the widget isn't currently
 	// registered (auto-hidden on an empty list).
 	const collapseKey = resolveCollapseKey();
-	if (collapseKey !== COLLAPSE_KEY_OFF) {
+	if (!skipOverlay && collapseKey !== COLLAPSE_KEY_OFF) {
 		pi.registerShortcut(collapseKey as KeyId, {
 			description: "Collapse or expand the todo overlay",
 			handler: (ctx) => {
@@ -161,6 +163,12 @@ export default function (pi: ExtensionAPI) {
 		// touches neither the singleton nor the overlay here.
 		if (isChildSession()) return;
 
+		// Declare this session as the active (overlay-owning) cell. A child
+		// session never reaches here (guard above), so the active cell stays
+		// the parent's and the child's `todo` commits route to a separate
+		// per-session cell in `commitState` (H2 isolation).
+		setActiveSession(ctx.sessionManager.getSessionId());
+
 		// One-time cut-over: orphan the legacy process-wide state file so a stale
 		// global snapshot can never be mis-attributed to a session after the move
 		// to per-session isolation.
@@ -174,7 +182,7 @@ export default function (pi: ExtensionAPI) {
 		if (event.reason === "new") {
 			clearState(sessionId);
 			replaceState(EMPTY_STATE);
-			if (ctx.hasUI) {
+			if (ctx.hasUI && !skipOverlay) {
 				todoOverlay ??= new TodoOverlay();
 				todoOverlay.setUICtx(ctx.ui);
 				todoOverlay.resetCompletedDisplayState();
@@ -193,7 +201,7 @@ export default function (pi: ExtensionAPI) {
 			resolved = afterAutoClear;
 		}
 		replaceState(resolved);
-		if (ctx.hasUI) {
+		if (ctx.hasUI && !skipOverlay) {
 			todoOverlay ??= new TodoOverlay();
 			todoOverlay.setUICtx(ctx.ui);
 			todoOverlay.resetCompletedDisplayState();

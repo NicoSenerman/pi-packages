@@ -191,7 +191,7 @@ export class NotificationManager implements NotificationSystem {
     // announcement. Skip if the parent already pulled the result (enqueue-time
     // guard); emitIndividualNudge re-reads record.consumed when the nudge is
     // actually emitted, which is what makes the flush a fresh re-check.
-    if (record.consumed) return;
+    if (record.consumed || record.hasClaims) return;
     if (this.parentRunActive) {
       // Keyed by id, so a re-completion in the same run collapses to one nudge.
       this.pendingNudges.set(record.id, record);
@@ -230,7 +230,7 @@ export class NotificationManager implements NotificationSystem {
   }
 
   private emitIndividualNudge(record: Subagent): void {
-    if (record.consumed) return;
+    if (record.consumed || record.hasClaims) return;
 
     const notification = formatTaskNotification(record, 500);
     // A never-started agent has no transcript and nothing to collect.

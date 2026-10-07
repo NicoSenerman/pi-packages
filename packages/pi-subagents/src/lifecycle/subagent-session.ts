@@ -64,11 +64,14 @@ export interface SubagentSessionMeta {
  */
 export class SubagentSession {
   private disposed = false;
+  private readonly turnFailure: { getFailure: () => string | undefined; unsubscribe: () => void };
 
   constructor(
     private readonly _session: AgentSession,
     private readonly meta: SubagentSessionMeta,
-  ) {}
+  ) {
+    this.turnFailure = collectTurnFailure(_session);
+  }
 
   /**
    * Wrapped session — for lifecycle-internal use only.
@@ -121,6 +124,7 @@ export class SubagentSession {
 
     try {
       await session.prompt(effectivePrompt);
+      failIfProviderErrored(this.turnFailure.getFailure());
       this.meta.lifecycle.completed({
         sessionDir: this.meta.sessionDir,
         agentName: this.meta.agentName,
@@ -145,6 +149,7 @@ export class SubagentSession {
 
     try {
       await session.prompt(prompt);
+      failIfProviderErrored(this.turnFailure.getFailure());
     } finally {
       collector.unsubscribe();
       cleanupAbort();
@@ -209,6 +214,7 @@ export class SubagentSession {
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
+    this.turnFailure.unsubscribe();
     await emitChildSessionShutdown(this._session);
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- dispose may not exist on all session implementations
     this._session.dispose?.();
@@ -222,6 +228,43 @@ export class SubagentSession {
  * Subscribe to a session and collect the last assistant message text.
  * Returns an object with a `getText()` getter and an `unsubscribe` function.
  */
+const PROVIDER_ERROR_WITHOUT_MESSAGE = "provider reported an error with no message";
+
+function failIfProviderErrored(failure: string | undefined): void {
+  if (failure) throw new Error(failure);
+}
+
+type AssistantEnd = {
+  role?: string;
+  stopReason?: string;
+  errorMessage?: string;
+};
+
+function collectTurnFailure(session: AgentSession) {
+  let failure = readLastTurnFailure(session);
+  const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
+    if (event.type !== "message_end") return;
+    const message = event.message as AssistantEnd;
+    if (message.role !== "assistant") return;
+    failure =
+      message.stopReason === "error"
+        ? message.errorMessage || PROVIDER_ERROR_WITHOUT_MESSAGE
+        : undefined;
+  });
+  return { getFailure: () => failure, unsubscribe };
+}
+
+function readLastTurnFailure(session: AgentSession): string | undefined {
+  const messages = session.messages as readonly AssistantEnd[];
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role !== "assistant") continue;
+    if (msg.stopReason !== "error") return undefined;
+    return msg.errorMessage || PROVIDER_ERROR_WITHOUT_MESSAGE;
+  }
+  return undefined;
+}
+
 function collectResponseText(session: AgentSession) {
   let text = "";
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {

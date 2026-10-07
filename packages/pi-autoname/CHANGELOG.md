@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Language detection no longer lets English co-injected into a CJK user message (e.g. system warnings, error logs, or tool output that Pi places inside a user turn) outweigh the user's actual CJK intent. A user message containing any Han/Kana/Hangul is now treated as a CJK-language message; only purely-Latin user messages contribute to the English score. Fixes periodic/`/autoname` titles flipping to English when a recent user turn carried a long English warning (e.g. a `pi-di18n` compaction notice).
+- Latin-script user text is no longer labeled English unconditionally. Predominant Spanish function words produce a Spanish label so mixed Spanish/English sessions follow the user, not the host locale.
+
+### Fork notes (not upstream)
+
+- Per-session naming controllers stay in a module-level map keyed by session id (M13). Upstream's single closure controller races when BACH children share the process-global extension cache.
+- `utility-models.json` `autoname` role and `getAgentDir()` config path retained.
+- Naming token budget stays 1024 (upstream 0.6.6 uses 64) so reasoning models can still emit a label.
+- Tool-call markers from `getRichDialogue` are appended to the naming prompt.
+
+## [0.6.8] - 2026-07-22
+
+### Fixed
+
+- Detect the dominant language from user-authored natural-language messages before naming; use pi-di18n's active `/lang` locale only as an optional fallback when the user text is code-only or unavailable.
+
+## [0.6.7] - 2026-07-22
+
+### Fixed
+
+- Auto-generated names now follow the language predominantly used in user messages instead of being forced by the host system locale.
+
+## [0.6.6] - 2026-07-18
+
+### Changed
+
+- Auto-naming now runs after Pi's fully settled lifecycle event, cancels stale requests on session changes, and bounds the complete model fallback chain to a shared 30-second budget.
+- Periodic naming compares the current title with recent context so unchanged topics keep their existing title; older unmarked sessions use recent context rather than an obsolete first exchange.
+- `/name` changes are observed immediately. `respectManualName: true` now keeps a manual title until `/autoname` is explicitly invoked.
+- Development tests now use Node.js built-in `node:test` directly on TypeScript. Vitest and all project development dependencies were removed.
+
 ## [0.6.5] - 2026-06-18
 
 ### Added

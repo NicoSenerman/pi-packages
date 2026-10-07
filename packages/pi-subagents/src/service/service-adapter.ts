@@ -18,6 +18,11 @@ export interface SubagentManagerLike {
   getRecord(id: string): Subagent | undefined;
   listAgents(): Subagent[];
   abort(id: string): boolean;
+  startResume(
+    id: string,
+    prompt: string,
+    options?: { signal?: AbortSignal; claimOutcome?: boolean },
+  ): { kind: "started" } | { kind: "refused" };
   waitForAll(): Promise<void>;
   hasRunning(): boolean;
   registerWorkspaceProvider(provider: WorkspaceProvider): () => void;
@@ -72,6 +77,10 @@ export class SubagentsServiceAdapter implements SubagentsService {
 
   abort(id: string): boolean {
     return this.manager.abort(id);
+  }
+
+  resume(id: string, prompt: string): boolean {
+    return this.manager.startResume(id, prompt).kind === "started";
   }
 
   async steer(id: string, message: string): Promise<boolean> {

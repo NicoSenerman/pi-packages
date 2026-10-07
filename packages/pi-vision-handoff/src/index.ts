@@ -5,14 +5,10 @@
  * convention pi-model-sort uses for picker-backed extensions.
  */
 
-import type {
-  ImageContent,
-  TextContent,
-  ThinkingLevel,
-} from "@earendil-works/pi-ai";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import type { ImageContent, TextContent, ThinkingLevel } from "@earendil-works/pi-ai";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { resolveAgentDir } from "./agent-dir.js";
 
 export * from "./usage.js";
 
@@ -24,7 +20,7 @@ export const CONFIG_FILENAME = "pi-vision-handoff.json";
 
 /** Full config path: ~/.pi/agent/extensions/pi-vision-handoff.json */
 export function getConfigPath(): string {
-  return join(getAgentDir(), CONFIG_SUBDIR, CONFIG_FILENAME);
+  return join(resolveAgentDir(), CONFIG_SUBDIR, CONFIG_FILENAME);
 }
 
 /** Description shown in the / commands list. */
@@ -36,16 +32,11 @@ export const DEFAULT_VISION_PROMPT =
   "You are a vision assistant for a coding agent. Describe this image exhaustively. Cover: all visible text (verbatim if possible), code snippets, UI layout and widgets, diagrams and flow arrows, error messages and stack traces, file trees, terminal output, color and style details, spatial relationships between elements, and anything else a developer would need to act on this image. Do not summarize — be exhaustive.";
 
 /** Prefix prepended to the user's original prompt when describing an image. */
-export const DEFAULT_USER_PROMPT_PREFIX =
-  "The user's request about this image: ";
+export const DEFAULT_USER_PROMPT_PREFIX = "The user's request about this image: ";
 
 /** Built-in prompt presets selectable via config (`promptMode`) and
- *  `/vision-handoff preset <name>`. Ported verbatim from the old `pi-vision`
- *  fork so existing user expectations about each preset's wording are kept.
- *  The `default` preset is intentionally the empty key — it resolves to
- *  {@link DEFAULT_VISION_PROMPT} (upstream's exhaustive system prompt) rather
- *  than a separate string, so switching to `promptMode: "default"` keeps
- *  upstream behaviour identical. */
+ *  `/vision-handoff preset <name>`. The `default` preset is not a separate
+ *  string — it resolves to {@link DEFAULT_VISION_PROMPT}. */
 export const PRESET_PROMPTS = {
   ocr: "Transcribe all visible text exactly. Preserve line breaks, ordering, punctuation, and layout as much as possible. If text is unclear, mark it as [unclear]. Do not summarize unless needed to explain ambiguous layout.",
   ui: "Analyze this user interface screenshot. Describe the layout, visual hierarchy, controls, labels, states, navigation, and any notable UX issues. Include exact visible text when relevant.",
@@ -56,50 +47,23 @@ export const PRESET_PROMPTS = {
     "Briefly describe the image in 2-4 concise sentences. Include important text, UI state, code error, or diagram meaning if present.",
 } as const;
 
-/** Selectable preset names (excludes the synthetic `default` / `custom` modes). */
-export const PRESET_NAMES = Object.keys(
-  PRESET_PROMPTS,
-) as (keyof typeof PRESET_PROMPTS)[];
+export const PRESET_NAMES = Object.keys(PRESET_PROMPTS) as (keyof typeof PRESET_PROMPTS)[];
 
-/** How the describer's system prompt is chosen.
- *  - `default` → upstream's {@link DEFAULT_VISION_PROMPT} (the original behaviour).
- *  - `ocr` / `ui` / `code` / `diagram` / `brief` → the matching
- *    {@link PRESET_PROMPTS} entry.
- *  - `custom` → an explicit `config.prompt` override, used as-is. Falls back to
- *    {@link DEFAULT_VISION_PROMPT} when no override is set, so a stale
- *    `promptMode: "custom"` (e.g. after the user cleared the override) still
- *    describes images instead of erroring. */
-export type PromptMode =
-  "default" | "ocr" | "ui" | "code" | "diagram" | "brief" | "custom";
+export type PromptMode = "default" | "ocr" | "ui" | "code" | "diagram" | "brief" | "custom";
 
-/** Whether `mode` is one of the named presets (excludes `default`/`custom`). */
-export function isPresetMode(
-  mode: unknown,
-): mode is keyof typeof PRESET_PROMPTS {
-  return (
-    typeof mode === "string" &&
-    (PRESET_NAMES as readonly string[]).includes(mode)
-  );
+export function isPresetMode(mode: unknown): mode is keyof typeof PRESET_PROMPTS {
+  return typeof mode === "string" && (PRESET_NAMES as readonly string[]).includes(mode);
 }
 
-/** Whether `mode` is a valid {@link PromptMode}. */
 export function isPromptMode(mode: unknown): mode is PromptMode {
   return mode === "default" || mode === "custom" || isPresetMode(mode);
 }
 
-/** Resolve the active system prompt for a config.
- *
- *  Precedence (override wins — that's the `custom` path):
- *    1. `config.prompt` (explicit override) — when set, used verbatim.
- *       Mirrors upstream's existing `cfg.prompt ?? DEFAULT_VISION_PROMPT` rule,
- *       so an override ALWAYS wins regardless of `promptMode`.
- *    2. `config.promptMode` preset — when a named preset, that preset's string.
- *    3. `"default"` (and the implicit fallback for any unrecognised mode) —
- *       upstream's {@link DEFAULT_VISION_PROMPT}.
- */
+/** Resolve the describer system prompt.
+ *  An explicit `config.prompt` always wins. Otherwise a named preset, else
+ *  {@link DEFAULT_VISION_PROMPT}. */
 export function resolveSystemPrompt(config: VisionHandoffConfig): string {
-  if (typeof config.prompt === "string" && config.prompt.trim())
-    return config.prompt;
+  if (typeof config.prompt === "string" && config.prompt.trim()) return config.prompt;
   if (isPresetMode(config.promptMode)) return PRESET_PROMPTS[config.promptMode];
   return DEFAULT_VISION_PROMPT;
 }
@@ -108,7 +72,12 @@ export function resolveSystemPrompt(config: VisionHandoffConfig): string {
 export const IMAGE_PLACEHOLDER_PREFIX = "[Image: ";
 export const IMAGE_PLACEHOLDER_SUFFIX = "]";
 
-/** Marker appended to a description whose `complete()` call ended with
+/** Resolved when a description couldn't be obtained (graceful degradation).
+ *  Failures are NOT cached, so the next turn re-attempts. Defined here so
+ *  consumers reach it without loading the describer chain. */
+export const UNAVAILABLE = `${IMAGE_PLACEHOLDER_PREFIX}description unavailable${IMAGE_PLACEHOLDER_SUFFIX}`;
+
+/** Marker appended to a description whose `completeSimple()` call ended with
  *  `stopReason: "length"` — i.e. the vision model hit a token limit (either the
  *  configured `maxTokens` or the provider's hard output cap) before finishing.
  *  A truncated description is still useful, but the agent must not mistake it
@@ -137,6 +106,7 @@ export const THINKING_LEVELS: readonly ThinkingLevel[] = [
   "medium",
   "high",
   "xhigh",
+  "max",
 ];
 
 /** Default thinking effort for the vision describer when thinking is enabled. */
@@ -144,10 +114,7 @@ export const DEFAULT_THINKING_LEVEL: ThinkingLevel = "medium";
 
 /** Whether `level` is one of the supported {@link ThinkingLevel} values. */
 export function isThinkingLevel(level: unknown): level is ThinkingLevel {
-  return (
-    typeof level === "string" &&
-    (THINKING_LEVELS as readonly string[]).includes(level)
-  );
+  return typeof level === "string" && (THINKING_LEVELS as readonly string[]).includes(level);
 }
 
 /** Per-description request timeout. Generous because the describer generates an
@@ -205,10 +172,34 @@ export interface VisionHandoffConfig {
   enabled: boolean;
   /** The vision-capable model that describes images, as "provider/id". null = not configured. */
   visionModel: string | null;
+  /** Optional fallback describers, tried in order when the primary vision
+   *  model's batched call fails entirely (auth, rate limit, timeout, network,
+   *  empty/error stopReason) and the same-model retry didn't recover.
+   *  Each entry is a "provider/id" ref; providers usually differ from the
+   *  primary so their rate limits / auth / availability are independent.
+   *  Empty (default) = no failover. */
+  fallbackModels: string[];
   /** When true (default), handoff is applied to every model whose input does not include "image". */
   autoHandoff: boolean;
   /** Extra "provider/id" refs that should ALSO receive handoff (e.g. weak vision models). */
   handoffModels: string[];
+  /** Opt-in: when true, the editor is wrapped at session start to describe
+   *  pasted clipboard images the instant their temp-file path lands in the
+   *  prompt (pre-submit), instead of waiting for submit. Trades a bit of
+   *  description quality (the description is generated without the user's
+   *  typed question as context, since the question usually isn't entered yet
+   *  at paste time) and a speculative vision call on paste-then-abandon, for
+   *  earlier prewarm. Off by default — submit-time prewarm
+   *  (before_agent_start) still covers this case when off. TUI mode only, and
+   *  inactive when another extension has replaced the editor (installing over
+   *  a custom editor would break clipboard paste, since pi wires paste-image
+   *  to the outermost editor only). */
+  prewarmPastedImages: boolean;
+  /** Opt-in: asynchronously inject descriptions for pasted clipboard paths when
+   *  the target model does not read them. The normal read/tool_result path wins
+   *  the race: a matching read cancels the queued fallback injection while
+   *  reusing the same in-flight description. */
+  asyncClipboardHandoff: boolean;
   /** Max output tokens for a single description. `undefined` (default) = use the
    *  vision model's declared max output (`model.maxTokens`) as the cap — the
    *  highest the model supports — so the "be exhaustive" prompt isn't defeated
@@ -224,21 +215,21 @@ export interface VisionHandoffConfig {
    * truncation.
    */
   maxDescriptionLines: number;
-  /** Override the describer system prompt. When set, ALWAYS wins over
-   *  `promptMode` (that's the `"custom"` path — see {@link resolveSystemPrompt}).
-   *  Defaults to undefined (= use the active preset / upstream default). */
+  /** Override the describer system prompt. When set, wins over `promptMode`. */
   prompt?: string;
+  /** Selects the describer system prompt preset. See {@link resolveSystemPrompt}. */
+  promptMode?: PromptMode;
   /** Override the user-prompt prefix (defaults to DEFAULT_USER_PROMPT_PREFIX). */
   userPromptPrefix?: string;
-  /** Selects the describer system prompt preset.
-   *  - `"default"` (default) → upstream's {@link DEFAULT_VISION_PROMPT}.
-   *  - `"ocr"` / `"ui"` / `"code"` / `"diagram"` / `"brief"` → a
-   *    {@link PRESET_PROMPTS} entry.
-   *  - `"custom"` → use {@link VisionHandoffConfig.prompt} as-is.
-   *  An explicit `config.prompt` override wins over any preset (so setting a
-   *  preset does NOT require clearing an override; the override is the truth).
-   *  See {@link resolveSystemPrompt}. */
-  promptMode?: PromptMode;
+  /** Opt-in: when true, generated descriptions are PERSISTED to the session
+   *  file as `[Image described: <hash>]` marker + description text blocks in
+   *  the read tool-result content (the image blob stays for kitty rendering).
+   *  On session resume — when the in-memory cache is empty (new process) — the
+   *  `context` hook matches the marker to the blob by hash and reuses the
+   *  persisted description WITHOUT calling the vision model, eliminating the
+   *  30-40s re-describe latency on every resumed "ciao". Off by default:
+   *  descriptions are generated per-session as before. */
+  persistDescriptions: boolean;
   /** Whether the vision describer should reason (think) before describing.
    *  Off by default — describing images is a perception task, not a reasoning
    *  one, and thinking adds latency + cost. When on, the level below is sent
@@ -249,28 +240,37 @@ export interface VisionHandoffConfig {
    *  {@link THINKING_LEVELS}. Ignored when {@link thinking} is off or the
    *  vision model lacks reasoning support. */
   thinkingLevel: ThinkingLevel;
+  /** Opt-in: inject a system-prompt note on handoff targets telling the
+   *  text-only model it CAN read images via the read tool (the handoff swaps
+   *  image blocks for descriptions). Off by default — without it, some
+   *  models refuse image-reading requests from their own self-knowledge even
+   *  though the description is delivered as text. Toggle with
+   *  `/vision-handoff aware on|off`. */
+  awarePrompt: boolean;
 }
 
 export const DEFAULT_CONFIG: VisionHandoffConfig = {
   enabled: true,
-  // NeuralWatt Kimi K3-fast is the default vision describer (K2.6-fast is gone
-  // from the live catalog). Non-reasoning fast tier — returns within pi's
-  // read-tool timeout; full kimi-k3 reasoning can stall the vision path.
+  // NeuralWatt Kimi K3-fast is the fork default vision describer. Consumer
+  // config and utility-models.json `describer.model` still override it.
   visionModel: "neuralwatt/kimi-k3-fast",
+  fallbackModels: [],
   autoHandoff: true,
   handoffModels: [],
+  prewarmPastedImages: false,
+  asyncClipboardHandoff: false,
+  persistDescriptions: false,
   maxTokens: undefined,
   cacheMax: DEFAULT_CACHE_MAX,
   maxDescriptionLines: DEFAULT_MAX_DESCRIPTION_LINES,
   promptMode: "default",
   thinking: false,
   thinkingLevel: DEFAULT_THINKING_LEVEL,
+  awarePrompt: false,
 };
 
 /** Parse a "provider/id" reference. Returns null if malformed. */
-export function parseModelRef(
-  ref: string,
-): { provider: string; id: string } | null {
+export function parseModelRef(ref: string): { provider: string; id: string } | null {
   const trimmed = ref.trim();
   if (!trimmed) return null;
   const slashIndex = trimmed.indexOf("/");
@@ -287,20 +287,15 @@ export function formatModelRef(provider: string, id: string): string {
 }
 
 /** Whether a model declares image input. */
-export function isVisionModel(
-  model: { input?: ("text" | "image")[] } | undefined | null,
-): boolean {
+export function isVisionModel(model: { input?: ("text" | "image")[] } | undefined | null): boolean {
   return !!model && Array.isArray(model.input) && model.input.includes("image");
 }
 
-/**
- * The shared utility-models registry (pi-config, symlinked into the agent
- * dir) supplies the default `describer` vision model when present. Consumer
- * config (pi-vision-handoff.json) still wins.
- */
+/** Shared utility-models registry `describer.model`, when present. Consumer
+ *  config still wins when `visionModel` is explicitly set. */
 export function registryDescriberDefault(): string | null {
   try {
-    const raw = readFileSync(join(getAgentDir(), "utility-models.json"), "utf8");
+    const raw = readFileSync(join(resolveAgentDir(), "utility-models.json"), "utf8");
     const entry = JSON.parse(raw)?.describer;
     if (entry && typeof entry.model === "string" && entry.model.trim()) {
       return parseModelRef(entry.model) ? entry.model.trim() : null;
@@ -311,29 +306,44 @@ export function registryDescriberDefault(): string | null {
   }
 }
 
+/** `describer.fallbacks` from the same registry. Empty when absent. */
+export function registryDescriberFallbacks(): string[] {
+  try {
+    const raw = readFileSync(join(resolveAgentDir(), "utility-models.json"), "utf8");
+    const fallbacks: unknown = JSON.parse(raw)?.describer?.fallbacks;
+    if (!Array.isArray(fallbacks)) return [];
+    return fallbacks
+      .filter((m): m is string => typeof m === "string")
+      .map((m) => m.trim())
+      .filter((m) => !!parseModelRef(m));
+  } catch {
+    return [];
+  }
+}
+
 /** Merge a parsed config object onto defaults, tolerating missing/invalid fields. */
 export function normalizeConfig(raw: unknown): VisionHandoffConfig {
   const base: VisionHandoffConfig = { ...DEFAULT_CONFIG };
   const registryDescriber = registryDescriberDefault();
-  // Registry default applies whenever the consumer config doesn't carry an
-  // explicit visionModel (absent object OR absent field) — field presence
-  // (including explicit null) below overrides it.
+  // Registry default applies when the consumer config has no visionModel field.
+  // Explicit null / empty string below still means unset.
   if (registryDescriber) base.visionModel = registryDescriber;
   if (!raw || typeof raw !== "object") return base;
   const obj = raw as Record<string, unknown>;
 
   if (typeof obj.enabled === "boolean") base.enabled = obj.enabled;
   if (typeof obj.visionModel === "string" && obj.visionModel.trim()) {
-    base.visionModel = parseModelRef(obj.visionModel)
-      ? obj.visionModel.trim()
-      : null;
+    base.visionModel = parseModelRef(obj.visionModel) ? obj.visionModel.trim() : null;
   } else if (obj.visionModel === null || typeof obj.visionModel === "string") {
-    // Explicit null or a present-but-empty/whitespace string means "unset" —
-    // the handoff stays inactive until a valid ref is configured. (An invalid
-    // non-empty ref above already collapsed to null.) Do NOT fall back to the
-    // NeuralWatt default here: that default only applies when the field is
-    // entirely absent (the DEFAULT_CONFIG base value is preserved).
+    // Explicit null or blank string means unset. Do not fall back to the
+    // NeuralWatt / registry default — that applies only when the field is absent.
     base.visionModel = null;
+  }
+  if (Array.isArray(obj.fallbackModels)) {
+    base.fallbackModels = obj.fallbackModels
+      .filter((m): m is string => typeof m === "string")
+      .map((m) => m.trim())
+      .filter((m) => m && parseModelRef(m));
   }
   if (typeof obj.autoHandoff === "boolean") base.autoHandoff = obj.autoHandoff;
 
@@ -343,20 +353,17 @@ export function normalizeConfig(raw: unknown): VisionHandoffConfig {
       .map((m) => m.trim())
       .filter((m) => m && parseModelRef(m));
   }
+  if (typeof obj.prewarmPastedImages === "boolean") base.prewarmPastedImages = obj.prewarmPastedImages;
+  if (typeof obj.asyncClipboardHandoff === "boolean") {
+    base.asyncClipboardHandoff = obj.asyncClipboardHandoff;
+  }
+  if (typeof obj.persistDescriptions === "boolean") base.persistDescriptions = obj.persistDescriptions;
   // maxTokens: optional. undefined (default) = no artificial cap. Only set when
   // a valid positive finite number is given; any other value leaves it unset.
-  if (
-    typeof obj.maxTokens === "number" &&
-    Number.isFinite(obj.maxTokens) &&
-    obj.maxTokens > 0
-  ) {
+  if (typeof obj.maxTokens === "number" && Number.isFinite(obj.maxTokens) && obj.maxTokens > 0) {
     base.maxTokens = Math.floor(obj.maxTokens);
   }
-  if (
-    typeof obj.cacheMax === "number" &&
-    Number.isFinite(obj.cacheMax) &&
-    obj.cacheMax > 0
-  ) {
+  if (typeof obj.cacheMax === "number" && Number.isFinite(obj.cacheMax) && obj.cacheMax > 0) {
     base.cacheMax = Math.floor(obj.cacheMax);
   }
   // maxDescriptionLines: any non-negative finite integer. 0 = unbounded.
@@ -367,21 +374,13 @@ export function normalizeConfig(raw: unknown): VisionHandoffConfig {
   ) {
     base.maxDescriptionLines = Math.floor(obj.maxDescriptionLines);
   }
-  if (typeof obj.prompt === "string" && obj.prompt.trim())
-    base.prompt = obj.prompt;
-  if (typeof obj.userPromptPrefix === "string")
-    base.userPromptPrefix = obj.userPromptPrefix;
+  if (typeof obj.prompt === "string" && obj.prompt.trim()) base.prompt = obj.prompt;
+  if (typeof obj.userPromptPrefix === "string") base.userPromptPrefix = obj.userPromptPrefix;
+  if (typeof obj.promptMode === "string" && isPromptMode(obj.promptMode)) base.promptMode = obj.promptMode;
 
-  // promptMode: optional prompt-mode selection. Accept any valid PromptMode
-  // (default/custom + the named presets). Only the two synthetic modes were
-  // previously rejected by `isPresetMode`, which silently reset a user's
-  // `"custom"` (or explicit `"default"`) back to the default — use
-  // `isPromptMode` so a persisted `"custom"` / `"default"` survives a reload.
-  if (typeof obj.promptMode === "string" && isPromptMode(obj.promptMode))
-    base.promptMode = obj.promptMode;
   if (typeof obj.thinking === "boolean") base.thinking = obj.thinking;
-  if (isThinkingLevel(obj.thinkingLevel))
-    base.thinkingLevel = obj.thinkingLevel;
+  if (isThinkingLevel(obj.thinkingLevel)) base.thinkingLevel = obj.thinkingLevel;
+  if (typeof obj.awarePrompt === "boolean") base.awarePrompt = obj.awarePrompt;
 
   return base;
 }
@@ -401,7 +400,7 @@ export function readConfig(): VisionHandoffConfig {
 /** Write config to disk. Creates the directory if needed. Returns the path written. */
 export function writeConfig(config: VisionHandoffConfig): string {
   const path = getConfigPath();
-  const dir = join(getAgentDir(), CONFIG_SUBDIR);
+  const dir = join(resolveAgentDir(), CONFIG_SUBDIR);
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }
@@ -436,22 +435,14 @@ export function extractImageFromBlock(block: unknown): ExtractedImage | null {
   }
 
   if (b.type === "input_image") {
-    const url =
-      typeof b.image_url === "string" ? b.image_url : b.image_url?.url;
+    const url = typeof b.image_url === "string" ? b.image_url : b.image_url?.url;
     if (typeof url === "string") return parseDataUrl(url);
     return null;
   }
 
   // anthropic-messages image block (wrapped in `source`).
-  if (
-    b.type === "image" &&
-    b.source?.type === "base64" &&
-    typeof b.source.data === "string"
-  ) {
-    return {
-      data: b.source.data,
-      mimeType: b.source.media_type || "image/png",
-    };
+  if (b.type === "image" && b.source?.type === "base64" && typeof b.source.data === "string") {
+    return { data: b.source.data, mimeType: b.source.media_type || "image/png" };
   }
 
   // pi-ai internal image block — emitted by the `read` tool and carried by
@@ -467,10 +458,7 @@ export function extractImageFromBlock(block: unknown): ExtractedImage | null {
 }
 
 /** Build a text block that replaces an image block, matching the request format. */
-export function makeReplacementText(
-  block: unknown,
-  description: string,
-): Record<string, unknown> {
+export function makeReplacementText(block: unknown, description: string): Record<string, unknown> {
   const b = (block ?? null) as Record<string, unknown> | null;
   if (b?.type === "input_image") {
     return { type: "input_text", text: description };
@@ -497,10 +485,7 @@ export interface TruncatedDescription {
  * layout / text-content / structure sections, which are typically the most
  * actionable for a coding agent.
  */
-export function truncateDescription(
-  text: string,
-  maxLines: number,
-): TruncatedDescription {
+export function truncateDescription(text: string, maxLines: number): TruncatedDescription {
   if (!maxLines || maxLines <= 0) {
     return { text, truncated: false, hidden: 0 };
   }
@@ -510,11 +495,7 @@ export function truncateDescription(
   }
   const hidden = lines.length - maxLines;
   const kept = lines.slice(0, maxLines).join("\n");
-  return {
-    text: `${kept}\n... (${hidden} more lines)`,
-    truncated: true,
-    hidden,
-  };
+  return { text: `${kept}\n... (${hidden} more lines)`, truncated: true, hidden };
 }
 
 /** Start marker for the k-th image section in a batched describer response. */
@@ -541,9 +522,7 @@ const SECTION_MULTI_RE = new RegExp(
   )}\\s+\\d+>>>|${escapeRe(BATCH_IMAGE_MARKER_END)}|$)`,
   "g",
 );
-const SECTION_END_STRIP_RE = new RegExp(
-  `${escapeRe(BATCH_IMAGE_MARKER_END)}\\s*$`,
-);
+const SECTION_END_STRIP_RE = new RegExp(`${escapeRe(BATCH_IMAGE_MARKER_END)}\\s*$`);
 
 /** Build the user-message text block for a (possibly batched) describer call.
  *
@@ -557,13 +536,8 @@ const SECTION_END_STRIP_RE = new RegExp(
  * so every image in the batch is described in the context of the same request —
  * one describer call covers the whole prompt's image set, dataloader-style,
  * rather than spinning up one agent call per image. */
-export function batchUserPrompt(
-  count: number,
-  userPrompt: string,
-  prefix: string,
-): string {
-  const userLine =
-    userPrompt && userPrompt.trim() ? `${prefix}${userPrompt}` : "";
+export function batchUserPrompt(count: number, userPrompt: string, prefix: string): string {
+  const userLine = userPrompt && userPrompt.trim() ? `${prefix}${userPrompt}` : "";
   if (count <= 1) {
     return userLine || "Describe this image.";
   }
@@ -588,10 +562,7 @@ export function batchUserPrompt(
  * For `count <= 1` the whole response is treated as the single image's
  * description (a lone `<<<IMAGE 1>>> … <<<END>>>` wrapper is stripped if the
  * model emitted one anyway), preserving the original single-image behaviour. */
-export function parseBatchedDescriptions(
-  text: string,
-  count: number,
-): (string | null)[] {
+export function parseBatchedDescriptions(text: string, count: number): (string | null)[] {
   const trimmed = (text ?? "").trim();
   if (count <= 1) {
     const m = SECTION_SINGLE_RE.exec(trimmed);
@@ -609,14 +580,55 @@ export function parseBatchedDescriptions(
   return out;
 }
 
+/** Marker prefix/suffix framing a PERSISTED image description in the session
+ *  file. When {@link VisionHandoffConfig.persistDescriptions} is on, the read
+ *  tool `tool_result` handler appends a text block of the form
+ *  `[Image described: <hash>]\n<description>` right after the image block (the
+ *  blob stays for kitty inline rendering). On resume the `context` hook matches
+ *  the marker to the blob by hash and reuses the description — no vision call
+ *  for already-described images. */
+export const IMAGE_DESCRIBED_PREFIX = "[Image described: ";
+export const IMAGE_DESCRIBED_SUFFIX = "]";
+
+/** Regex matching a persisted-description text block: the marker (any 32-hex
+ *  hash — `imageHash()`'s sha256 slice) followed by the description body, which
+ *  may span multiple lines (the `[Image: …]` envelope is kept verbatim). */
+const PERSISTED_DESCRIPTION_RE = /\[Image described: ([0-9a-f]{32})\]\r?\n?([\s\S]*)/;
+
+/** Build the persisted-description text block for `hash`: the marker line, then
+ *  the (already wrapped/truncated) description on the following line(s). */
+export function buildPersistedDescriptionBlock(hash: string, description: string): string {
+  return `${IMAGE_DESCRIBED_PREFIX}${hash}${IMAGE_DESCRIBED_SUFFIX}\n${description}`;
+}
+
+/** Parse a persisted-description text block, returning the marker's image hash
+ *  and the description body. Returns null when the text carries no
+ *  `[Image described: <hash>]` marker or the body is empty. Callers decide what
+ *  counts as a usable description (e.g. filter out the UNAVAILABLE placeholder
+ *  so a persisted failure still falls back to a fresh vision call). */
+export function parsePersistedDescriptionBlock(
+  text: string,
+): { hash: string; description: string } | null {
+  const m = PERSISTED_DESCRIPTION_RE.exec(text);
+  if (!m) return null;
+  const description = m[2];
+  if (!description) return null;
+  return { hash: m[1], description };
+}
+
+/** Remove a `[Image described: <hash>]` marker line from a text block, leaving
+ *  just the description. Used by the `context` hook on the LLM-bound clone so
+ *  the model never sees the marker itself (the stored session block keeps it).
+ *  Returns the text unchanged when no marker is present. */
+export function stripPersistedMarker(text: string): string {
+  return text.replace(/\[Image described: [0-9a-f]{32}\]\r?\n?/, "");
+}
+
 /** Truncate (if configured) and wrap a raw description in the `[Image: …]`
  *  placeholder envelope used by every insertion path. Centralises the wrap+
  *  truncate logic shared by the read-tool and context injection paths so both
  *  surfaces stay identical for the same image hash. */
-export function wrapDescription(
-  description: string,
-  cfg: VisionHandoffConfig,
-): string {
+export function wrapDescription(description: string, cfg: VisionHandoffConfig): string {
   const { text: final } =
     cfg.maxDescriptionLines && cfg.maxDescriptionLines > 0
       ? truncateDescription(description, cfg.maxDescriptionLines)
@@ -687,15 +699,8 @@ export async function insertImageDescriptions(
   // the description that follows) and confuses the model.
   for (let i = 0; i < next.length; i++) {
     const block = next[i];
-    if (
-      block.type === "text" &&
-      typeof block.text === "string" &&
-      block.text.includes(NON_VISION_IMAGE_NOTE)
-    ) {
-      next[i] = {
-        type: "text",
-        text: stripNonVisionImageNote(block.text),
-      } satisfies TextContent;
+    if (block.type === "text" && typeof block.text === "string" && block.text.includes(NON_VISION_IMAGE_NOTE)) {
+      next[i] = { type: "text", text: stripNonVisionImageNote(block.text) } satisfies TextContent;
     }
   }
   return { content: next, changed };

@@ -70,6 +70,16 @@ export interface SubagentStateInit {
 	responseText?: string;
 }
 
+export interface SettledOutcome {
+	status: SubagentStatus;
+	result?: string;
+	error?: string;
+}
+
+export interface CarrierClaim {
+	release(): void;
+}
+
 export class SubagentState {
 	// Transition state — encapsulated behind getters, mutated only via transition methods
 	private _status: SubagentStatus;
@@ -96,6 +106,13 @@ export class SubagentState {
 	private _consumedAt?: number;
 	get consumedAt(): number | undefined { return this._consumedAt; }
 	get consumed(): boolean { return this._consumedAt != null; }
+
+	private _run = 0;
+	get run(): number { return this._run; }
+
+	private _superseded?: { run: number; outcome: SettledOutcome };
+	private readonly _claims = new Set<CarrierClaim>();
+	get hasClaims(): boolean { return this._claims.size > 0; }
 
 	// Stats — accumulated via mutation methods, readable via getters
 	private _toolUses: number;
@@ -283,8 +300,30 @@ export class SubagentState {
 		this.markStopped(completedAt);
 	}
 
-	/** Reset for resume: running status, new startedAt, clear completedAt/result/error/consumedAt. */
+	claim(): CarrierClaim {
+		const claim: CarrierClaim = { release: () => { this._claims.delete(claim); } };
+		this._claims.add(claim);
+		return claim;
+	}
+
+	releaseClaims(): void {
+		this._claims.clear();
+	}
+
+	supersededOutcome(run: number): SettledOutcome | undefined {
+		return this._superseded?.run === run ? this._superseded.outcome : undefined;
+	}
+
+	/**
+	 * Reset for resume. The outgoing outcome is retained so a waiter on that run
+	 * can still deliver it (#1015). Claims survive unless the caller releases them.
+	 */
 	resetForResume(startedAt: number): void {
+		this._superseded = {
+			run: this._run,
+			outcome: { status: this._status, result: this._result, error: this._error },
+		};
+		this._run++;
 		this._status = "running";
 		this._startedAt = startedAt;
 		this._completedAt = undefined;

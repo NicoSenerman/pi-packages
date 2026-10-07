@@ -29,7 +29,17 @@ export interface LifecycleSettings {
 }
 
 interface LifecycleUi {
-  setStatus?(key: string, text: string | undefined): void;
+  setStatus(key: string, text: string | undefined): void;
+  setWidget?(
+    key: string,
+    content: undefined | string[] | unknown,
+    options?: { placement?: string },
+  ): void;
+}
+
+/** Parent-session widget owner — child `session_start` must not call this. */
+export interface LifecycleWidget {
+  onParentSessionStart(ui: LifecycleUi, mode?: string): void;
 }
 
 function emitSessionDefaultModelStatus(
@@ -71,15 +81,26 @@ export class SessionLifecycleHandler {
     private readonly disposeNotifications: () => void,
     private readonly unpublishService: () => void,
     private readonly settings?: LifecycleSettings,
+    private readonly widget?: LifecycleWidget,
   ) {}
 
   handleSessionStart(_event: unknown, ctx: unknown): Promise<void> {
     this.runtime.setSessionContext(ctx as SessionContext);
-    const ui = (ctx as { ui?: LifecycleUi } | null)?.ui;
+    const bag = ctx as { ui?: LifecycleUi; mode?: string } | null;
+    const ui = bag?.ui;
     if (this.settings && ui) {
       const { parentSessionFile } = this.runtime.getSessionInfo();
       const value = this.settings.loadSessionModelDefault(parentSessionFile);
       emitSessionDefaultModelStatus(ui, value);
+    }
+    // Child bindExtensions sets PI_SUBAGENT_SESSION=1; those session_start
+    // events must not emit parent-UI widget frames on the child's stdout.
+    if (
+      process.env.PI_SUBAGENT_SESSION !== "1" &&
+      ui &&
+      this.widget
+    ) {
+      this.widget.onParentSessionStart(ui, bag?.mode);
     }
     return this.manager.clearCompleted();
   }

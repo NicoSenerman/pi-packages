@@ -1,6 +1,14 @@
 /**
- * The vision describer: calls a vision-capable model via pi-ai's `complete()`
- * to produce text descriptions of images.
+ * The vision describer calls a vision-capable model through its registered
+ * provider stream, falling back to pi-ai's `completeSimple()` for built-ins.
+ *
+ * `completeSimple` (not `complete`) is the path that translates the `reasoning`
+ * ThinkingLevel into each provider's `reasoningEffort`/budget. `complete()` →
+ * `stream()` reads only the pre-translated `reasoningEffort` field and silently
+ * drops a bare `reasoning`, so the describer's thinking setting would be a no-op
+ * through `complete()` — the bug this swap fixes. The agent loop, SDK, and
+ * compaction all route thinking through `completeSimple`/`streamSimple` for the
+ * same reason.
  *
  * Two entry points:
  *   - {@link runBatch}: ONE batched call describing N images at once (the
@@ -13,31 +21,38 @@
  * Resource lifetimes (fetch interceptor, timeout timer, turn-abort wire) are
  * managed with the `using` keyword via the {@link Disposable} guards in
  * `dispose.ts`, replacing the manual `try`/`finally` cleanup the old code
- * carried. Disposing is lexical and exception-safe: a thrown `complete()`
+ * carried. Disposing is lexical and exception-safe: a thrown `completeSimple()`
  * still tears down the timer, uninstalls the interceptor, and detaches the
  * abort listener.
  */
 
-import type {
-  Api,
-  ImageContent,
-  Message,
-  Model,
-  TextContent,
-  ThinkingLevel,
+import {
+  normalizeContext,
+  type Api,
+  type AssistantMessage,
+  type Context,
+  type ImageContent,
+  type Message,
+  type Model,
+  type SimpleStreamOptions,
+  type TextContent,
+  type ThinkingLevel,
+  type TranscriptContext,
 } from "@earendil-works/pi-ai";
-import { complete } from "@earendil-works/pi-ai/compat";
+import { completeSimple } from "@earendil-works/pi-ai/compat";
 import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
 import {
   batchUserPrompt,
   DEFAULT_USER_PROMPT_PREFIX,
+  resolveSystemPrompt,
   describeTimeoutMs,
+  formatModelRef,
   markDescriptionTruncated,
   parseBatchedDescriptions,
-  resolveSystemPrompt,
   type ExtractedImage,
   type VisionHandoffConfig,
 } from "./index.js";
+import { appendVisionError } from "./error-log.js";
 import {
   buildUsageRecord,
   describeAls,
@@ -47,12 +62,8 @@ import {
   type VisionHandoffUsageRecord,
 } from "./usage.js";
 import { imageHash } from "./image.js";
-import {
-  abortWireGuard,
-  fetchInterceptorGuard,
-  timeoutGuard,
-  type AbortWire,
-} from "./dispose.js";
+import { randomUUID } from "node:crypto";
+import { abortWireGuard, fetchInterceptorGuard, timeoutGuard, type AbortWire } from "./dispose.js";
 
 /** Tokens reserved for the describer's input so the requested output budget
  *  can't exceed the model's context window. The describer's input is bounded —
@@ -64,7 +75,7 @@ import {
  *  model (e.g. 262144 context − 8192 reserve = 253952 output budget). */
 const INPUT_RESERVE_TOKENS = 8192;
 
-/** Resolve the `maxTokens` to pass to `complete()` for a describer call.
+/** Resolve the `maxTokens` to pass to `completeSimple()` for a describer call.
  *
  *  - A configured `cfg.maxTokens` wins (explicit cost/latency cap), clamped to
  *    fit the context window.
@@ -80,20 +91,15 @@ export function resolveMaxTokens(
   cfg: VisionHandoffConfig,
   visionModel: Model<Api>,
 ): number | undefined {
-  const ctx =
-    visionModel.contextWindow > 0
-      ? visionModel.contextWindow
-      : Number.POSITIVE_INFINITY;
+  const ctx = visionModel.contextWindow > 0 ? visionModel.contextWindow : Number.POSITIVE_INFINITY;
   const cap = ctx - INPUT_RESERVE_TOKENS;
-  const requested =
-    cfg.maxTokens ??
-    (visionModel.maxTokens > 0 ? visionModel.maxTokens : undefined);
+  const requested = cfg.maxTokens ?? (visionModel.maxTokens > 0 ? visionModel.maxTokens : undefined);
   if (requested === undefined) return undefined;
   // Clamp to the context-window-derived ceiling; never below 1.
   return Math.max(1, Math.min(requested, cap));
 }
 
-/** Resolve the `reasoning` (thinking) level to pass to `complete()`, or
+/** Resolve the `reasoning` (thinking) level to pass to `completeSimple()`, or
  *  `undefined` to leave thinking off.
  *
  *  - Returns `undefined` when thinking is disabled in config.
@@ -113,6 +119,77 @@ export function resolveReasoning(
   return cfg.thinkingLevel;
 }
 
+/** Small config snapshot embedded in every error-log entry — the fields most
+ *  relevant to troubleshooting a describer failure (a bad maxTokens clamp, a
+ *  reasoning level the model rejects, etc.). */
+function configSnapshot(cfg: VisionHandoffConfig): {
+  maxTokens?: number;
+  thinking: boolean;
+  thinkingLevel: string;
+} {
+  return { maxTokens: cfg.maxTokens, thinking: cfg.thinking, thinkingLevel: cfg.thinkingLevel };
+}
+
+/** Complete through the provider registered in Pi's model registry when one
+ * supplies a custom stream. The post-0.80 ModelRuntime keeps extension streams
+ * out of pi-ai's deprecated global compatibility registry, so calling
+ * completeSimple() directly cannot resolve custom API ids such as `makora`.
+ * The optional access preserves compatibility with older ModelRegistry versions,
+ * which registered custom streams globally and do not expose the config getter. */
+const NEURALWATT_CONVERSATION_HEADER = "x-nw-conversation-id";
+
+function isolateVisionRequest(
+  model: Model<Api>,
+  options: SimpleStreamOptions,
+): SimpleStreamOptions {
+  const sessionId = `pi-vision-handoff:${randomUUID()}`;
+  const headers = { ...(options.headers ?? {}) };
+  const inheritedConversationHeader = Object.keys(headers).find(
+    (name) => name.toLowerCase() === NEURALWATT_CONVERSATION_HEADER,
+  );
+
+  // Provider auth can carry the active Pi conversation id. A describer call is
+  // an independent conversation: reusing that id makes an unrelated image
+  // prompt the newest cache lineage for the main agent. Give every real vision
+  // request its own identity while preserving all non-session auth headers.
+  if (inheritedConversationHeader) {
+    headers[inheritedConversationHeader] = sessionId;
+  } else if (model.provider.toLowerCase() === "neuralwatt") {
+    headers["X-NW-Conversation-ID"] = sessionId;
+  }
+
+  return {
+    ...options,
+    sessionId,
+    ...(Object.keys(headers).length > 0 ? { headers } : {}),
+  };
+}
+
+export async function completeVisionModel(
+  model: Model<Api>,
+  modelRegistry: ModelRegistry,
+  context: Context,
+  options: SimpleStreamOptions,
+): Promise<AssistantMessage> {
+  const isolatedOptions = isolateVisionRequest(model, options);
+  // pi 0.86 providers take a normalized `TranscriptContext` (the system prompt and
+  // tool declarations now live in transcript system messages). Fold the callers'
+  // legacy `{ systemPrompt, messages }` shorthand into a leading system message once
+  // here, then hand the same transcript to both the registered-provider stream and
+  // the compat `completeSimple` fallback (which also accepts a TranscriptContext).
+  const transcript: TranscriptContext = normalizeContext(context);
+  // Pi 1.0's runtime owns native providers, auth, environment and request hooks.
+  // Calling a legacy provider config directly bypasses those contracts.
+  if (typeof modelRegistry.streamSimple === "function") {
+    return modelRegistry.streamSimple(model, transcript, isolatedOptions).result();
+  }
+  const provider = modelRegistry.getRegisteredProviderConfig?.(model.provider);
+  if (provider?.streamSimple && provider.api === model.api) {
+    return provider.streamSimple(model, transcript, isolatedOptions).result();
+  }
+  return completeSimple(model, transcript, isolatedOptions);
+}
+
 /** Dependencies the describer can't own itself (held by the engine). */
 export interface DescriberDeps {
   /** Report a usage+energy record for one real describer call (cache hits emit none). */
@@ -120,16 +197,14 @@ export interface DescriberDeps {
   /** Set the most-recent describer failure message (surfaced to the user by the engine).
    *  Pass `null` to clear before a fresh attempt. */
   setLastError(msg: string | null): void;
-  /** Optional: notified when a vision describer call transitions between in-flight
-   *  and idle. Used to drive a green "vis → <model>" footer indicator. The model
-   *  argument is the vision model's string ref (null when going idle). */
+  /** Optional footer indicator while a describer call is in flight. */
   onInFlightChange?(inFlight: boolean, model: string | null): void;
 }
 
 /** The result of a batched describer call: per-image raw descriptions keyed by hash. */
 export type BatchResult = Map<string, string>;
 
-/** Describe N images with ONE batched `complete()` call and split the response
+/** Describe N images with ONE batched `completeSimple()` call and split the response
  *  back into per-image descriptions. Returns a map keyed by image hash; an
  *  image whose section failed to parse is omitted (the caller treats omission
  *  as "description unavailable"). On a genuine call failure (auth, abort,
@@ -151,11 +226,18 @@ export async function runBatch(
   const out: BatchResult = new Map();
   const auth = await modelRegistry.getApiKeyAndHeaders(visionModel);
   if (!auth.ok || !auth.apiKey) {
-    deps.setLastError(
-      !auth.ok
-        ? auth.error
-        : `No API key for vision model "${visionModel.provider}/${visionModel.id}"`,
-    );
+    const reason = !auth.ok
+      ? auth.error
+      : `No API key for vision model "${formatModelRef(visionModel.provider, visionModel.id)}"`;
+    deps.setLastError(reason);
+    appendVisionError({
+      phase: "batch",
+      reason,
+      visionModel: cfg.visionModel,
+      imageHashes: misses.map((m) => m.hash),
+      imageCount: misses.length,
+      config: configSnapshot(cfg),
+    });
     return out;
   }
 
@@ -163,14 +245,7 @@ export async function runBatch(
   const systemPrompt = resolveSystemPrompt(cfg);
   const content: (TextContent | ImageContent)[] = [
     { type: "text", text: batchUserPrompt(misses.length, userPrompt, prefix) },
-    ...misses.map(
-      (m) =>
-        ({
-          type: "image",
-          data: m.img.data,
-          mimeType: m.img.mimeType,
-        }) satisfies ImageContent,
-    ),
+    ...misses.map((m) => ({ type: "image", data: m.img.data, mimeType: m.img.mimeType } satisfies ImageContent)),
   ];
   const userMessage: Message = { role: "user", content, timestamp: Date.now() };
 
@@ -187,33 +262,23 @@ export async function runBatch(
   using abortWire = abortWireGuard(turnSignal, controller);
 
   const describeCtx: DescribeContext = { energyReader: undefined };
-  deps.onInFlightChange?.(true, `${visionModel.provider}/${visionModel.id}`);
+  const modelRef = `${visionModel.provider}/${visionModel.id}`;
+  deps.onInFlightChange?.(true, modelRef);
   try {
     const response = await describeAls.run(describeCtx, async () =>
-      complete(
+      completeVisionModel(
         visionModel,
+        modelRegistry,
         { systemPrompt, messages: [userMessage] },
-        {
-          apiKey: auth.apiKey,
-          headers: auth.headers,
-          signal: controller.signal,
-          maxTokens,
-          reasoning,
-        },
+        { apiKey: auth.apiKey, headers: auth.headers, signal: controller.signal, maxTokens, reasoning },
       ),
     );
     const capture = await readCapture(describeCtx);
     const hashes = misses.map((m) => m.hash);
-    const record = buildUsageRecord(
-      response,
-      capture,
-      visionModel,
-      hashes[0],
-      hashes.length > 1 ? hashes : undefined,
-    );
+    const record = buildUsageRecord(response, capture, visionModel, hashes[0], hashes.length > 1 ? hashes : undefined);
     if (record) deps.reportUsage(record);
     if (response.stopReason === "aborted" || response.stopReason === "error") {
-      setStopReasonError(
+      const reason = setStopReasonError(
         deps,
         response.stopReason,
         response.errorMessage,
@@ -221,6 +286,20 @@ export async function runBatch(
         timedOut,
         timeoutMs,
       );
+      if (reason) {
+        appendVisionError({
+          phase: "batch",
+          reason,
+          visionModel: cfg.visionModel,
+          imageHashes: hashes,
+          imageCount: misses.length,
+          stopReason: response.stopReason,
+          timedOut,
+          timeoutMs,
+          errorMessage: response.errorMessage,
+          config: configSnapshot(cfg),
+        });
+      }
       return out;
     }
     const text = response.content
@@ -230,6 +309,14 @@ export async function runBatch(
       .trim();
     if (!text) {
       deps.setLastError("vision model returned an empty description");
+      appendVisionError({
+        phase: "batch",
+        reason: "vision model returned an empty description",
+        visionModel: cfg.visionModel,
+        imageHashes: hashes,
+        imageCount: misses.length,
+        config: configSnapshot(cfg),
+      });
       return out;
     }
     const parsed = parseBatchedDescriptions(text, misses.length);
@@ -261,17 +348,7 @@ export async function runBatch(
     const unparsed = misses.filter((m) => !out.has(m.hash));
     if (unparsed.length > 0) {
       const fallbacks = await Promise.all(
-        unparsed.map((m) =>
-          describeSingle(
-            m.img,
-            userPrompt,
-            visionModel,
-            modelRegistry,
-            cfg,
-            deps,
-            turnSignal,
-          ),
-        ),
+        unparsed.map((m) => describeSingle(m.img, userPrompt, visionModel, modelRegistry, cfg, deps, turnSignal)),
       );
       for (let i = 0; i < unparsed.length; i++) {
         if (fallbacks[i]) out.set(unparsed[i].hash, fallbacks[i]!);
@@ -279,24 +356,39 @@ export async function runBatch(
     }
     return out;
   } catch (err) {
-    deps.setLastError(
-      timedOut
-        ? `describer timed out after ${timeoutMs / 1000}s`
-        : err instanceof Error
-          ? err.message
-          : String(err),
-    );
+    const userAborted = abortWire.userAborted();
+    const reason = timedOut
+      ? `describer timed out after ${timeoutMs / 1000}s`
+      : err instanceof Error
+        ? err.message
+        : String(err);
+    deps.setLastError(reason);
+    // A deliberate user cancel isn't a troubleshooting-worthy error — skip
+    // logging it (mirroring the no-warn-on-user-abort contract).
+    if (!userAborted) {
+      appendVisionError({
+        phase: "batch",
+        reason,
+        visionModel: cfg.visionModel,
+        imageHashes: misses.map((m) => m.hash),
+        imageCount: misses.length,
+        timedOut,
+        timeoutMs,
+        errorStack: err instanceof Error ? err.stack : undefined,
+        config: configSnapshot(cfg),
+      });
+    }
     return out;
   } finally {
+    deps.onInFlightChange?.(false, null);
     // The `using` guards above already released the fetch interceptor, timer,
     // and abort wire. Only the energy tee needs an explicit unhandled-rejection
     // swallow: if the main stream aborted, the tee rejects too.
     describeCtx.energyReader?.catch(() => {});
-    deps.onInFlightChange?.(false, null);
   }
 }
 
-/** Describe a single image with one `complete()` call and return the RAW
+/** Describe a single image with one `completeSimple()` call and return the RAW
  *  description (no envelope, no truncation). Returns null on any genuine
  *  failure (auth, abort/error, empty) so the caller only caches `UNAVAILABLE`
  *  when a real describer attempt failed. */
@@ -311,22 +403,25 @@ export async function describeSingle(
 ): Promise<string | null> {
   const auth = await modelRegistry.getApiKeyAndHeaders(visionModel);
   if (!auth.ok || !auth.apiKey) {
-    deps.setLastError(
-      !auth.ok
-        ? auth.error
-        : `No API key for vision model "${visionModel.provider}/${visionModel.id}"`,
-    );
+    const reason = !auth.ok
+      ? auth.error
+      : `No API key for vision model "${formatModelRef(visionModel.provider, visionModel.id)}"`;
+    deps.setLastError(reason);
+    appendVisionError({
+      phase: "single",
+      reason,
+      visionModel: cfg.visionModel,
+      imageHashes: [imageHash(img.mimeType, img.data)],
+      imageCount: 1,
+      config: configSnapshot(cfg),
+    });
     return null;
   }
   const prefix = cfg.userPromptPrefix ?? DEFAULT_USER_PROMPT_PREFIX;
   const systemPrompt = resolveSystemPrompt(cfg);
   const content: (TextContent | ImageContent)[] = [
     { type: "text", text: batchUserPrompt(1, userPrompt, prefix) },
-    {
-      type: "image",
-      data: img.data,
-      mimeType: img.mimeType,
-    } satisfies ImageContent,
+    { type: "image", data: img.data, mimeType: img.mimeType } satisfies ImageContent,
   ];
   const userMessage: Message = { role: "user", content, timestamp: Date.now() };
   const timeoutMs = describeTimeoutMs(1);
@@ -342,19 +437,15 @@ export async function describeSingle(
   using abortWire = abortWireGuard(turnSignal, controller);
 
   const describeCtx: DescribeContext = { energyReader: undefined };
-  deps.onInFlightChange?.(true, `${visionModel.provider}/${visionModel.id}`);
+  const modelRef = `${visionModel.provider}/${visionModel.id}`;
+  deps.onInFlightChange?.(true, modelRef);
   try {
     const response = await describeAls.run(describeCtx, async () =>
-      complete(
+      completeVisionModel(
         visionModel,
+        modelRegistry,
         { systemPrompt, messages: [userMessage] },
-        {
-          apiKey: auth.apiKey,
-          headers: auth.headers,
-          signal: controller.signal,
-          maxTokens,
-          reasoning,
-        },
+        { apiKey: auth.apiKey, headers: auth.headers, signal: controller.signal, maxTokens, reasoning },
       ),
     );
     const capture = await readCapture(describeCtx);
@@ -362,7 +453,7 @@ export async function describeSingle(
     const record = buildUsageRecord(response, capture, visionModel, hash);
     if (record) deps.reportUsage(record);
     if (response.stopReason === "aborted" || response.stopReason === "error") {
-      setStopReasonError(
+      const reason = setStopReasonError(
         deps,
         response.stopReason,
         response.errorMessage,
@@ -370,6 +461,20 @@ export async function describeSingle(
         timedOut,
         timeoutMs,
       );
+      if (reason) {
+        appendVisionError({
+          phase: "single",
+          reason,
+          visionModel: cfg.visionModel,
+          imageHashes: [hash],
+          imageCount: 1,
+          stopReason: response.stopReason,
+          timedOut,
+          timeoutMs,
+          errorMessage: response.errorMessage,
+          config: configSnapshot(cfg),
+        });
+      }
       return null;
     }
     const text = response.content
@@ -379,35 +484,54 @@ export async function describeSingle(
       .trim();
     if (!text) {
       deps.setLastError("vision model returned an empty description");
+      appendVisionError({
+        phase: "single",
+        reason: "vision model returned an empty description",
+        visionModel: cfg.visionModel,
+        imageHashes: [hash],
+        imageCount: 1,
+        config: configSnapshot(cfg),
+      });
       return null;
     }
     // stopReason "length" = the model hit a token limit (configured maxTokens or
     // the provider's hard output cap) before finishing. The partial text is still
     // useful, but it must not pass as complete — mark it so the agent/user know.
-    return response.stopReason === "length"
-      ? markDescriptionTruncated(text)
-      : text;
+    return response.stopReason === "length" ? markDescriptionTruncated(text) : text;
   } catch (err) {
-    deps.setLastError(
-      timedOut
-        ? `describer timed out after ${timeoutMs / 1000}s`
-        : err instanceof Error
-          ? err.message
-          : String(err),
-    );
+    const userAborted = abortWire.userAborted();
+    const reason = timedOut
+      ? `describer timed out after ${timeoutMs / 1000}s`
+      : err instanceof Error
+        ? err.message
+        : String(err);
+    deps.setLastError(reason);
+    // A deliberate user cancel isn't a troubleshooting-worthy error — skip
+    // logging it (mirroring the no-warn-on-user-abort contract).
+    if (!userAborted) {
+      appendVisionError({
+        phase: "single",
+        reason,
+        visionModel: cfg.visionModel,
+        imageHashes: [imageHash(img.mimeType, img.data)],
+        imageCount: 1,
+        timedOut,
+        timeoutMs,
+        errorStack: err instanceof Error ? err.stack : undefined,
+        config: configSnapshot(cfg),
+      });
+    }
     return null;
   } finally {
-    describeCtx.energyReader?.catch(() => {});
     deps.onInFlightChange?.(false, null);
+    describeCtx.energyReader?.catch(() => {});
   }
 }
 
 /** Read the energy tee for a describer call, if one was captured. Returns the
  *  empty capture when there is no reader (non-Neuralwatt models) or the tee
  *  aborted with the main stream. */
-async function readCapture(
-  describeCtx: DescribeContext,
-): Promise<VisionHandoffEnergyCapture> {
+async function readCapture(describeCtx: DescribeContext): Promise<VisionHandoffEnergyCapture> {
   if (!describeCtx.energyReader) return EMPTY_ENERGY_CAPTURE;
   try {
     return await describeCtx.energyReader;
@@ -418,7 +542,8 @@ async function readCapture(
 
 /** Translate a non-OK stopReason into a user-facing failure message, unless the
  *  abort came from the user cancelling the turn (then stay silent — no warning
- *  for a deliberate cancel). */
+ *  for a deliberate cancel). Returns the message that was set (so the caller
+ *  can log it), or null when the abort was a user cancel / nothing was set. */
 function setStopReasonError(
   deps: DescriberDeps,
   stopReason: string,
@@ -426,13 +551,14 @@ function setStopReasonError(
   abortWire: AbortWire,
   timedOut: boolean,
   timeoutMs: number,
-): void {
-  if (abortWire.userAborted()) return; // user cancelled the turn — no warning
+): string | null {
+  if (abortWire.userAborted()) return null; // user cancelled the turn — no warning
   if (timedOut) {
-    deps.setLastError(`describer timed out after ${timeoutMs / 1000}s`);
-    return;
+    const reason = `describer timed out after ${timeoutMs / 1000}s`;
+    deps.setLastError(reason);
+    return reason;
   }
-  deps.setLastError(
-    `vision model returned stopReason "${stopReason}"${errorMessage ? ": " + errorMessage : ""}`,
-  );
+  const reason = `vision model returned stopReason "${stopReason}"${errorMessage ? ": " + errorMessage : ""}`;
+  deps.setLastError(reason);
+  return reason;
 }

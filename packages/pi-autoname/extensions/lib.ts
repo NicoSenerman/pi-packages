@@ -1,10 +1,10 @@
-import { readFileSync } from "fs";
-import { join } from "path";
-
 /**
  * pi-autoname pure utility functions.
- * Extracted for testability — no side effects, no fs, no network.
+ * Extracted for testability — no side effects, no network.
+ * `loadRegistryDefaults` is the one fs reader; everything else stays pure.
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 /** A name this short was likely a failed AI response */
 export const MIN_NAME_LENGTH = 3;
@@ -23,22 +23,113 @@ export const MIN_COOLDOWN_MINUTES = 1;
 export const MAX_COOLDOWN_MINUTES = 24 * 60;
 
 export const SENSITIVE_PATTERNS: Array<{ re: RegExp; replacement: string }> = [
-  {
-    re: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
-    replacement: "[REDACTED_PRIVATE_KEY]",
-  },
+  { re: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, replacement: "[REDACTED_PRIVATE_KEY]" },
   { re: /\bAKIA[0-9A-Z]{16}\b/g, replacement: "[REDACTED_AWS_KEY]" },
   { re: /\bsk-[A-Za-z0-9_-]{20,}\b/g, replacement: "[REDACTED_API_KEY]" },
   { re: /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{20,}/gi, replacement: "$1[REDACTED]" },
-  {
-    re: /\b([A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD))\s*=\s*["']?[^"'\s]+/g,
-    replacement: "$1=[REDACTED]",
-  },
-  {
-    re: /\b(api[_-]?key|token|secret|password)\b\s*[:=]\s*["']?[^"'\s,;]+/gi,
-    replacement: "$1=[REDACTED]",
-  },
+  { re: /\b([A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD))\s*=\s*["']?[^"'\s]+/g, replacement: "$1=[REDACTED]" },
+  { re: /\b(api[_-]?key|token|secret|password)\b\s*[:=]\s*["']?[^"'\s,;]+/gi, replacement: "$1=[REDACTED]" },
 ];
+
+export interface DialoguePart {
+  role: "user" | "assistant";
+  text: string;
+}
+
+export type NamingLanguage = "Chinese" | "English" | "Spanish" | "Japanese" | "Korean";
+
+const SPANISH_MARKERS =
+  /\b(?:el|la|los|las|un|una|que|para|por|con|como|cómo|qué|sesión|archivo|gracias|hola|puedes|necesito|también|esto|esta)\b/gi;
+const ENGLISH_MARKERS =
+  /\b(?:the|and|for|with|this|that|please|help|session|file|error|thanks|hello|can|need|you)\b/gi;
+
+function naturalLanguageText(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`[^`]*`/g, " ")
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/(?:^|\s)(?:~\/|\/)[^\s]+/g, " ")
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*(?:const|let|var|function|class|import|export|return)\b|[{};]|=>/.test(line))
+    .join(" ");
+}
+
+function scriptCount(text: string, script: RegExp): number {
+  return (text.match(script) ?? []).length;
+}
+
+/**
+ * Determines the language from user-authored natural-language text only.
+ * CJK scripts receive extra weight so paths and code identifiers do not
+ * outweigh prose in a Chinese, Japanese, or Korean request.
+ */
+export function detectDominantUserLanguage(parts: DialoguePart[]): NamingLanguage | undefined {
+  const scores: Record<NamingLanguage, number> = {
+    Chinese: 0,
+    English: 0,
+    Spanish: 0,
+    Japanese: 0,
+    Korean: 0,
+  };
+  const firstSeen = new Map<NamingLanguage, number>();
+  let seen = 0;
+
+  const addScore = (language: NamingLanguage, score: number) => {
+    if (score <= 0) return;
+    if (!firstSeen.has(language)) firstSeen.set(language, seen);
+    scores[language] += score;
+  };
+
+  for (const part of parts) {
+    if (part.role !== "user") continue;
+    const text = naturalLanguageText(part.text);
+    const han = scriptCount(text, /\p{Script=Han}/gu);
+    const kana = scriptCount(text, /[\u3040-\u30ff\u31f0-\u31ff]/gu);
+    const hangul = scriptCount(text, /\p{Script=Hangul}/gu);
+    const hasCjk = han > 0 || kana > 0 || hangul > 0;
+    addScore(kana > 0 ? "Japanese" : "Chinese", (kana > 0 ? kana + han : han) * 2);
+    addScore("Korean", hangul * 2);
+    // A user message that already contains CJK is a CJK-language message: the
+    // Latin characters inside it (paths, code identifiers, or system log/error
+    // noise co-injected into the same message) must not dilute the user's CJK
+    // intent. Only purely-Latin user messages contribute to English.
+    // Latin script is not automatically English. Score Spanish vs English from
+    // function words so a Spanish (or mixed) user is not forced into English.
+    if (!hasCjk) {
+      const latin = scriptCount(text, /\p{Script=Latin}/gu);
+      const spanish = (text.match(SPANISH_MARKERS) ?? []).length;
+      const english = (text.match(ENGLISH_MARKERS) ?? []).length;
+      addScore(spanish > english && spanish > 0 ? "Spanish" : "English", latin);
+    }
+    seen += 1;
+  }
+
+  return (Object.keys(scores) as NamingLanguage[])
+    .filter((language) => scores[language] > 0)
+    .sort((left, right) => scores[right] - scores[left] || (firstSeen.get(left) ?? Infinity) - (firstSeen.get(right) ?? Infinity))[0];
+}
+
+function localeLanguageName(locale: string): string {
+  const primary = locale.trim().replace(/_/g, "-").split("-")[0]?.toLowerCase();
+  if (primary === "zh") return "Chinese";
+  if (primary === "ja") return "Japanese";
+  if (primary === "ko") return "Korean";
+  if (primary === "es") return "Spanish";
+  if (primary === "en") return "English";
+  return locale.trim();
+}
+
+/** Builds an explicit language requirement for the naming model. */
+export function getNamingLanguageInstruction(parts: DialoguePart[], fallbackLocale?: string): string {
+  const language = detectDominantUserLanguage(parts);
+  if (language === "Chinese") return "Write the label in Chinese, preserving the Simplified or Traditional script used by the user. This language is determined from user messages only.";
+  if (language === "English") {
+    return "Write the label in the same language as the user messages. Keep English when the user wrote English; do not translate Spanish or another Latin-script language into English. This language is determined from user messages only.";
+  }
+  if (language) return `Write the label in ${language}. This language is determined from user messages only.`;
+  if (fallbackLocale?.trim()) return `No natural-language user text was detected. Use the language selected in the user's Pi locale: ${localeLanguageName(fallbackLocale)}.`;
+  return "No natural-language user text was detected. Infer the label language from user messages only, never from assistant messages.";
+}
 
 export interface AutonameConfig {
   enabled?: boolean;
@@ -64,10 +155,9 @@ export interface AutonameConfig {
 export const DEFAULT_CONFIG: Required<AutonameConfig> = {
   enabled: true,
   /**
-   * Default naming model — last-resort fallback only. The shared
-   * utility-models registry (~/.pi/agent/utility-models.json, `autoname`
-   * role, managed in pi-config) supplies the default when present; the
-   * consumer's own pi-autoname.json always wins.
+   * Last-resort naming model. The shared utility-models registry
+   * (~/.pi/agent/utility-models.json, `autoname` role) supplies the default
+   * when present; the consumer's own pi-autoname.json always wins.
    */
   model: "ollama-cloud/glm-5.3-flash",
   fallbackModels: [],
@@ -78,7 +168,7 @@ export const DEFAULT_CONFIG: Required<AutonameConfig> = {
 
 /**
  * Read the shared utility-models registry's `autoname` role. Returns
- * empty on any read/parse error — callers fall back to DEFAULT_CONFIG.
+ * undefined on any read/parse error — callers fall back to DEFAULT_CONFIG.
  */
 export function loadRegistryDefaults(
   agentDir: string,
@@ -88,9 +178,7 @@ export function loadRegistryDefaults(
     const entry = JSON.parse(raw)?.autoname;
     if (!entry || typeof entry.model !== "string") return {};
     const fallbacks = Array.isArray(entry.fallbacks)
-      ? entry.fallbacks.filter(
-          (f: unknown): f is string => typeof f === "string",
-        )
+      ? entry.fallbacks.filter((f: unknown): f is string => typeof f === "string")
       : [];
     return {
       model: entry.model.trim(),
@@ -106,19 +194,13 @@ export function normalizeConfig(input: unknown): AutonameConfig {
 
   const raw = input as Record<string, unknown>;
   const cooldown =
-    typeof raw.cooldownMinutes === "number" &&
-    Number.isFinite(raw.cooldownMinutes)
-      ? Math.min(
-          MAX_COOLDOWN_MINUTES,
-          Math.max(MIN_COOLDOWN_MINUTES, raw.cooldownMinutes),
-        )
+    typeof raw.cooldownMinutes === "number" && Number.isFinite(raw.cooldownMinutes)
+      ? Math.min(MAX_COOLDOWN_MINUTES, Math.max(MIN_COOLDOWN_MINUTES, raw.cooldownMinutes))
       : DEFAULT_CONFIG.cooldownMinutes;
 
   return {
-    enabled:
-      typeof raw.enabled === "boolean" ? raw.enabled : DEFAULT_CONFIG.enabled,
-    model:
-      typeof raw.model === "string" ? raw.model.trim() : DEFAULT_CONFIG.model,
+    enabled: typeof raw.enabled === "boolean" ? raw.enabled : DEFAULT_CONFIG.enabled,
+    model: typeof raw.model === "string" ? raw.model.trim() : DEFAULT_CONFIG.model,
     fallbackModels: Array.isArray(raw.fallbackModels)
       ? raw.fallbackModels
           .filter((item): item is string => typeof item === "string")
@@ -128,25 +210,18 @@ export function normalizeConfig(input: unknown): AutonameConfig {
     cooldownMinutes: cooldown,
     debug: typeof raw.debug === "boolean" ? raw.debug : DEFAULT_CONFIG.debug,
     respectManualName:
-      typeof raw.respectManualName === "boolean"
-        ? raw.respectManualName
-        : DEFAULT_CONFIG.respectManualName,
+      typeof raw.respectManualName === "boolean" ? raw.respectManualName : DEFAULT_CONFIG.respectManualName,
   };
 }
 
-export function redactSensitiveText(text: string): {
-  text: string;
-  redacted: boolean;
-} {
+export function redactSensitiveText(text: string): { text: string; redacted: boolean } {
   let redacted = false;
   let output = text;
 
   for (const { re, replacement } of SENSITIVE_PATTERNS) {
     output = output.replace(re, (...args) => {
       redacted = true;
-      return replacement.replace(/\$(\d+)/g, (_, index) =>
-        String(args[Number(index)] ?? ""),
-      );
+      return replacement.replace(/\$(\d+)/g, (_, index) => String(args[Number(index)] ?? ""));
     });
   }
 
@@ -154,15 +229,11 @@ export function redactSensitiveText(text: string): {
 }
 
 export function isHighQualityName(name: string): boolean {
-  if (name.length < MIN_NAME_LENGTH || name.length > MAX_NAME_LENGTH)
-    return false;
+  if (name.length < MIN_NAME_LENGTH || name.length > MAX_NAME_LENGTH) return false;
   if (RAW_SLICE_RE.test(name)) return false;
   if (SENTENCE_END_RE.test(name)) return false;
   if ((name.match(/[，,。！？!?]/g) || []).length > 1) return false;
-  const hasContent =
-    /[\u4e00-\u9fff]/.test(name) ||
-    /^[A-Za-z][A-Za-z0-9_\-\s]{2,30}$/.test(name);
-  return hasContent;
+  return /[\p{L}\p{N}]/u.test(name);
 }
 
 export function blockText(content: any): string {
@@ -180,7 +251,7 @@ export function smartFallbackName(text: string): string {
 
   s = s
     .replace(
-      /^(?:我(?:觉得|感觉|发现|想要|想知道|怀疑)?\s*|你(?:能|可以|帮)\s*(?:我\s*)?|请(?:你|帮我)?\s*|Can you\s*(?:please\s*)?|Could you\s*(?:please\s*)?|Please\s*(?:help me\s*)?|I\s*(?:think|feel|want|need|noticed)\s*(?:that\s*)?|Is it possible to\s*|I wonder if\s*|I'm wondering about\s*)/i,
+      /^(?:我(?:觉得|感觉|发现|想要|想知道|怀疑)?\s*|你(?:能|可以|帮)\s*(?:我\s*)?|请(?:你|帮我)?\s*|Can you\s*(?:please\s*)?(?:help me\s*)?|Could you\s*(?:please\s*)?(?:help me\s*)?|Please\s*(?:help me\s*)?|I\s*(?:think|feel|want|need|noticed)\s*(?:that\s*)?|Is it possible to\s*|I wonder if\s*|I'm wondering about\s*)/i,
       "",
     )
     .trim();
@@ -196,17 +267,12 @@ export function smartFallbackName(text: string): string {
   s = s.replace(/(?:吗|呢|吧|啊|呀|哦|嘛|的|了|着|过)[\s,，.。]*$/, "").trim();
   s = s.replace(/[。！？!?.…]+\s*$/, "").trim();
 
-  // Final guard: clamp to MAX_NAME_LENGTH so the result always passes
-  // isHighQualityName's length check. Without this, a fallback of 31-45
-  // chars passes the 45-char cut above but is rejected by the 30-char
-  // quality gate — leaving the user with no name at all.
+  // Keep fallbacks inside the quality gate. A 31-45 char slice passes the
+  // cut above and is then rejected, leaving the session unnamed.
   if (s.length > MAX_NAME_LENGTH) {
-    // For Latin text, cut at the last word boundary ≤ MAX_NAME_LENGTH
-    // so we don't split a word in half. For CJK (no spaces), hard-cut.
     const slice = s.slice(0, MAX_NAME_LENGTH);
     const lastSpace = slice.lastIndexOf(" ");
     s = lastSpace > MIN_NAME_LENGTH ? slice.slice(0, lastSpace) : slice;
-    // Re-strip any trailing punctuation the cut may have exposed.
     s = s.replace(/[。！？!?.…,，\s]+$/, "").trim();
   }
 
@@ -230,7 +296,7 @@ export function parseRenameMarker(data: unknown): RenameMarker | undefined {
   if (!data || typeof data !== "object") return undefined;
   const obj = data as Record<string, unknown>;
 
-  // user_rename flavor — written by agent_end when it detects a /name
+  // user_rename flavor — written when session_info_changed observes a /name
   // out-of-band change.
   if (obj.event === "user_rename" && typeof obj.name === "string") {
     return {
@@ -286,41 +352,59 @@ export function getFirstDialogue(branch: any[]) {
   return { firstUser, firstAssistant };
 }
 
-export function getRecentDialogue(branch: any[], maxMessages = 6) {
-  const items: Array<{ role: string; text: string }> = [];
-  for (const entry of branch) {
-    if (entry?.type === "message" && entry.message) {
-      const role = entry.message.role;
-      if (role !== "user" && role !== "assistant") continue;
-      const text = blockText(entry.message.content);
-      if (!text) continue;
-      items.push({ role, text });
-    }
+export function getRecentDialogue(branch: any[], maxMessages = 6): DialoguePart[] {
+  const items: DialoguePart[] = [];
+
+  for (let index = branch.length - 1; index >= 0 && items.length < maxMessages; index -= 1) {
+    const entry = branch[index];
+    if (entry?.type !== "message" || !entry.message) continue;
+
+    const role = entry.message.role;
+    if (role !== "user" && role !== "assistant") continue;
+
+    const text = blockText(entry.message.content);
+    if (text) items.push({ role, text });
   }
-  return items.slice(-maxMessages);
+
+  return items.reverse();
 }
 
-/** Collapse whitespace in a command/string to a single line. */
+/**
+ * Old sessions without an autoname marker should be named from their current
+ * topic, while a new session keeps the first-dialogue behavior.
+ */
+export function getInitialDialogue(branch: any[]): DialoguePart[] {
+  const recent = getRecentDialogue(branch);
+  let messageCount = 0;
+  for (let index = branch.length - 1; index >= 0 && messageCount <= 2; index -= 1) {
+    const role = branch[index]?.message?.role;
+    if (role === "user" || role === "assistant") messageCount += 1;
+  }
+
+  if (messageCount > 2) return recent;
+
+  const { firstUser, firstAssistant } = getFirstDialogue(branch);
+  if (!firstUser || !firstAssistant) return [];
+  return [
+    { role: "user", text: firstUser },
+    { role: "assistant", text: firstAssistant },
+  ];
+}
+
 function oneLiner(s: string): string {
   return String(s).replace(/\s+/g, " ").trim();
 }
 
-/** Strip home/project prefixes so tool-call markers stay short. */
 function shortPath(p: string): string {
   return String(p)
     .replace(/^.*\/Documents\//, "")
     .replace(/^.*\/Projects\//, "");
 }
 
-/**
- * Summarize a single tool call into a short inline marker token like
- * `read src/foo.ts`, `run: git status`, `delegate→researcher`. Keeps the
- * naming prompt compact while still telling the model what was DONE.
- */
-function summarizeToolCall(name: string, args: any): string {
+function summarizeToolCall(name: string, args: unknown): string {
   if (!args || typeof args !== "object") return name;
   const a = args as Record<string, unknown>;
-  const path = typeof a.path === "string" ? (a.path as string) : undefined;
+  const path = typeof a.path === "string" ? a.path : undefined;
   switch (name) {
     case "read":
     case "write":
@@ -337,7 +421,6 @@ function summarizeToolCall(name: string, args: any): string {
     case "find":
       return typeof a.pattern === "string" ? `find ${a.pattern}` : "find";
     case "subagent":
-      // Accept either `agent` (current) or `subagent_type` (older/generic).
       return typeof a.agent === "string" || typeof a.subagent_type === "string"
         ? `delegate→${(a.agent as string) || (a.subagent_type as string)}`
         : "delegate";
@@ -349,16 +432,9 @@ function summarizeToolCall(name: string, args: any): string {
 }
 
 /**
- * Extract a rich dialogue transcript including tool calls, so the naming
- * model can see what was actually DONE (files touched, commands run),
- * not just greetings. Assistant messages include their tool calls inline
- * as `[→ edit src/foo.ts]`, `[→ run: git status]`, `[→ delegate→worker]`.
- * Thinking blocks are skipped (internal, not a work signal).
- *
- * Returns: the FIRST user message (the intent) + the LAST `maxAssistantTurns`
- * assistant turns. A user-only session (no assistant reply yet) still
- * returns `[firstUser]` so first-dialogue naming can name it — v1 skipped
- * these entirely.
+ * First user intent plus recent assistant turns, with tool calls inlined as
+ * `[→ edit src/foo.ts]`. Used as extra context so names reflect work done,
+ * not only greetings. Thinking blocks and tool results are skipped.
  */
 export function getRichDialogue(
   branch: any[],
@@ -371,43 +447,28 @@ export function getRichDialogue(
     if (entry?.type !== "message" || !entry.message) continue;
     const role: string = entry.message.role;
     const content = entry.message.content;
-
-    // toolResult role messages are noise (tool output piped back to the
-    // assistant) — skip them entirely so the transcript stays clean.
-    if (role === "toolResult" || (role !== "user" && role !== "assistant")) {
-      continue;
-    }
+    if (role === "toolResult" || (role !== "user" && role !== "assistant")) continue;
 
     if (typeof content === "string") {
       const text = content.trim();
       if (!text) continue;
-      if (role === "user" && !firstUser) {
-        firstUser = { role: "user", text };
-      } else if (role === "assistant") {
-        assistantTurns.push({ role: "assistant", text });
-      }
+      if (role === "user" && !firstUser) firstUser = { role: "user", text };
+      else if (role === "assistant") assistantTurns.push({ role: "assistant", text });
       continue;
     }
 
     if (!Array.isArray(content)) continue;
 
     if (role === "user") {
-      // For user messages, collect text blocks only — tool results are
-      // noisy and the user's intent is in the text. (Tool-result
-      // content typically arrives as role=toolResult anyway.)
       const text = content
         .filter((b: any) => b?.type === "text" && typeof b.text === "string")
         .map((b: any) => b.text)
         .join(" ")
         .trim();
-      if (text && !firstUser) {
-        firstUser = { role: "user", text };
-      }
+      if (text && !firstUser) firstUser = { role: "user", text };
       continue;
     }
 
-    // role === "assistant": collect text blocks + summarize each toolCall
-    // inline as a readable marker.
     const segments: string[] = [];
     for (const block of content) {
       if (!block || typeof block !== "object") continue;
@@ -415,25 +476,17 @@ export function getRichDialogue(
         const t = block.text.trim();
         if (t) segments.push(t);
       } else if (block.type === "toolCall") {
-        const marker = summarizeToolCall(
-          typeof block.name === "string" ? block.name : "tool",
-          block.arguments,
+        segments.push(
+          `[→ ${summarizeToolCall(typeof block.name === "string" ? block.name : "tool", block.arguments)}]`,
         );
-        segments.push(`[→ ${marker}]`);
       }
-      // skip thinking blocks — internal reasoning, not a work signal.
     }
     const text = segments.join(" ").trim();
-    if (text) {
-      assistantTurns.push({ role: "assistant", text });
-    }
+    if (text) assistantTurns.push({ role: "assistant", text });
   }
 
   const result: Array<{ role: string; text: string }> = [];
   if (firstUser) result.push(firstUser);
-  // Keep the most recent maxAssistantTurns so the prompt reflects
-  // the latest work, not stale early turns.
-  const recent = assistantTurns.slice(-maxAssistantTurns);
-  result.push(...recent);
+  result.push(...assistantTurns.slice(-maxAssistantTurns));
   return result;
 }

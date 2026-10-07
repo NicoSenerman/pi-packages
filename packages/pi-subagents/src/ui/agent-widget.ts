@@ -16,6 +16,12 @@ import type { CompactionInfo } from "#src/types";
 import { ERROR_STATUSES, type Theme } from "#src/ui/display";
 import { renderWidgetLines, type WidgetAgent } from "#src/ui/widget-renderer";
 
+/** RPC fallback when ui.theme is missing — piru restyles the lines anyway. */
+const PASSTHROUGH_THEME: Theme = {
+  fg: (_color, text) => text,
+  bold: (text) => text,
+};
+
 // ---- Types ----
 
 /** Minimal agent shape needed for widget lifecycle decisions. */
@@ -118,6 +124,27 @@ export class AgentWidget implements SubagentManagerObserver {
   }
 
   /**
+   * Parent `session_start` (including `/reload`): journal a widget/status
+   * clear so a dead child's last `setWidget("agents", lines)` cannot linger
+   * on the attached client or rehydrate from the daemon ring. Then `update()`
+   * so still-live agents (session switch) immediately re-paint.
+   * Child sessions must not call this — their stdout is not the parent UI.
+   */
+  onParentSessionStart(ui: UICtx, mode?: ExtensionMode) {
+    const resolved =
+      mode ??
+      (process.env.PITUI_BRIDGE === "1" || process.env.PITUI_BRIDGE === "true"
+        ? "rpc"
+        : "tui");
+    this.setUICtx(ui, resolved);
+    ui.setWidget("agents", undefined);
+    ui.setStatus("subagents", undefined);
+    this.widgetRegistered = false;
+    this.lastStatusText = undefined;
+    this.update();
+  }
+
+  /**
    * Called on each new turn (tool_execution_start).
    * Ages finished agents and clears those that have lingered long enough.
    */
@@ -134,6 +161,16 @@ export class AgentWidget implements SubagentManagerObserver {
 
   /** A subagent started running — ensure the update loop is live and render. */
   onSubagentStarted(_record: Subagent) {
+    this.startLoop();
+  }
+
+  /**
+   * A RESUMED subagent transitioned back to running — re-arm the update loop
+   * and render. Without this hook the loop (torn down by clearWidget during
+   * the idle gap between runs) never restarts for resumed runs, so the panel
+   * stays dark for the entire resume while the agent visibly works.
+   */
+  onSubagentResumeStarted(_record: Subagent) {
     this.startLoop();
   }
 
@@ -178,15 +215,17 @@ export class AgentWidget implements SubagentManagerObserver {
   }
 
   /**
-   * Background agents only — the widget's sole audience (ADR-0004 Decision A).
-   * Foreground runs are rendered by the `subagent` tool's inline `onUpdate` stream,
-   * so funneling both `listAgents()` call sites through this accessor applies the
-   * background predicate exactly once at the source.
+   * Agents shown in the above-editor widget.
+   * Native TUI (ADR-0004): background-only — foreground kids stream inline.
+   * RPC / piru: every agent. There is no inline onUpdate stream, and BACH
+   * kids omit `run_in_background` so the flag defaults false.
    */
-  private listBackgroundAgents(): Subagent[] {
-    return this.manager
-      .listAgents()
-      .filter((record) => record.invocation?.runInBackground === true);
+  private listVisibleAgents(): Subagent[] {
+    const agents = this.manager.listAgents();
+    if (this.mode !== "tui") return agents;
+    return agents.filter(
+      (record) => record.invocation?.runInBackground === true,
+    );
   }
 
   /** Project a live Subagent record onto a pure-data WidgetAgent snapshot. */
@@ -207,15 +246,15 @@ export class AgentWidget implements SubagentManagerObserver {
       activeTools: record.activeTools,
       responseText: record.responseText,
       contextPercent: record.getContextPercent(),
+      modelLabel: record.modelLabel,
     };
   }
 
   /** Pre-render widget lines in RPC mode and push them as a string[]. */
   private emitRpcWidget(): void {
-    const theme = this.uiCtx!.theme;
-    if (!theme) return;
+    const theme = this.uiCtx!.theme ?? PASSTHROUGH_THEME;
     const lines = renderWidgetLines({
-      agents: this.listBackgroundAgents().map((r) => this.toWidgetAgent(r)),
+      agents: this.listVisibleAgents().map((r) => this.toWidgetAgent(r)),
       registry: this.registry,
       spinnerFrame: this.widgetFrame,
       terminalWidth: AgentWidget.RPC_TERMINAL_WIDTH,
@@ -232,7 +271,7 @@ export class AgentWidget implements SubagentManagerObserver {
   /** Delegate rendering to the pure widget-renderer module. */
   private renderWidget(tui: TuiSurface, theme: Theme): string[] {
     return renderWidgetLines({
-      agents: this.listBackgroundAgents().map((r) => this.toWidgetAgent(r)),
+      agents: this.listVisibleAgents().map((r) => this.toWidgetAgent(r)),
       registry: this.registry,
       spinnerFrame: this.widgetFrame,
       terminalWidth: tui.terminal.columns,
@@ -306,14 +345,14 @@ export class AgentWidget implements SubagentManagerObserver {
   update() {
     if (!this.uiCtx) return;
 
-    const backgroundAgents = this.listBackgroundAgents();
-    this.seedFinishedAgents(backgroundAgents);
-    const state = assembleWidgetState(backgroundAgents, (id, status) =>
+    const visibleAgents = this.listVisibleAgents();
+    this.seedFinishedAgents(visibleAgents);
+    const state = assembleWidgetState(visibleAgents, (id, status) =>
       this.shouldShowFinished(id, status),
     );
 
     if (!state.hasActive && !state.hasFinished) {
-      this.clearWidget(backgroundAgents);
+      this.clearWidget(visibleAgents);
       return;
     }
 

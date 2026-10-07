@@ -9,7 +9,10 @@ import {
   willBeResized,
   resolvePrewarmImage,
   readImageBuffer,
-  findClipboardImagePaths,
+  readImageBufferBounded,
+  isOmittedImageNote,
+  findPastedImagePaths,
+  diffPrewarmPaths,
   imageHash,
 } from "../../src/image.js";
 
@@ -311,37 +314,145 @@ describe("readImageBuffer", () => {
   });
 });
 
-// ── findClipboardImagePaths ──────────────────────────────────────────────────
+describe("isOmittedImageNote", () => {
+  it("matches a processImage-failure note (image detected, then omitted)", () => {
+    expect(
+      isOmittedImageNote(
+        "Read image file [image/png]\n[Image omitted: could not be resized below the inline image size limit.]\n[Current model does not support images. The image will be omitted from this request.]",
+      ),
+    ).toBe(true);
+    expect(
+      isOmittedImageNote(
+        "Read image file [image/jpeg]\n[Image omitted: could not be converted to a supported inline image format.]",
+      ),
+    ).toBe(true);
+  });
 
-describe("findClipboardImagePaths", () => {
+  it("does not match a normal read result (image-block path)", () => {
+    expect(isOmittedImageNote("Read image file [image/png]\n[Image: original 10x10.]")).toBe(false);
+  });
+
+  it("does not match unrelated text", () => {
+    expect(isOmittedImageNote("just some code")).toBe(false);
+    expect(isOmittedImageNote("")).toBe(false);
+  });
+});
+
+describe("readImageBufferBounded", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "pi-vh-bounded-"));
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("reads a small PNG file within the size bound", () => {
+    const png = pngHeader(10, 10);
+    const path = join(dir, "img.png");
+    writeFileSync(path, png);
+    const out = readImageBufferBounded(path);
+    expect(out).toEqual({ buf: png, mimeType: "image/png" });
+  });
+
+  it("returns null for a non-image file (sniff fails)", () => {
+    const path = join(dir, "not.png");
+    writeFileSync(path, "plain text, not an image");
+    expect(readImageBufferBounded(path)).toBeNull();
+  });
+
+  it("returns null for a missing file", () => {
+    expect(readImageBufferBounded(join(dir, "nope.png"))).toBeNull();
+  });
+});
+
+// ── findPastedImagePaths ──────────────────────────────────────────────────
+
+describe("findPastedImagePaths", () => {
   const tmp = tmpdir();
 
   it("collects pi-clipboard temp paths inside the OS temp dir", () => {
-    const prompt = `Look at ${tmp}/pi-clipboard-abc-1.png and ${tmp}/pi-clipboard-def-2.jpg please`;
-    expect(findClipboardImagePaths(prompt).sort()).toEqual(
-      [`${tmp}/pi-clipboard-abc-1.png`, `${tmp}/pi-clipboard-def-2.jpg`].sort(),
-    );
+    const a = tmp + "/pi-clipboard-abc-1.png";
+    const b = tmp + "/pi-clipboard-def-2.jpg";
+    expect(findPastedImagePaths("Look at " + a + " and " + b + " please").sort()).toEqual([a, b].sort());
   });
 
-  it("rejects a clipboard-shaped path outside the temp dir (confinement)", () => {
-    expect(findClipboardImagePaths(`evil: /etc/pi-clipboard-evil.png`)).toEqual([]);
+  it("collects localterm-paste temp paths (not just pi-clipboard)", () => {
+    const p = tmp + "/localterm-paste/abc-123/pasted-1784890583347-3c6a26f2.png";
+    expect(findPastedImagePaths("describe " + p)).toEqual([p]);
   });
 
-  it("resolves a relative clipboard path against the temp dir", () => {
-    expect(findClipboardImagePaths(`see pi-clipboard-rel-3.gif`)).toEqual([
-      join(tmp, "pi-clipboard-rel-3.gif"),
+  it("collects any temp-dir image path regardless of filename prefix", () => {
+    const a = tmp + "/screenshot-2026.png";
+    const b = tmp + "/nested/dir/chart.gif";
+    expect(findPastedImagePaths("see " + a + " and " + b).sort()).toEqual([a, b].sort());
+  });
+
+  it("rejects an image path outside the temp dir (confinement)", () => {
+    expect(findPastedImagePaths("evil: /etc/screenshot-evil.png")).toEqual([]);
+    expect(findPastedImagePaths("see /Users/me/Desktop/photo.jpg")).toEqual([]);
+  });
+
+  it("skips URLs so they aren't mistaken for local files", () => {
+    expect(findPastedImagePaths("see https://example.com/foo.png and file:///tmp/x.png")).toEqual([]);
+  });
+
+  it("strips leading wrapping chars so parenthesized/markdown paths resolve", () => {
+    const p = tmp + "/pi-clipboard-wrap.png";
+    expect(findPastedImagePaths("see (" + p + ")")).toEqual([p]);
+    expect(findPastedImagePaths("![](" + p + ")")).toEqual([p]);
+  });
+
+  it("resolves a relative image path against the temp dir", () => {
+    expect(findPastedImagePaths("see rel-3.gif")).toEqual([
+      join(tmp, "rel-3.gif"),
     ]);
   });
 
   it("dedupes repeated paths", () => {
-    expect(findClipboardImagePaths(`${tmp}/pi-clipboard-dup.png ${tmp}/pi-clipboard-dup.png`)).toEqual([
-      `${tmp}/pi-clipboard-dup.png`,
-    ]);
+    const a = tmp + "/pi-clipboard-dup.png";
+    expect(findPastedImagePaths(a + " " + a)).toEqual([a]);
   });
 
   it("supports webp and jpeg extensions", () => {
-    expect(findClipboardImagePaths(`${tmp}/pi-clipboard-a.webp ${tmp}/pi-clipboard-b.jpeg`).sort()).toEqual(
-      [`${tmp}/pi-clipboard-a.webp`, `${tmp}/pi-clipboard-b.jpeg`].sort(),
-    );
+    const a = tmp + "/pi-clipboard-a.webp";
+    const b = tmp + "/pi-clipboard-b.jpeg";
+    expect(findPastedImagePaths(a + " " + b).sort()).toEqual([a, b].sort());
+  });
+});
+
+// ── diffPrewarmPaths ─────────────────────────────────────────────────────────
+
+describe("diffPrewarmPaths", () => {
+  const tmp = tmpdir();
+
+  it("returns paths not already in known", () => {
+    const a = `${tmp}/pi-clipboard-a.png`;
+    const b = `${tmp}/pi-clipboard-b.png`;
+    expect(diffPrewarmPaths(`${a} ${b}`, new Set([a]))).toEqual([b]);
+  });
+
+  it("returns [] when every path is already known", () => {
+    const a = `${tmp}/pi-clipboard-a.png`;
+    expect(diffPrewarmPaths(a, new Set([a]))).toEqual([]);
+  });
+
+  it("returns [] for text with no clipboard paths (ordinary typing)", () => {
+    expect(diffPrewarmPaths("hello world, what is this?", new Set())).toEqual([]);
+    expect(diffPrewarmPaths("", new Set())).toEqual([]);
+  });
+
+  it("dedupes within the text (a repeated new path is returned once)", () => {
+    const a = `${tmp}/pi-clipboard-a.png`;
+    expect(diffPrewarmPaths(`${a} ${a}`, new Set())).toEqual([a]);
+  });
+
+  it("only reports genuinely new paths across multiple text changes", () => {
+    const a = `${tmp}/pi-clipboard-a.png`;
+    const b = `${tmp}/pi-clipboard-b.png`;
+    const known = new Set<string>();
+    // first change: both new
+    expect(diffPrewarmPaths(`${a} ${b}`, known)).toEqual([a, b].sort());
+    known.add(a); known.add(b);
+    // second change (text now only mentions a, b was deleted): no new paths
+    expect(diffPrewarmPaths(a, known)).toEqual([]);
   });
 });

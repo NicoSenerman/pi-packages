@@ -50,11 +50,7 @@ ${env.isGitRepo ? `Git repository: yes\nBranch: ${env.branch}` : "Not a git repo
 Platform: ${env.platform}`;
 
   const identity = inherited
-    ? withoutOwnStaticSections(
-        withoutRecursionGuardedToolLines(
-          withoutContradictoryCwdFooter(inherited.systemPrompt, inherited.cwd, cwd),
-        ),
-      )
+    ? inheritParentPrompt(inherited.systemPrompt, inherited.cwd, cwd)
     : genericBase;
 
   if (config.promptMode === "append") {
@@ -97,6 +93,150 @@ You are operating as a sub-agent invoked to handle a specific task.
   // Unlike append mode, no <sub_agent_context> bridge or <agent_instructions>
   // wrapper is injected — the custom prompt retains full control.
   return identity + "\n\n" + activeAgentTag + envBlock + "\n\n" + config.systemPrompt;
+}
+
+const SKILLS_SECTION_HEADING =
+  "The following skills provide specialized instructions for specific tasks.";
+const SKILLS_CATALOGUE_CLOSE = "</available_skills>";
+const SKILLS_SECTION_OPEN = "<skills>";
+const SKILLS_SECTION_CLOSE = "</skills>";
+const CWD_SECTION_OPEN = "<cwd>";
+const CWD_SECTION_CLOSE = "</cwd>";
+const TOOLS_SECTION_OPEN = "<tools>";
+const TOOLS_SECTION_CLOSE = "</tools>";
+const RULES_SECTION_OPEN = "<rules>";
+const RULES_SECTION_CLOSE = "</rules>";
+const SECTIONS_BELOW_RULES: ReadonlySet<string> = new Set([
+  "<docs>",
+  "<addendum>",
+  "<project_context>",
+  "<skills>",
+  "<cwd>",
+]);
+const PROJECT_CONTEXT_OPEN = "<project_context>";
+const PROJECT_CONTEXT_CLOSE = "</project_context>";
+const PROJECT_CONTEXT_LEAD_IN = "Project-specific instructions and guidelines:";
+
+type PromptShape = "footer" | "section" | "unanchored";
+
+interface AnchoredTail {
+  readonly at: number;
+  readonly shape: PromptShape;
+}
+
+/**
+ * Reduce an inherited prompt to the identity a child may adopt.
+ *
+ * Cuts Pi's per-session tail (skills catalogue + cwd footer, or ≥0.86 `<skills>`
+ * / `<cwd>` sections — #958) and, when that tail is section-shaped, excises the
+ * parent's `<tools>` / `<rules>` pair (#1009). A relocated child also loses the
+ * parent's `<project_context>` (#918). The per-turn stash in parent-snapshot.ts
+ * is complementary: it stops forceSystemPrompt leaks from entering this string;
+ * this function removes the session-resolved sections that remain.
+ */
+function inheritParentPrompt(prompt: string, parentCwd: string, childCwd: string): string {
+  const lines = prompt.split("\n");
+  const cutProject = toPromptPath(parentCwd) !== toPromptPath(childCwd);
+  const tail = sessionResolvedTailStart(lines, parentCwd, cutProject);
+  const head = tail.at === -1 ? lines : lines.slice(0, tail.at);
+  const excised = tail.shape === "section" ? withoutToolSurface(head) : head;
+  const kept = (tail.at === -1 ? prompt : excised.join("\n").trimEnd());
+  return withoutOwnStaticSections(
+    withoutRecursionGuardedToolLines(
+      tail.shape === "section" ? kept : withoutContradictoryCwdFooter(kept, parentCwd, childCwd),
+    ),
+  );
+}
+
+function withoutToolSurface(head: readonly string[]): readonly string[] {
+  const bound = laterSectionStart(head);
+  const toolsAt = head.indexOf(TOOLS_SECTION_OPEN);
+  if (toolsAt === -1 || toolsAt >= bound) return head;
+  const toolsCloseAt = head.indexOf(TOOLS_SECTION_CLOSE, toolsAt);
+  if (toolsCloseAt === -1 || toolsCloseAt >= bound) return head;
+  const rulesAt = toolsCloseAt + 2;
+  if (head[toolsCloseAt + 1] !== "" || head[rulesAt] !== RULES_SECTION_OPEN) return head;
+  const rulesCloseAt = head.indexOf(RULES_SECTION_CLOSE, rulesAt);
+  if (rulesCloseAt === -1 || rulesCloseAt >= bound) return head;
+  const spanEnd = head[rulesCloseAt + 1] === "" ? rulesCloseAt + 2 : rulesCloseAt + 1;
+  return [...head.slice(0, toolsAt), ...head.slice(spanEnd)];
+}
+
+function laterSectionStart(head: readonly string[]): number {
+  const at = head.findIndex((line) => SECTIONS_BELOW_RULES.has(line));
+  return at === -1 ? head.length : at;
+}
+
+function sessionResolvedTailStart(
+  lines: readonly string[],
+  parentCwd: string,
+  cutProjectContext: boolean,
+): AnchoredTail {
+  const tail = cwdAnchoredTailStart(lines, parentCwd);
+  if (!cutProjectContext || tail.at === -1) return tail;
+  const projectContextAt = projectContextStart(lines, tail.at);
+  return projectContextAt === -1 ? tail : { ...tail, at: projectContextAt };
+}
+
+function cwdAnchoredTailStart(lines: readonly string[], parentCwd: string): AnchoredTail {
+  const footerAt = lines.lastIndexOf(`Current working directory: ${toPromptPath(parentCwd)}`);
+  if (footerAt !== -1) {
+    const catalogueAt = skillsSectionStart(lines, footerAt);
+    return { at: catalogueAt === -1 ? footerAt : catalogueAt, shape: "footer" };
+  }
+  const cwdAt = cwdSectionStart(lines, parentCwd);
+  if (cwdAt !== -1) {
+    return { at: skillsSectionWrapperStart(lines, cwdAt), shape: "section" };
+  }
+  return { at: skillsSectionStart(lines, -1), shape: "unanchored" };
+}
+
+function cwdSectionStart(lines: readonly string[], parentCwd: string): number {
+  for (
+    let openAt = lines.lastIndexOf(CWD_SECTION_OPEN);
+    openAt !== -1;
+    openAt = lines.lastIndexOf(CWD_SECTION_OPEN, openAt - 1)
+  ) {
+    if (lines[openAt + 1] === toPromptPath(parentCwd) && lines[openAt + 2] === CWD_SECTION_CLOSE) {
+      return openAt;
+    }
+  }
+  return -1;
+}
+
+function skillsSectionWrapperStart(lines: readonly string[], cwdAt: number): number {
+  let closeAt = cwdAt - 1;
+  while (closeAt >= 0 && lines[closeAt] === "") closeAt--;
+  if (closeAt < 0 || lines[closeAt] !== SKILLS_SECTION_CLOSE) return cwdAt;
+  const openAt = lines.lastIndexOf(SKILLS_SECTION_OPEN, closeAt);
+  if (openAt === -1 || lines[openAt + 1] !== SKILLS_SECTION_HEADING) return cwdAt;
+  return openAt;
+}
+
+function projectContextStart(lines: readonly string[], tailAt: number): number {
+  let closeAt = tailAt - 1;
+  while (closeAt >= 0 && lines[closeAt] === "") closeAt--;
+  if (closeAt < 0 || lines[closeAt] !== PROJECT_CONTEXT_CLOSE) return -1;
+  for (
+    let openAt = lines.lastIndexOf(PROJECT_CONTEXT_OPEN, closeAt);
+    openAt !== -1;
+    openAt = lines.lastIndexOf(PROJECT_CONTEXT_OPEN, openAt - 1)
+  ) {
+    if (lines[openAt + 2] === PROJECT_CONTEXT_LEAD_IN || lines[openAt + 1] === PROJECT_CONTEXT_LEAD_IN) {
+      return openAt;
+    }
+  }
+  return -1;
+}
+
+function skillsSectionStart(lines: readonly string[], footerAt: number): number {
+  const catalogueEnd = catalogueCloseBefore(lines, footerAt);
+  return catalogueEnd === -1 ? -1 : lines.lastIndexOf(SKILLS_SECTION_HEADING, catalogueEnd);
+}
+
+function catalogueCloseBefore(lines: readonly string[], footerAt: number): number {
+  if (footerAt === -1) return lines.lastIndexOf(SKILLS_CATALOGUE_CLOSE);
+  return lines[footerAt - 1] === SKILLS_CATALOGUE_CLOSE ? footerAt - 1 : -1;
 }
 
 /**
@@ -175,8 +315,12 @@ function toPromptPath(cwd: string): string {
   return cwd.replaceAll("\\", "/");
 }
 
-/** Fallback base prompt when parent system prompt is unavailable (both modes). */
-const genericBase = `# Role
-You are a general-purpose coding agent for complex, multi-step tasks.
-You have full access to read, write, edit files, and execute commands.
+/**
+ * Fallback when no parent contribution is usable.
+ *
+ * Asserts nothing about the child's tools: a capability list here told a
+ * read-only child it could write files (#904). The agent's own prompt and
+ * the tool array state those facts.
+ */
+const genericBase = `# Instructions
 Do what has been asked; nothing more, nothing less.`;

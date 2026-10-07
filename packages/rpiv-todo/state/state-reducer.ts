@@ -1,3 +1,4 @@
+import { sanitizeTerminalText } from "../tool/sanitize.js";
 import type { Task, TaskAction, TaskMutationParams, TaskStatus } from "../tool/types.js";
 import { isTransitionValid } from "./invariants.js";
 import type { TaskState } from "./state.js";
@@ -45,7 +46,8 @@ function errorResult(state: TaskState, message: string): ApplyResult {
 export function applyTaskMutation(state: TaskState, action: TaskAction, params: TaskMutationParams): ApplyResult {
 	switch (action) {
 		case "create": {
-			if (!params.subject?.trim()) {
+				const subject = params.subject === undefined ? "" : sanitizeTerminalText(params.subject);
+			if (!subject.trim()) {
 				return errorResult(state, "subject required for create");
 			}
 			if (params.blockedBy?.length) {
@@ -57,14 +59,14 @@ export function applyTaskMutation(state: TaskState, action: TaskAction, params: 
 			}
 			const newTask: Task = {
 				id: state.nextId,
-				subject: params.subject,
+				subject,
 				status: "pending",
 				priority: typeof params.priority === "number" ? params.priority : 0,
 			};
-			if (params.description) newTask.description = params.description;
-			if (params.activeForm) newTask.activeForm = params.activeForm;
+			if (params.description) newTask.description = sanitizeTerminalText(params.description);
+			if (params.activeForm) newTask.activeForm = sanitizeTerminalText(params.activeForm);
 			if (params.blockedBy?.length) newTask.blockedBy = [...params.blockedBy];
-			if (params.owner) newTask.owner = params.owner;
+			if (params.owner) newTask.owner = sanitizeTerminalText(params.owner);
 			if (params.metadata) newTask.metadata = { ...params.metadata };
 
 			const newTasks = [...state.tasks, newTask];
@@ -90,7 +92,12 @@ export function applyTaskMutation(state: TaskState, action: TaskAction, params: 
 				params.priority !== undefined ||
 				(params.addBlockedBy && params.addBlockedBy.length > 0) ||
 				(params.removeBlockedBy && params.removeBlockedBy.length > 0);
-			if (!hasMutation) return { state, op: { kind: "nochange", id: current.id } };
+			if (!hasMutation) {
+				return errorResult(
+					state,
+					"update requires at least one mutable field: subject, description, activeForm, status, owner, priority, metadata, addBlockedBy, or removeBlockedBy",
+				);
+			}
 
 			let newStatus = current.status;
 			if (params.status !== undefined) {
@@ -129,10 +136,10 @@ export function applyTaskMutation(state: TaskState, action: TaskAction, params: 
 			}
 
 			const updated: Task = { ...current, status: newStatus };
-			if (params.subject !== undefined) updated.subject = params.subject;
-			if (params.description !== undefined) updated.description = params.description;
-			if (params.activeForm !== undefined) updated.activeForm = params.activeForm;
-			if (params.owner !== undefined) updated.owner = params.owner;
+			if (params.subject !== undefined) updated.subject = sanitizeTerminalText(params.subject);
+			if (params.description !== undefined) updated.description = sanitizeTerminalText(params.description);
+			if (params.activeForm !== undefined) updated.activeForm = sanitizeTerminalText(params.activeForm);
+			if (params.owner !== undefined) updated.owner = sanitizeTerminalText(params.owner);
 			if (params.priority !== undefined) updated.priority = params.priority;
 			if (newBlockedBy.length) updated.blockedBy = newBlockedBy;
 			else delete updated.blockedBy;

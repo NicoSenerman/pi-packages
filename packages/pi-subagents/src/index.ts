@@ -48,6 +48,12 @@ import {
 } from "#src/observation/notification";
 import { createNotificationRenderer } from "#src/observation/renderer";
 import { SubagentEventsObserver } from "#src/observation/subagent-events-observer";
+import { BridgeCommandWatcher } from "#src/observation/bridge-command-watcher";
+import { SnapshotEmitter } from "#src/observation/snapshot-emitter";
+import {
+  AgentEventConnection,
+  AgentEventObserver,
+} from "#src/observation/agent-event-emitter";
 import { createSubagentRuntime } from "#src/runtime";
 import {
   publishSubagentsService,
@@ -200,10 +206,37 @@ export default function (pi: ExtensionAPI) {
     getRetentionPolicy: () => settings,
   });
 
+  // pitui bridge: emit structured agent snapshots over RPC. Gated by PITUI_BRIDGE.
+  const snapshotEmitter = new SnapshotEmitter({
+    manager,
+    appendEntry: (customType, data) => pi.appendEntry(customType, data),
+  });
+  observer.add(snapshotEmitter);
+
+  // pitui bridge: per-event AgentSessionEvent streaming over Unix socket.
+  const agentEventConnection = new AgentEventConnection();
+  const agentEventObserver = new AgentEventObserver(agentEventConnection);
+  observer.add(agentEventObserver);
+
+  // pitui bridge: out-of-band abort channel (no pi RPC exists for that).
+  const bridgeWatcher = new BridgeCommandWatcher({ manager });
+  // Started in session_start (not the factory) per pi's extension contract:
+  // "Do not start processes, sockets, watchers, or timers in the factory
+  // because some invocations load extensions without starting a session." The
+  // ref-counted unwatchFile(path, listener) in stop() keeps multiple in-flight
+  // factory bindings from killing each other's watchers on the shared file.
+
   // Typed service published via Symbol.for() for cross-extension access.
   // Consumers: const { getSubagentsService } = await import("@gotgenes/pi-subagents");
   const service = new SubagentsServiceAdapter(manager, resolveModel, runtime);
   publishSubagentsService(service);
+
+  // Live widget: constructed after the manager (it polls listAgents()) and
+  // registered as a lifecycle observer so it self-drives its update timer.
+  // Built before SessionLifecycleHandler so parent session_start can journal
+  // a widget clear on /reload (empty manager → no re-paint).
+  const widget = new AgentWidget(manager, registry);
+  observer.add(widget);
 
   const lifecycle = new SessionLifecycleHandler(
     runtime,
@@ -211,9 +244,11 @@ export default function (pi: ExtensionAPI) {
     () => notifications.dispose(),
     unpublishSubagentsService,
     settings,
+    widget,
   );
 
   pi.on("session_start", (event, ctx) => {
+    bridgeWatcher.start();
     resetStashedTurnPrompt();
     return lifecycle.handleSessionStart(event, ctx);
   });
@@ -234,14 +269,18 @@ export default function (pi: ExtensionAPI) {
     }
     stashTurnSystemPrompt(event.systemPrompt);
   });
-
-  pi.on("session_before_switch", () => lifecycle.handleSessionBeforeSwitch());
-  pi.on("session_shutdown", () => lifecycle.handleSessionShutdown());
-
-  // Live widget: constructed after the manager (it polls listAgents()) and
-  // registered as a lifecycle observer so it self-drives its update timer.
-  const widget = new AgentWidget(manager, registry);
-  observer.add(widget);
+  pi.on("session_before_switch", () => {
+    // Stop before the next session_start re-binds extensions, so the shared
+    // StatWatcher path isn't left with a stale listener hitting a manager
+    // whose records were just cleared.
+    bridgeWatcher.stop();
+    return lifecycle.handleSessionBeforeSwitch();
+  });
+  pi.on("session_shutdown", () => {
+    bridgeWatcher.stop();
+    agentEventObserver.close();
+    return lifecycle.handleSessionShutdown();
+  });
 
   // Grab UI context from first tool execution + clear lingering widget on new turn
   const toolStart = new ToolStartHandler(widget);
