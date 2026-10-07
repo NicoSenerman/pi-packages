@@ -529,3 +529,55 @@ describe("buildAgentPrompt recursion-guard tool listing", () => {
     expect(prompt).toContain("Delegate via the subagent tool when appropriate");
   });
 });
+
+describe("buildAgentPrompt static-section dedup", () => {
+  it("strips the embedded <skills> and <cwd> sections (child renders its own)", () => {
+    const config = getDefaultConfig("general-purpose");
+    const parentPrompt = [
+      "You are an expert coding assistant.",
+      "",
+      "<skills>",
+      "The following skills provide specialized instructions for specific tasks.",
+      "<available_skills>",
+      "  <skill><name>foo</name></skill>",
+      "</available_skills>",
+      "</skills>",
+      "",
+      "<cwd>",
+      "/parent/dir",
+      "</cwd>",
+      "",
+      "Use the skills section when relevant.", // prose survives
+    ].join("\n");
+    const prompt = buildAgentPrompt(config, "/child/dir", env, {
+      systemPrompt: parentPrompt,
+      cwd: "/parent/dir",
+    });
+    expect(prompt).not.toContain("<skills>");
+    expect(prompt).not.toContain("<cwd>");
+    expect(prompt).toContain("expert coding assistant");
+    expect(prompt).toContain("Use the skills section when relevant.");
+    // The child's own env block still names its working directory.
+    expect(prompt).toContain("Working directory: /child/dir");
+  });
+
+  it("leaves prose and other sections untouched", () => {
+    const config = getDefaultConfig("general-purpose");
+    const parentPrompt = [
+      "<rules>",
+      "- Read skills carefully before invoking", // contains 'skills' but not the tag
+      "</rules>",
+      "",
+      "<cwd>",
+      "/x",
+      "</cwd>",
+    ].join("\n");
+    const prompt = buildAgentPrompt(config, "/x", env, {
+      systemPrompt: parentPrompt,
+      cwd: "/x",
+    });
+    expect(prompt).toContain("<rules>");
+    expect(prompt).toContain("Read skills carefully");
+    expect(prompt).not.toContain("<cwd>");
+  });
+});

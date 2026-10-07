@@ -50,8 +50,10 @@ ${env.isGitRepo ? `Git repository: yes\nBranch: ${env.branch}` : "Not a git repo
 Platform: ${env.platform}`;
 
   const identity = inherited
-    ? withoutRecursionGuardedToolLines(
-        withoutContradictoryCwdFooter(inherited.systemPrompt, inherited.cwd, cwd),
+    ? withoutOwnStaticSections(
+        withoutRecursionGuardedToolLines(
+          withoutContradictoryCwdFooter(inherited.systemPrompt, inherited.cwd, cwd),
+        ),
       )
     : genericBase;
 
@@ -152,6 +154,20 @@ function withoutRecursionGuardedToolLines(prompt: string): string {
         !/^- (subagent|get_subagent_result|steer_subagent): /.test(line),
     )
     .join("\n");
+}
+
+/**
+ * Drop the parent's `<skills>` and `<cwd>` sections from the inherited prompt.
+ * The child's own pi 1.0 session renders both itself after the customPrompt
+ * preamble — from the child's own (already skills-gated) options and the
+ * child's effective cwd — so the embedded copies are stale duplicates that
+ * waste ~1 KB per spawn and contradict worktree-isolated children on their
+ * working directory. Block-exact matching; prose mentioning skills survives.
+ */
+function withoutOwnStaticSections(prompt: string): string {
+  return prompt
+    .replace(/(?:\n{2,})?<skills>\n[\s\S]*?\n<\/skills>/g, "")
+    .replace(/(?:\n{2,})?<cwd>\n[\s\S]*?\n<\/cwd>/g, "");
 }
 
 /** Render a path the way `buildSystemPrompt` writes it into a prompt. */
