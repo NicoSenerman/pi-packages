@@ -52,11 +52,10 @@
   "peerDependencies": {
     "@earendil-works/pi-ai": ">=1.0.0",
     "@earendil-works/pi-coding-agent": ">=1.0.0",
-    "@earendil-works/pi-tui": ">=1.0.0"
+    "@earendil-works/pi-tui": ">=1.0.0",
+    "@sinclair/typebox": "*"
   },
-  "dependencies": {
-    "@sinclair/typebox": "^0.34.49"
-  },
+  "dependencies": {},
   "engines": {
     "node": ">=22"
   },
