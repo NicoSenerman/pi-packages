@@ -40,6 +40,36 @@ import type {
   ThinkingLevel,
 } from "#src/types";
 
+/**
+ * Depth-counted PI_SUBAGENT_SESSION marker. The old save/restore form
+ * leaked under concurrent spawns: A enters (saves undefined, sets "1"), B
+ * enters (saves "1"), A exits (deletes), B exits (restores its stale
+ * snapshot "1" — permanently). A leaked marker makes every later factory
+ * rebind treat the parent as a child (parent-only extensions no-op on the
+ * parent, and any bash-gating extension arms against the parent itself).
+ * Depth counting restores only at zero, so interleaved windows are safe.
+ */
+let subagentSessionDepth = 0;
+let subagentSessionMarkerPrev: string | undefined;
+
+export function enterSubagentSessionMarker(): () => void {
+  if (subagentSessionDepth === 0) {
+    subagentSessionMarkerPrev = process.env.PI_SUBAGENT_SESSION;
+  }
+  subagentSessionDepth++;
+  process.env.PI_SUBAGENT_SESSION = "1";
+  return () => {
+    subagentSessionDepth = Math.max(0, subagentSessionDepth - 1);
+    if (subagentSessionDepth > 0) return;
+    if (subagentSessionMarkerPrev === undefined) {
+      delete process.env.PI_SUBAGENT_SESSION;
+    } else {
+      process.env.PI_SUBAGENT_SESSION = subagentSessionMarkerPrev;
+    }
+    subagentSessionMarkerPrev = undefined;
+  };
+}
+
 /** Names of tools registered by this extension that subagents must NOT inherit. */
 const EXCLUDED_TOOL_NAMES = [
   "subagent",
@@ -264,15 +294,15 @@ export async function createSubagentSession(
   // Mark child sessions BEFORE extension factories run. Parent-only
   // extensions such as pi-fff check PI_SUBAGENT_SESSION=1 at factory time
   // and no-op so children keep stock grep/find and do not open a second
-  // FileFinder on the shared LMDB DBs.
-  const prevSubagentSession = process.env.PI_SUBAGENT_SESSION;
-  process.env.PI_SUBAGENT_SESSION = "1";
-
+  // FileFinder on the shared LMDB DBs. Depth-counted: concurrent creation
+  // windows interleave safely (see enterSubagentSessionMarker).
+  //
   // The marker lives on the shared daemon process.env, so EVERY await below
   // (loader/session creation, bindExtensions) must sit inside this try: a
   // throw outside the finally leaves the parent daemon permanently marked as
   // a child (parent-only extensions stay disabled, the widget stops painting,
   // tool shells see PI_SUBAGENT_SESSION=1 for the rest of the process).
+  const restoreSubagentSession = enterSubagentSessionMarker();
   try {
     // Children inherit the parent's skills and every extension the composition
     // root did not exclude (#696).
@@ -359,10 +389,6 @@ export async function createSubagentSession(
 
   return subagentSession;
   } finally {
-    if (prevSubagentSession === undefined) {
-      delete process.env.PI_SUBAGENT_SESSION;
-    } else {
-      process.env.PI_SUBAGENT_SESSION = prevSubagentSession;
-    }
+    restoreSubagentSession();
   }
 }

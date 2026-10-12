@@ -1,5 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createSubagentSession } from "#src/lifecycle/create-subagent-session";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  createSubagentSession,
+  enterSubagentSessionMarker,
+} from "#src/lifecycle/create-subagent-session";
 import { SubagentSession } from "#src/lifecycle/subagent-session";
 import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 import {
@@ -335,5 +338,43 @@ describe("createSubagentSession — post-bind recursion guard", () => {
 
     expect(session.setActiveToolsByName).toHaveBeenCalledTimes(1);
     expect(session.setActiveToolsByName.mock.calls[0][0]).toEqual(expected);
+  });
+});
+
+describe("enterSubagentSessionMarker", () => {
+  const prev = process.env.PI_SUBAGENT_SESSION;
+
+  afterEach(() => {
+    if (prev === undefined) delete process.env.PI_SUBAGENT_SESSION;
+    else process.env.PI_SUBAGENT_SESSION = prev;
+  });
+
+  it("holds the marker across interleaved windows without leaking", () => {
+    delete process.env.PI_SUBAGENT_SESSION;
+    const exitA = enterSubagentSessionMarker();
+    const exitB = enterSubagentSessionMarker();
+    expect(process.env.PI_SUBAGENT_SESSION).toBe("1");
+    exitA();
+    expect(process.env.PI_SUBAGENT_SESSION).toBe("1");
+    exitB();
+    expect(process.env.PI_SUBAGENT_SESSION).toBeUndefined();
+  });
+
+  it("restores a pre-existing marker value at depth zero", () => {
+    process.env.PI_SUBAGENT_SESSION = "0";
+    const exit = enterSubagentSessionMarker();
+    expect(process.env.PI_SUBAGENT_SESSION).toBe("1");
+    exit();
+    expect(process.env.PI_SUBAGENT_SESSION).toBe("0");
+  });
+
+  it("returns to clean state after a nested window exits", () => {
+    delete process.env.PI_SUBAGENT_SESSION;
+    const exitOuter = enterSubagentSessionMarker();
+    const exitInner = enterSubagentSessionMarker();
+    exitInner();
+    expect(process.env.PI_SUBAGENT_SESSION).toBe("1");
+    exitOuter();
+    expect(process.env.PI_SUBAGENT_SESSION).toBeUndefined();
   });
 });
