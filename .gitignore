@@ -55,3 +55,6 @@ vite.config.ts.timestamp-*
 .devenv*
 .direnv
 result
+
+# Runtime: pi-permission-system global config (extension dir is symlinked here)
+packages/pi-permission-system/config.json
