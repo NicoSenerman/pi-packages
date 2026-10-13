@@ -15,7 +15,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadConfig, validateGuidanceFields } from "./config.js";
 import { formatStatusLabel, t } from "./state/i18n-bridge.js";
-import { clearState } from "./state/persistence.js";
+import { clearState, readState } from "./state/persistence.js";
 import { replayFromBranch } from "./state/replay.js";
 import { selectTasksByStatus, selectTodoCounts, selectVisibleTasks } from "./state/selectors.js";
 import { EMPTY_STATE } from "./state/state.js";
@@ -29,7 +29,6 @@ import {
 	ERR_REQUIRES_INTERACTIVE,
 	MSG_CLEAN_CONFIRM,
 	MSG_CLEAN_DONE,
-	MSG_CLEAN_EMPTY,
 	MSG_NO_TODOS,
 	type TaskMutationParams,
 	TOOL_LABEL,
@@ -143,7 +142,9 @@ export function setOnCleanTodosHook(fn: (() => void) | undefined): void {
  * the clear survives `/reload`, compaction, and forks — `replayFromBranch`
  * honors it as last-write-wins over any prior todo toolResult. Without the
  * marker, todos stored in the conversation history would reappear on reload.
- * No-op (with a notice) when the list is already empty.
+ * The clear runs even when this store is empty: piru's overlay can still be
+ * rendering a cached snapshot from before a fork/switch, and the marker is
+ * the only signal that makes it drop that snapshot.
  */
 export function registerCleanTodoCommand(pi: ExtensionAPI): void {
 	pi.registerCommand(CLEAN_COMMAND_NAME, {
@@ -153,20 +154,35 @@ export function registerCleanTodoCommand(pi: ExtensionAPI): void {
 				ctx.ui.notify(t("command.requires_interactive", ERR_REQUIRES_INTERACTIVE), "error");
 				return;
 			}
-			const visible = selectVisibleTasks(getState());
-			if (visible.length === 0) {
-				ctx.ui.notify(t("command.clean_empty", MSG_CLEAN_EMPTY), "info");
-				return;
+			const sessionId = ctx.sessionManager.getSessionId();
+			// The in-memory cell can be empty (fork auto-clear, /reload) while the
+			// user still sees tasks — branch replay and the disk snapshot are what
+			// the overlay falls back to. Clear must run if ANY of the three is
+			// non-empty, and must always write the `rpiv-todo-cleared` marker: it
+			// is the only signal that tells piru to drop its cached overlay
+			// snapshot, which this process cannot otherwise reach.
+			const replayed = replayFromBranch(ctx);
+			const memory = getStateFor(sessionId);
+			const file = readState(sessionId);
+			const visible =
+				selectVisibleTasks(memory).length > 0
+					? selectVisibleTasks(memory)
+					: selectVisibleTasks(replayed).length > 0
+						? selectVisibleTasks(replayed)
+						: selectVisibleTasks(file ?? EMPTY_STATE);
+			if (visible.length > 0) {
+				const ok = await ctx.ui.confirm("Clean todos", t("command.clean_confirm", MSG_CLEAN_CONFIRM));
+				if (!ok) return;
 			}
-			const ok = await ctx.ui.confirm("Clean todos", t("command.clean_confirm", MSG_CLEAN_CONFIRM));
-			if (!ok) return;
-			clearState(ctx.sessionManager.getSessionId());
+			clearState(sessionId);
 			replaceState({
 				tasks: [...EMPTY_STATE.tasks],
 				nextId: EMPTY_STATE.nextId,
 			});
 			// Durable marker in the session branch so the clear survives reload /
 			// compaction / fork. `replayFromBranch` treats it as last-write-wins.
+			// Unconditional: without it a stale overlay (piru's cached `todo`
+			// snapshot) keeps rendering tasks this store no longer has.
 			pi.appendEntry(CLEAR_MARKER_CUSTOM_TYPE, {
 				at: new Date().toISOString(),
 			});
