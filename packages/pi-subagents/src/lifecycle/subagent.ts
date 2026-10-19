@@ -33,7 +33,7 @@ export type WaitOutcome =
 import type { LifetimeUsage } from "#src/lifecycle/usage";
 import type { WorkspaceProvider } from "#src/lifecycle/workspace";
 import { WorkspaceBracket } from "#src/lifecycle/workspace-bracket";
-import { wrappedUpAtTurnLimit } from "#src/lifecycle/turn-limits";
+import { type TurnBudget, wrappedUpAtTurnLimit } from "#src/lifecycle/turn-limits";
 import { subscribeSubagentObserver } from "#src/observation/record-observer";
 import type { ModelIdentity } from "#src/ui/display";
 import type { RunConfig } from "#src/runtime";
@@ -539,7 +539,14 @@ export class Subagent {
     this.execution.observer?.onResumeStarted?.(this);
 
     try {
-      this.completeResume(await subagentSession.resumeTurnLoop(prompt, signal));
+      this.completeResume(
+        await subagentSession.resumeTurnLoop(prompt, {
+          signal,
+          onTurnBudget: (budget: TurnBudget) => {
+            this.state.setTurnBudget(budget);
+          },
+        }),
+      );
     } catch (err) {
       this.failResume(err);
     }

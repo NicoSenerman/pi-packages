@@ -1124,13 +1124,27 @@ describe("Subagent.resume() — happy path", () => {
     expect(agent.result).toBe("resumed");
   });
 
-  it("passes the prompt and signal straight through to resumeTurnLoop", async () => {
+  it("passes the prompt in an options object carrying the signal and budget reporter", async () => {
     const { agent, stub } = createResumableAgent();
     const signal = new AbortController().signal;
     await agent.resume("continue", signal);
     expect(stub.resumeTurnLoop).toHaveBeenCalledOnce();
     expect(stub.resumeTurnLoop.mock.calls[0][0]).toBe("continue");
-    expect(stub.resumeTurnLoop.mock.calls[0][1]).toBe(signal);
+    expect(stub.resumeTurnLoop.mock.calls[0][1]).toEqual({
+      signal,
+      onTurnBudget: expect.any(Function),
+    });
+  });
+
+  it("builds the options object even when resume is called without a signal", async () => {
+    // Regression: the bare signal was passed in the opts slot, so a signal-less
+    // resume left opts undefined and died on `opts.onTurnBudget` (TypeError).
+    const { agent, stub } = createResumableAgent();
+    await agent.resume("continue");
+    expect(stub.resumeTurnLoop.mock.calls[0][1]).toEqual({
+      signal: undefined,
+      onTurnBudget: expect.any(Function),
+    });
   });
 
   it("resets transition state before resuming", async () => {

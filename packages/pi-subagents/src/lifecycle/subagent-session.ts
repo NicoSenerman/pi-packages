@@ -213,7 +213,7 @@ export class SubagentSession {
    * The resumed run gets a fresh budget under the initial run's limits: the
    * parent asked for more work, and an exhausted run's remainder would be none.
    */
-  async resumeTurnLoop(prompt: string, opts: ResumeTurnLoopOptions): Promise<TurnLoopResult> {
+  async resumeTurnLoop(prompt: string, opts: ResumeTurnLoopOptions = {}): Promise<TurnLoopResult> {
     const session = this._session;
     const tracker = new TurnBudgetTracker(this.turnLimits);
     const unsubTurns = this.enforceTurnBudget(tracker, opts.onTurnBudget);

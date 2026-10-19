@@ -600,6 +600,15 @@ describe("SubagentSession — resumeTurnLoop", () => {
     expect(result).toEqual({ responseText: "RESUMED", turnBudget: { used: 0, phase: "within" } });
   });
 
+  it("accepts an omitted options object", async () => {
+    // Regression: callers omitting opts crashed on `opts.onTurnBudget`.
+    const { session } = createSession("RESUMED");
+    const { sub } = makeSubagentSession(session);
+    const result = await sub.resumeTurnLoop("Continue");
+    expect(session.prompt).toHaveBeenCalledWith("Continue");
+    expect(result).toEqual({ responseText: "RESUMED", turnBudget: { used: 0, phase: "within" } });
+  });
+
   it("does not emit completed or disposed", async () => {
     const { session } = createSession("RESUMED");
     const { sub } = makeSubagentSession(session, { lifecycle });
