@@ -182,6 +182,9 @@ export class Subagent {
   get turnCount(): number {
     return this.state.turnCount;
   }
+  get turnBudget(): TurnBudget | undefined {
+    return this.state.turnBudget;
+  }
   get activeTools(): ReadonlyMap<string, string> {
     return this.state.activeTools;
   }

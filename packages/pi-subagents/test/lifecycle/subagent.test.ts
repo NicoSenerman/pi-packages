@@ -1147,6 +1147,14 @@ describe("Subagent.resume() — happy path", () => {
     });
   });
 
+  it("feeds the resumed run's budget into the record", async () => {
+    const { agent, stub } = createResumableAgent();
+    await agent.resume("continue");
+    const opts = stub.resumeTurnLoop.mock.calls[0][1];
+    opts.onTurnBudget?.({ maxTurns: 3, used: 1, phase: "within" });
+    expect(agent.turnBudget).toEqual({ maxTurns: 3, used: 1, phase: "within" });
+  });
+
   it("resets transition state before resuming", async () => {
     const { agent } = createResumableAgent();
     await agent.resume("continue");

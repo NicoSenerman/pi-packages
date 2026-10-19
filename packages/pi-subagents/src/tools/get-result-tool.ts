@@ -4,6 +4,7 @@ import type { AgentConfigLookup } from "#src/config/agent-types";
 import { type AgentReport, formatAgentReport } from "#src/tools/get-result-report";
 import { currentResumeRefusal } from "#src/observation/outcome-addenda";
 import { formatLifetimeTokens, textResult } from "#src/tools/helpers";
+import type { SettledOutcome } from "#src/lifecycle/subagent-state";
 import type { Subagent } from "#src/types";
 import { formatDuration, getDisplayName } from "#src/ui/display";
 
@@ -37,7 +38,7 @@ export class GetResultTool {
 		// it is still awaitable — a queued agent counts, because scheduleVia()
 		// captures its limiter promise at spawn. A parent interrupt ends the wait
 		// without cancelling the agent, leaving the outcome uncollected below.
-		let superseded: { result?: string; error?: string; status: string } | undefined;
+		let superseded: SettledOutcome | undefined;
 		if (params.wait) {
 			const claim = record.claim();
 			const wait = await record.waitUntilSettled(signal);
